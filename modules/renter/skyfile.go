@@ -499,8 +499,9 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
+
 	// Create the FileUploadParams
-	fup, err := fileUploadParams(siaPath, 1, int(sup.BaseChunkRedundancy)-1, sup.Force, crypto.TypePlain)
+	fup, err := fileUploadParams(siaPath, modules.RenterDefaultDataPieces, modules.RenterDefaultParityPieces, sup.Force, crypto.TypePlain)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create FileUploadParams for large file")
 	}

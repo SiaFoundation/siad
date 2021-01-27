@@ -532,12 +532,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
 
-	// If the price per ms is zero, set it to 1H to avoid multiplication by 0
-	// cancelling out certain parts of a formula.
-	if pricePerMS.IsZero() {
-		pricePerMS = types.NewCurrency64(1) // 1H
-	}
-
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
@@ -568,6 +562,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
+	// Determine the skip length
+	skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
+
 	// Create the workerResponseChan.
 	//
 	// The worker response chan is allocated to be quite large. This is because
@@ -594,10 +591,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		offsetInChunk: offset,
 		lengthInChunk: length,
 
-		pricePerMS: pricePerMS,
-
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
+
+		skipLength: skipLength,
+
+		pricePerMS: pricePerMS,
 
 		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
 		dataPieces:      make([][]byte, ec.NumPieces()),

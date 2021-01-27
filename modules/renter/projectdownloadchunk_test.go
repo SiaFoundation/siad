@@ -19,7 +19,12 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestProjectDownloadChunk_isolated is a unit test that isolates both
+// 'getPieceOffsetAndLen' in combination with the Recover function on the EC and
+// asserts we can properly encode and then recover at random offset and length
 func TestProjectDownloadChunk_isolated(t *testing.T) {
+	t.Parallel()
+
 	// create data
 	cntr := 0
 	originalData := make([]byte, modules.SectorSize)
@@ -96,15 +101,9 @@ func TestProjectDownloadChunk_isolated(t *testing.T) {
 func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
-	// sectorData := fastrand.Bytes(int(modules.SectorSize))
-
-	cntr := 0
-	sectorData := make([]byte, modules.SectorSize)
-	for i := 0; i < int(modules.SectorSize); i += 2 {
-		binary.LittleEndian.PutUint16(sectorData[i:], uint16(cntr))
-		cntr += 1
-	}
-	sectorRoot := crypto.MerkleRoot(sectorData)
+	// create data
+	originalData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(originalData)
 
 	// create an EC and a passhtrough cipher key
 	ec := modules.NewRSSubCodeDefault()
@@ -113,11 +112,10 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("min pieces", ec.MinPieces())
-	fmt.Println("num pieces", ec.NumPieces())
-
 	// RS encode the data
-	pieces, err := ec.Encode(sectorData)
+	data := make([]byte, modules.SectorSize)
+	copy(data, originalData)
+	pieces, err := ec.Encode(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,19 +134,13 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	// download a random amount of data at random offset
 	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
 	offset := fastrand.Uint64n(modules.SectorSize - length)
-	length = 64
-	offset = 512
-
-	fmt.Println("offset", offset)
-	fmt.Println("length", length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+	skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
 
-	fmt.Println("piece offset", pieceOffset)
-	fmt.Println("piece length", pieceLength)
-
-	// slice all pieces
-	for i := 0; i < len(pieces); i++ {
-		pieces[i] = pieces[i][pieceOffset : pieceOffset+pieceLength]
+	sliced := make([][]byte, len(pieces))
+	for i, piece := range pieces {
+		sliced[i] = make([]byte, pieceLength)
+		copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
 	}
 
 	// create PDC manually
@@ -160,7 +152,9 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		dataPieces: pieces,
+		skipLength: skipLength,
+
+		dataPieces: sliced,
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
@@ -174,13 +168,13 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	if downloadResponse.err != nil {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
-	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
+	if !bytes.Equal(downloadResponse.data, originalData[offset:offset+length]) {
 		t.Log("offset", offset)
 		t.Log("length", length)
 		t.Log("bytes downloaded", len(downloadResponse.data))
 
 		t.Log("actual:\n", downloadResponse.data)
-		t.Log("expected:\n", sectorData[offset:offset+length])
+		t.Log("expected:\n", originalData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
 }

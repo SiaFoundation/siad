@@ -86,10 +86,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 	}
 
-	subTests = []siatest.SubTest{
-		// {Name: "Basic", Test: testSkynetBasic},
-		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-	}
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
@@ -409,6 +405,26 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(largeFetchedData, largeData) {
 		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
+
+	// Fetch the base sector and parse the skyfile layout
+	baseSectorReader, err := r.SkynetBaseSectorGet(largeSkylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseSector, err := ioutil.ReadAll(baseSectorReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skyfileLayout modules.SkyfileLayout
+	skyfileLayout.Decode(baseSector)
+	if int(skyfileLayout.FanoutDataPieces) != modules.RenterDefaultDataPieces {
+		t.Fatal("unexpected number of data pieces")
+	}
+	if int(skyfileLayout.FanoutParityPieces) != modules.RenterDefaultParityPieces {
+		t.Fatal("unexpected number of parity pieces")
+	}
+	t.Log(skyfileLayout.FanoutDataPieces)
+	t.Log(skyfileLayout.FanoutParityPieces)
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the skylink referenced.

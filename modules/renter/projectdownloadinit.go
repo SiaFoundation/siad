@@ -326,7 +326,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 
 		// If all workers in the working set are already cheaper than this
 		// worker, skip this worker.
-		if highestCost.Cmp(nextWorker.cost) < 0 && enoughWorkers {
+		if highestCost.Cmp(nextWorker.cost) <= 0 && enoughWorkers {
 			continue
 		}
 
@@ -385,7 +385,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 
 			// Only do the eviction if we already have enough workers.
 			if enoughWorkers {
-				fmt.Printf("subtracting %v from %v\n", highestCost.HumanString(), workingSetCost.HumanString())
 				workingSetCost = workingSetCost.Sub(highestCost)
 				heap.Push(&workerHeap, workingSet[highestCostIndex])
 				workingSet[highestCostIndex] = nil
@@ -393,9 +392,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 				newWorker = true
 			}
 		} else {
-			// fmt.Printf("swapping worker %v complete in %v ms for %v set to complete in %v ms (index %v)\n", workingSet[bestSpotIndex].worker.staticHostPubKeyStr[:24], time.Until(workingSet[bestSpotIndex].completeTime).Milliseconds(),
-			// 	nextWorker.worker.staticHostPubKeyStr[:24], time.Until(nextWorker.completeTime).Milliseconds(), bestSpotIndex)
-
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
