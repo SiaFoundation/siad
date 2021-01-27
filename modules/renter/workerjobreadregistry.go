@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -69,7 +70,13 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
-	refund, err := pb.AddReadRegistryInstruction(spk, tweak)
+	var refund types.Currency
+	var err error
+	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
+		refund, err = pb.V154AddReadRegistryInstruction(spk, tweak)
+	} else {
+		refund, err = pb.AddReadRegistryInstruction(spk, tweak)
+	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")
 	}

@@ -1,11 +1,9 @@
 package renter
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -269,7 +267,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
-		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew)
+		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.userUploadMemoryManager)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
@@ -329,16 +327,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 	}
 
-	// Prepare a context that will allow us some extra time, after all chunks
-	// have become available, to wait for the chunk to be fully complete. After
-	// the chunk becoming available we do not want to wait a very long time
-	// either, but allowing it some time brings benefit to the PCWS in edges
-	// where an upload is immediately followed by a downloda, causing a
-	// potential sub-optimal download that lasts until the state resets.
-	var ctx context.Context
-
 	// Wait for all chunks to become available.
-	start := time.Now()
 	for _, chunk := range chunks {
 		select {
 		case <-r.tg.StopCtx().Done():
@@ -350,23 +339,6 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 			if err != nil {
 				return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 			}
-
-			if ctx == nil {
-				var cancel context.CancelFunc
-				ec := fileNode.ErasureCode()
-				ctx, cancel = context.WithTimeout(r.tg.StopCtx(), estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces()))
-				defer cancel()
-			}
-		}
-	}
-
-	// Wait for all chunks to reach full redundancy
-LOOP:
-	for _, chunk := range chunks {
-		select {
-		case <-ctx.Done():
-			break LOOP
-		case <-chunk.staticUploadCompletedChan:
 		}
 	}
 
@@ -376,23 +348,4 @@ LOOP:
 		return nil, errors.New("disrupted by failUploadStreamFromReader")
 	}
 	return fileNode, nil
-}
-
-// estimateTimeUntilComplete is a function that, depending on the time it took
-// for the chunk to become available and the parameters from the EC, returns an
-// estimate on how long it will take for the chunk to be uploaded completely
-func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPieces int) time.Duration {
-	timeUntilAvailNS := timeUntilAvail.Nanoseconds()
-
-	remaining := float64(numPieces-minPieces) / float64(minPieces)
-	timeRemainingNS := remaining * float64(timeUntilAvailNS)
-	timeRemainingNS *= pieceUploadExpectedSlowdown // account for possible slowdown
-
-	min := func(a, b time.Duration) time.Duration {
-		if a <= b {
-			return a
-		}
-		return b
-	}
-	return min(time.Duration(timeRemainingNS), maxWaitForCompleteUpload)
 }

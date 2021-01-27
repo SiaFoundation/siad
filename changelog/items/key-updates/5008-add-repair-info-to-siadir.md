@@ -1,0 +1,1 @@
+- Add repair information to `.siadir` metadata

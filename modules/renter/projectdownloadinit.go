@@ -461,14 +461,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
-	var worker string
 	start := time.Now()
-	id := start.Unix()
-	fmt.Println("INIT", id)
-
-	defer func() {
-		fmt.Printf("DONE %v in %vms on %v\n", id, time.Since(start).Milliseconds(), worker)
-	}()
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -489,12 +482,12 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
-			// fmt.Printf("took %v ms to find final workers\n", time.Since(start).Milliseconds())
 			for i, fw := range finalWorkers {
 				if fw == nil {
 					continue
 				}
 				pdc.launchWorker(fw.worker, uint64(i))
+				fmt.Printf("launched %v after %vms\n", fw.worker.staticHostPubKeyStr, time.Since(start).Milliseconds())
 			}
 			return nil
 		}

@@ -8,8 +8,6 @@ package renter
 import (
 	"container/list"
 	"context"
-	"runtime"
-	"runtime/debug"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -72,7 +70,6 @@ const (
 type memoryManager struct {
 	available           uint64 // Total memory remaining.
 	base                uint64 // Initial memory.
-	memSinceGC          uint64 // Counts allocations to trigger a manual GC.
 	memSinceLowPriority uint64 // Counts allocations to bump low priority requests.
 	priorityReserve     uint64 // Memory set aside for priority requests.
 	underflow           uint64 // Large requests cause underflow.
@@ -262,16 +259,6 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 func (mm *memoryManager) Return(amount uint64) {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
-
-	// Check how much memory has been returned since the last call to
-	// runtime.GC(). If enough memory has been returned, call runtime.GC()
-	// manually and reset the counter.
-	mm.memSinceGC += amount
-	if mm.memSinceGC > memoryDefault {
-		runtime.GC()
-		debug.FreeOSMemory()
-		mm.memSinceGC = 0
-	}
 
 	// Add the remaining memory to the pool of available memory, clearing out
 	// the underflow if needed.

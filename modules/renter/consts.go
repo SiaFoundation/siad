@@ -57,32 +57,69 @@ var (
 		Standard: time.Minute * 10,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
-
-	// maxWaitForCompleteUpload is the maximum amount of time we wait for an
-	// upload chunk to be completely uploaded after it has become available in
-	// the upload process.
-	maxWaitForCompleteUpload = build.Select(build.Var{
-		Dev:      5 * time.Minute,
-		Standard: 5 * time.Minute,
-		Testing:  5 * time.Second,
-	}).(time.Duration)
 )
 
 // Default memory usage parameters.
 var (
-	// memoryDefault establishes the default amount of memory that the renter
-	// will use when performing uploads and downloads. The mapping is currently
-	// not perfect due to GC overhead and other places where we don't count all
-	// of the memory usage accurately.
-	memoryDefault = build.Select(build.Var{
+	// registryMemoryDefault establishes the default amount of memory that the
+	// renter will use when performing registry operations. The mapping is
+	// currently not perfect due to GC overhead and other places where we don't
+	// count all of the memory usage accurately.
+	registryMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
-		Standard: uint64(1 << 30), // 1 GiB
+		Standard: uint64(1 << 29), // 0.5 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
-	// defaultPriorityMemory is the amount of memory that is held in reserve
-	// explicitly for priority actions such as download streaming.
-	memoryPriorityDefault = memoryDefault / 4
+	// userUploadMemoryDefault establishes the default amount of memory that the
+	// renter will use when performing user-initiated uploads. The mapping is
+	// currently not perfect due to GC overhead and other places where we don't
+	// count all of the memory usage accurately.
+	userUploadMemoryDefault = build.Select(build.Var{
+		Dev:      uint64(1 << 28), // 256 MiB
+		Standard: uint64(1 << 29), // 0.5 GiB
+		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
+	}).(uint64)
+
+	// userDownloadMemoryDefault establishes the default amount of memory that
+	// the renter will use when performing user-initiated downloads. The mapping
+	// is currently not perfect due to GC overhead and other places where we
+	// don't count all of the memory usage accurately.
+	userDownloadMemoryDefault = build.Select(build.Var{
+		Dev:      uint64(1 << 28), // 256 MiB
+		Standard: uint64(1 << 29), // 0.5 GiB
+		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
+	}).(uint64)
+
+	// repairMemoryDefault establishes the default amount of memory that the
+	// renter will use when performing system-scheduld uploads and downloads.
+	// The mapping is currently not perfect due to GC overhead and other places
+	// where we don't count all of the memory usage accurately.
+	repairMemoryDefault = build.Select(build.Var{
+		Dev:      uint64(1 << 28), // 256 MiB
+		Standard: uint64(1 << 29), // 0.5 GiB
+		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
+	}).(uint64)
+
+	// registryMemoryPriorityDefault is the amount of memory that is held in reserve
+	// explicitly for priority actions.
+	registryMemoryPriorityDefault = uint64(0)
+
+	// userUploadMemoryPriorityDefault is the amount of memory that is held in reserve
+	// explicitly for priority actions.
+	userUploadMemoryPriorityDefault = uint64(0)
+
+	// userDownloadMemoryPriorityDefault is the amount of memory that is held in
+	// reserve explicitly for priority actions.
+	userDownloadMemoryPriorityDefault = uint64(0)
+
+	// repairMemoryPriorityDefault is the amount of memory that is held in
+	// reserve explicitly for priority actions.
+	repairMemoryPriorityDefault = repairMemoryDefault
+
+	// gcMemoryThreshold is the amount of memory after which a memory manager
+	// triggers a garbage collection.
+	gcMemoryThreshold = uint64(1 << 28) // 256 MiB
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that

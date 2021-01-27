@@ -72,6 +72,11 @@ var (
 	// response with the highest rev number. The timer starts when we get the
 	// first response and doesn't reset afterwards.
 	useHighestRevDefaultTimeout = 100 * time.Millisecond
+
+	// updateRegistryBackgroundTimeout is the time an update registry job on a
+	// worker stays active in the background after managedUpdateRegistry returns
+	// successfully.
+	updateRegistryBackgroundTimeout = time.Minute
 )
 
 // ReadRegistry starts a registry lookup on all available workers. The
@@ -91,10 +96,10 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.memoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
-		return modules.SignedRegistryValue{}, errors.New("renter shut down before memory could be allocated for the project")
+	if !r.registryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
+		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
-	defer r.memoryManager.Return(readRegistryMemory)
+	defer r.registryMemoryManager.Return(readRegistryMemory)
 
 	// Start the ReadRegistry jobs.
 	srv, err := r.managedReadRegistry(ctx, spk, tweak)
@@ -119,10 +124,10 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.memoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
-		return errors.New("renter shut down before memory could be allocated for the project")
+	if !r.registryMemoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
+		return errors.New("timeout while waiting in job queue - server is busy")
 	}
-	defer r.memoryManager.Return(updateRegistryMemory)
+	defer r.registryMemoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
 	err := r.managedUpdateRegistry(ctx, spk, srv)
@@ -258,7 +263,7 @@ LOOP:
 // NOTE: the input ctx only unblocks the call if it fails to hit the threshold
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
-func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error {
+func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
 	// Verify the signature before updating the hosts.
 	if err := srv.Verify(spk.ToPublicKey()); err != nil {
 		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
@@ -269,6 +274,17 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
+
+	// Create a context to continue updating registry values in the background.
+	updateTimeoutCtx, updateTimeoutCancel := context.WithTimeout(r.tg.StopCtx(), updateRegistryBackgroundTimeout)
+	defer func() {
+		if err != nil {
+			// If managedUpdateRegistry fails the caller is going to assume that
+			// updating the value failed. Don't let any jobs linger in that
+			// case.
+			updateTimeoutCancel()
+		}
+	}()
 
 	// Filter out hosts that don't support the registry.
 	numRegistryWorkers := 0
@@ -296,10 +312,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 			continue
 		}
 
-		// Create the job. We purposefully use the renter's ctx here instead of
-		// the provided one to make sure the jobs can finish in the background
-		// instead of being killed when the timeout channel is closed.
-		jrr := worker.newJobUpdateRegistry(r.tg.StopCtx(), staticResponseChan, spk, srv)
+		// Create the job.
+		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, staticResponseChan, spk, srv)
 		if !worker.staticJobUpdateRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -320,6 +334,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	highestInvalidRevNum := uint64(0)
 	invalidRevNum := false
 
+	var respErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
@@ -346,6 +361,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 				highestInvalidRevNum = resp.srv.Revision
 				invalidRevNum = true
 			}
+			respErrs = errors.Compose(respErrs, resp.staticErr)
 			continue
 		}
 
@@ -355,7 +371,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 	// Check for an invalid revision error and return the right error according
 	// to the highest invalid revision we remembered.
-	var err error
 	if invalidRevNum {
 		if highestInvalidRevNum == srv.Revision {
 			err = registry.ErrSameRevNum
@@ -366,9 +381,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
+		r.log.Print("RegistryUpdate failed with 0 successful responses: ", err)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
+		r.log.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil

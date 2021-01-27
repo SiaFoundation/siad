@@ -90,19 +90,14 @@ func (w *worker) managedDropChunk(uc *unfinishedUploadChunk) {
 // managedDropUploadChunks will release all of the upload chunks that the worker
 // has received.
 func (w *worker) managedDropUploadChunks() {
-	// Make a copy of the slice under lock, clear the slice, then drop the
-	// chunks without a lock (managed function).
-	var chunksToDrop []*unfinishedUploadChunk
 	w.mu.Lock()
-	for i := 0; i < len(w.unprocessedChunks); i++ {
-		chunksToDrop = append(chunksToDrop, w.unprocessedChunks[i])
-	}
-	w.unprocessedChunks = w.unprocessedChunks[:0]
+	chunksToDrop := w.unprocessedChunks
+	w.unprocessedChunks = newUploadChunks()
 	w.mu.Unlock()
 
-	for i := 0; i < len(chunksToDrop); i++ {
-		w.managedDropChunk(chunksToDrop[i])
-		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunksToDrop[i].staticIndex, chunksToDrop[i].staticSiaPath)
+	for chunkToDrop := chunksToDrop.Pop(); chunkToDrop != nil; chunkToDrop = chunksToDrop.Pop() {
+		w.managedDropChunk(chunkToDrop)
+		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunkToDrop.staticIndex, chunkToDrop.staticSiaPath)
 	}
 }
 
@@ -136,7 +131,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 		w.managedDropChunk(uc)
 		return false
 	}
-	w.unprocessedChunks = append(w.unprocessedChunks, uc)
+	w.unprocessedChunks.PushBack(uc)
 	w.mu.Unlock()
 
 	// Send a signal informing the work thread that there is work.
@@ -149,7 +144,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 func (w *worker) managedHasUploadJob() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.unprocessedChunks) > 0
+	return w.unprocessedChunks.Len() > 0
 }
 
 // managedPerformUploadChunkJob will perform some upload work.
@@ -157,13 +152,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
 	w.mu.Lock()
-	if len(w.unprocessedChunks) == 0 {
-		w.mu.Unlock()
+	nextChunk := w.unprocessedChunks.Pop()
+	w.mu.Unlock()
+	if nextChunk == nil {
 		return
 	}
-	nextChunk := w.unprocessedChunks[0]
-	w.unprocessedChunks = w.unprocessedChunks[1:]
-	w.mu.Unlock()
 
 	// Make sure the chunk wasn't canceled.
 	nextChunk.cancelMU.Lock()
@@ -183,9 +176,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
-		nextChunk.mu.Lock()
-		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
-		nextChunk.mu.Unlock()
 		return
 	}
 	// Open an editing connection to the host.
@@ -248,7 +238,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	uc.memoryReleased += uint64(releaseSize)
 	uc.chunkSuccessProcessTimes = append(uc.chunkSuccessProcessTimes, time.Now())
 	uc.mu.Unlock()
-	w.renter.memoryManager.Return(uint64(releaseSize))
+	uc.staticMemoryManager.Return(uint64(releaseSize))
 	w.renter.managedCleanUpUploadChunk(uc)
 }
 
@@ -338,7 +328,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
-		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
+		w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.

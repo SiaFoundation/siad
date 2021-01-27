@@ -573,13 +573,6 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		defer cancel()
 	}
 
-	// Block until there is memory available, and then ensure the memory gets
-	// returned.
-	if !r.memoryManager.Request(ctx, length, memoryPriorityHigh) {
-		return nil, errors.New("call timed out, or renter shut down, before memory could be allocated for the download")
-	}
-	defer r.memoryManager.Return(length)
-
 	// Fetch the data
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
@@ -608,18 +601,6 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
-
-	// Find the fetch size.
-	_, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to get fetch size")
-	}
-
-	// Block until there is memory available, and ensure it gets returned.
-	if !r.memoryManager.Request(ctx, fetchSize, memoryPriorityHigh) {
-		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.New("renter shut down before memory could be allocated for the download")
-	}
-	defer r.memoryManager.Return(fetchSize)
 
 	// Download the data
 	layout, metadata, streamer, err := r.managedDownloadSkylink(ctx, link, pricePerMS)
@@ -655,13 +636,6 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to get offset and fetch size")
 	}
-
-	// Block until there is memory available, and then ensure the memory gets
-	// returned.
-	if !r.memoryManager.Request(ctx, fetchSize, memoryPriorityHigh) {
-		return nil, errors.New("call timed out, or renter shut down, before memory could be allocated for the download")
-	}
-	defer r.memoryManager.Return(fetchSize)
 
 	// Download the base sector
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
@@ -988,7 +962,10 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 
 	// If a skykey name or ID was specified, generate a file-specific key for
 	// this upload.
-	r.generateFilekey(&sup, nil)
+	err = r.generateFilekey(&sup, nil)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
+	}
 
 	// defer a function that cleans up the siafiles after a failed upload
 	// attempt or after a dry run

@@ -61,8 +61,12 @@ func randomMetadata() Metadata {
 		AggregateNumStuckChunks:      fastrand.Uint64n(100),
 		AggregateNumSubDirs:          fastrand.Uint64n(100),
 		AggregateRemoteHealth:        float64(fastrand.Intn(100)),
+		AggregateRepairSize:          fastrand.Uint64n(100),
 		AggregateSize:                fastrand.Uint64n(100),
 		AggregateStuckHealth:         float64(fastrand.Intn(100)),
+
+		AggregateSkynetFiles: fastrand.Uint64n(100),
+		AggregateSkynetSize:  fastrand.Uint64n(100),
 
 		Health:              float64(fastrand.Intn(100)),
 		LastHealthCheckTime: time.Now(),
@@ -72,8 +76,12 @@ func randomMetadata() Metadata {
 		NumStuckChunks:      fastrand.Uint64n(100),
 		NumSubDirs:          fastrand.Uint64n(100),
 		RemoteHealth:        float64(fastrand.Intn(100)),
+		RepairSize:          fastrand.Uint64n(100),
 		Size:                fastrand.Uint64n(100),
 		StuckHealth:         float64(fastrand.Intn(100)),
+
+		SkynetFiles: fastrand.Uint64n(100),
+		SkynetSize:  fastrand.Uint64n(100),
 	}
 	return md
 }

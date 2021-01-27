@@ -14,6 +14,7 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
+	"container/list"
 	"sync"
 	"time"
 	"unsafe"
@@ -76,7 +77,7 @@ type (
 
 		// Download variables related to queuing work. They have a separate
 		// mutex to minimize lock contention.
-		downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+		downloadChunks              *downloadChunks // Yet unprocessed work items.
 		downloadMu                  sync.Mutex
 		downloadTerminated          bool      // Has downloading been terminated for this worker?
 		downloadConsecutiveFailures int       // How many failures in a row?
@@ -93,11 +94,11 @@ type (
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
-		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
-		uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
-		uploadRecentFailure       time.Time                // How recent was the last failure?
-		uploadRecentFailureErr    error                    // What was the reason for the last failure?
-		uploadTerminated          bool                     // Have we stopped uploading?
+		unprocessedChunks         *uploadChunks // Yet unprocessed work items.
+		uploadConsecutiveFailures int           // How many times in a row uploading has failed.
+		uploadRecentFailure       time.Time     // How recent was the last failure?
+		uploadRecentFailureErr    error         // What was the reason for the last failure?
+		uploadTerminated          bool          // Have we stopped uploading?
 
 		// The staticAccount represent the renter's ephemeral account on the
 		// host. It keeps track of the available balance in the account, the
@@ -127,6 +128,48 @@ type (
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
+
+// downloadChunks is a queue of download chunks.
+type downloadChunks struct {
+	*list.List
+}
+
+// newDownloadChunks initializes a new queue.
+func newDownloadChunks() *downloadChunks {
+	return &downloadChunks{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *downloadChunks) Pop() *unfinishedDownloadChunk {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*unfinishedDownloadChunk)
+}
+
+// uploadChunks is a queue of upload chunks.
+type uploadChunks struct {
+	*list.List
+}
+
+// newUploadChunks initializes a new queue.
+func newUploadChunks() *uploadChunks {
+	return &uploadChunks{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *uploadChunks) Pop() *unfinishedUploadChunk {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*unfinishedUploadChunk)
+}
 
 // managedKill will kill the worker.
 func (w *worker) managedKill() {
@@ -203,9 +246,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		killChan: make(chan struct{}),
-		wakeChan: make(chan struct{}, 1),
-		renter:   r,
+		downloadChunks:    newDownloadChunks(),
+		unprocessedChunks: newUploadChunks(),
+		killChan:          make(chan struct{}),
+		wakeChan:          make(chan struct{}, 1),
+		renter:            r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()

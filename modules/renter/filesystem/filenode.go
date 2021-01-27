@@ -107,7 +107,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		_, err := os.Stat(localPath)
 		onDisk = err == nil
 	}
-	_, _, health, stuckHealth, numStuckChunks := n.Health(offline, goodForRenew)
+	_, _, health, stuckHealth, numStuckChunks, _ := n.Health(offline, goodForRenew)
 	_, redundancy, err := n.Redundancy(offline, goodForRenew)
 	if err != nil {
 		return modules.FileInfo{}, errors.AddContext(err, "failed to get n redundancy")

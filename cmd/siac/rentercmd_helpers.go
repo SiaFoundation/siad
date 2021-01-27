@@ -409,30 +409,36 @@ Contract %v
 	return nil
 }
 
+// renterallowancespendingbreakdown provides a breakdown of a few fields in the
+// financial metrics.
+func renterallowancespendingbreakdown(rg api.RenterGET) (totalSpent, unspentAllocated, unspentUnallocated types.Currency) {
+	fm := rg.FinancialMetrics
+	totalSpent = fm.ContractFees.Add(fm.UploadSpending).
+		Add(fm.DownloadSpending).Add(fm.StorageSpending)
+	// Calculate unspent allocated
+	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
+		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
+	}
+	// Calculate unspent unallocated
+	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
+		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
+	}
+	return totalSpent, unspentAllocated, unspentUnallocated
+}
+
 // renterallowancespending prints info about the current period spending
 // this also get called by 'siac renter -v' which is why it's in its own
 // function
 func renterallowancespending(rg api.RenterGET) {
 	// Show spending detail
-	fm := rg.FinancialMetrics
-	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending)
-	// Calculate unspent allocated
-	unspentAllocated := types.ZeroCurrency
-	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
-		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
-	}
-	// Calculate unspent unallocated
-	unspentUnallocated := types.ZeroCurrency
-	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
-		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
-	}
+	totalSpent, unspentAllocated, unspentUnallocated := renterallowancespendingbreakdown(rg)
 
 	rate, err := types.ParseExchangeRate(build.ExchangeRate())
 	if err != nil {
 		fmt.Printf("Warning: ignoring exchange rate - %s\n", err)
 	}
 
+	fm := rg.FinancialMetrics
 	fmt.Printf(`
 Spending:
   Current Period Spending:`)
@@ -485,19 +491,16 @@ func renterFilesAndContractSummary() error {
 	// Passive Contracts are all good data
 	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
-	fmt.Printf(`
-  Files:               %v
-  Total Stored:        %v
-  Total Contract Data: %v
-  Min Redundancy:      %v
-  Active Contracts:    %v
-  Passive Contracts:   %v
-  Disabled Contracts:  %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize),
-		modules.FilesizeUnits(activeSize+passiveSize), redundancyStr, len(rc.ActiveContracts),
-		len(rc.PassiveContracts), len(rc.DisabledContracts))
-
-	return nil
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "  Files:\t%v\n", rf.Directories[0].AggregateNumFiles)
+	fmt.Fprintf(w, "  Total Stored:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateSize))
+	fmt.Fprintf(w, "  Total Contract Data:\t%v\n", modules.FilesizeUnits(activeSize+passiveSize))
+	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
+	fmt.Fprintf(w, "  Min Redundancy:\t%v\n", redundancyStr)
+	fmt.Fprintf(w, "  Active Contracts:\t%v\n", len(rc.ActiveContracts))
+	fmt.Fprintf(w, "  Passive Contracts:\t%v\n", len(rc.PassiveContracts))
+	fmt.Fprintf(w, "  Disabled Contracts:\t%v\n", len(rc.DisabledContracts))
+	return w.Flush()
 }
 
 // renterFilesDownload downloads the file at the specified path from the Sia
@@ -659,5 +662,53 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 			sanitizeErr(worker.UploadCoolDownError),
 			worker.UploadQueueSize,
 			worker.UploadTerminated)
+	}
+}
+
+// writeWorkerReadUpdateRegistryInfo is a helper function for writing the read registry
+// or update registry information to the tabwriter.
+func writeWorkerReadUpdateRegistryInfo(read bool, w *tabwriter.Writer, rw modules.WorkerPoolStatus) {
+	// print summary
+	fmt.Fprintf(w, "Worker Pool Summary \n")
+	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
+	if read {
+		fmt.Fprintf(w, "  Workers On ReadRegistry Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	} else {
+		fmt.Fprintf(w, "  Workers On UpdateRegistry Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+	}
+
+	// print header
+	hostInfo := "Host PubKey"
+	info := "\tOn Cooldown\tCooldown Time\tLast Error\tLast Error Time\tQueue"
+	header := hostInfo + info
+	if read {
+		fmt.Fprintln(w, "\nWorker ReadRegistry Detail  \n\n"+header)
+	} else {
+		fmt.Fprintln(w, "\nWorker UpdateRegistry Detail  \n\n"+header)
+	}
+
+	// print rows
+	for _, worker := range rw.Workers {
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Qeue Info
+		if read {
+			status := worker.ReadRegistryJobsStatus
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+				status.OnCooldown,
+				absDuration(time.Until(status.OnCooldownUntil)),
+				sanitizeErr(status.RecentErr),
+				status.RecentErrTime,
+				status.JobQueueSize)
+		} else {
+			status := worker.UpdateRegistryJobsStatus
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+				status.OnCooldown,
+				absDuration(time.Until(status.OnCooldownUntil)),
+				sanitizeErr(status.RecentErr),
+				status.RecentErrTime,
+				status.JobQueueSize)
+		}
 	}
 }
