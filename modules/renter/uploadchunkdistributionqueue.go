@@ -32,6 +32,16 @@ const (
 	// means more lantecy for new uploads, but also means that a server can
 	// handle more files overall before being rotated to maintenance.
 	lowPriorityMinThroughput = 0.1
+
+	// workerBusyThreshold is the number of jobs a worker needs to have to be
+	// considered busy. A threshold of 1 for example means the worker is 'busy'
+	// if it has 1 upload job or more in its queue.
+	workerUploadBusyThreshold = 1
+
+	// workerOverloadedThreshold is the number of jobs a worker needs to have to
+	// be considered overloaded. A threshold of 3 for example means the worker
+	// is 'overloaded' if there are 3 jobs or more in its queue.
+	workerUploadOverloadedThreshold = 3
 )
 
 // uploadChunkDistributionQueue is a struct which tracks which chunks are queued
@@ -217,7 +227,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 // function can potentially block for long periods of time.
 func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*worker {
 	for {
-		workers, finalized := r.managedCheckForUploadWorkers(uc)
+		workers, finalized := managedCheckForUploadWorkers(uc, r.staticWorkerPool.callWorkers())
 		if finalized {
 			return workers
 		}
@@ -239,38 +249,77 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 // If there is not a good set, and a better set will likely appear after waiting
 // for some of the current workers to process their queue further, 'false' will
 // be returned.
-func (r *Renter) managedCheckForUploadWorkers(uc *unfinishedUploadChunk) ([]*worker, bool) {
-	workers := r.staticWorkerPool.callWorkers()
-
+//
+// The workers are provided as an input to the function so that it is easier to
+// unit test.
+func managedCheckForUploadWorkers(uc *unfinishedUploadChunk, workers []*worker) ([]*worker, bool) {
 	// Scan through the workers and determine how many workers have available
-	// slots to uploading.
-	var availableWorkers, busyWorkers uint64
+	// slots to upload. Available workers and busy workers are both counted as
+	// viable candidates for receiving work. 'busy' workers have more than 0
+	// jobs but less than 5 jobs in their queue.
+	//
+	// Unless there are not enough jobs period
+	var availableWorkers, busyWorkers, overloadedWorkers uint64
 	for _, w := range workers {
-		// Count this worker as available if there are no unprocessed chunks in
-		// the worker's queue.
-		if w.unprocessedChunks.Len() == 0 {
+		// Skip any worker that is on cooldown or is !GFU.
+		cache := w.staticCache()
+		w.mu.Lock()
+		onCooldown, _ := w.onUploadCooldown()
+		w.mu.Unlock()
+		gfu := cache.staticContractUtility.GoodForUpload
+		if onCooldown || !gfu {
+			continue
+		}
+
+		// Count what type of worker this is. Available means the queue is
+		// empty, busy means the queue has 1 or 2 items in it, and overloaded
+		// means the queue has 3 or more items in it.
+		//
+		// We are only willing to distribute new work to busy and overloaded
+		// workers.
+		if w.unprocessedChunks.Len() < workerUploadBusyThreshold {
 			availableWorkers++
-		} else if w.unprocessedChunks.Len() < 5 {
+		} else if w.unprocessedChunks.Len() < workerUploadOverloadedThreshold {
 			busyWorkers++
 		} else {
+			overloadedWorkers++
 			continue
 		}
 		workers[availableWorkers+busyWorkers-1] = w
 	}
+	// Truncate the set of workers to only include the available and the busy
+	// workers.
 	workers = workers[:availableWorkers+busyWorkers]
 
-	// If there are not enough workers available, but there are some busy
-	// workers that may become available soon, we return false to indicate that
-	// the chunk is not ready for distribution and that we should wait a bit for
-	// more workers to become available.
-	//
-	// TODO: piecesNeeded is static I believe, need to change the naming to
-	// reflect this.
-	if availableWorkers+busyWorkers > uint64(uc.piecesNeeded) && availableWorkers < uint64(uc.piecesNeeded) {
-		return nil, false
+	// Distribute the upload depending on the number of pieces and the number of
+	// workers. We want to handle every edge case where there are more pieces
+	// than workers total, which means that waiting is not going to improve the
+	// situation.
+	if availableWorkers >= uint64(uc.minimumPieces) && availableWorkers+busyWorkers >= uint64(uc.piecesNeeded) {
+		// This is the base success case. We have enough available workers to
+		// get the chunk 'available' on the Sia network ASAP, and we have enough
+		// busy workers to complete the chunk all the way.
+		return workers, true
+	}
+	if availableWorkers >= uint64(uc.minimumPieces) && overloadedWorkers == 0 {
+		// This is an edge case where there are no overloaded workers, and there
+		// are enough available workers to make the chunk available on the Sia
+		// network. Because there are no overloaded workers, waiting longer is
+		// not going to allow us to make more progress, so we need to accept
+		// this chunk as-is.
+		return workers, true
+	}
+	if overloadedWorkers == 0 && busyWorkers == 0 {
+		// This is the worst of the success cases. It means we don't even have
+		// enough workers to make the chunk available on the network, but all
+		// the workers that we do have are available. Even though this is a bad
+		// place to be, the right thing to do is move forward with the upload.
+		return workers, true
 	}
 
-	// TODO: Consider if we want to be more selective than just giving work to
-	// everyone.
-	return workers, true
+	// In all other cases, we should wait until either some busy workers have
+	// processed enough chunks to become available workers, or until some
+	// overloaded workers have processed enough chunks to become busy workers,
+	// or both.
+	return nil, false
 }
