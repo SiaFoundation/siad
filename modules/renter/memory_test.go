@@ -709,3 +709,40 @@ func TestMemoryManagerRequestMemoryWithContext(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 }
+
+// TestAddMemoryStatus is a unit test for adding up MemoryStatus objects.
+func TestAddMemoryStatus(t *testing.T) {
+	mms := modules.MemoryManagerStatus{
+		Available: 1,
+		Base:      2,
+		Requested: 3,
+
+		PriorityAvailable: 4,
+		PriorityBase:      5,
+		PriorityRequested: 6,
+		PriorityReserve:   7,
+	}
+	total := mms.Add(mms)
+
+	if total.Available != 2*mms.Available {
+		t.Fatal("invalid")
+	}
+	if total.Base != 2*mms.Base {
+		t.Fatal("invalid")
+	}
+	if total.Requested != 2*mms.Requested {
+		t.Fatal("invalid")
+	}
+	if total.PriorityAvailable != 2*mms.PriorityAvailable {
+		t.Fatal("invalid")
+	}
+	if total.PriorityBase != 2*mms.PriorityBase {
+		t.Fatal("invalid")
+	}
+	if total.PriorityRequested != 2*mms.PriorityRequested {
+		t.Fatal("invalid")
+	}
+	if total.PriorityReserve != 2*mms.PriorityReserve {
+		t.Fatal("invalid")
+	}
+}

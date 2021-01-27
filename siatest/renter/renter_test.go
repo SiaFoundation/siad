@@ -5396,3 +5396,98 @@ func TestRenterClean(t *testing.T) {
 	// Second test should remove the now unrecoverable Skyfile
 	cleanAndVerify(1, 0)
 }
+
+// TestMemoryStatus checks the renter reported memory status against the
+// expected defaults.
+func TestMemoryStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testDir := renterTestDir(t.Name())
+	r, err := siatest.NewCleanNode(node.Renter(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	ud := modules.MemoryManagerStatus{
+		Available: 1 << 17, // 128 KiB
+		Base:      1 << 17, // 128 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   0,
+	}
+	uu := modules.MemoryManagerStatus{
+		Available: 1 << 17, // 128 KiB
+		Base:      1 << 17, // 128 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   0,
+	}
+	reg := modules.MemoryManagerStatus{
+		Available: 1 << 17, // 128 KiB
+		Base:      1 << 17, // 128 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   0,
+	}
+	sys := modules.MemoryManagerStatus{
+		Available: 1 << 16, // 64 KiB
+		Base:      1 << 16, // 64 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   1 << 16, // 64 KiB
+	}
+	total := ud.Add(uu).Add(reg).Add(sys)
+
+	// Check response.
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := rg.MemoryStatus
+	if !reflect.DeepEqual(ms.UserDownload, ud) {
+		siatest.PrintJSON(ms.UserDownload)
+		siatest.PrintJSON(ud)
+		t.Fatal("ud")
+	}
+	if !reflect.DeepEqual(ms.UserUpload, uu) {
+		siatest.PrintJSON(ms.UserUpload)
+		siatest.PrintJSON(uu)
+		t.Fatal("uu")
+	}
+	if !reflect.DeepEqual(ms.Registry, reg) {
+		siatest.PrintJSON(ms.Registry)
+		siatest.PrintJSON(reg)
+		t.Fatal("reg")
+	}
+	if !reflect.DeepEqual(ms.System, sys) {
+		siatest.PrintJSON(ms.System)
+		siatest.PrintJSON(sys)
+		t.Fatal("sys")
+	}
+	if !reflect.DeepEqual(ms.MemoryManagerStatus, total) {
+		siatest.PrintJSON(ms.MemoryManagerStatus)
+		siatest.PrintJSON(total)
+		t.Fatal("total")
+	}
+}

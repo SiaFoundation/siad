@@ -298,7 +298,7 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 	userDownloadStatus := r.userDownloadMemoryManager.callStatus()
 	userUploadStatus := r.userUploadMemoryManager.callStatus()
 	registryStatus := r.registryMemoryManager.callStatus()
-	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus).Add(repairStatus)
+	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus)
 	return modules.MemoryStatus{
 		MemoryManagerStatus: total,
 
