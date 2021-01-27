@@ -86,6 +86,10 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 	}
 
+	subTests = []siatest.SubTest{
+		// {Name: "Basic", Test: testSkynetBasic},
+		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
+	}
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
@@ -1392,6 +1396,8 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	offset := fastrand.Uint64n(size-modules.SectorSize) + modules.SectorSize
 	length := fastrand.Uint64n(size-offset-segment) + segment
 
+	fmt.Println("000 | offset", offset)
+	fmt.Println("000 | length", length)
 	// fetch the data at given range
 	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
 	if err != nil {

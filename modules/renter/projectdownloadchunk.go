@@ -53,6 +53,7 @@ type pieceDownload struct {
 // orchestrates the download, which means that it does not need to be thread
 // safe.
 type projectDownloadChunk struct {
+	// TODO remove
 	// Parameters for downloading a subset of the data within the chunk.
 	lengthInChunk uint64
 	offsetInChunk uint64
@@ -229,7 +230,7 @@ func (pdc *projectDownloadChunk) fail(err error) {
 // during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
 	// Helper variable.
-	ec := pdc.workerSet.staticErasureCoder
+	// ec := pdc.workerSet.staticErasureCoder
 
 	// The chunk download offset and chunk download length are different from
 	// the requested offset and length because the chunk download offset and
@@ -241,7 +242,7 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Recover the pieces in to a single byte slice.
 	buf := bytes.NewBuffer(nil)
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.pieceLength*uint64(ec.MinPieces()), buf)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk, buf)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 		return
@@ -328,6 +329,11 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 		staticOffset: pdc.pieceOffset,
 		staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 	}
+	fmt.Println("111 | piece index", pieceIndex)
+	fmt.Println("111 | piece offset", pdc.pieceOffset)
+	fmt.Println("111 | piece length", pdc.pieceLength)
+	fmt.Println("- - - ")
+
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 

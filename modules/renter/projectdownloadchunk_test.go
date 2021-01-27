@@ -19,20 +19,79 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+func TestProjectDownloadChunk_isolated(t *testing.T) {
+	// create data
+	cntr := 0
+	originalData := make([]byte, modules.SectorSize)
+	for i := 0; i < int(modules.SectorSize); i += 2 {
+		binary.BigEndian.PutUint16(originalData[i:], uint16(cntr))
+		cntr += 1
+	}
+
+	// RS encode the data
+	data := make([]byte, modules.SectorSize)
+	copy(data, originalData)
+	ec := modules.NewRSSubCodeDefault()
+	pieces, err := ec.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// random length
+	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
+	offset := fastrand.Uint64n(modules.SectorSize - length)
+	offset = 0
+	length = crypto.SegmentSize
+	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+	// pieceOffset = 0
+	// pieceLength = 64
+	fmt.Println("offset", offset)
+	fmt.Println("length", length)
+
+	fmt.Println("pieceOffset", pieceOffset)
+	fmt.Println("pieceLength", pieceLength)
+
+	sliced := make([][]byte, len(pieces))
+	for i, piece := range pieces {
+		sliced[i] = make([]byte, len(piece))
+		copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+	}
+
+	buf := bytes.NewBuffer(nil)
+	err = ec.Recover(sliced, length, buf)
+	// skipWriter := &skipWriter{
+	// 	writer: buf,
+	// 	skip:   int(offset),
+	// }
+	// err = ec.Recover(sliced, length, skipWriter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := buf.Bytes()
+
+	expected := originalData[offset : offset+length]
+	if !bytes.Equal(actual, expected) {
+		t.Log("original    :", originalData[:crypto.SegmentSize*8])
+		t.Log("expected    :", expected)
+		t.Log("expected len:", len(expected))
+		t.Log("actual      :", actual)
+		t.Log("actual   len:", len(actual))
+		t.Fatal("unexpected")
+	}
+}
+
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
 func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
-	size := 512
-	// create a random sector
 	// sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorData := make([]byte, size)
+
 	cntr := 0
-	for i := 0; i < int(size); i += 2 {
-		fmt.Println("adding ", uint64(cntr))
-		binary.LittleEndian.PutUint64(sectorData[i:], uint64(cntr))
+	sectorData := make([]byte, modules.SectorSize)
+	for i := 0; i < int(modules.SectorSize); i += 2 {
+		binary.LittleEndian.PutUint16(sectorData[i:], uint16(cntr))
 		cntr += 1
 	}
 	sectorRoot := crypto.MerkleRoot(sectorData)
@@ -43,6 +102,9 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	fmt.Println("min pieces", ec.MinPieces())
+	fmt.Println("num pieces", ec.NumPieces())
 
 	// RS encode the data
 	pieces, err := ec.Encode(sectorData)
@@ -64,12 +126,20 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	// download a random amount of data at random offset
 	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
 	offset := fastrand.Uint64n(modules.SectorSize - length)
-	offset = 128
-	length = 192
+	length = 64
+	offset = 512
+
+	fmt.Println("offset", offset)
+	fmt.Println("length", length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	fmt.Println("piece offset", pieceOffset)
 	fmt.Println("piece length", pieceLength)
+
+	// slice all pieces
+	for i := 0; i < len(pieces); i++ {
+		pieces[i] = pieces[i][pieceOffset : pieceOffset+pieceLength]
+	}
 
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
@@ -99,8 +169,8 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Log("length", length)
 		t.Log("bytes downloaded", len(downloadResponse.data))
 
-		t.Log("expected:\n", downloadResponse.data)
-		t.Log("actual:\n", sectorData[offset:offset+length])
+		t.Log("actual:\n", downloadResponse.data)
+		t.Log("expected:\n", sectorData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
 }

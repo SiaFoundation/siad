@@ -366,7 +366,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Check whether the worker is useful at all. It may not be useful if
 		// the only pieces it has are already available via cheaper workers.
 		if !bestSpotEmpty && !workerUseful {
-			fmt.Println("worker considered unuseful because piece is covered and it's more expensive")
 			continue
 		}
 
@@ -497,8 +496,6 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if fw == nil {
 					continue
 				}
-				worker = fw.worker.staticHostPubKeyStr
-				// fmt.Println("worker", fw.worker.staticHostPubKeyStr)
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
 			return nil
