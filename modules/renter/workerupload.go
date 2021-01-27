@@ -278,7 +278,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		return nil, 0
 	}
 
-	// If the worker does not need help, add the worker to the sent of standby
+	// If the worker does not need help, add the worker to the set of standby
 	// chunks.
 	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	if !needsHelp {

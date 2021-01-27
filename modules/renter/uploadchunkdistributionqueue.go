@@ -226,7 +226,7 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 		// so that we know when to scan again, instead of doing this sleep
 		// thing. The sleep thing will spin more than it needs to and also be
 		// late sometimes.
-		if !r.tg.Sleep(time.Millisecond*25) {
+		if !r.tg.Sleep(time.Millisecond * 25) {
 			return nil
 		}
 	}
@@ -240,11 +240,37 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 // for some of the current workers to process their queue further, 'false' will
 // be returned.
 func (r *Renter) managedCheckForUploadWorkers(uc *unfinishedUploadChunk) ([]*worker, bool) {
-	// workers := r.staticWorkerPool.callWorkers()
+	workers := r.staticWorkerPool.callWorkers()
 
 	// Scan through the workers and determine how many workers have available
 	// slots to uploading.
+	var availableWorkers, busyWorkers uint64
+	for _, w := range workers {
+		// Count this worker as available if there are no unprocessed chunks in
+		// the worker's queue.
+		if w.unprocessedChunks.Len() == 0 {
+			availableWorkers++
+		} else if w.unprocessedChunks.Len() < 5 {
+			busyWorkers++
+		} else {
+			continue
+		}
+		workers[availableWorkers+busyWorkers-1] = w
+	}
+	workers = workers[:availableWorkers+busyWorkers]
 
-	// TODO: Actually filter for a good set of workers LOL.
-	return r.staticWorkerPool.callWorkers(), true
+	// If there are not enough workers available, but there are some busy
+	// workers that may become available soon, we return false to indicate that
+	// the chunk is not ready for distribution and that we should wait a bit for
+	// more workers to become available.
+	//
+	// TODO: piecesNeeded is static I believe, need to change the naming to
+	// reflect this.
+	if availableWorkers+busyWorkers > uint64(uc.piecesNeeded) && availableWorkers < uint64(uc.piecesNeeded) {
+		return nil, false
+	}
+
+	// TODO: Consider if we want to be more selective than just giving work to
+	// everyone.
+	return workers, true
 }
