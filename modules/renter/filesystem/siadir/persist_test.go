@@ -20,7 +20,7 @@ import (
 func equalMetadatas(md, md2 Metadata) error {
 	// Check Aggregate Fields
 	if md.AggregateHealth != md2.AggregateHealth {
-		return fmt.Errorf("AggregateHealths not equal, %v and %v", md.AggregateHealth, md2.AggregateHealth)
+		return fmt.Errorf("AggregateHealth not equal, %v and %v", md.AggregateHealth, md2.AggregateHealth)
 	}
 	if md.AggregateLastHealthCheckTime != md2.AggregateLastHealthCheckTime {
 		return fmt.Errorf("AggregateLastHealthCheckTimes not equal, %v and %v", md.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime)
@@ -41,13 +41,16 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md.AggregateNumSubDirs, md2.AggregateNumSubDirs)
 	}
 	if md.AggregateRemoteHealth != md2.AggregateRemoteHealth {
-		return fmt.Errorf("AggregateRemoteHealths not equal, %v and %v", md.AggregateRemoteHealth, md2.AggregateRemoteHealth)
+		return fmt.Errorf("AggregateRemoteHealth not equal, %v and %v", md.AggregateRemoteHealth, md2.AggregateRemoteHealth)
+	}
+	if md.AggregateRepairSize != md2.AggregateRepairSize {
+		return fmt.Errorf("AggregateRepairSize not equal, %v and %v", md.AggregateRepairSize, md2.AggregateRepairSize)
 	}
 	if md.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
+		return fmt.Errorf("AggregateSize not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
 	if md.AggregateStuckHealth != md2.AggregateStuckHealth {
-		return fmt.Errorf("AggregateStuckHealths not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
+		return fmt.Errorf("AggregateStuckHealth not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
 	}
 
 	// Aggregate Skynet Fields
@@ -63,13 +66,13 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("Healths not equal, %v and %v", md.Health, md2.Health)
 	}
 	if md.LastHealthCheckTime != md2.LastHealthCheckTime {
-		return fmt.Errorf("lasthealthchecktimes not equal, %v and %v", md.LastHealthCheckTime, md2.LastHealthCheckTime)
+		return fmt.Errorf("LastHealthCheckTime not equal, %v and %v", md.LastHealthCheckTime, md2.LastHealthCheckTime)
 	}
 	if md.MinRedundancy != md2.MinRedundancy {
 		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, md2.MinRedundancy)
 	}
 	if md.ModTime != md2.ModTime {
-		return fmt.Errorf("ModTimes not equal, %v and %v", md.ModTime, md2.ModTime)
+		return fmt.Errorf("ModTime not equal, %v and %v", md.ModTime, md2.ModTime)
 	}
 	if md.NumFiles != md2.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, md2.NumFiles)
@@ -81,13 +84,16 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
 	}
 	if md.RemoteHealth != md2.RemoteHealth {
-		return fmt.Errorf("RemoteHealths not equal, %v and %v", md.RemoteHealth, md2.RemoteHealth)
+		return fmt.Errorf("RemoteHealth not equal, %v and %v", md.RemoteHealth, md2.RemoteHealth)
+	}
+	if md.RepairSize != md2.RepairSize {
+		return fmt.Errorf("RepairSize not equal, %v and %v", md.RepairSize, md2.RepairSize)
 	}
 	if md.Size != md2.Size {
 		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, md2.Size)
 	}
 	if md.StuckHealth != md2.StuckHealth {
-		return fmt.Errorf("StuckHealths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
+		return fmt.Errorf("StuckHealth not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
 	}
 
 	// Skynet Fields
