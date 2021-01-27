@@ -316,6 +316,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 // managedUploadFailed is called if a worker failed to upload part of an unfinished
 // chunk.
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
+	w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
 	//
@@ -326,9 +327,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr
 		w.uploadConsecutiveFailures++
-		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
-		w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.
