@@ -1448,8 +1448,6 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	offset := fastrand.Uint64n(size-modules.SectorSize) + modules.SectorSize
 	length := fastrand.Uint64n(size-offset-segment) + segment
 
-	fmt.Println("000 | offset", offset)
-	fmt.Println("000 | length", length)
 	// fetch the data at given range
 	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
 	if err != nil {

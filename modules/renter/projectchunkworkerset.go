@@ -330,7 +330,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	// Check whether the worker is on a cooldown, seeing as the PCWS is cached
 	// we do not want to exclude this worker, however we do want to take into
 	// consideration the cooldown period when we estimate the expected
-	// completion time.
+	// resolve time.
 	var coolDownPenalty time.Duration
 	if w.managedOnMaintenanceCooldown() {
 		wms := w.staticMaintenanceState
@@ -384,11 +384,9 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
-	timings := make(map[string]time.Time, len(workers))
 	workersLaunched := 0
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
-		timings[w.staticHostPubKeyStr] = time.Now()
 		err := pcws.managedLaunchWorker(ctx, w, responseChan, ws)
 		if err == nil {
 			workersLaunched++
@@ -424,9 +422,8 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 		}
 
 		if available < 3 && resp.staticErr == nil && resp.staticAvailables[0] == true {
-			start := timings[resp.staticWorker.staticHostPubKeyStr]
 			available++
-			fmt.Printf("PCWS pos HS response %v/3 took %vms (total %vms) for worker %v\n", available, resp.staticJobTime.Milliseconds(), time.Since(start).Milliseconds(), resp.staticWorker.staticHostPubKeyStr)
+			fmt.Printf("HS %v/3 came in for %v after %vms\n", available, resp.staticWorker.staticHostPubKeyStr, resp.staticJobTime.Milliseconds())
 		}
 		// Parse the response.
 		ws.managedHandleResponse(resp)
@@ -562,7 +559,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
-	// Determine the skip length
+	// Determine the amount of bytes the EC will need to skip from the recovered
+	// data when returning the data.
 	skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
 
 	// Create the workerResponseChan.

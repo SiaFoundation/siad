@@ -199,8 +199,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if its host is considered to be price gouging.
 			err := checkProjectDownloadGouging(pt, allowance)
 			if err != nil {
-				fmt.Println("gouging detected!", w.staticHostPubKeyStr)
-				pdc.workerState.staticRenter.log.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
 				continue
 			}
 
@@ -208,7 +206,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
 			if !w.managedAsyncReady() || jrq.cooldownUntil.After(time.Now()) {
-				fmt.Println("not async ready or on cooldown!", w.staticHostPubKeyStr)
 				continue
 			}
 
@@ -469,9 +466,13 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
 		// Create a list of usable workers, sorted by the amount of time they
-		// are expected to take to return.
-		penalty := time.Since(start)
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, penalty)
+		// are expected to take to return. We pass in the time since we've
+		// initially tried to launch the initial set of workers, this time is
+		// being used as a time penalty which we'll attribute to unresolved
+		// workers. Ensuring resolved workers are being selected if we're
+		// waiting too long for unresolved workers to resolve.
+		unresolvedWorkerPenaly := time.Since(start)
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkerPenaly)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)

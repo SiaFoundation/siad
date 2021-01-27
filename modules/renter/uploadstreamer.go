@@ -14,15 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-const (
-	// pieceUploadExpectedSlowdown is a used when we are estimating the time
-	// until all pieces are uploaded, based on the time it took to upload a
-	// certain amount of pieces. We do not want this value to be overly
-	// optimistic which is why we account for a possible slowdown when it comes
-	// to uploading the remainder of the pieces.
-	pieceUploadExpectedSlowdown = 1.2
-)
-
 // Upload Streaming Overview:
 // Most of the logic that enables upload streaming can be found within
 // UploadStreamFromReader and the StreamShard. As seen at the beginning of the
