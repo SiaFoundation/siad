@@ -491,19 +491,16 @@ func renterFilesAndContractSummary() error {
 	// Passive Contracts are all good data
 	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
-	fmt.Printf(`
-  Files:               %v
-  Total Stored:        %v
-  Total Contract Data: %v
-  Min Redundancy:      %v
-  Active Contracts:    %v
-  Passive Contracts:   %v
-  Disabled Contracts:  %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize),
-		modules.FilesizeUnits(activeSize+passiveSize), redundancyStr, len(rc.ActiveContracts),
-		len(rc.PassiveContracts), len(rc.DisabledContracts))
-
-	return nil
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "  Files:\t%v\n", rf.Directories[0].AggregateNumFiles)
+	fmt.Fprintf(w, "  Total Stored:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateSize))
+	fmt.Fprintf(w, "  Total Contract Data:\t%v\n", modules.FilesizeUnits(activeSize+passiveSize))
+	fmt.Fprintf(w, "  Repair Data Remaining:\t%v\n", modules.FilesizeUnits(rf.Directories[0].AggregateRepairSize))
+	fmt.Fprintf(w, "  Min Redundancy:\t%v\n", redundancyStr)
+	fmt.Fprintf(w, "  Active Contracts:\t%v\n", len(rc.ActiveContracts))
+	fmt.Fprintf(w, "  Passive Contracts:\t%v\n", len(rc.PassiveContracts))
+	fmt.Fprintf(w, "  Disabled Contracts:\t%v\n", len(rc.DisabledContracts))
+	return w.Flush()
 }
 
 // renterFilesDownload downloads the file at the specified path from the Sia

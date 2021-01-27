@@ -198,7 +198,7 @@ func statuscmd() {
 	}
 
 	// Renter Info
-	fmt.Printf(`Renter:`)
+	fmt.Println(`Renter:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
