@@ -86,10 +86,6 @@ import (
 // pessimistic, but guarantees that we do not overload a particular worker and
 // slow the entire download down.
 
-const (
-	unresolvedWorkerTimePenalty = 300 * time.Millisecond
-)
-
 // errNotEnoughWorkers is returned if the working set does not have enough
 // workers to successfully complete the download
 var errNotEnoughWorkers = errors.New("not enough workers to complete download")
@@ -148,7 +144,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkerTimePenalty time.Duration) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
@@ -485,7 +481,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+		penalty := time.Since(start)
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, penalty)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
