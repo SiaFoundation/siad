@@ -457,9 +457,13 @@ func rentercmd() {
 
 	// Print out if the uploads are paused
 	if verbose {
+		var pauseEndTime time.Duration
+		if rg.Settings.UploadsStatus.PauseEndTime.After(time.Now()) {
+			pauseEndTime = time.Until(rg.Settings.UploadsStatus.PauseEndTime)
+		}
 		fmt.Fprintf(w, "\nUploads Status\n")
 		fmt.Fprintf(w, "  Paused:\t%v\n", yesNo(rg.Settings.UploadsStatus.Paused))
-		fmt.Fprintf(w, "  Pause End Time:\t%v\n", time.Until(rg.Settings.UploadsStatus.PauseEndTime))
+		fmt.Fprintf(w, "  Pause End Time:\t%v\n", pauseEndTime)
 	}
 
 	// Flush the writer
