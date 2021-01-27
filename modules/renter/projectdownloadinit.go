@@ -154,14 +154,20 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	for _, uw := range unresolvedWorkers {
 		jrq := uw.staticWorker.staticJobReadQueue
 
+		// Fetch the resolveTime, which is the time until the HS job is
+		// expected to resolve. If that time is in the past, set it to the
+		// current time.
+		resolveTime := uw.staticExpectedResolvedTime
+		if resolveTime.Before(time.Now()) {
+			resolveTime = time.Now()
+		}
+
 		// Determine the expected readDuration and cost for this worker. Add the
-		// readDuration to the staticExpectedCompleteTime to get the full
-		// complete time for the download - staticExpectedCompleteTime in the
-		// unresolved worker here refers to the expected complete time of the
-		// HasSector job.
+		// readDuration to the hasSectorTime to get the full
+		// complete time for the download
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
-		completeTime := uw.staticExpectedResolvedTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
+		completeTime := resolveTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -272,7 +278,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	bestSet := make([]*pdcInitialWorker, ec.NumPieces())
 	workingSet := make([]*pdcInitialWorker, ec.NumPieces())
 	bestSetCost := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
+
 	var workingSetCost types.Currency
+	var workingSetCount int
 	var workingSetDuration time.Duration
 
 	// Build the best set that we can. Each iteration will attempt to improve
@@ -281,6 +289,15 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// time that the working set is better than the best set, overwrite the best
 	// set with the new working set.
 	for len(workerHeap) > 0 {
+		// Count the workers currently in the working set
+		workingSetCount = 0
+		for i := 0; i < len(workingSet); i++ {
+			if workingSet[i] == nil {
+				continue
+			}
+			workingSetCount++
+		}
+
 		// Grab the next worker from the heap.
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
