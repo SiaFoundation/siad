@@ -182,7 +182,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
@@ -198,7 +197,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	err = checkUploadGouging(allowance, hostSettings)
 	if err != nil && !w.renter.deps.Disrupt("DisableUploadGouging") {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
@@ -208,7 +206,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to upload via the editor: %v", err)
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
@@ -220,7 +217,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
