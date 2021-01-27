@@ -1,8 +1,7 @@
 package renter
 
-// TODO: Shift all arrays to lists so that we aren't abusing memory so much.
-
 import (
+	"container/list"
 	"sync"
 	"time"
 )
@@ -44,18 +43,49 @@ type uploadChunkDistributionQueue struct {
 	processThreadRunning bool
 
 	priorityBuildup float64
-	priorityLane    []*unfinishedUploadChunk
-	lowPriorityLane []*unfinishedUploadChunk
+	priorityLane    *ucdqFifo
+	lowPriorityLane *ucdqFifo
 
 	mu           sync.Mutex
 	staticRenter *Renter
 }
 
+// ucdqFifo implements a fifo to use with the ucdq.
+type ucdqFifo struct {
+	*list.List
+}
+
+// newUCDQfifo inits a fifo for the ucdq.
+func newUCDQfifo() *ucdqFifo {
+	return &ucdqFifo{
+		List: list.New(),
+	}
+}
+
 // newUploadChunkDistributionQueue will initialize a ucdq for the renter.
 func newUploadChunkDistributionQueue(r *Renter) *uploadChunkDistributionQueue {
 	return &uploadChunkDistributionQueue{
+		priorityLane:    newUCDQfifo(),
+		lowPriorityLane: newUCDQfifo(),
+
 		staticRenter: r,
 	}
+}
+
+// Peek returns the first in the queue without removing that element from the
+// queue.
+func (u *ucdqFifo) Peek() *unfinishedUploadChunk {
+	return u.List.Front().Value.(*unfinishedUploadChunk)
+}
+
+// Pop removes and returns the first element in the fifo, removing that element
+// from the queue.
+func (u *ucdqFifo) Pop() *unfinishedUploadChunk {
+	mr := u.Front()
+	if mr == nil {
+		return nil
+	}
+	return u.List.Remove(mr).(*unfinishedUploadChunk)
 }
 
 // addUC will add an unfinished upload chunk to the queue. The chunk will be put
@@ -84,7 +114,7 @@ func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
 
 	// If the chunk is not a priority chunk, put it in the low priority lane.
 	if !uc.staticPriority {
-		ucdq.lowPriorityLane = append(ucdq.lowPriorityLane, uc)
+		ucdq.lowPriorityLane.PushBack(uc)
 		return
 	}
 
@@ -97,14 +127,14 @@ func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
 	// queue, and that a sudden influx of high priority chunks doesn't mean that
 	// low priority chunks will have to wait a long time even if they get
 	// bumped.
-	ucdq.priorityLane = append(ucdq.priorityLane, uc)
+	ucdq.priorityLane.PushBack(uc)
 	ucdq.priorityBuildup += lowPriorityMinThroughput * float64(uc.memoryNeeded)
 
 	// Add items from the low priority lane until there is no more buildup.
-	for len(ucdq.lowPriorityLane) > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane[0].memoryNeeded) {
-		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane[0].memoryNeeded)
-		ucdq.priorityLane = append(ucdq.priorityLane, uc)
-		ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
+	for ucdq.lowPriorityLane.Len() > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane.Peek().memoryNeeded) {
+		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane.Peek().memoryNeeded)
+		x := ucdq.lowPriorityLane.Pop()
+		ucdq.priorityLane.PushBack(x)
 	}
 }
 
@@ -123,7 +153,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		ucdq.mu.Lock()
 		// First check for the exit condition - the queue is empty. While
 		// holding the lock, release the process bool and then exit.
-		if len(ucdq.priorityLane) == 0 && len(ucdq.lowPriorityLane) == 0 {
+		if ucdq.priorityLane.Len() == 0 && ucdq.lowPriorityLane.Len() == 0 {
 			ucdq.processThreadRunning = false
 			ucdq.mu.Unlock()
 			return
@@ -131,13 +161,11 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		// At least one uc exists in the queue. Prefer to grab the priority
 		// one, if there is no priority one grab the low priority one.
 		var nextUC *unfinishedUploadChunk
-		if len(ucdq.priorityLane) > 0 {
-			nextUC = ucdq.priorityLane[0]
-			ucdq.priorityLane = ucdq.priorityLane[1:]
+		if ucdq.priorityLane.Len() > 0 {
+			nextUC = ucdq.priorityLane.Pop()
 		} else {
-			nextUC = ucdq.lowPriorityLane[0]
-			ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane[0].memoryNeeded)
-			ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
+			nextUC = ucdq.lowPriorityLane.Pop()
+			ucdq.priorityBuildup -= float64(nextUC.memoryNeeded)
 			if ucdq.priorityBuildup < 0 {
 				ucdq.priorityBuildup = 0
 			}
@@ -211,7 +239,7 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 // for some of the current workers to process their queue further, 'false' will
 // be returned.
 func (r *Renter) managedCheckForUploadWorkers(uc *unfinishedUploadChunk) ([]*worker, bool) {
-	workers := r.staticWorkerPool.callWorkers()
+	// workers := r.staticWorkerPool.callWorkers()
 
 	// Scan through the workers and determine how many workers have available
 	// slots to uploading.
