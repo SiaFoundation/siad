@@ -234,7 +234,7 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 			timings[i] = float64(elapsed.Milliseconds())
 
 			numFinished := atomic.AddUint64(&atomicDownloadsFinished, 1)
-			numTwentyPct := uint64(filesPerDir / 20)
+			numTwentyPct := uint64(filesPerDir / 5)
 			if numFinished%numTwentyPct == 0 {
 				fmt.Printf("%v%% finished after %vms\n", (numFinished/numTwentyPct)*20, time.Since(launched).Milliseconds())
 			}
