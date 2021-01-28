@@ -205,7 +205,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// the upload attempt.
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
 	if err != nil {
-		failureErr := fmt.Errorf("Worker failed to upload via the editor: %v", err)
+		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
