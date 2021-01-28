@@ -613,16 +613,19 @@ func (st *serverTester) announceHost() error {
 		if err != nil {
 			return err
 		}
+		// If we see more hosts now, then we return successful
 		if len(hosts.Hosts) > len(initialHosts) {
 			return nil
 		}
 		for _, h := range hosts.Hosts {
 			_, ok := initialHosts[h.NetAddress]
 			if !ok {
+				// If we see a new hosts, then we return successful
 				return nil
 			}
 		}
-		return nil
+		// There are no new hosts.
+		return errors.New("host announcement not seen")
 	})
 }
 
