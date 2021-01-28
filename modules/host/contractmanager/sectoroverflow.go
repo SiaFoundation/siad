@@ -36,7 +36,7 @@ var (
 	errOverflowMetadataCorrupt = errors.New("metadata of overflow file is not expected")
 
 	// overflowMapVersion is the version data contained within the metadata.
-	overflowMapVersion = types.NewSpecifier("Overflow-1.4.5")
+	overflowMapVersion = types.NewSpecifier("Overflow-1.5.5")
 )
 
 type (

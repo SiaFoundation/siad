@@ -56,6 +56,15 @@ func TestNewOverflowFile(t *testing.T) {
 		t.Fatal("entry map should be empty")
 	}
 
+	// Try fetching a random sector id from the empty map to rule out a panic
+	// due to a nil map or similar issues.
+	var sid sectorID
+	fastrand.Read(sid[:])
+	_, exists := f.Overflow(sid)
+	if exists {
+		t.Fatal("shouldn't exist")
+	}
+
 	// FileSize should be an entry size.
 	if f.fileSize != overflowMapEntrySize {
 		t.Fatal("wrong file size", f.fileSize, overflowMapEntrySize)

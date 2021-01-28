@@ -539,11 +539,11 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 	if uc.sourceReader != nil {
 		err := r.staticFetchLogicalDataFromReader(uc)
 		if err != nil {
-			// Attempt to fall back to downloading the data from remote.
-			r.repairLog.Println("Unable to load logical data from source reader, falling back to remote download:", err)
-		} else {
-			return nil
+			// Return an error. Otherwise the upload streamer might be
+			// unnecessarily blocked until all downloads time out.
+			return errors.AddContext(err, "Unable to load logical data from source reader")
 		}
+		return nil
 	}
 
 	// No source reader available. Check if there's potentially a local file. If
