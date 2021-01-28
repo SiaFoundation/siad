@@ -126,9 +126,7 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 		// Check if there is a thread running to process the queue.
 		if !ucdq.processThreadRunning {
 			ucdq.processThreadRunning = true
-			ucdq.staticRenter.tg.Launch(func() {
-				ucdq.threadedProcessQueue()
-			})
+			ucdq.staticRenter.tg.Launch(ucdq.threadedProcessQueue)
 		}
 	}()
 
