@@ -71,6 +71,12 @@ func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer i
 		return errors.AddContext(err, "unable to write baseSector")
 	}
 
+	// If no reader was provided then it means that it was a small file backup so
+	// the baseSector is all that is needed.
+	if reader == nil {
+		return nil
+	}
+
 	// Write the body of the skyfile
 	err = writeBackupBody(writer, reader)
 	return errors.AddContext(err, "unable to write skyfile data to the writer")

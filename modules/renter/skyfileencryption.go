@@ -136,7 +136,6 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout modules.Skyf
 	if err != nil {
 		return errors.AddContext(err, "Unable to get baseSector cipherkey")
 	}
-
 	_, err = ck.DecryptBytesInPlace(baseSector, 0)
 	if err != nil {
 		return errors.New("Error decrypting baseSector for download")
@@ -176,6 +175,58 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout modules.Skyf
 	return nil
 }
 
-func encryptionEnabled(sup modules.SkyfileUploadParameters) bool {
+// encryptionEnabled checks if encryption is enabled for the
+// SkyfileUploadParameters. It returns true if either the SkykeyName or SkykeyID
+// is set
+func encryptionEnabled(sup *modules.SkyfileUploadParameters) bool {
 	return sup.SkykeyName != "" || sup.SkykeyID != skykey.SkykeyID{}
+}
+
+// generateCipherKey generates a Cipher Key for the FileUploadParams from the
+// SkyfileUploadParameters
+func generateCipherKey(fup *modules.FileUploadParams, sup modules.SkyfileUploadParameters) error {
+	if encryptionEnabled(&sup) {
+		fanoutSkykey, err := sup.FileSpecificSkykey.DeriveSubkey(modules.FanoutNonceDerivation[:])
+		if err != nil {
+			return errors.AddContext(err, "unable to derive fanout subkey")
+		}
+		fup.CipherKey, err = fanoutSkykey.CipherKey()
+		if err != nil {
+			return errors.AddContext(err, "unable to get skykey cipherkey")
+		}
+		fup.CipherType = sup.FileSpecificSkykey.CipherType()
+	}
+	return nil
+}
+
+// generateFilekey generates the FileSpecificSkykey to be used for encryption
+// and sets it in the SkyfileUploadParameters
+func (r *Renter) generateFilekey(sup *modules.SkyfileUploadParameters, nonce []byte) error {
+	// If encryption is not enabled then nothing to do.
+	if !encryptionEnabled(sup) {
+		return nil
+	}
+
+	// Get the Key
+	var key skykey.Skykey
+	var err error
+	if sup.SkykeyName != "" {
+		key, err = r.SkykeyByName(sup.SkykeyName)
+	} else {
+		key, err = r.SkykeyByID(sup.SkykeyID)
+	}
+	if err != nil {
+		return errors.AddContext(err, "unable to get skykey")
+	}
+
+	// Generate the Subkey
+	if len(nonce) == 0 {
+		sup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
+	} else {
+		sup.FileSpecificSkykey, err = key.SubkeyWithNonce(nonce)
+	}
+	if err != nil {
+		return errors.AddContext(err, "unable to generate subkey")
+	}
+	return nil
 }

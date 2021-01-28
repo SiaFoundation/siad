@@ -51,18 +51,18 @@ func (i instructionDropSectors) Batch() bool {
 // Execute executes the 'DropSectors' instruction.
 //
 // If the number of sectors is 0 this instruction is a noop.
-func (i *instructionDropSectors) Execute(prevOutput output) output {
+func (i *instructionDropSectors) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the data.
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return errOutput(fmt.Errorf("bad input: numSectorsOffset: %v", err))
+		return errOutput(fmt.Errorf("bad input: numSectorsOffset: %v", err)), types.ZeroCurrency
 	}
 
 	// Verify input.
 	oldNumSectors := prevOutput.NewSize / modules.SectorSize
 	err = dropSectorsVerify(numSectorsDropped, oldNumSectors)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	newNumSectors := oldNumSectors - numSectorsDropped
@@ -81,7 +81,7 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 
 	newMerkleRoot, err := ps.sectors.dropSectors(numSectorsDropped)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// TODO: Update finances.
@@ -90,7 +90,7 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 		NewSize:       newNumSectors * modules.SectorSize,
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
-	}
+	}, types.ZeroCurrency
 }
 
 // dropSectorsVerify verifies the input to a DropSectors instruction.

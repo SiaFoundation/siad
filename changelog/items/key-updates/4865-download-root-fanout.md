@@ -1,1 +1,0 @@
-- Adds `/skynet/root` GET request to allow downloading a specific sector of a skyfile

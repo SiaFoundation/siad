@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
@@ -179,11 +178,11 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 }
 
 // managedRenew renews the contract with the worker's host.
-func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
+func (w *worker) managedRenew(fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) (modules.RenterContract, []types.Transaction, error) {
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: unable to create a new stream")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: unable to create a new stream")
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -194,22 +193,22 @@ func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.Tr
 	// write the specifier.
 	err = modules.RPCWrite(stream, modules.RPCRenewContract)
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: failed to write RPC specifier")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to write RPC specifier")
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: failed to write price table uid")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to write price table uid")
 	}
 
 	// have the contractset handle the renewal.
 	r := w.renter
-	err = w.renter.hostContractor.RenewContract(stream, w.staticHostPubKey, params, txnBuilder, r.tpool, r.hostDB)
+	newContract, txnSet, err := w.renter.hostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.hostDB, &pt)
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: call to RenewContract failed")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: call to RenewContract failed")
 	}
 
-	return nil
+	return newContract, txnSet, nil
 }

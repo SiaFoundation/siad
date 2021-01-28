@@ -15,6 +15,12 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 
+	// Fetch info before deleting the file.
+	_, err = r.staticFileSystem.CachedFileInfo(siaPath)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch info before deleting file")
+	}
+
 	// Perform the delete operation.
 	err = r.staticFileSystem.DeleteFile(siaPath)
 	if err != nil {

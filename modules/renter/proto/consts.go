@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (
@@ -36,15 +35,6 @@ const (
 )
 
 var (
-	// The following specifiers are used for deriving different seeds from the
-	// wallet seed.
-	identifierSeedSpecifier = types.NewSpecifier("identifierseed")
-	renterSeedSpecifier     = types.NewSpecifier("renter")
-	secretKeySeedSpecifier  = types.NewSpecifier("secretkeyseed")
-	signingKeySeedSpecifier = types.NewSpecifier("signingkeyseed")
-)
-
-var (
 	// connTimeout determines the number of seconds before a dial-up or
 	// revision negotiation times out.
 	connTimeout = build.Select(build.Var{
@@ -60,14 +50,6 @@ var (
 		Standard: uint64(5 * 60 * 1000), // 5 minutes
 		Testing:  uint64(25 * 1000),     // 25 seconds
 	}).(uint64)
-
-	// ephemeralSeedInterval is the amount of blocks after which we use a new
-	// renter seed for creating file contracts.
-	ephemeralSeedInterval = build.Select(build.Var{
-		Dev:      types.BlockHeight(100),
-		Standard: types.BlockHeight(1000),
-		Testing:  types.BlockHeight(10),
-	}).(types.BlockHeight)
 
 	// hostPriceLeeway is the amount of flexibility we give to hosts when
 	// choosing how much to pay for file uploads. If the host does not have the

@@ -59,14 +59,14 @@ type (
 )
 
 // PackFiles packs files, given as a map (id => size), into sectors in an
-// efficient manner.
+// efficient manner. Returns a FilePlacement slice and the number of sectors.
 //
 // 1. Sort the files by size in descending order.
 //
 // 2. Going from larger to smaller files, try to fit each file into an available
 // bucket in a sector.
 //
-//   a. The first largest bucket should be chosen.
+//   a. The first of the largest available buckets should be chosen.
 //
 //   b. The first byte of the file must be aligned to a certain multiple of KiB,
 //   based on its size.
@@ -76,8 +76,8 @@ type (
 //
 //     ii. Alignment is based on the start of the sector, not the bucket.
 //
-//     iii. Alignment may cause a file not to fit into an otherwise
-//     large-enough bucket.
+//     iii. Alignment may cause a file not to fit into an otherwise large-enough
+//     bucket.
 //
 //   c. If there are no suitable buckets, create a new sector and a new bucket
 //   in that sector that fills the whole sector.
@@ -90,10 +90,13 @@ type (
 //     i. If the file could not align to the start of the bucket, make a new
 //     bucket from the start of the old bucket to the start of the file.
 //
-//     ii. If the file does not go to the end of the bucket, make a new bucket that
-//     goes from the end of the file to the end of the old bucket.
+//     ii. If the file does not go to the end of the bucket, make a new bucket
+//     that goes from the end of the file to the end of the old bucket.
 //
-// 4. Return the array of file IDs in the order that they are packed.
+// 4. Return the slice of file placements in the order that they were packed
+// chronologically. Note that they may be out of order positionally, as smaller
+// files may be packed in lower offsets than larger files despite appearing
+// later in the slice.
 func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 	filesSorted := sortByFileSizeDescending(files)
 
@@ -116,7 +119,7 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 		bucketIndex, err := findBucket(file.size, buckets)
 		if errors.Contains(err, errBucketNotFound) {
 			// Create a new sector and bucket. We have already ensured above
-			// that the file will fit into this new sector-bucket.
+			// that the file will fit into a sector.
 			buckets, numSectors = extendSectors(buckets, numSectors)
 			bucketIndex = len(buckets) - 1
 		} else if err != nil {

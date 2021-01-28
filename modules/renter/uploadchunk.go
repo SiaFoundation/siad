@@ -48,6 +48,8 @@ type unfinishedUploadChunk struct {
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
 
+	staticMemoryManager *memoryManager
+
 	// Static cached fields.
 	staticIndex    uint64
 	staticSiaPath  string
@@ -293,6 +295,8 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		offset:        uint64(chunk.offset),
 		overdrive:     0, // No need to rush the latency on repair downloads.
 		priority:      0, // Repair downloads are completely de-prioritized.
+
+		staticMemoryManager: chunk.staticMemoryManager, // Same memory manager as upload chunk
 	})
 	if err != nil {
 		return err
@@ -390,7 +394,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		chunk.logicalChunkData = nil
 		chunk.workersRemaining = 0
 		chunk.mu.Unlock()
-		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 
@@ -410,7 +414,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 	// Return the erasure coding memory. This is not handled by the data
 	// fetching, where the erasure coding occurs.
-	r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+	chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 	chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 	// Swap the physical chunk data and the logical chunk data. There is
 	// probably no point to having both, given that we perform such a clean
@@ -634,6 +638,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
 	released := uc.released
+	canceled := uc.canceled
 	if chunkComplete && !released {
 		if uc.piecesCompleted >= uc.piecesNeeded {
 			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
@@ -657,19 +662,19 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			for _, st := range uc.chunkSuccessProcessTimes {
 				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
 			}
-			r.repairLog.Debugf(`
+			r.repairLog.Printf(`
 	Chunk Created: %v
 	Chunk Popped: %v
 	Chunk Distributed: %v
 	Chunk Available: %v
 	Chunk Complete: %v
+	Chunk Canceled: %v
 	Fail Times: %v
-	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), canceled, failedTimes, successTimes)
 		}
 	}
 	uc.memoryReleased += memoryReleased
 	totalMemoryReleased := uc.memoryReleased
-	canceled := uc.canceled
 	workersRemaining := uc.workersRemaining
 	uc.mu.Unlock()
 
@@ -707,7 +712,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, return the memory to the renter.
 	if memoryReleased > 0 {
-		r.memoryManager.Return(memoryReleased)
+		uc.staticMemoryManager.Return(memoryReleased)
 	}
 	// Make sure file is closed for canceled chunks when all workers are done
 	if canceled && workersRemaining == 0 && !chunkComplete {
@@ -722,23 +727,22 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 }
 
-// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status,
-// triggers threadedBubble to update the directory, and then closes the
-// fileEntry
+// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
+// closes the fileEntry.
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
-	// Update chunk stuck status
-	err := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
-	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaFilePath(), err)
-	}
-	// Close SiaFile
-	uc.fileEntry.Close()
-	if err != nil {
-		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaFilePath())
-	}
+	// Update chunk stuck status and close file.
+	errStuck := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
+	errClose := uc.fileEntry.Close()
+
 	// Signal garbage collector to free memory.
 	uc.physicalChunkData = nil
 	uc.logicalChunkData = nil
+
+	// Return potential errors.
+	err := errors.Compose(errStuck, errClose)
+	if err != nil {
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file and close it %v: %v", uc.fileEntry.SiaFilePath(), err)
+	}
 	return nil
 }
 

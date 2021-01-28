@@ -72,7 +72,10 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	// delete contract file
 	headerPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractHeaderExtension)
 	rootsPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractRootsExtension)
-	err := errors.Compose(c.staticHeaderFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
+	// close header and root files.
+	err := errors.Compose(c.staticHeaderFile.Close(), c.merkleRoots.rootsFile.Close())
+	// remove the files.
+	err = errors.Compose(err, os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
@@ -176,11 +179,13 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 func (cs *ContractSet) Close() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	var err error
 	for _, c := range cs.contracts {
-		c.staticHeaderFile.Close()
+		err = errors.Compose(err, c.staticHeaderFile.Close())
+		err = errors.Compose(err, c.merkleRoots.rootsFile.Close())
 	}
-	_, err := cs.staticWal.CloseIncomplete()
-	return err
+	_, errWal := cs.staticWal.CloseIncomplete()
+	return errors.Compose(err, errWal)
 }
 
 // NewContractSet returns a ContractSet storing its contracts in the specified

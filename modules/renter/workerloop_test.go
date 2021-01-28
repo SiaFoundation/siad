@@ -191,6 +191,14 @@ func TestJobAsync(t *testing.T) {
 	w.staticLoopState = new(workerLoopState)
 	w.staticLoopState.atomicReadDataLimit = 10e6
 	w.staticLoopState.atomicWriteDataLimit = 10e6
+	w.staticMaintenanceState = &workerMaintenanceState{}
+	cache := &workerCache{
+		staticHostVersion: minAsyncVersion,
+	}
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(cache))
+	w.staticSetPriceTable(&workerPriceTable{
+		staticExpiryTime: time.Now().Add(time.Minute),
+	})
 
 	// Launch a bunch of async jobs in the worker. We try to launch jobs 5ms
 	// apart, and 10 jobs are allowed to run at once, and jobs take 100ms to

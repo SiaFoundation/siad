@@ -51,7 +51,7 @@ func TestSkynet(t *testing.T) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	groupDir := renterTestDir(t.Name())
 
@@ -67,10 +67,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
 		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
 		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
+		{Name: "Stats", Test: testSkynetStats},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "Stats", Test: testSkynetStats},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -642,7 +642,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	sup.Force = true
 
 	// Convert to a Skyfile
-	_, err = r.SkynetConvertSiafileToSkyfileEncryptedPost(sup, remoteFile.SiaPath(), sk.Name, skykey.SkykeyID{})
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrEncryptionNotSupported.Error()) {
 		t.Fatalf("Expected error %v, but got %v", renter.ErrEncryptionNotSupported, err)
 	}
@@ -843,15 +843,23 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
-	files["statfile2"] = modules.SectorSize + 123
+	files["statfile2"] = 2*modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
+	var sps []modules.SiaPath
 	for name, size := range files {
-		if _, _, _, err := r.UploadNewSkyfileBlocking(name, size, false); err != nil {
+		_, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
+		if err != nil {
 			t.Fatal(err)
 		}
+		sp, err := sup.SiaPath.Rebase(modules.RootSiaPath(), modules.SkynetFolder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sps = append(sps, sp)
 
+		uploadedFilesCount++
 		if size < modules.SectorSize {
 			// small files get padded up to a full sector
 			uploadedFilesSize += modules.SectorSize
@@ -859,26 +867,102 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 			// large files have an extra sector with header data
 			uploadedFilesSize += size + modules.SectorSize
 		}
-		uploadedFilesCount++
 	}
 
-	// get the stats after the upload of the test files
-	statsAfter, err := r.SkynetStatsGet()
+	// Create a siafile and convert it
+	size := 100
+	_, rf, err := r.UploadNewFileBlocking(size, 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath: rf.SiaPath(),
+		Mode:    modules.DefaultFilePerm,
+		Force:   false,
+		Root:    false,
+	}
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Increment the file count once for the converted file
+	uploadedFilesCount++
+	// Increment the file size for the basesector that is uploaded during the
+	// conversion as well as the file size of the siafile.
+	uploadedFilesSize += modules.SectorSize
+	uploadedFilesSize += uint64(size)
+
+	// Check that the right stats were returned.
+	statsBefore := stats
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		statsAfter, err := r.SkynetStatsGet()
+		if err != nil {
+			return err
+		}
+		var countErr, sizeErr, perfErr error
+		if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
+			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles)
+		}
+		if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
+			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize)
+		}
+		lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
+		if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
+			perfErr = errors.New("lifetime upload stats are not reporting any uploads")
+		}
+		return errors.Compose(countErr, sizeErr, perfErr)
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Delete the files.
+	for _, sp := range sps {
+		err = r.RenterFileDeleteRootPost(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		extSP, err := modules.NewSiaPath(sp.String() + modules.ExtendedSuffix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// This might not always succeed which is fine. We know how many files
+		// we expect afterwards.
+		_ = r.RenterFileDeleteRootPost(extSP)
+	}
+
+	// Delete the converted file
+	err = r.RenterFileDeletePost(rf.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	convertSP, err := rf.SiaPath().Rebase(modules.RootSiaPath(), modules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterFileDeleteRootPost(convertSP)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// make sure the stats changed by exactly the expected amounts
-	statsBefore := stats
-	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
-		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
-	}
-	if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
-		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
-	}
-	lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
-	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
-		t.Error("lifetime upload stats are not reporting any uploads")
+	// Check the stats after the delete operation. Do it in a retry to account
+	// for the bubble.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		statsAfter, err := r.SkynetStatsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var countErr, sizeErr error
+		if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
+			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles)
+		}
+		if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
+			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize)
+		}
+		return errors.Compose(countErr, sizeErr)
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }
 
@@ -1908,7 +1992,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spExtended, err := modules.NewSiaPath(sp.String() + renter.ExtendedSuffix)
+	spExtended, err := modules.NewSiaPath(sp.String() + modules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3373,7 +3457,7 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
@@ -3736,6 +3820,8 @@ func TestSkynetCleanupOnError(t *testing.T) {
 
 	// Add a new renter with that dependency to interrupt skyfile uploads.
 	rt := node.RenterTemplate
+	rt.Allowance = siatest.DefaultAllowance
+	rt.Allowance.PaymentContractInitialFunding = siatest.DefaultPaymentContractInitialFunding
 	rt.RenterDeps = deps
 	nodes, err := tg.AddNodes(rt)
 	if err != nil {
@@ -3782,7 +3868,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	largePathExtended, err := modules.NewSiaPath(largePath.String() + renter.ExtendedSuffix)
+	largePathExtended, err := modules.NewSiaPath(largePath.String() + modules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}

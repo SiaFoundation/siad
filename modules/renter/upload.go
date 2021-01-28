@@ -47,7 +47,10 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if err != nil {
 		return errors.AddContext(err, "unable to open the source file")
 	}
-	file.Close()
+	err = file.Close()
+	if err != nil {
+		return errors.AddContext(err, "unable to close file after checking permissions")
+	}
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {

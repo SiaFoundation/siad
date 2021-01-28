@@ -67,27 +67,27 @@ func (i instructionUpdateRegistry) Batch() bool {
 }
 
 // Execute executes the 'UpdateRegistry' instruction.
-func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
+func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the args.
 	tweak, err := i.staticData.Hash(i.tweakOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	revision, err := i.staticData.Uint64(i.revisionOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	signature, err := i.staticData.Signature(i.signatureOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	pubKey, err := i.staticData.SiaPublicKey(i.pubKeyOffset, i.pubKeyLength)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	data, err := i.staticData.Bytes(i.dataOffset, i.dataLen)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// Add 1 year to the expiry.
@@ -106,16 +106,16 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
 			NewMerkleRoot: prevOutput.NewMerkleRoot,
 			Output:        append(existingRV.Signature[:], append(rev, existingRV.Data...)...),
 			Error:         err,
-		}
+		}, types.ZeroCurrency
 	}
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	return output{
 		NewSize:       prevOutput.NewSize,
 		NewMerkleRoot: prevOutput.NewMerkleRoot,
-	}
+	}, types.ZeroCurrency
 }
 
 // Collateral returns the collateral the host has to put up for this

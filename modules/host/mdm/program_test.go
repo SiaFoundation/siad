@@ -58,7 +58,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
 	program, data := pb.Program()
 	values := pb.Cost()
-	_, _, collateral := values.Cost()
+	_, _, collateral, _ := values.Cost()
 	dataLen := uint64(len(data))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.

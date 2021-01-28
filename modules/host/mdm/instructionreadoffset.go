@@ -52,20 +52,20 @@ func (i instructionReadOffset) Batch() bool {
 }
 
 // Execute executes the 'ReadOffset' instruction.
-func (i *instructionReadOffset) Execute(previousOutput output) output {
+func (i *instructionReadOffset) Execute(previousOutput output) (output, types.Currency) {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	offset, err := i.staticData.Uint64(i.offsetOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	// Translate the offset to a root.
 	relOffset, secIdx, err := i.staticState.sectors.translateOffset(offset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	sectorRoot := i.staticState.sectors.merkleRoots[secIdx]
 
@@ -73,7 +73,7 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 	// will add that manually later.
 	output, fullSec := executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, false)
 	if !i.staticMerkleProof || output.Error != nil {
-		return output
+		return output, types.ZeroCurrency
 	}
 
 	// Compute the proof range.
@@ -92,7 +92,7 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 		sectorHashes := append(i.staticState.sectors.merkleRoots[:secIdx], i.staticState.sectors.merkleRoots[secIdx+1:]...)
 		output.Proof = crypto.MerkleMixedRangeProof(sectorHashes, fullSec, int(modules.SectorSize), proofStart, proofEnd)
 	}
-	return output
+	return output, types.ZeroCurrency
 }
 
 // Collateral is zero for the ReadSector instruction.

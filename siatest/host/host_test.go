@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -337,8 +336,8 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have 0 datasize")
 	}
 
-	if hc.Contracts[0].RevisionNumber != 1 {
-		t.Fatal("contract should have 1 revision")
+	if hc.Contracts[0].RevisionNumber == 0 {
+		t.Fatal("contract should have more than 0 revisions but had", hc.Contracts[0].RevisionNumber)
 	}
 
 	prevValidPayout := hc.Contracts[0].ValidProofOutputs[1].Value
@@ -711,13 +710,10 @@ func TestHostGetPriceTable(t *testing.T) {
 		t.Fatal("invalid validity")
 	}
 
-	if !pt.SubscriptionBaseCost.Equals(types.NewCurrency64(1)) {
-		t.Fatal("wrong subscription base cost")
-	}
 	if !pt.SubscriptionMemoryCost.Equals(types.NewCurrency64(1)) {
 		t.Fatal("wrong subscription memory cost")
 	}
-	if !pt.SubscriptionNotificationBaseCost.Equals(pt.DownloadBandwidthCost.Mul64(registry.PersistedEntrySize)) {
-		t.Fatal("wrong subscription notification base cost")
+	if !pt.SubscriptionNotificationCost.Equals(types.NewCurrency64(1)) {
+		t.Fatal("wrong subscription notification cost")
 	}
 }

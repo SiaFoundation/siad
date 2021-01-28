@@ -11,7 +11,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 	w.downloadMu.Lock()
 	downloadOnCoolDown := w.onDownloadCooldown()
 	downloadTerminated := w.downloadTerminated
-	downloadQueueSize := len(w.downloadChunks)
+	downloadQueueSize := w.downloadChunks.Len()
 	var downloadCoolDownErr string
 	if w.downloadRecentFailureErr != nil {
 		downloadCoolDownErr = w.downloadRecentFailureErr.Error()
@@ -54,7 +54,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		UploadCoolDownError: uploadCoolDownErr,
 		UploadCoolDownTime:  uploadCoolDownTime,
 		UploadOnCoolDown:    uploadOnCoolDown,
-		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadQueueSize:     w.unprocessedChunks.Len(),
 		UploadTerminated:    w.uploadTerminated,
 
 		// Job Queues
@@ -78,6 +78,12 @@ func (w *worker) callStatus() modules.WorkerStatus {
 
 		// HasSector Job Information
 		HasSectorJobsStatus: w.callHasSectorJobStatus(),
+
+		// ReadRegistry Job Information
+		ReadRegistryJobsStatus: w.callReadRegistryJobsStatus(),
+
+		// UpdateRegistry Job Information
+		UpdateRegistryJobsStatus: w.callUpdateRegistryJobsStatus(),
 	}
 }
 
@@ -152,5 +158,38 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 		JobQueueSize:        status.size,
 		RecentErr:           recentErrStr,
 		RecentErrTime:       status.recentErrTime,
+	}
+}
+
+// callGenericWorkerJobStatus returns the status for the generic job queue.
+func callGenericWorkerJobStatus(queue *jobGenericQueue) modules.WorkerGenericJobsStatus {
+	status := queue.callStatus()
+
+	var recentErrStr string
+	if status.recentErr != nil {
+		recentErrStr = status.recentErr.Error()
+	}
+
+	return modules.WorkerGenericJobsStatus{
+		ConsecutiveFailures: status.consecutiveFailures,
+		JobQueueSize:        status.size,
+		OnCooldown:          time.Now().Before(status.cooldownUntil),
+		OnCooldownUntil:     status.cooldownUntil,
+		RecentErr:           recentErrStr,
+		RecentErrTime:       status.recentErrTime,
+	}
+}
+
+// callUpdateRegistryJobsStatus returns the status for the ReadRegistry queue.
+func (w *worker) callReadRegistryJobsStatus() modules.WorkerReadRegistryJobStatus {
+	return modules.WorkerReadRegistryJobStatus{
+		WorkerGenericJobsStatus: callGenericWorkerJobStatus(w.staticJobReadRegistryQueue.jobGenericQueue),
+	}
+}
+
+// callUpdateRegistryJobsStatus returns the status for the UpdateRegistry queue.
+func (w *worker) callUpdateRegistryJobsStatus() modules.WorkerUpdateRegistryJobStatus {
+	return modules.WorkerUpdateRegistryJobStatus{
+		WorkerGenericJobsStatus: callGenericWorkerJobStatus(w.staticJobUpdateRegistryQueue.jobGenericQueue),
 	}
 }

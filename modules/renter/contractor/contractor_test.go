@@ -517,7 +517,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	// create a testing trio with our mux injected
-	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, modules.ProdDependencies)
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, modules.ProdDependencies, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +671,7 @@ func TestLinkedContracts(t *testing.T) {
 	t.Parallel()
 
 	// create testing trio
-	h, c, m, cf, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -791,7 +791,7 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 
 	// create a testing trio with our mux injected
 	deps := &dependencies.DependencyStorageObligationNotFound{}
-	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, deps)
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, deps, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}

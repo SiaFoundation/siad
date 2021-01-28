@@ -9,6 +9,21 @@ import (
 )
 
 type (
+	// DependencyLegacyRenew forces the contractor to use the legacy behavior
+	// when renewing a contract. This is useful for unit testing since it
+	// doesn't require a renter, workers etc.
+	DependencyLegacyRenew struct {
+		modules.ProductionDependencies
+	}
+	// DependencyNoSnapshotSync prevents the renter from syncing snapshots.
+	DependencyNoSnapshotSync struct {
+		modules.ProductionDependencies
+	}
+	// DependencyInvalidateStatsCache invalidates the
+	// threadeInvalidateStatsCache loop.
+	DependencyInvalidateStatsCache struct {
+		modules.ProductionDependencies
+	}
 	// DependencyRegistryUpdateLyingHost causes RegistryUpdate to return the
 	// most recent known value for a lookup together with a ErrSameRevNum error.
 	DependencyRegistryUpdateLyingHost struct {
@@ -322,6 +337,11 @@ func (d *DependencyRegistryUpdateLyingHost) Disrupt(s string) bool {
 }
 
 // Disrupt returns true if the correct string is provided.
+func (d *DependencyInvalidateStatsCache) Disrupt(s string) bool {
+	return s == "DisableInvalidateStatsCache"
+}
+
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyRenewFail) Disrupt(s string) bool {
 	return s == "RenewFail"
 }
@@ -341,6 +361,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 }
 
 // Disrupt returns true if the correct string is provided.
+func (d *DependencyLegacyRenew) Disrupt(s string) bool {
+	return s == "LegacyRenew"
+}
+
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
 	if s == "InterruptAccountSaveOnShutdown" {
 		return true
@@ -349,6 +374,11 @@ func (d *DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown) Disrupt(s strin
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyNoSnapshotSync) Disrupt(s string) bool {
+	return s == "DisableSnapshotSync"
 }
 
 // Disrupt returns true if the correct string is provided.
@@ -395,7 +425,7 @@ func (d *DependencyDisableStreamClose) Disrupt(s string) bool {
 
 // Disrupt returns true if the correct string is provided.
 func (d *DependencySkipDeleteContractAfterRenewal) Disrupt(s string) bool {
-	return s == "SkipContractDeleteAfterRenew"
+	return s == "SkipContractDeleteAfterRenew" || s == "DisableContractRecovery"
 }
 
 // Disrupt causes contract formation to fail due to low allowance funds.

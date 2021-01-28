@@ -332,6 +332,15 @@ func TestWalletGETSiacoins(t *testing.T) {
 	}
 	defer st.server.panicClose()
 
+	// Declare a helper to compute the coinbase for 'n' mined blocks after
+	// creating the server tester.
+	calculateCoinbase := func(n types.BlockHeight) (cb types.Currency) {
+		for i := types.BlockHeight(1); i <= n+types.TaxHardforkHeight; i++ {
+			cb = cb.Add(types.CalculateCoinbase(i))
+		}
+		return
+	}
+
 	// Check the initial wallet is encrypted, unlocked, and has the siacoins
 	// that got mined.
 	var wg WalletGET
@@ -345,7 +354,7 @@ func TestWalletGETSiacoins(t *testing.T) {
 	if !wg.Unlocked {
 		t.Error("Wallet has been unlocked")
 	}
-	if wg.ConfirmedSiacoinBalance.Cmp(types.CalculateCoinbase(1)) != 0 {
+	if wg.ConfirmedSiacoinBalance.Cmp(calculateCoinbase(1)) != 0 {
 		t.Error("reported wallet balance does not reflect the single block that has been mined")
 	}
 	if wg.UnconfirmedOutgoingSiacoins.Cmp64(0) != 0 {
@@ -380,7 +389,7 @@ func TestWalletGETSiacoins(t *testing.T) {
 	if !wg.Unlocked {
 		t.Error("Wallet has been unlocked")
 	}
-	if wg.ConfirmedSiacoinBalance.Cmp(types.CalculateCoinbase(1)) != 0 {
+	if wg.ConfirmedSiacoinBalance.Cmp(calculateCoinbase(1)) != 0 {
 		t.Error("reported wallet balance does not reflect the single block that has been mined")
 	}
 	if wg.UnconfirmedOutgoingSiacoins.Cmp64(0) <= 0 {
@@ -403,7 +412,7 @@ func TestWalletGETSiacoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wg.ConfirmedSiacoinBalance.Cmp(types.CalculateCoinbase(1).Add(types.CalculateCoinbase(2))) >= 0 {
+	if wg.ConfirmedSiacoinBalance.Cmp(calculateCoinbase(2)) >= 0 {
 		t.Error("reported wallet balance does not reflect mining two blocks and eating a miner fee")
 	}
 	if wg.UnconfirmedOutgoingSiacoins.Cmp64(0) != 0 {

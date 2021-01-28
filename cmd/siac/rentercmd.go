@@ -329,6 +329,20 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(renterworkersuploadscmd),
 	}
 
+	renterWorkersReadRegistryCmd = &cobra.Command{
+		Use:   "rrj",
+		Short: "View the workers' read registry jobs",
+		Long:  "View detailed information of the workers' read registry jobs",
+		Run:   wrap(renterworkersreadregistrycmd),
+	}
+
+	renterWorkersUpdateRegistryCmd = &cobra.Command{
+		Use:   "urj",
+		Short: "View the workers' update registry jobs",
+		Long:  "View detailed information of the workers' update registry jobs",
+		Run:   wrap(renterworkersupdateregistrycmd),
+	}
+
 	renterHealthSummaryCmd = &cobra.Command{
 		Use:   "health",
 		Short: "Display a health summary of uploaded files",
@@ -426,14 +440,33 @@ func rentercmd() {
 
 	// Print out the memory information for the renter
 	ms := rg.MemoryStatus
+	ud := ms.UserDownload
+	uu := ms.UserUpload
+	reg := ms.Registry
+	sys := ms.System
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "\nMemory Status\n")
-	fmt.Fprintf(w, "  Available Memory\t%v\n", sizeString(ms.Available))
-	fmt.Fprintf(w, "  Starting Memory\t%v\n", sizeString(ms.Base))
-	fmt.Fprintf(w, "  Requested Memory\t%v\n", sizeString(ms.Requested))
-	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\n", sizeString(ms.PriorityAvailable))
-	fmt.Fprintf(w, "  Starting Priority Memory\t%v\n", sizeString(ms.PriorityBase))
-	fmt.Fprintf(w, "  Requested Priority Memory\t%v\n", sizeString(ms.PriorityRequested))
+	fmt.Fprintf(w, "\nMemory Status\tUser Download\tUser Upload\tRegistry\tSystem\tTotal\n")
+	fmt.Fprintf(w, "  Available Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Available), sizeString(uu.Available), sizeString(reg.Available), sizeString(sys.Available), sizeString(ms.Available))
+	fmt.Fprintf(w, "  Starting Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Base), sizeString(uu.Base), sizeString(reg.Base), sizeString(sys.Base), sizeString(ms.Base))
+	fmt.Fprintf(w, "  Requested Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Requested), sizeString(uu.Requested), sizeString(reg.Requested), sizeString(sys.Requested), sizeString(ms.Requested))
+	fmt.Fprintf(w, " \t \t \t \t \t \n")
+	fmt.Fprintf(w, "  Available Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityAvailable), sizeString(uu.PriorityAvailable), sizeString(reg.PriorityAvailable), sizeString(sys.PriorityAvailable), sizeString(ms.PriorityAvailable))
+	fmt.Fprintf(w, "  Starting Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityBase), sizeString(uu.PriorityBase), sizeString(reg.PriorityBase), sizeString(sys.PriorityBase), sizeString(ms.PriorityBase))
+	fmt.Fprintf(w, "  Requested Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityRequested), sizeString(uu.PriorityRequested), sizeString(reg.PriorityRequested), sizeString(sys.PriorityRequested), sizeString(ms.PriorityRequested))
+	fmt.Fprintln(w, "")
+
+	// Print out if the uploads are paused
+	if verbose {
+		var pauseEndTime time.Duration
+		if rg.Settings.UploadsStatus.PauseEndTime.After(time.Now()) {
+			pauseEndTime = time.Until(rg.Settings.UploadsStatus.PauseEndTime)
+		}
+		fmt.Fprintf(w, "\nUploads Status\n")
+		fmt.Fprintf(w, "  Paused:\t%v\n", yesNo(rg.Settings.UploadsStatus.Paused))
+		fmt.Fprintf(w, "  Pause End Time:\t%v\n", pauseEndTime)
+	}
+
+	// Flush the writer
 	err = w.Flush()
 	if err != nil {
 		die(err)
@@ -2504,4 +2537,55 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	if err := w.Flush(); err != nil {
 		die("failed to flush writer:", err)
 	}
+}
+
+// renterworkerreadregistrycmd is the handler for the command `siac renter workers
+// rrj`.  It lists the status of the read registry jobs of every worker.
+func renterworkersreadregistrycmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+	// Write Upload Info
+	writeWorkerReadUpdateRegistryInfo(true, w, rw)
+}
+
+// renterworkerupdateregistrycmd is the handler for the command `siac renter
+// workers urj`. It lists the status of the update registry jobs of every
+// worker.
+func renterworkersupdateregistrycmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+	// Write Upload Info
+	writeWorkerReadUpdateRegistryInfo(false, w, rw)
 }

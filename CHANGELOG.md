@@ -10,6 +10,39 @@ Version History
 
 Latest:
 
+## Jan 12, 2021:
+### v1.5.4
+**Key Updates**
+- Adds `/skynet/root` GET request to allow downloading a specific sector of a skyfile
+- allow for migrating registry to custom path
+- extend `siac renter` with optional currency conversion based on
+    SIA_EXCHANGE_RATE env variable
+- Update health loop to batch bubbles by subtree instead of individual
+    directories
+- add RHP3 RPC for atomic contract renewal
+- Add `/renter/clean` API route with `siac renter clean` to remove lost files
+ from renter. Also added `siac renter lost` to view lost files that would be
+ removed.
+
+**Bugs Fixed**
+- Fixed `uploadHead` panic related to streaming caused by bad condition check.
+- Fixed debug code that checks for contract header corruption.
+- Fixed bug in skyfile fanout encoding that allowed for encoding empty piece root hashes.
+- Fix panic condition in siafile conversion when attempted with encryption.
+- Fixed bug in the skynet blocklist persist compat code where the compat code
+    was not being triggered.
+
+**Other**
+- Add worker groups to the bubble code
+- Add `Portals` to the `TestGroup` for skynet related testing.
+- Add 'no-response-metadata' query string parameter that allows hiding the
+  'Skynet-File-Metadata' header from the response.
+- Added a job to `.gitlab-ci.yml` to trigger Sia Antfarm version tests on Sia
+  master updates and on Sia nightly executions.
+- Add `siac skynet isblocked` command as a helper to check if a skylink is
+blocked since `siac skynet blocklist` returns a list of hashed merkleroots, so
+the list cannot be visually verified.
+
 ## Nov 10, 2020:
 ### v1.5.3
 **Bugs Fixed**
@@ -38,8 +71,8 @@ Latest:
 - Enable adding or removing hashes of skylink merkleroots to the skynet
   blacklist
 - allow for migrating registry to cstom path
-- Update the upload streamer code to send chunks directly to the workers
-  instead of through the `uploadHeap`.
+- Update the upload streamer code to send chunks directly to the workers instead
+  of through the `uploadHeap`.
 - new acceptcontractadjustment in score breakdown
 - reduced default period to 2 months
 - extend /host [GET] to contain pricetable
@@ -53,8 +86,8 @@ Latest:
   upload dir skyfile_name`). The previous behavior of uploading all files
   individually is now available when the `--separately` flag is passed.
   Additional flags: `--defaultpath` and `--disabledefaultpath`. Those are full
-  equivalents to the flags with the same names on the
-  `/skynet/skyfile/*siapath* [POST]` endpoint.
+  equivalents to the flags with the same names on the `/skynet/skyfile/*siapath*
+  [POST]` endpoint.
 - Added feature to use pipes with 'siac skynet upload'. e.g. 
   'dd if=/dev/zero bs=1M count=1000 | siac skynet upload 1GB.dat'
 
@@ -63,8 +96,8 @@ Latest:
 - Fix bug in append only persist code that left a file handle open.
 - Ensure that only full paths are accepted when resolving skylinks.
 - Properly handle URL-encoded characters in `GET /skynet/skylink` route.
-- Fix bug in Filesystem list that duplicated directories returned for recursive
-    calls
+ - Fix bug in Filesystem list that duplicated directories returned for recursive
+     calls
 - Fixed edge case with the health loop where it would not find the correct
   directory to call bubble on due to the metadatas being out of sync from
   a shutdown with pending bubbles.

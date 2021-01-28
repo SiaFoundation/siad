@@ -21,6 +21,11 @@ var (
 // blockchain in the same transaction which creates the new contract. That way
 // contract renewal happens atomically.
 func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
+	// Disrupt if necessary.
+	if h.dependencies.Disrupt("RenewFail") {
+		return errors.New("RenewFail")
+	}
+
 	// fetch the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
@@ -31,13 +36,12 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// available.
 	h.mu.RLock()
 	bh := pt.HostBlockHeight
-	maxFee := pt.TxnFeeMaxRecommended
 	minFee := pt.TxnFeeMinRecommended
 	hpk := h.publicKey
 	hsk := h.secretKey
 	contractPrice := pt.ContractPrice
-	ac := h.externalSettings(maxFee).AcceptingContracts
 	is := h.settings // internal settings
+	ac := is.AcceptingContracts
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	unlockHash := h.unlockHash
 	h.mu.RUnlock()

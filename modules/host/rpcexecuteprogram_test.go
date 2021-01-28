@@ -206,8 +206,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.StorageCost.Equals(storageCost) {
-		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), storageCost.HumanString())
+	if !resp.FailureRefund.Equals(storageCost) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.FailureRefund.HumanString(), storageCost.HumanString())
 	}
 	if uint64(len(resp.Output)) != modules.SectorSize {
 		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(resp.Output))
@@ -369,8 +369,8 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 	if uint64(len(resp.Output)) != length {
 		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
@@ -502,8 +502,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.staticHT.host.staticAccountManager
@@ -695,8 +695,8 @@ func TestExecuteReadOffsetProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 	if uint64(len(resp.Output)) != length {
 		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
@@ -1064,8 +1064,8 @@ func TestExecuteAppendProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.StorageCost.Equals(storageCost) {
-		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), storageCost.HumanString())
+	if !resp.FailureRefund.Equals(storageCost) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.FailureRefund.HumanString(), storageCost.HumanString())
 	}
 	if uint64(len(resp.Output)) != 0 {
 		t.Fatalf("expected returned data to have length %v but was %v", 0, len(resp.Output))
@@ -1326,8 +1326,8 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.staticHT.host.staticAccountManager
@@ -1370,8 +1370,8 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 	// Parse response.
 	var sig2 crypto.Signature
@@ -1442,8 +1442,8 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 	// Parse response.
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
@@ -1519,7 +1519,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	// Create the 'UpdateRegistry' program.
 	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadRegistry doesn't depend on duration.
-	err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
+	_, err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1590,8 +1590,8 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.StorageCost.Equals(refund) {
-		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	if !resp.FailureRefund.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.FailureRefund.HumanString(), refund.HumanString())
 	}
 
 	// Parse output.

@@ -81,6 +81,17 @@ func TestNewGroup(t *testing.T) {
 			t.Errorf("Node has 0 confirmed funds")
 		}
 	}
+
+	// Check the portals allowance
+	p := tg.Portals()[0]
+	rg, err := p.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := rg.Settings.Allowance
+	if !a.PaymentContractInitialFunding.Equals(DefaultPaymentContractInitialFunding) {
+		t.Fatal("Portals PaymentContractInitialFunding is not set as expected")
+	}
 }
 
 // TestNewGroupNoMiner tests NewGroup without a miner

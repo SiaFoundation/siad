@@ -37,7 +37,7 @@ func newTestProgramBuilder(pt *modules.RPCPriceTable, duration types.BlockHeight
 // complete programs.
 func assertCosts(finalized bool, values TestValues, pb *modules.ProgramBuilder) {
 	cost1, refund1, collateral1 := pb.Cost(finalized)
-	_, refund2, collateral2 := values.Cost()
+	_, refund2, collateral2, _ := values.Cost()
 	cost2 := values.Budget(finalized).Remaining()
 	if !cost1.Equals(cost2) {
 		panic(fmt.Sprintf("cost: %v != %v", cost1.HumanString(), cost2.HumanString()))
@@ -122,12 +122,13 @@ func (tb *testProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKe
 
 // AddReadRegistryInstruction adds an ReadRegistry instruction to the
 // builder, keeping track of running values.
-func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) {
-	err := tb.staticPB.AddReadRegistryInstruction(spk, tweak)
+func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash, refunded bool) types.Currency {
+	refund, err := tb.staticPB.AddReadRegistryInstruction(spk, tweak)
 	if err != nil {
 		panic(err)
 	}
-	tb.staticValues.AddReadRegistryInstruction(spk)
+	tb.staticValues.AddReadRegistryInstruction(spk, refunded)
+	return refund
 }
 
 // Program returns the built program.

@@ -397,67 +397,17 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	// we give the current version a very tiny penalty is so that the test suite
 	// complains if we forget to update this file when we bump the version next
 	// time. The value compared against must be higher than the current version.
-	if build.VersionCmp(entry.Version, "1.5.5") < 0 {
+	if build.VersionCmp(entry.Version, "1.5.6") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
-	if build.VersionCmp(entry.Version, "1.5.4") < 0 {
+	if build.VersionCmp(entry.Version, "1.5.5") < 0 {
 		base = base * 0.99 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.5.3") < 0 {
-		base = base * 0.99 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.5.2") < 0 {
-		base = base * 0.99 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.5.1") < 0 {
-		base = base * 0.90 // 10% penalty for not supporting the registry or RHP3 renewals
-	}
-	if build.VersionCmp(entry.Version, "1.5.0") < 0 {
-		base = base * 0.99 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.11") < 0 {
-		base = base * 0.98 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.10") < 0 {
-		base = base * 0.97 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.9") < 0 {
-		base = base * 0.96 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.8") < 0 {
-		base = base * 0.94 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.7") < 0 {
-		base = base * 0.93 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.6") < 0 {
-		base = base * 0.92 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.5") < 0 {
-		base = base * 0.91 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.4") < 0 {
-		base = base * 0.90 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.3.1") < 0 {
-		base = base * 0.89 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.3") < 0 {
-		base = base * 0.86 // Slight penalty against slightly out of date hosts.
-	}
-	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
-		base = base * 0.82 // Slight penalty against slightly out of date hosts.
 	}
 
-	// Penalty for hosts that are below version v1.4.1.2 because there were
-	// transaction pool updates which reduces overall network congestion.
-	if build.VersionCmp(entry.Version, "1.4.1.2") < 0 {
-		base = base * 0.60
-	}
-	// Heavy penalty for hosts that cannot use the current renter-host protocol.
-	if build.VersionCmp(entry.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
+	// Heavy penalty for hosts before the foundation hardfork.
+	if build.VersionCmp(entry.Version, "1.5.4") < 0 {
 		base = math.SmallestNonzeroFloat64
 	}
 	return base

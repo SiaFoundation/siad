@@ -60,7 +60,7 @@ func (i *instructionRevision) Memory() uint64 {
 }
 
 // Execute executes the 'Revision' instruction.
-func (i *instructionRevision) Execute(prevOutput output) output {
+func (i *instructionRevision) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the requested information.
 	revTxn := i.staticState.staticRevisionTxn
 
@@ -70,7 +70,7 @@ func (i *instructionRevision) Execute(prevOutput output) output {
 		Output: encoding.Marshal(modules.MDMInstructionRevisionResponse{
 			RevisionTxn: revTxn,
 		}),
-	}
+	}, types.ZeroCurrency
 }
 
 // Time returns the execution time of a 'Revision' instruction.
