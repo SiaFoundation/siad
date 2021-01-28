@@ -1982,6 +1982,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Remember the siaPaths of the blocked files
+	var blockedSiaPaths []modules.SiaPath
+
 	// Confirm that the skyfile and its extended info are registered with the
 	// renter
 	sp, err := modules.SkynetFolder.Join(sup.SiaPath.String())
@@ -2000,6 +2003,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	blockedSiaPaths = append(blockedSiaPaths, sp, spExtended)
 
 	// Download the data
 	data, _, err := r.SkynetSkylinkGet(skylink)
@@ -2185,6 +2189,13 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Make sure all blockedSiaPaths are root paths
+	sp, err = modules.UserFolder.Join(rf.SiaPath().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedSiaPaths = append(blockedSiaPaths, sp, skyfilePath)
+
 	// Blocklist the skylink
 	remove = []string{}
 	convertHash := crypto.HashObject(convertSSHP.MerkleRoot)
@@ -2265,6 +2276,65 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Add both skylinks back to the blocklist
+	remove = []string{}
+	if isHash {
+		add = []string{hash.String(), convertHash.String()}
+	} else {
+		add = []string{skylink, convertSkylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 2 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 2, len(sbg.Blocklist))
+	}
+
+	// Adding links to the block list does not immediately delete the files, but
+	// the health/bubble loops should eventually delete the files.
+	//
+	// First verify the test assumptions and confirm that the files still exist
+	// in the renter.
+	for _, siaPath := range blockedSiaPaths {
+		_, err = r.RenterFileRootGet(siaPath)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	// Wait until all the files have been deleted
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		for _, siaPath := range blockedSiaPaths {
+			_, err = r.RenterFileRootGet(siaPath)
+			if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+				return fmt.Errorf("File %v, not deleted", siaPath)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Error(err)
+	}
+
+	// Reset the blocklist for other tests
+	remove = add
+	add = []string{}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 0 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 0, len(sbg.Blocklist))
 	}
 }
 
