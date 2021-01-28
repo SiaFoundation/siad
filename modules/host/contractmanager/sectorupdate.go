@@ -8,15 +8,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
-
-// overflowMetadata is the metadata of the sector overflow persistence.
-var overflowMetadata = persist.Metadata{
-	Header:  "SectorOverflow",
-	Version: "1.5.5",
-}
 
 // commitUpdateSector will commit a sector update to the contract manager,
 // writing in metadata and usage info if the sector still exists, and deleting
@@ -357,7 +350,6 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		wal.mu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
-		delete(wal.cm.sectorLocations, id)
 		wal.mu.Unlock()
 	}
 	return nil
