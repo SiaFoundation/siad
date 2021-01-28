@@ -158,6 +158,8 @@ func dl() {
 // downloadFileSet will download all of the files of the expected fetch size in
 // a dir.
 func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.Float64Data, error) {
+	now := time.Now()
+
 	// Create a list of timings
 	timings := make([]float64, filesPerDir)
 
@@ -171,6 +173,7 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 
 	// Loop over every file. Block until there is an object ready in the thread
 	// pool, then launch a thread.
+	var atomicDownloadsFinished uint64
 	var atomicDownloadErrors uint64
 	var wg sync.WaitGroup
 	for i := 0; i < filesPerDir; i++ {
@@ -179,7 +182,7 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 
 		// Launch the downloading thread.
 		wg.Add(1)
-		go func(i int) {
+		go func(i int, launched time.Time) {
 			// Make room for the next thread.
 			defer func() {
 				threadPool <- struct{}{}
@@ -229,7 +232,13 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 
 			elapsed := time.Since(start)
 			timings[i] = float64(elapsed.Milliseconds())
-		}(i)
+
+			numFinished := atomic.AddUint64(&atomicDownloadsFinished, 1)
+			numTwentyPct := uint64(filesPerDir / 20)
+			if numFinished%numTwentyPct == 0 {
+				fmt.Printf("%v%% finished after %vms\n", (numFinished/numTwentyPct)*20, time.Since(launched).Milliseconds())
+			}
+		}(i, now)
 	}
 	wg.Wait()
 
