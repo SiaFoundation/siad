@@ -203,8 +203,8 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		}
 
 		// If there was a worker found, launch the worker.
-		fmt.Printf("launching overdrive worker %v for piece %v (attempt %v) \n", worker.staticHostPubKeyStr[64:], pieceIndex, retry)
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
+		fmt.Printf("launched overdrive worker %v for piece %v (attempt %v) (succces: %v)\n", worker.staticHostPubKeyStr[64:], pieceIndex, retry, success)
 		if !success {
 			// If we were unable to successfully launch the worker, we retry
 			// after a certain delay. This to prevent spamming the readqueue
@@ -237,7 +237,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 				continue // skip
 			}
 			launchedWithoutFail = true
-			if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompleteTime) {
+			if !pieceDownload.completed && pieceDownload.expectedCompleteTime.After(latestReturn) {
 				latestReturn = pieceDownload.expectedCompleteTime
 			}
 		}
@@ -250,12 +250,14 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 	// number of workers that need to launch in order to complete the download.
 	workersWanted := pdc.workerSet.staticErasureCoder.MinPieces()
 	if numLWF < workersWanted {
+		fmt.Println("workers wanted")
 		return workersWanted - numLWF, latestReturn
 	}
 
 	// If the latest worker should have already completed its job, return that
 	// an overdrive worker should be launched.
 	if time.Until(latestReturn) <= 0 {
+		fmt.Println("workers should've been done by now")
 		return 1, latestReturn
 	}
 
