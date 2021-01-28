@@ -603,9 +603,9 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 	go func(start time.Time) {
 		select {
 		case <-r.tg.StopCtx().Done():
-			fmt.Printf("retner stopped after %vms", time.Since(start).Milliseconds())
+			fmt.Printf("renter stopped after %vms\n", time.Since(start).Milliseconds())
 		case <-ctx.Done():
-			fmt.Printf("ctx stopped after %vms", time.Since(start).Milliseconds())
+			fmt.Printf("ctx stopped after %vms\n", time.Since(start).Milliseconds())
 		}
 
 	}(time.Now())

@@ -234,6 +234,9 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 		launchedWithoutFail := false
 		for _, pieceDownload := range piece {
 			if !pieceDownload.launched || pieceDownload.downloadErr != nil {
+				if pieceDownload.downloadErr != nil {
+					fmt.Println("piece download err", pieceDownload.downloadErr)
+				}
 				continue // skip
 			}
 			launchedWithoutFail = true
@@ -250,14 +253,12 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 	// number of workers that need to launch in order to complete the download.
 	workersWanted := pdc.workerSet.staticErasureCoder.MinPieces()
 	if numLWF < workersWanted {
-		fmt.Println("workers wanted", numLWF, workersWanted, latestReturn)
 		return workersWanted - numLWF, latestReturn
 	}
 
 	// If the latest worker should have already completed its job, return that
 	// an overdrive worker should be launched.
-	if time.Until(latestReturn) <= 0 {
-		fmt.Println("workers should've been done by now")
+	if time.Now().After(latestReturn) {
 		return 1, latestReturn
 	}
 
@@ -291,7 +292,7 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 
 		// Worker launched successfully, update the latestReturnTime to account
 		// for the new worker.
-		if latestReturn.Before(expectedReturnTime) {
+		if expectedReturnTime.After(latestReturn) {
 			latestReturn = expectedReturnTime
 		}
 	}
