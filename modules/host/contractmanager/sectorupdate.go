@@ -366,6 +366,9 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 // writeSectorMetadata will take a sector update and write the related metadata
 // to disk.
 func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate) error {
+	// COMPATV154 The original counter was a 16 bit value stored in the sector
+	// metadata. For compatibility reasons, we keep the first 16bit in the
+	// metadata but anything above that is stored in a dedicated overflow file.
 	var count uint16
 	var overflow uint64
 	if su.Count > math.MaxUint16 {
@@ -410,7 +413,8 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 			} else {
 				wal.cm.sectorLocationsCountOverflow[su.ID] = existingOverflow
 			}
-			wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
+			err = errors.AddContext(err, "ERROR: unable to write sector overflow metadata when adding sector")
+			wal.cm.log.Printf(err.Error())
 			atomic.AddUint64(&sf.atomicFailedWrites, 1)
 			return err
 		}

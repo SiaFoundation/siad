@@ -23,6 +23,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 // randSector creates a random sector that can be added to the contract
@@ -1970,7 +1971,7 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	// Add a storage folder to the contract manager tester.
 	storageFolderDir := filepath.Join(cmt.persistDir, "storageFolderOne")
 	// Create the storage folder dir.
-	err = os.MkdirAll(storageFolderDir, 0700)
+	err = os.MkdirAll(storageFolderDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}

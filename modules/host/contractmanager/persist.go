@@ -74,8 +74,9 @@ func (cm *ContractManager) loadSettings() error {
 	// Load the overflow file.
 	err = cm.dependencies.LoadFile(overflowMetadata, &cm.sectorLocationsCountOverflow, filepath.Join(cm.persistDir, sectorOverflowFile))
 	if !os.IsNotExist(err) && err != nil {
-		cm.log.Println("ERROR: unable to load the sector overflow file:", err)
-		return errors.AddContext(err, "error loading the sector overflow file")
+		err = errors.AddContext(err, "ERROR: unable to load the sector overflow file")
+		cm.log.Println(err)
+		return err
 	}
 
 	// Copy the saved settings into the contract manager.

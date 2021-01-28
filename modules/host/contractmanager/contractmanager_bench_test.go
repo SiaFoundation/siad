@@ -1,6 +1,7 @@
 package contractmanager
 
 import (
+	"math"
 	"sync"
 	"testing"
 
@@ -33,7 +34,7 @@ func BenchmarkSectorLocations(b *testing.B) {
 				sectorLocations[j] = sectorLocation{
 					index:         uint32(fastrand.Intn(1 << 32)),
 					storageFolder: uint16(fastrand.Intn(1 << 16)),
-					count:         uint64(fastrand.Intn(1 << 16)),
+					count:         uint64(fastrand.Uint64n(math.MaxUint64)),
 				}
 			}
 		}(i)
