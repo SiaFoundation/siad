@@ -16,7 +16,7 @@ import (
 
 const (
 	// uploadChunkDistirbutionBackoff dictates the amount of time that the
-	// distirbutor will sleep after determining that a chunk is not ready to be
+	// distributor will sleep after determining that a chunk is not ready to be
 	// distributed because too many workers are busy.
 	uploadChunkDistributionBackoff = time.Millisecond * 25
 
