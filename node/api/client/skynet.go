@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -308,18 +309,38 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 
 	// Build a backup reader by downloading all the subFile data
 	var backupReader io.Reader
+	var backupReaderMu sync.Mutex
+	var wg sync.WaitGroup
+	errChan := make(chan error)
 	for _, sf := range subFiles {
-		// Download the data from the subFile
-		subgetQuery := fmt.Sprintf("%s/%s", getQuery, sf.Filename)
-		_, subreader, err := c.getReaderResponse(subgetQuery)
-		if err != nil {
-			return errors.AddContext(err, "unable to download subFile")
-		}
-		if backupReader == nil {
-			backupReader = io.MultiReader(subreader)
-			continue
-		}
-		backupReader = io.MultiReader(backupReader, subreader)
+		wg.Add(1)
+		go func(fileName string) {
+			defer wg.Done()
+			// Download the data from the subFile
+			subgetQuery := fmt.Sprintf("%s/%s", getQuery, fileName)
+			_, subreader, err := c.getReaderResponse(subgetQuery)
+			if err != nil {
+				// Use a select to not block on errors from other go routines.
+				select {
+				case errChan <- errors.AddContext(err, "unable to download subFile"):
+				default:
+				}
+				return
+			}
+			backupReaderMu.Lock()
+			defer backupReaderMu.Unlock()
+			if backupReader == nil {
+				backupReader = io.MultiReader(subreader)
+				return
+			}
+			backupReader = io.MultiReader(backupReader, subreader)
+		}(sf.Filename)
+	}
+
+	// Wait for all calls to return and check for an error
+	wg.Wait()
+	if err := modules.PeekErr(errChan); err != nil {
+		return err
 	}
 
 	// Create the backup file on disk
@@ -625,14 +646,6 @@ func (c *Client) SkynetPortalsPost(additions []modules.SkynetPortal, removals []
 // SkynetStatsGet requests the /skynet/stats Get endpoint
 func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 	err = c.get("/skynet/stats", &stats)
-	return
-}
-
-// SkynetStatsGetCached requests the /skynet/stats Get endpoint
-func (c *Client) SkynetStatsGetCached(cached bool) (stats api.SkynetStatsGET, err error) {
-	values := url.Values{}
-	values.Set("cached", fmt.Sprint(cached))
-	err = c.get("/skynet/stats?"+values.Encode(), &stats)
 	return
 }
 

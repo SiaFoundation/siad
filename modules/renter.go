@@ -27,9 +27,6 @@ type (
 		RefundAddress types.UnlockHash
 		RenterSeed    EphemeralRenterSeed
 
-		// Only used by RHP3
-		PriceTable *RPCPriceTable
-
 		// TODO: add optional keypair
 	}
 )
@@ -117,21 +114,36 @@ type SkynetStats struct {
 // program which monitors for inconsistencies or other challenges.
 type RenterStats struct {
 	// A name for this renter.
-	Name string
+	Name string `json:"name"`
+
+	// Any alerts that are in place for this renter.
+	Alerts []Alert `json:"alerts"`
+
+	// Performance and throughput information related to the API.
+	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
 
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
-	ActiveContractData  uint64
-	PassiveContractData uint64
-	WastedContractData  uint64
+	ActiveContractData  uint64 `json:"activecontractdata"`
+	PassiveContractData uint64 `json:"passivecontractdata"`
+	WastedContractData  uint64 `json:"wastedcontractdata"`
 
-	TotalSiafiles uint64
+	TotalSiafiles uint64 `json:"totalsiafiles"`
+	TotalSiadirs  uint64 `json:"totalsiadirs"`
+	TotalSize     uint64 `json:"totalsize"`
 
-	TotalContractSpentFunds     types.Currency // Includes fees
-	TotalContractFeeSpending    types.Currency
-	TotalContractRemainingFunds types.Currency
+	TotalContractSpentFunds     types.Currency `json:"totalcontractspentfunds"` // Includes fees
+	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`
+	TotalContractRemainingFunds types.Currency `json:"totalcontractremainingfunds"`
 
-	TotalWalletFunds types.Currency // Includes unconfirmed
+	AllowanceFunds              types.Currency `json:"allowancefunds"`
+	AllowanceUnspentUnallocated types.Currency `json:"allowanceunspentunallocated"`
+	WalletFunds                 types.Currency `json:"walletfunds"` // Includes unconfirmed
+
+	// Information about the status of the memory queue. If the memory is all
+	// used up, jobs will start blocking eachother.
+	HasRenterMemory         bool `json:"hasrentermemory"`
+	HasPriorityRenterMemory bool `json:"haspriorityrentermemory"`
 }
 
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
@@ -364,8 +376,13 @@ type DirectoryInfo struct {
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+
+	// Skynet Fields
+	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
+	AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
@@ -379,10 +396,15 @@ type DirectoryInfo struct {
 	NumFiles            uint64      `json:"numfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
+	RepairSize          uint64      `json:"repairsize"`
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
 	UID                 uint64      `json:"uid"`
+
+	// Skynet Fields
+	SkynetFiles uint64 `json:"skynetfiles"`
+	SkynetSize  uint64 `json:"skynetsize"`
 }
 
 // Name implements os.FileInfo.
@@ -554,8 +576,19 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
-// MemoryStatus contains information about the status of the memory manager
+// MemoryStatus contains information about the status of the memory managers in
+// the renter.
 type MemoryStatus struct {
+	MemoryManagerStatus
+
+	Registry     MemoryManagerStatus `json:"registry"`
+	UserUpload   MemoryManagerStatus `json:"userupload"`
+	UserDownload MemoryManagerStatus `json:"userdownload"`
+	System       MemoryManagerStatus `json:"system"`
+}
+
+// MemoryManagerStatus contains the memory status of a single memory manager.
+type MemoryManagerStatus struct {
 	Available uint64 `json:"available"`
 	Base      uint64 `json:"base"`
 	Requested uint64 `json:"requested"`
@@ -564,6 +597,19 @@ type MemoryStatus struct {
 	PriorityBase      uint64 `json:"prioritybase"`
 	PriorityRequested uint64 `json:"priorityrequested"`
 	PriorityReserve   uint64 `json:"priorityreserve"`
+}
+
+// Add combines two MemoryManagerStatus objects into one.
+func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
+	return MemoryManagerStatus{
+		Available:         ms.Available + ms2.Available,
+		Base:              ms.Base + ms2.Base,
+		Requested:         ms.Requested + ms2.Requested,
+		PriorityAvailable: ms.PriorityAvailable + ms2.PriorityAvailable,
+		PriorityBase:      ms.PriorityBase + ms2.PriorityBase,
+		PriorityRequested: ms.PriorityRequested + ms2.PriorityRequested,
+		PriorityReserve:   ms.PriorityReserve + ms2.PriorityReserve,
+	}
 }
 
 // MountInfo contains information about a mounted FUSE filesystem.
@@ -835,6 +881,22 @@ type (
 
 		// HasSector Job Information
 		HasSectorJobsStatus WorkerHasSectorJobsStatus `json:"hassectorjobsstatus"`
+
+		// ReadRegistry Job Information
+		ReadRegistryJobsStatus WorkerReadRegistryJobStatus `json:"readregistryjobsstatus"`
+
+		// UpdateRegistry Job information
+		UpdateRegistryJobsStatus WorkerUpdateRegistryJobStatus `json:"updateregistryjobsstatus"`
+	}
+
+	// WorkerGenericJobsStatus contains the common information for worker jobs.
+	WorkerGenericJobsStatus struct {
+		ConsecutiveFailures uint64    `json:"consecutivefailures"`
+		JobQueueSize        uint64    `json:"jobqueuesize"`
+		OnCooldown          bool      `json:"oncooldown"`
+		OnCooldownUntil     time.Time `json:"oncooldownuntil"`
+		RecentErr           string    `json:"recenterr"`
+		RecentErrTime       time.Time `json:"recenterrtime"`
 	}
 
 	// WorkerAccountStatus contains detailed information about the account
@@ -884,6 +946,18 @@ type (
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
+	}
+
+	// WorkerReadRegistryJobStatus contains detailed information about the read
+	// registry jobs.
+	WorkerReadRegistryJobStatus struct {
+		WorkerGenericJobsStatus
+	}
+
+	// WorkerUpdateRegistryJobStatus contains detailed information about the update
+	// registry jobs.
+	WorkerUpdateRegistryJobStatus struct {
+		WorkerGenericJobsStatus
 	}
 )
 
@@ -951,11 +1025,6 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
-
-	// SkynetStats returns the SkynetStats of the renter. Depending on the input,
-	// either cached stats will be returned or a full disk scan will either be
-	// started or if it's already ongoing, waited for.
-	SkynetStats(bool) (SkynetStats, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error

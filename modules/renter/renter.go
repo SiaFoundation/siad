@@ -149,7 +149,7 @@ type hostContractor interface {
 
 	// RenewContract takes an established connection to a host and renews the
 	// given contract with that host.
-	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) (modules.RenterContract, []types.Transaction, error)
+	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB, pt *modules.RPCPriceTable) (modules.RenterContract, []types.Transaction, error)
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
@@ -236,6 +236,22 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
+	// Memory management
+	//
+	// registryMemoryManager is used for updating registry entries and reading
+	// them.
+	//
+	// userUploadManager is used for user-initiated uploads
+	//
+	// userDownloadMemoryManager is used for user-initiated downloads
+	//
+	// repairMemoryManager is used for repair work scheduled by siad
+	//
+	registryMemoryManager     *memoryManager
+	userUploadMemoryManager   *memoryManager
+	userDownloadMemoryManager *memoryManager
+	repairMemoryManager       *memoryManager
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -246,7 +262,6 @@ type Renter struct {
 	log                   *persist.Logger
 	persist               persistence
 	persistDir            string
-	memoryManager         *memoryManager
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
 	staticAccountManager  *accountManager
@@ -278,7 +293,20 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 		return modules.MemoryStatus{}, err
 	}
 	defer r.tg.Done()
-	return r.memoryManager.callStatus(), nil
+
+	repairStatus := r.repairMemoryManager.callStatus()
+	userDownloadStatus := r.userDownloadMemoryManager.callStatus()
+	userUploadStatus := r.userUploadMemoryManager.callStatus()
+	registryStatus := r.registryMemoryManager.callStatus()
+	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus)
+	return modules.MemoryStatus{
+		MemoryManagerStatus: total,
+
+		Registry:     registryStatus,
+		System:       repairStatus,
+		UserDownload: userDownloadStatus,
+		UserUpload:   userUploadStatus,
+	}, nil
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -1019,7 +1047,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create account manager")
 	}
-	r.memoryManager = newMemoryManager(memoryDefault, memoryPriorityDefault, r.tg.StopChan())
+
+	r.registryMemoryManager = newMemoryManager(registryMemoryDefault, registryMemoryPriorityDefault, r.tg.StopChan())
+	r.userUploadMemoryManager = newMemoryManager(userUploadMemoryDefault, userUploadMemoryPriorityDefault, r.tg.StopChan())
+	r.userDownloadMemoryManager = newMemoryManager(userDownloadMemoryDefault, userDownloadMemoryPriorityDefault, r.tg.StopChan())
+	r.repairMemoryManager = newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, r.tg.StopChan())
+
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
@@ -1059,9 +1092,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
-
-	// Start a goroutine to periodically clear the stats.
-	go r.threadedInvalidateStatsCache()
 
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.

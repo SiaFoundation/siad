@@ -30,6 +30,20 @@ var (
 func jsoncmd() {
 	var rs modules.RenterStats
 
+	// Grab any alerts.
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err != nil {
+		die("Could not fetch alerts:", err)
+	}
+	rs.Alerts = alerts.CriticalAlerts
+
+	// Grab skynet performance statistics.
+	perfStats, err := httpClient.SkynetStatsGet()
+	if err != nil {
+		die("Could not fetch skynet stats:", err)
+	}
+	rs.SkynetPerformance = perfStats.PerformanceStats
+
 	// Grab the contract statistics.
 	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
@@ -48,6 +62,7 @@ func jsoncmd() {
 	spentToHost := activeSpent.Add(passiveSpent).Add(refreshedSpent).Add(disabledSpent)
 	spentToFees := activeFees.Add(passiveFees).Add(refreshedFees).Add(disabledFees)
 	rs.TotalContractSpentFunds = spentToHost.Add(spentToFees)
+	rs.TotalContractSpentFees = spentToFees
 	rs.TotalContractRemainingFunds = activeRemaining.Add(passiveRemaining).Add(refreshedRemaining).Add(disabledRemaining)
 
 	// Get the number of files on the system.
@@ -56,13 +71,31 @@ func jsoncmd() {
 		die("Cound not get the renter root dir:", err)
 	}
 	rs.TotalSiafiles = rf.Directories[0].AggregateNumFiles
+	rs.TotalSiadirs = rf.Directories[0].AggregateNumSubDirs
+	rs.TotalSize = rf.Directories[0].AggregateSize
+
+	// Get information on the allowance.
+	rg, err := httpClient.RenterGet()
+	if err != nil {
+		die("could not get the renter status:", err)
+	}
+	rs.AllowanceFunds = rg.Settings.Allowance.Funds
+	_, _, rs.AllowanceUnspentUnallocated = renterallowancespendingbreakdown(rg)
 
 	// Get the wallet balance.
 	wg, err := httpClient.WalletGet()
 	if err != nil {
 		die("could not get the wallet balance:", err)
 	}
-	rs.TotalWalletFunds = wg.ConfirmedSiacoinBalance.Add(wg.UnconfirmedIncomingSiacoins).Sub(wg.UnconfirmedOutgoingSiacoins)
+	rs.WalletFunds = wg.ConfirmedSiacoinBalance.Add(wg.UnconfirmedIncomingSiacoins).Sub(wg.UnconfirmedOutgoingSiacoins)
+
+	// Get information on the memory.
+	if rg.MemoryStatus.Available > 0 {
+		rs.HasRenterMemory = true
+	}
+	if rg.MemoryStatus.PriorityAvailable > 0 {
+		rs.HasPriorityRenterMemory = true
+	}
 
 	// Convert the rs to marshalled json.
 	json, err := json.MarshalIndent(rs, "", "\t")

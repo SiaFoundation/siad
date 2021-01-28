@@ -565,7 +565,7 @@ func createRenewedContract(lastRev types.FileContractRevision, uh types.UnlockHa
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB) (_ modules.RenterContract, _ []types.Transaction, err error) {
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB, pt *modules.RPCPriceTable) (_ modules.RenterContract, _ []types.Transaction, err error) {
 	// Fetch the contract.
 	oldSC, ok := cs.Acquire(fcid)
 	if !ok {
@@ -577,7 +577,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// Extract vars from params, for convenience.
 	fcTxn, _ := txnBuilder.View()
-	host, funding, startHeight, endHeight, pt := params.Host, params.Funding, params.StartHeight, params.EndHeight, params.PriceTable
+	host, funding, startHeight, endHeight := params.Host, params.Funding, params.StartHeight, params.EndHeight
 	ourSKOld := oldContract.SecretKey
 	ourSKNew, ourPKNew := modules.GenerateContractKeyPair(params.RenterSeed, fcTxn)
 

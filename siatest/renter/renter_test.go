@@ -1981,14 +1981,14 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 		}
 		// If host is not active, announce it again and mine a block.
 		if err := host.HostAnnouncePost(); err != nil {
-			return (err)
+			return err
 		}
 		miner := tg.Miners()[0]
 		if err := miner.MineBlock(); err != nil {
-			return (err)
+			return err
 		}
 		if err := tg.Sync(); err != nil {
-			return (err)
+			return err
 		}
 		hg, err := host.HostGet()
 		if err != nil {
@@ -4906,6 +4906,28 @@ func TestWorkerStatus(t *testing.T) {
 			if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
 				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.HasSectorJobsStatus.ConsecutiveFailures)
 			}
+
+			// ReadRegistryJobStatus checks
+			if worker.ReadRegistryJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.ReadRegistryJobsStatus.RecentErr)
+			}
+			if worker.ReadRegistryJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.ReadRegistryJobsStatus.JobQueueSize)
+			}
+			if worker.ReadRegistryJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.ReadRegistryJobsStatus.ConsecutiveFailures)
+			}
+
+			// UpdateRegistryJobStatus checks
+			if worker.UpdateRegistryJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.UpdateRegistryJobsStatus.RecentErr)
+			}
+			if worker.UpdateRegistryJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.UpdateRegistryJobsStatus.JobQueueSize)
+			}
+			if worker.UpdateRegistryJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.UpdateRegistryJobsStatus.ConsecutiveFailures)
+			}
 		}
 		return nil
 	})
@@ -5373,4 +5395,181 @@ func TestRenterClean(t *testing.T) {
 
 	// Second test should remove the now unrecoverable Skyfile
 	cleanAndVerify(1, 0)
+}
+
+// TestRenterRepairSize test the RepairSize field of the metadata
+func TestRenterRepairSize(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   4,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab renter
+	r := tg.Renters()[0]
+
+	// Define helper
+	checkRepairSize := func(aggregateExpected, expected uint64) error {
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			dis, err := r.RenterDirRootGet(modules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+			var err1, err2 error
+			dir := dis.Directories[0]
+			if dir.AggregateRepairSize != aggregateExpected {
+				err1 = fmt.Errorf("AggregateRepairSize should be %v but was %v", aggregateExpected, dir.AggregateRepairSize)
+			}
+			if dir.RepairSize != expected {
+				err2 = fmt.Errorf("RepairSize should be %v but was %v", expected, dir.RepairSize)
+			}
+			return errors.Compose(err1, err2)
+		})
+	}
+
+	// Renter root directory should show 0 repair bytes needed
+	if err := checkRepairSize(0, 0); err != nil {
+		t.Log("Initial Check Failed")
+		t.Error(err)
+	}
+
+	// Upload a file
+	dp := 1
+	pp := len(tg.Hosts()) - dp
+	_, _, err = r.UploadNewFileBlocking(100, uint64(dp), uint64(pp), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Renter root directory should show 0 repair bytes needed
+	if err := checkRepairSize(0, 0); err != nil {
+		t.Log("After Upload Check Failed")
+		t.Error(err)
+	}
+
+	// Take down hosts one by one and verify the repair values are dropping.
+	hosts := tg.Hosts()
+	for i, host := range hosts {
+		// Stop the host
+		if err := tg.StopNode(host); err != nil {
+			t.Fatal(err)
+		}
+		// Check that the aggregate repair size increases
+		expected := uint64(i+1) * modules.SectorSize
+		if err := checkRepairSize(expected, 0); err != nil {
+			t.Log("Host loop failed", i)
+			t.Error(err)
+		}
+	}
+}
+
+// TestMemoryStatus checks the renter reported memory status against the
+// expected defaults.
+func TestMemoryStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testDir := renterTestDir(t.Name())
+	r, err := siatest.NewCleanNode(node.Renter(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	ud := modules.MemoryManagerStatus{
+		Available: 1 << 17, // 128 KiB
+		Base:      1 << 17, // 128 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   0,
+	}
+	uu := modules.MemoryManagerStatus{
+		Available: 1 << 17, // 128 KiB
+		Base:      1 << 17, // 128 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   0,
+	}
+	reg := modules.MemoryManagerStatus{
+		Available: 1 << 17, // 128 KiB
+		Base:      1 << 17, // 128 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   0,
+	}
+	sys := modules.MemoryManagerStatus{
+		Available: 1 << 16, // 64 KiB
+		Base:      1 << 16, // 64 KiB
+		Requested: 0,
+
+		PriorityAvailable: 1 << 17, // 128 KiB
+		PriorityBase:      1 << 17, // 128 KiB
+		PriorityRequested: 0,
+		PriorityReserve:   1 << 16, // 64 KiB
+	}
+	total := ud.Add(uu).Add(reg).Add(sys)
+
+	// Check response.
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := rg.MemoryStatus
+	if !reflect.DeepEqual(ms.UserDownload, ud) {
+		siatest.PrintJSON(ms.UserDownload)
+		siatest.PrintJSON(ud)
+		t.Fatal("ud")
+	}
+	if !reflect.DeepEqual(ms.UserUpload, uu) {
+		siatest.PrintJSON(ms.UserUpload)
+		siatest.PrintJSON(uu)
+		t.Fatal("uu")
+	}
+	if !reflect.DeepEqual(ms.Registry, reg) {
+		siatest.PrintJSON(ms.Registry)
+		siatest.PrintJSON(reg)
+		t.Fatal("reg")
+	}
+	if !reflect.DeepEqual(ms.System, sys) {
+		siatest.PrintJSON(ms.System)
+		siatest.PrintJSON(sys)
+		t.Fatal("sys")
+	}
+	if !reflect.DeepEqual(ms.MemoryManagerStatus, total) {
+		siatest.PrintJSON(ms.MemoryManagerStatus)
+		siatest.PrintJSON(total)
+		t.Fatal("total")
+	}
 }

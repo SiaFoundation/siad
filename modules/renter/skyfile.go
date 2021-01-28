@@ -495,9 +495,6 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
-
-	// Update the stats. A small skyfile is padded to a sector.
-	r.managedAddFileToSkynetStats(modules.SectorSize, false)
 	return skylink, nil
 }
 
@@ -561,10 +558,6 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create skylink from filenode")
 	}
-
-	// Update the stats.
-	r.managedAddFileToSkynetStats(fileNode.Size(), true)
-	r.managedAddFileToSkynetStats(modules.SectorSize, false)
 	return skylink, nil
 }
 
@@ -958,7 +951,10 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 
 	// If a skykey name or ID was specified, generate a file-specific key for
 	// this upload.
-	r.generateFilekey(&sup, nil)
+	err = r.generateFilekey(&sup, nil)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
+	}
 
 	// defer a function that cleans up the siafiles after a failed upload
 	// attempt or after a dry run

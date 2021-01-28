@@ -127,7 +127,6 @@ func (w *worker) initJobRenewQueue() {
 // RenewContract renews the contract with the worker's host.
 func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) (modules.RenterContract, []types.Transaction, error) {
 	renewResponseChan := make(chan *jobRenewResponse)
-	params.PriceTable = &w.staticPriceTable().staticPriceTable
 	jro := &jobRenew{
 		staticFCID:               fcid,
 		staticParams:             params,

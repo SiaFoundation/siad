@@ -87,6 +87,9 @@ func TestRenewContract(t *testing.T) {
 	if oldContractPreRenew.Size() == 0 {
 		t.Fatal("contract shouldnt be empty pre renewal")
 	}
+	if len(oldContractPreRenew.Transaction.FileContractRevisions) == 0 {
+		t.Fatal("no Revisions")
+	}
 	oldRevisionPreRenew := oldContractPreRenew.Transaction.FileContractRevisions[0]
 	oldMerkleRoot := oldRevisionPreRenew.NewFileMerkleRoot
 	if oldMerkleRoot == (crypto.Hash{}) {
@@ -132,6 +135,9 @@ func TestRenewContract(t *testing.T) {
 			oldContract = c
 		}
 	}
+	if len(oldContract.Transaction.FileContractRevisions) == 0 {
+		t.Fatal("no Revisions")
+	}
 	oldRevision := oldContract.Transaction.FileContractRevisions[0]
 
 	// Old contract should be empty after renewal.
@@ -172,8 +178,7 @@ func TestRenewContract(t *testing.T) {
 
 	// Compute the expected payouts of the new contract.
 	pt := wt.staticPriceTable().staticPriceTable
-	params.PriceTable = &pt
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, params.PriceTable, params.EndHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, &pt, params.EndHeight)
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 	period := endHeight - startHeight
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
@@ -254,6 +259,9 @@ func TestRenewContract(t *testing.T) {
 	c, found := wt.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
 	if !found {
 		t.Fatal("contract not found in contractor")
+	}
+	if len(c.Transaction.FileContractRevisions) == 0 {
+		t.Fatal("no Revisions")
 	}
 	rev := c.Transaction.FileContractRevisions[0]
 

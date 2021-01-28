@@ -106,13 +106,13 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
+	if w.managedNeedsToUpdatePriceTable() {
+		w.externLaunchSerialJob(w.staticUpdatePriceTable)
+		return
+	}
 	job := w.staticJobRenewQueue.callNext()
 	if job != nil {
 		w.externLaunchSerialJob(job.callExecute)
-		return
-	}
-	if w.managedNeedsToUpdatePriceTable() {
-		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
 	if w.managedNeedsToRefillAccount() {
@@ -213,6 +213,11 @@ func (w *worker) managedAsyncReady() bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
+	// Exit if the worker is not currently equipped to perform async tasks.
+	if !w.managedAsyncReady() {
+		return false
+	}
+
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
 	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
@@ -231,11 +236,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// price table, and account checks.
 	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
 		return true
-	}
-
-	// Exit if the worker is not currently equipped to perform async tasks.
-	if !w.managedAsyncReady() {
-		return false
 	}
 
 	// Check every potential async job that can be launched.
@@ -290,6 +290,7 @@ func (w *worker) managedBlockUntilReady() bool {
 func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobHasSectorQueue.callDiscardAll(err)
 	w.staticJobUpdateRegistryQueue.callDiscardAll(err)
+	w.staticJobReadRegistryQueue.callDiscardAll(err)
 	w.staticJobReadQueue.callDiscardAll(err)
 }
 

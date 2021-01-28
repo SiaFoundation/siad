@@ -266,6 +266,15 @@ func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
 	return pt.SwapSectorCost
 }
 
+// V154MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
+// instruction in host versions 1.5.4 and below.
+func V154MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 10 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
+}
+
 // MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
 // instruction.
 func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
@@ -273,6 +282,13 @@ func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
 	writeCost := MDMWriteCost(pt, RegistryEntrySize)
 	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(5 * types.BlocksPerYear))
 	return writeCost.Add(storeCost), storeCost
+}
+
+// V154MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction
+// on pre 155 hosts.
+func V154MDMReadRegistryCost(pt *RPCPriceTable) (_ types.Currency) {
+	// Cost is the same as downloading a sector.
+	return MDMReadCost(pt, SectorSize)
 }
 
 // MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
