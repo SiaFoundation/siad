@@ -600,16 +600,6 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 		ctx, _ = context.WithTimeout(r.tg.StopCtx(), timeout)
 	}
 
-	go func(start time.Time) {
-		select {
-		case <-r.tg.StopCtx().Done():
-			fmt.Printf("renter stopped after %vms\n", time.Since(start).Milliseconds())
-		case <-ctx.Done():
-			fmt.Printf("ctx stopped after %vms\n", time.Since(start).Milliseconds())
-		}
-
-	}(time.Now())
-
 	// Download the data
 	layout, metadata, streamer, err := r.managedDownloadSkylink(ctx, link, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {

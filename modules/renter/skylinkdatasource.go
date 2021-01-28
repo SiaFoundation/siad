@@ -2,8 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -155,10 +153,8 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		offset := 0
 		failed := false
 
-		start := time.Now()
-		for i, respChan := range downloadChans {
+		for _, respChan := range downloadChans {
 			resp := <-respChan
-			fmt.Printf("download %v/%v came in after %vms after all initial workers launched\n", i+1, len(downloadChans), time.Since(start).Milliseconds())
 			if resp.err == nil {
 				n := copy(data[offset:], resp.data)
 				offset += n
@@ -172,7 +168,6 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		}
 
 		if !failed {
-			fmt.Printf("total download took %vms after all initial workers launched\n", time.Since(start).Milliseconds())
 			responseChan <- &readResponse{staticData: data}
 			close(responseChan)
 		}

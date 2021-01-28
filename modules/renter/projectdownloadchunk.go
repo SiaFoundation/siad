@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -387,9 +386,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 		case <-workersLateChan:
-			fmt.Println("worker late, triggering overdrive")
 		case <-workersUpdatedChan:
-			fmt.Println("worker updated, triggering overdrive")
 		}
 	}
 }

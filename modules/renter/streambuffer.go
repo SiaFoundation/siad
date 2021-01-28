@@ -13,7 +13,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -281,7 +280,6 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 	select {
 	case <-ds.dataAvailable:
 	case <-ctx.Done():
-		fmt.Println("oh no, we timed out")
 		return nil, errors.New("could not get data from data section, context timed out")
 	}
 	return ds.externData, ds.externErr
@@ -558,7 +556,6 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 
 		select {
 		case response := <-responseChan:
-			fmt.Printf("received datasection %v fetchsize %v err %v after %vms\n", index, fetchSize, response.staticErr, time.Since(start).Milliseconds())
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
 			ds.externData = response.staticData
 		case <-sb.tg.StopChan():
