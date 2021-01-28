@@ -277,8 +277,12 @@ func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id modules.
 
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
-func (ds *dataSection) managedData() ([]byte, error) {
-	<-ds.dataAvailable
+func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, errors.New("could not get data from data section, context timed out")
+	case <-ds.dataAvailable:
+	}
 	return ds.externData, ds.externErr
 }
 
@@ -369,7 +373,7 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Block until the data is available.
-	data, err := dataSection.managedData()
+	data, err := dataSection.managedData(s.staticCtx)
 	if err != nil {
 		return 0, errors.AddContext(err, "read call failed because data section fetch failed")
 	}
