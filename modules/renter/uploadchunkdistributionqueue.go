@@ -218,8 +218,23 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// it through the queue and it's okay to move onto the next chunk.
 	close(uc.staticWorkDistributedChan)
 
+	// TODO: This is debugging only. Scan all the pieces and see how many are
+	// empty.
+	emptyPieces := 0
+	for _, pcd := range uc.physicalChunkData {
+		empty := true
+		for _, b := range pcd {
+			if b != 0 {
+				empty = false
+			}
+		}
+		if empty {
+			emptyPieces++
+		}
+	}
+
 	uc.managedUpdateDistributionTime()
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers. Chunk has %v out of %v empty pieces.", uc.staticIndex, uc.staticSiaPath, jobsDistributed, emptyPieces, len(uc.physicalChunkData))
 	// Cleanup is required after distribution to ensure that memory is released
 	// for any pieces which don't have a worker.
 	r.managedCleanUpUploadChunk(uc)
