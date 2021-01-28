@@ -113,7 +113,6 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	// Now check what happens when it is busy. There are enough available
 	// workers to make the chunk available, and enough busy workers to finish
 	// the chunk, so it should pass.
-	println("oy")
 	for i := 0; i < workerUploadOverloadedThreshold-workerUploadBusyThreshold; i++ {
 		inputWorkers[1].unprocessedChunks.Pop()
 	}

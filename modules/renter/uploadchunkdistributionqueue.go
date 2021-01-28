@@ -252,9 +252,10 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 	}
 }
 
-// managedDistributeChunkToWorkers is a function which will block until workers
-// are ready to perform upload jobs, and then will distribute the input chunk to
-// the workers
+// managedDistributeChunkToWorkers is a function which will attempt to
+// distribute the chunk to workers for upload. If the distribution is
+// successful, it will return true. If the distribution is not successful, it
+// will return false, indicating that distribution needs to be retried.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) bool {
 	// Grab the best set of workers to receive this chunk. This function may
 	// take a significant amount of time to return, as it will wait until there
