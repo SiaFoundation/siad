@@ -203,8 +203,19 @@ func (w *worker) managedPerformUploadChunkJob() {
 
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.
+	//
+	// TODO: This is not safe at all. Basically allows the host to completely
+	// lie to us about storing our files if they are running malicious code. But
+	// it's also a necessary stopgap to get repairs happy on the portals until
+	// hosts can handle large virtual sectors. We will remove this hack when
+	// that gets deployed broadly enough. We are ignoring the virtual sector
+	// error here because we know the host has the sector, and when we request
+	// the sector the host will be able to look it up. But that's only true if
+	// the error is honest. If the error is not honest, we accept the host's
+	// sector as real even though the host didn't store anything. Note, this
+	// also means we didn't pay for storage, but still bad.
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), modules.ErrMaxVirtualSectors.Error()) {
 		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
@@ -315,10 +326,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	//
-	// TODO: Eliminate the check for ErrMaxVirtualSectors when the host fix to
-	// just keep maxed out virtual sectors around forever is in place.
-	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted) || strings.Contains(failureErr.Error(), modules.ErrMaxVirtualSectors.Error())) {
+	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr
