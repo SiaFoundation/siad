@@ -1,5 +1,8 @@
 package renter
 
+// TODO: the 'uc' minPieces, piecesNeeded, and memoryNeeded are all static and
+// should be updated in var name to reflect that.
+
 import (
 	"container/list"
 	"sync"
@@ -15,22 +18,24 @@ import (
 // waiting.
 
 const (
-	// lowPriorityBumpRate is the minimum throughput as a percentage that low
+	// lowPriorityMinThroughput is the minimum throughput as a ratio that low
 	// priority traffic will have when waiting in the queue. For example, a min
 	// throughput of 0.1 means that for every 1 GB of high priority traffic that
-	// goes through, at least 100 MB of low priority traffic will go through.
+	// gets queued, at least 100 MB of low priority traffic will be promoted to
+	// high priority traffic.
 	//
 	// Raising the min throughput can negatively impact the latency for real
 	// time uploads. A high rate means that users trying to upload new files
-	// will often get stuck waiting for repair traffic to complete.
+	// will often get stuck waiting for repair traffic that was bumped in
+	// priority.
 	//
 	// If the throughput is too low, repair traffic will have no priority and is
 	// at risk of starving due to lots of new upload traffic. In general, the
 	// best solution for handling high repair traffic is to migrate the current
-	// node to a maintenance server (that is not receiving new uploads) and put
-	// a new node out for users to upload to. A higher value for this constant
-	// means more lantecy for new uploads, but also means that a server can
-	// handle more files overall before being rotated to maintenance.
+	// node to a maintenance server (that is not receiving new uploads) and have
+	// users upload to a fresh node that has very little need of repair traffic.
+	// Increasing the lowPriorityMinThroughput will increase the total amount of
+	// data that a node can maintain at the cost of latency for new uploads.
 	lowPriorityMinThroughput = 0.1
 
 	// workerBusyThreshold is the number of jobs a worker needs to have to be
@@ -65,13 +70,6 @@ type ucdqFifo struct {
 	*list.List
 }
 
-// newUCDQfifo inits a fifo for the ucdq.
-func newUCDQfifo() *ucdqFifo {
-	return &ucdqFifo{
-		List: list.New(),
-	}
-}
-
 // newUploadChunkDistributionQueue will initialize a ucdq for the renter.
 func newUploadChunkDistributionQueue(r *Renter) *uploadChunkDistributionQueue {
 	return &uploadChunkDistributionQueue{
@@ -79,6 +77,13 @@ func newUploadChunkDistributionQueue(r *Renter) *uploadChunkDistributionQueue {
 		lowPriorityLane: newUCDQfifo(),
 
 		staticRenter: r,
+	}
+}
+
+// newUCDQfifo inits a fifo for the ucdq.
+func newUCDQfifo() *ucdqFifo {
+	return &ucdqFifo{
+		List: list.New(),
 	}
 }
 
@@ -102,16 +107,16 @@ func (u *ucdqFifo) Pop() *unfinishedUploadChunk {
 // chunk will be put into a lane based on whether the memory was requested with
 // priority or not.
 func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploadChunk) {
-	// We need to hold a lock for the whole process of adding a UC.
+	// We need to hold a lock for the whole process of adding an upload chunk.
 	ucdq.mu.Lock()
 	defer ucdq.mu.Unlock()
 
-	// Since we're definitely going to add a uc to the queue, we also need to
+	// Since we're definitely going to add a chunk to the queue, we also need to
 	// make sure that a processing thread is launched to process it. If there's
 	// already a processing thread running, nothing will happen. If there is not
 	// a processing thread running, we need to set the thread running bool to
 	// true whole still holding the ucdq lock, which is why this function is
-	// deferred after the unlock.
+	// deferred to run before the unlock.
 	defer func() {
 		// Check if there is a thread running to process the queue.
 		if !ucdq.processThreadRunning {
@@ -138,25 +143,42 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 	// low priority chunks will have to wait a long time even if they get
 	// bumped.
 	ucdq.priorityLane.PushBack(uc)
+	if ucdq.lowPriorityLane.Len() == 0 {
+		// No need to worry about priority buildup if there is nothing waiting
+		// in the low priority lane.
+		return
+	}
+	// Tally up the new buildup caused by this new priority chunk.
 	ucdq.priorityBuildup += lowPriorityMinThroughput * float64(uc.memoryNeeded)
 
-	// Add items from the low priority lane until there is no more buildup.
+	// Add items from the low priority lane as long as there is enough buildup
+	// to justify bumping them.
 	for ucdq.lowPriorityLane.Len() > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane.Peek().memoryNeeded) {
 		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane.Peek().memoryNeeded)
 		x := ucdq.lowPriorityLane.Pop()
 		ucdq.priorityLane.PushBack(x)
 	}
+	// If all low priority items were bumped into the high priority lane, the
+	// buildup can be cleared out.
+	if ucdq.lowPriorityLane.Len() == 0 {
+		ucdq.priorityBuildup = 0
+	}
 }
 
 // threadedProcessQueue serializes the processing of chunks in the distribution
 // queue. If there are priority chunks, it'll handle those first, and then if
-// there are no chunks in the priority lane it'll handle things in the non
+// there are no chunks in the priority lane it'll handle things in the low
 // priority lane. Each lane is treated like a FIFO.
 //
-// When de-queuing, if the priority lane is empty and chunks are being pulled
-// out of the non-priority lane, the priority buildup can be reduced because
-// there is no starvation of the low priority lane. Ensure that the reductions
-// don't go negative.
+// When things are being pulled out of the low priority lane, the priority
+// buildup can be reduced because the low priority lane is not starving.
+//
+// The general structure of this function is to pull a chunk out of a queue,
+// then try to distribute the chunk. The distributor function may determine that
+// the workers are not ready to process the chunk yet. If the distributor
+// function indicates that a chunk was not distributed, the chunk should go back
+// into the queue it came out of. Then on the next iteration, we will grab the
+// highest priority chunk.
 func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 	for {
 		// Check whether the renter has shut down, return immediately if so.
@@ -175,8 +197,10 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			ucdq.mu.Unlock()
 			return
 		}
-		// At least one uc exists in the queue. Prefer to grab the priority
-		// one, if there is no priority one grab the low priority one.
+		// At least one uc exists in the queue. Prefer to grab the priority one,
+		// if there is no priority one grab the low priority one. We need to
+		// remember which lane the uc came from because we may need to put it
+		// back into that lane later.
 		var nextUC *unfinishedUploadChunk
 		var priority bool
 		if ucdq.priorityLane.Len() > 0 {
@@ -192,7 +216,6 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		// the thread that will distribute the chunk to workers. This call can
 		// fail. If the call failed, the chunk should be re-inserted into the
 		// front of the low prior heap IFF the chunk was a low prio chunk.
-		memoryUsed := nextUC.memoryNeeded // memory needed may change after distributing, not sure. TODO: check
 		distributed := ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
 		if distributed && priority {
 			// If the chunk was distributed successfully and we pulled the chunk
@@ -204,7 +227,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// from the low priority lane, we need to subtract from the priority
 			// buildup as the low priority lane has made progress.
 			ucdq.mu.Lock()
-			ucdq.priorityBuildup -= float64(memoryUsed)
+			ucdq.priorityBuildup -= float64(nextUC.memoryNeeded)
 			if ucdq.priorityBuildup < 0 {
 				ucdq.priorityBuildup = 0
 			}
@@ -280,12 +303,11 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) ([]*w
 		return workers, true
 	}
 
-	// TODO: Use a channel instead or some sort of counter as workers finish so
-	// that we know when to scan again, instead of doing this sleep thing. The
-	// sleep thing will spin more than it needs to and also be late sometimes.
-	// When switching to a channel, it should wake on either a new priority
-	// chunk (if the current chunk is low prio) or upon enough workers reaching
-	// a better state.
+	// NOTE: This could potentially be improved by swithcing it to a channel
+	// that waits for new chunks to appear or waits for busy/overloaded workers
+	// to report a better state. We opted not to do that here because 25ms is
+	// not a huge penalty to pay and there's a fair amount of complexity
+	// involved in switching to a better solution.
 	if !r.tg.Sleep(time.Millisecond * 25) {
 		return nil, false
 	}
@@ -303,10 +325,7 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) ([]*w
 func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*worker) ([]*worker, bool) {
 	// Scan through the workers and determine how many workers have available
 	// slots to upload. Available workers and busy workers are both counted as
-	// viable candidates for receiving work. 'busy' workers have more than 0
-	// jobs but less than 5 jobs in their queue.
-	//
-	// Unless there are not enough jobs period
+	// viable candidates for receiving work.
 	var availableWorkers, busyWorkers, overloadedWorkers uint64
 	for _, w := range workers {
 		// Skip any worker that is on cooldown or is !GFU.
@@ -319,12 +338,10 @@ func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*work
 			continue
 		}
 
-		// Count what type of worker this is. Available means the queue is
-		// empty, busy means the queue has 1 or 2 items in it, and overloaded
-		// means the queue has 3 or more items in it.
-		//
-		// We are only willing to distribute new work to busy and overloaded
-		// workers.
+		// Count the worker by status. A worker is 'available', 'busy', or
+		// 'overloaded' depending on how many jobs it has in its upload queue.
+		// Only available and busy workers are candidates to receive the
+		// unfinished chunk.
 		if w.unprocessedChunks.Len() < workerUploadBusyThreshold {
 			availableWorkers++
 		} else if w.unprocessedChunks.Len() < workerUploadOverloadedThreshold {
@@ -335,8 +352,8 @@ func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*work
 		}
 		workers[availableWorkers+busyWorkers-1] = w
 	}
-	// Truncate the set of workers to only include the available and the busy
-	// workers.
+	// Truncate the set of workers to only include the available and busy
+	// workers that were added to the front of the queue while counting workers.
 	workers = workers[:availableWorkers+busyWorkers]
 
 	// Distribute the upload depending on the number of pieces and the number of
