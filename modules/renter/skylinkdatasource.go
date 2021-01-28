@@ -19,7 +19,7 @@ var (
 	// source to be used when reading data from it.
 	skylinkDataSourceRequestSize = build.Select(build.Var{
 		Dev:      uint64(1 << 18), // 256 KiB
-		Standard: uint64(1 << 18), // 256 KiB
+		Standard: uint64(1 << 20), // 1 MiB
 		Testing:  uint64(1 << 9),  // 512 B
 	}).(uint64)
 )

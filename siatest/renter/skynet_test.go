@@ -86,6 +86,9 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 	}
 
+	subTests = []siatest.SubTest{{
+		Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
+	}
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
