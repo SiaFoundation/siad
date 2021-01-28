@@ -303,7 +303,7 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) ([]*w
 		return workers, true
 	}
 
-	// NOTE: This could potentially be improved by swithcing it to a channel
+	// NOTE: This could potentially be improved by switching it to a channel
 	// that waits for new chunks to appear or waits for busy/overloaded workers
 	// to report a better state. We opted not to do that here because 25ms is
 	// not a huge penalty to pay and there's a fair amount of complexity
