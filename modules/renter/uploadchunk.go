@@ -30,20 +30,15 @@ type unfinishedUploadChunk struct {
 	fileEntry *filesystem.FileNode
 
 	// Information about the chunk, namely where it exists within the file.
-	//
-	// TODO / NOTE: As we change the file mapper, we're probably going to have
-	// to update these fields. Compatibility shouldn't be an issue because this
-	// struct is not persisted anywhere, it's always built from other
-	// structures.
 	fileRecentlySuccessful bool // indicates if the file the chunk is from had a recent successful repair
 	health                 float64
 	length                 uint64
-	memoryNeeded           uint64 // memory needed in bytes
+	staticMemoryNeeded     uint64 // memory needed in bytes
 	memoryReleased         uint64 // memory that has been returned of memoryNeeded
-	minimumPieces          int    // number of pieces required to recover the file.
+	staticMinimumPieces    int    // number of pieces required to recover the file.
 	offset                 int64  // Offset of the chunk within the file.
 	onDisk                 bool   // indicates if there is a local file accessible on disk
-	piecesNeeded           int    // number of pieces to achieve a 100% complete upload
+	staticPiecesNeeded     int    // number of pieces to achieve a 100% complete upload
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
 
@@ -188,7 +183,7 @@ func (uc *unfinishedUploadChunk) managedNotifyStandbyWorkers() {
 // uploaded successfully.
 func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	// The whole chunk was uploaded successfully.
-	if uc.piecesCompleted == uc.piecesNeeded && uc.piecesRegistered == 0 {
+	if uc.piecesCompleted == uc.staticPiecesNeeded && uc.piecesRegistered == 0 {
 		return true
 	}
 	// We are no longer doing any uploads and we don't have any workers left.
@@ -592,7 +587,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 
 	// Check if the chunk is now available.
-	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
+	if uc.piecesCompleted >= uc.staticMinimumPieces && !uc.staticAvailable() && !uc.released {
 		uc.chunkAvailableTime = time.Now()
 		close(uc.staticAvailableChan)
 	}
@@ -612,10 +607,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	released := uc.released
 	canceled := uc.canceled
 	if chunkComplete && !released {
-		if uc.piecesCompleted >= uc.piecesNeeded {
-			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
+		if uc.piecesCompleted >= uc.staticPiecesNeeded {
+			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.staticPiecesNeeded)
 		} else {
-			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
+			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.staticPiecesNeeded)
 		}
 		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the network")
@@ -692,8 +687,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 	}
 	// Sanity check - all memory should be released if the chunk is complete.
-	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
-		r.log.Critical("No workers remaining, but not all memory released:", workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
+	if chunkComplete && totalMemoryReleased != uc.staticMemoryNeeded {
+		r.log.Critical("No workers remaining, but not all memory released:", workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.staticMemoryNeeded)
 	}
 }
 
@@ -723,9 +718,9 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	uc.mu.Lock()
 	index := uc.id.index
 	stuck := uc.stuck
-	minimumPieces := uc.minimumPieces
+	minimumPieces := uc.staticMinimumPieces
 	piecesCompleted := uc.piecesCompleted
-	piecesNeeded := uc.piecesNeeded
+	piecesNeeded := uc.staticPiecesNeeded
 	stuckRepair := uc.stuckRepair
 	uc.mu.Unlock()
 

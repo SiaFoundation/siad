@@ -546,19 +546,16 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 
 		staticMemoryManager: mm,
 
-		// memoryNeeded has to also include the logical data, and also
+		// staticMemoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
-		//
-		// TODO / NOTE: If we adjust the file to have a flexible encryption
-		// scheme, we'll need to adjust the overhead stuff too.
 		//
 		// TODO: Currently we request memory for all of the pieces as well
 		// as the minimum pieces, but we perhaps don't need to request all
 		// of that.
-		memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
-		minimumPieces: entry.ErasureCode().MinPieces(),
-		piecesNeeded:  entry.ErasureCode().NumPieces(),
-		stuck:         stuck,
+		staticMemoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
+		staticMinimumPieces: entry.ErasureCode().MinPieces(),
+		staticPiecesNeeded:  entry.ErasureCode().NumPieces(),
+		stuck:               stuck,
 
 		physicalChunkData:        make([][]byte, entry.ErasureCode().NumPieces()),
 		staticExpectedPieceRoots: make([]crypto.Hash, entry.ErasureCode().NumPieces()),
@@ -623,7 +620,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
-	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.minimumPieces) / float64(uuc.piecesNeeded-uuc.minimumPieces))
+	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.staticMinimumPieces) / float64(uuc.staticPiecesNeeded-uuc.staticMinimumPieces))
 	return uuc, nil
 }
 
@@ -1315,7 +1312,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
-	if !uuc.staticMemoryManager.Request(context.Background(), uuc.memoryNeeded, uuc.staticPriority) {
+	if !uuc.staticMemoryManager.Request(context.Background(), uuc.staticMemoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memotatiy")
 	}
 	go r.threadedFetchAndRepairChunk(uuc)
@@ -1417,15 +1414,15 @@ func (r *Renter) managedRepairLoop() error {
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
-		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.staticIndex, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
+		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.staticIndex, chunkPath, nextChunk.piecesCompleted, nextChunk.staticPiecesNeeded)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
 		r.staticWorkerPool.mu.RLock()
 		availableWorkers := len(r.staticWorkerPool.workers)
 		r.staticWorkerPool.mu.RUnlock()
-		if availableWorkers < nextChunk.minimumPieces {
-			r.repairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.minimumPieces)
+		if availableWorkers < nextChunk.staticMinimumPieces {
+			r.repairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.staticMinimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
 			if !nextChunk.stuck {
@@ -1433,11 +1430,11 @@ func (r *Renter) managedRepairLoop() error {
 				// minimum redundancy. Check if the allowance has enough hosts
 				// for the chunk to reach minimum redundancy
 				allowance := r.hostContractor.Allowance()
-				if allowance.Hosts < uint64(nextChunk.minimumPieces) {
+				if allowance.Hosts < uint64(nextChunk.staticMinimumPieces) {
 					// There are not enough hosts in the allowance for this
 					// chunk to reach minimum redundancy. Log an error, set the
 					// chunk as stuck, and close the file
-					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.minimumPieces)
+					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.staticMinimumPieces)
 					err := nextChunk.fileEntry.SetStuck(nextChunk.staticIndex, true)
 					if err != nil {
 						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.staticIndex, chunkPath, err)

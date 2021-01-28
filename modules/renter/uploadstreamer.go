@@ -268,7 +268,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		uuc.sourceReader = ss
 
 		// Check if the chunk needs any work or if we can skip it.
-		if uuc.piecesCompleted < uuc.piecesNeeded {
+		if uuc.piecesCompleted < uuc.staticPiecesNeeded {
 			// Add the chunk to the upload heap's repair map.
 			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
 			if err != nil {

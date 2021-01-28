@@ -2,6 +2,7 @@ package renter
 
 import (
 	"sync/atomic"
+	"testing"
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -26,9 +27,8 @@ func newOverloadedWorker() *worker {
 	return w
 }
 
-/*
 // TestManagedCheckForUploadWorkers will probe the various edge cases of
-// managedCheckForUploadWorkers and ensure that all of the logic is running as
+// managedSelectWorkersForUploading and ensure that all of the logic is running as
 // expected.
 func TestManagedCheckForUploadWorkers(t *testing.T) {
 	// Test the blank case. Because there are no workers, the function should
@@ -37,7 +37,7 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	// workers.
 	uc := new(unfinishedUploadChunk)
 	var inputWorkers []*worker
-	workers, finalized := managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized := managedSelectWorkersForUploading(uc, inputWorkers)
 	if workers != nil {
 		t.Fatal("bad")
 	}
@@ -45,17 +45,17 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 		t.Fatal("bad")
 	}
 	// Give the UC some minpieces and needed pieces.
-	uc.piecesNeeded = 1
-	uc.minimumPieces = 1
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	uc.staticPiecesNeeded = 1
+	uc.staticMinimumPieces = 1
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if workers != nil {
 		t.Fatal("bad")
 	}
 	if !finalized {
 		t.Fatal("bad")
 	}
-	uc.piecesNeeded = 2
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	uc.staticPiecesNeeded = 2
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if workers != nil {
 		t.Fatal("bad")
 	}
@@ -68,7 +68,7 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	// 'false', as we want to wait for the overloaded workers to finish
 	// processing their chunks and become available.
 	inputWorkers = append(inputWorkers, newOverloadedWorker())
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if workers != nil {
 		t.Fatal("bad")
 	}
@@ -80,7 +80,7 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	for i := 0; i < workerUploadOverloadedThreshold-workerUploadBusyThreshold; i++ {
 		inputWorkers[0].unprocessedChunks.Pop()
 	}
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if workers != nil {
 		t.Fatal("bad")
 	}
@@ -93,7 +93,7 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	for i := 0; i < workerUploadBusyThreshold; i++ {
 		inputWorkers[0].unprocessedChunks.Pop()
 	}
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if len(workers) != 1 {
 		t.Fatal("bad")
 	}
@@ -103,7 +103,7 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 
 	// Test what happens when there is an overloaded worker that could be busy.
 	inputWorkers = append(inputWorkers, newOverloadedWorker())
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if workers != nil {
 		t.Fatal("bad")
 	}
@@ -117,18 +117,18 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	for i := 0; i < workerUploadOverloadedThreshold-workerUploadBusyThreshold; i++ {
 		inputWorkers[1].unprocessedChunks.Pop()
 	}
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if len(workers) != 2 {
 		t.Fatal("bad", len(workers))
 	}
 	if !finalized {
 		t.Fatal("bad")
 	}
-	// Change the number of piecesNeeded in the chunk to 3, so that we now have
-	// enough available workers to make the chunk available but not enough busy
-	// workers (or workers at all) to make the chunk complete. This should
+	// Change the number of staticPiecesNeeded in the chunk to 3, so that we now
+	// have enough available workers to make the chunk available but not enough
+	// busy workers (or workers at all) to make the chunk complete. This should
 	// succeed.
-	workers, finalized = managedCheckForUploadWorkers(uc, inputWorkers)
+	workers, finalized = managedSelectWorkersForUploading(uc, inputWorkers)
 	if len(workers) != 2 {
 		t.Fatal("bad", len(workers))
 	}
@@ -136,4 +136,3 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 		t.Fatal("bad")
 	}
 }
-*/

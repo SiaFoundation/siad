@@ -145,7 +145,7 @@ func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unf
 	uuc.mu.Lock()
 	uuc.pieceUsage[0] = true // mark first piece as used
 	uuc.mu.Unlock()
-	_ = wt.renter.repairMemoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.piecesNeeded-1), true)
+	_ = wt.renter.repairMemoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.staticPiecesNeeded-1), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc == nil {
 		t.Error("next chunk shouldn't be nil")
@@ -194,12 +194,12 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.piecesNeeded
+	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks = newUploadChunks()
 	wt.mu.Unlock()
 	uuc.mu.Lock()
-	uuc.piecesRegistered = uuc.piecesNeeded
+	uuc.piecesRegistered = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
 	println("request", modules.SectorSize*uint64(pieces))
 	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
@@ -211,7 +211,7 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	if pieceIndex != 0 {
 		t.Error("expected pieceIndex to be 0", pieceIndex)
 	}
-	if uuc.piecesRegistered != uuc.piecesNeeded {
+	if uuc.piecesRegistered != uuc.staticPiecesNeeded {
 		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 1)
 	}
 	if uuc.workersRemaining != 1 {
@@ -255,7 +255,7 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.piecesNeeded
+	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
@@ -317,14 +317,14 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.piecesNeeded
+	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.mu.Unlock()
 	uuc.mu.Lock()
-	uuc.piecesCompleted = uuc.piecesNeeded
+	uuc.piecesCompleted = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
 	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
@@ -380,7 +380,7 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.piecesNeeded
+	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.uploadRecentFailure = time.Now()
 	wt.uploadConsecutiveFailures = math.MaxInt32
@@ -444,7 +444,7 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.piecesNeeded
+	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.uploadRecentFailure = time.Now()
 	wt.uploadConsecutiveFailures = math.MaxInt32
@@ -453,7 +453,7 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.mu.Unlock()
 	uuc.mu.Lock()
-	uuc.piecesCompleted = uuc.piecesNeeded
+	uuc.piecesCompleted = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
 	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
@@ -508,7 +508,7 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.piecesNeeded
+	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
@@ -572,7 +572,7 @@ func TestProcessUploadChunk(t *testing.T) {
 			unusedHosts: map[string]struct{}{
 				wt.staticHostPubKey.String(): {},
 			},
-			piecesNeeded:              pieces,
+			staticPiecesNeeded:        pieces,
 			piecesCompleted:           0,
 			piecesRegistered:          0,
 			pieceUsage:                make([]bool, pieces),
@@ -582,7 +582,7 @@ func TestProcessUploadChunk(t *testing.T) {
 			logicalChunkData:          make([][]byte, pieces),
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
-			memoryNeeded:              uint64(pieces) * modules.SectorSize,
+			staticMemoryNeeded:        uint64(pieces) * modules.SectorSize,
 			staticMemoryManager:       wt.renter.repairMemoryManager,
 		}
 	}

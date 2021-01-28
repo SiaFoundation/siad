@@ -1,8 +1,5 @@
 package renter
 
-// TODO: the 'uc' minPieces, piecesNeeded, and memoryNeeded are all static and
-// should be updated in var name to reflect that.
-
 import (
 	"container/list"
 	"sync"
@@ -152,12 +149,12 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 		return
 	}
 	// Tally up the new buildup caused by this new priority chunk.
-	ucdq.priorityBuildup += lowPriorityMinThroughput * float64(uc.memoryNeeded)
+	ucdq.priorityBuildup += lowPriorityMinThroughput * float64(uc.staticMemoryNeeded)
 
 	// Add items from the low priority lane as long as there is enough buildup
 	// to justify bumping them.
-	for ucdq.lowPriorityLane.Len() > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane.Peek().memoryNeeded) {
-		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane.Peek().memoryNeeded)
+	for ucdq.lowPriorityLane.Len() > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane.Peek().staticMemoryNeeded) {
+		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane.Peek().staticMemoryNeeded)
 		x := ucdq.lowPriorityLane.Pop()
 		ucdq.priorityLane.PushBack(x)
 	}
@@ -185,7 +182,7 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 	for {
 		// Check whether the renter has shut down, return immediately if so.
-		select{
+		select {
 		case <-ucdq.staticRenter.tg.StopChan():
 			return
 		default:
@@ -230,7 +227,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// from the low priority lane, we need to subtract from the priority
 			// buildup as the low priority lane has made progress.
 			ucdq.mu.Lock()
-			ucdq.priorityBuildup -= float64(nextUC.memoryNeeded)
+			ucdq.priorityBuildup -= float64(nextUC.staticMemoryNeeded)
 			if ucdq.priorityBuildup < 0 {
 				ucdq.priorityBuildup = 0
 			}
@@ -363,13 +360,13 @@ func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*work
 	// workers. We want to handle every edge case where there are more pieces
 	// than workers total, which means that waiting is not going to improve the
 	// situation.
-	if availableWorkers >= uint64(uc.minimumPieces) && availableWorkers+busyWorkers >= uint64(uc.piecesNeeded) {
+	if availableWorkers >= uint64(uc.staticMinimumPieces) && availableWorkers+busyWorkers >= uint64(uc.staticPiecesNeeded) {
 		// This is the base success case. We have enough available workers to
 		// get the chunk 'available' on the Sia network ASAP, and we have enough
 		// busy workers to complete the chunk all the way.
 		return workers, true
 	}
-	if availableWorkers >= uint64(uc.minimumPieces) && overloadedWorkers == 0 {
+	if availableWorkers >= uint64(uc.staticMinimumPieces) && overloadedWorkers == 0 {
 		// This is an edge case where there are no overloaded workers, and there
 		// are enough available workers to make the chunk available on the Sia
 		// network. Because there are no overloaded workers, waiting longer is
