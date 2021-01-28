@@ -117,6 +117,7 @@ func dl() {
 	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads
 	downloadStart := time.Now()
 	for _, threads := range threadss {
+		fmt.Printf("64kb downloads on %v threads started\n", threads)
 		timings, err := downloadFileSet(dir64kbPath, exactSize64kb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 64kb files:", err)
@@ -125,6 +126,7 @@ func dl() {
 		fmt.Println(getPercentilesString(timings))
 
 		downloadStart = time.Now()
+		fmt.Printf("1mb downloads on %v threads started\n", threads)
 		timings, err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 1mb files:", err)
@@ -133,6 +135,7 @@ func dl() {
 		fmt.Println(getPercentilesString(timings))
 
 		downloadStart = time.Now()
+		fmt.Printf("4mb downloads on %v threads started\n", threads)
 		timings, err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 4mb files:", err)
@@ -143,6 +146,7 @@ func dl() {
 		fmt.Println(getPercentilesString(timings))
 
 		downloadStart = time.Now()
+		fmt.Printf("10mb downloads on %v threads started\n", threads)
 		timings, err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 10mb files:", err)
