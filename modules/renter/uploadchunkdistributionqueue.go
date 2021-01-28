@@ -18,6 +18,11 @@ import (
 // waiting.
 
 const (
+	// uploadChunkDistirbutionBackoff dictates the amount of time that the
+	// distirbutor will sleep after determining that a chunk is not ready to be
+	// distributed because too many workers are busy.
+	uploadChunkDistributionBackoff = time.Millisecond * 25
+
 	// lowPriorityMinThroughput is the minimum throughput as a ratio that low
 	// priority traffic will have when waiting in the queue. For example, a min
 	// throughput of 0.1 means that for every 1 GB of high priority traffic that
@@ -308,7 +313,7 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) ([]*w
 	// to report a better state. We opted not to do that here because 25ms is
 	// not a huge penalty to pay and there's a fair amount of complexity
 	// involved in switching to a better solution.
-	if !r.tg.Sleep(time.Millisecond * 25) {
+	if !r.tg.Sleep(uploadChunkDistributionBackoff) {
 		return nil, false
 	}
 	return nil, false
