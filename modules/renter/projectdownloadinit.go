@@ -493,7 +493,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if fw == nil {
 					continue
 				}
-				fmt.Printf("launching initial worker %v after %vms with complete time %v\n", fw.worker.staticHostPubKeyStr, time.Since(start).Milliseconds(), fw.completeTime)
+				fmt.Printf("launching initial worker %v after %vms for index%v\n", fw.worker.staticHostPubKeyStr[64:], time.Since(start).Milliseconds(), i)
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
 			return nil

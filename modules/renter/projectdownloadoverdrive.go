@@ -203,7 +203,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		}
 
 		// If there was a worker found, launch the worker.
-		fmt.Printf("launching overdrive worker %v after %vretries\n", worker.staticHostPubKeyStr, retry)
+		fmt.Printf("launching overdrive worker %v for piece %v (attempt %v) \n", worker.staticHostPubKeyStr[64:], pieceIndex, retry)
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
 			// If we were unable to successfully launch the worker, we retry
