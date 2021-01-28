@@ -13,6 +13,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -280,6 +281,7 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 	select {
 	case <-ds.dataAvailable:
 	case <-ctx.Done():
+		fmt.Println("DS TIMEOUT")
 		return nil, errors.New("could not get data from data section, context timed out")
 	}
 	return ds.externData, ds.externErr

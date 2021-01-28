@@ -204,7 +204,6 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 
 		// If there was a worker found, launch the worker.
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
-		fmt.Printf("launched overdrive worker %v for piece %v (attempt %v) (succces: %v)\n", worker.staticHostPubKeyStr[64:], pieceIndex, retry, success)
 		if !success {
 			// If we were unable to successfully launch the worker, we retry
 			// after a certain delay. This to prevent spamming the readqueue
@@ -235,7 +234,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 		for _, pieceDownload := range piece {
 			if !pieceDownload.launched || pieceDownload.downloadErr != nil {
 				if pieceDownload.downloadErr != nil {
-					fmt.Println("piece download err", pieceDownload.downloadErr)
+					fmt.Println("piece download err", pieceDownload.downloadErr, pieceDownload.worker.staticHostPubKeyStr)
 				}
 				continue // skip
 			}
