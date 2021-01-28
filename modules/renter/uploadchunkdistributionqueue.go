@@ -279,9 +279,6 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) bool
 			jobsDistributed++
 		}
 	}
-	// Signal to the thread that scheduled the upload that this chunk has made
-	// it through the queue and it's okay to move onto the next chunk.
-	close(uc.staticWorkDistributedChan)
 
 	uc.managedUpdateDistributionTime()
 	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)

@@ -78,7 +78,6 @@ type unfinishedUploadChunk struct {
 	chunkCompleteTime        time.Time
 
 	// Channels used to signal the progress of the chunk.
-	staticWorkDistributedChan chan struct{} // used to signal that the chunk has been distributed to workers.
 	staticAvailableChan       chan struct{} // used to signal that the chunk is available on the Sia network. Error needs to be checked.
 	staticUploadCompletedChan chan struct{} // used to signal that the chunk has finished uploading to the Sia network. Error needs to be checked.
 
@@ -332,7 +331,6 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	err := r.tg.Add()
 	if err != nil {
-		close(chunk.staticWorkDistributedChan)
 		return
 	}
 	defer r.tg.Done()
@@ -358,7 +356,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		// distributed to workers, therefore set workersRemaining equal to zero.
 		// The erasure coding memory has not been released yet, be sure to
 		// release that as well.
-		close(chunk.staticWorkDistributedChan)
 		chunk.mu.Lock()
 		chunk.logicalChunkData = nil
 		chunk.workersRemaining = 0
@@ -396,7 +393,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// do elements in our piece usage.
 	if len(chunk.physicalChunkData) < len(chunk.pieceUsage) {
 		r.log.Critical("not enough physical pieces to match the upload settings of the file")
-		close(chunk.staticWorkDistributedChan)
 		return
 	}
 
