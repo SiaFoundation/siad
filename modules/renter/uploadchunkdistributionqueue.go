@@ -1,9 +1,5 @@
 package renter
 
-// TODO: We can potentially re-write the queue so that we're continually
-// checking each time a distribution fails whether there's a new chunk we should
-// be grabbing from priority instead. Might be a little complicated to do that.
-
 import (
 	"container/list"
 	"sync"
@@ -163,6 +159,13 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 // don't go negative.
 func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 	for {
+		// Check whether the renter has shut down, return immediately if so.
+		select{
+		case <-ucdq.staticRenter.tg.StopChan():
+			return
+		default:
+		}
+
 		// Extract the next item in the queue.
 		ucdq.mu.Lock()
 		// First check for the exit condition - the queue is empty. While
@@ -175,27 +178,61 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		// At least one uc exists in the queue. Prefer to grab the priority
 		// one, if there is no priority one grab the low priority one.
 		var nextUC *unfinishedUploadChunk
+		var priority bool
 		if ucdq.priorityLane.Len() > 0 {
 			nextUC = ucdq.priorityLane.Pop()
+			priority = true
 		} else {
 			nextUC = ucdq.lowPriorityLane.Pop()
-			ucdq.priorityBuildup -= float64(nextUC.memoryNeeded)
-			if ucdq.priorityBuildup < 0 {
-				ucdq.priorityBuildup = 0
-			}
+			priority = false
 		}
 		ucdq.mu.Unlock()
 
 		// While not holding the lock but still blocking, pass the chunk off to
-		// the thread that will distribute the chunk to workers.
-		ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
+		// the thread that will distribute the chunk to workers. This call can
+		// fail. If the call failed, the chunk should be re-inserted into the
+		// front of the low prior heap IFF the chunk was a low prio chunk.
+		memoryUsed := nextUC.memoryNeeded // memory needed may change after distributing, not sure. TODO: check
+		distributed := ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
+		if distributed && priority {
+			// If the chunk was distributed successfully and we pulled the chunk
+			// from the priority lane, there is nothing more to do.
+			continue
+		}
+		if distributed && !priority {
+			// If the chunk was distributed successfully and we pulled the chunk
+			// from the low priority lane, we need to subtract from the priority
+			// buildup as the low priority lane has made progress.
+			ucdq.mu.Lock()
+			ucdq.priorityBuildup -= float64(memoryUsed)
+			if ucdq.priorityBuildup < 0 {
+				ucdq.priorityBuildup = 0
+			}
+			ucdq.mu.Unlock()
+			continue
+		}
+		if !distributed && priority {
+			// If the chunk was not distributed, we need to push it back to the
+			// front of the priority lane and then cycle again.
+			ucdq.priorityLane.PushFront(nextUC)
+			continue
+		}
+		if !distributed && !priority {
+			// If the chunk was not distributed, push it back into the front of
+			// the low priority lane. The next iteration may grab a high
+			// priority chunk if a new high prio chunk has appeared while we
+			// were checking on this chunk.
+			ucdq.lowPriorityLane.PushFront(nextUC)
+			continue
+		}
+		panic("missing case, this code should not be reachable")
 	}
 }
 
 // managedDistributeChunkToWorkers is a function which will block until workers
 // are ready to perform upload jobs, and then will distribute the input chunk to
 // the workers
-func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
+func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) bool {
 	// Grab the best set of workers to receive this chunk. This function may
 	// take a significant amount of time to return, as it will wait until there
 	// are enough workers available to accept the chunk. This waiting pressure
@@ -203,7 +240,10 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// the time, but it also significantly improves latency for high priority
 	// chunks because the distribution queue can ensure that priority chunks
 	// always get to the front of the worker line.
-	workers := r.managedFindBestUploadWorkerSet(uc)
+	workers, finalized := r.managedFindBestUploadWorkerSet(uc)
+	if !finalized {
+		return false
+	}
 
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. Only count the worker if the worker's upload queue
@@ -224,30 +264,32 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// Cleanup is required after distribution to ensure that memory is released
 	// for any pieces which don't have a worker.
 	r.managedCleanUpUploadChunk(uc)
+	return true
 }
 
 // managedFindBestUploadWorkerSet will look through the set of available workers
 // and hand-pick the workers that should be used for the upload chunk. It may
 // also choose to wait until more workers are available, which means this
 // function can potentially block for long periods of time.
-func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*worker {
-	for {
-		// Grab the set of workers to upload. If 'finalized' is false, it means
-		// that all of the good workers are already busy, and we need to wait
-		// before distributing the chunk.
-		workers, finalized := managedSelectWorkersForUploading(uc, r.staticWorkerPool.callWorkers())
-		if finalized {
-			return workers
-		}
-
-		// TODO: Use a channel instead or some sort of counter as workers finish
-		// so that we know when to scan again, instead of doing this sleep
-		// thing. The sleep thing will spin more than it needs to and also be
-		// late sometimes.
-		if !r.tg.Sleep(time.Millisecond * 25) {
-			return nil
-		}
+func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) ([]*worker, bool) {
+	// Grab the set of workers to upload. If 'finalized' is false, it means
+	// that all of the good workers are already busy, and we need to wait
+	// before distributing the chunk.
+	workers, finalized := managedSelectWorkersForUploading(uc, r.staticWorkerPool.callWorkers())
+	if finalized {
+		return workers, true
 	}
+
+	// TODO: Use a channel instead or some sort of counter as workers finish so
+	// that we know when to scan again, instead of doing this sleep thing. The
+	// sleep thing will spin more than it needs to and also be late sometimes.
+	// When switching to a channel, it should wake on either a new priority
+	// chunk (if the current chunk is low prio) or upon enough workers reaching
+	// a better state.
+	if !r.tg.Sleep(time.Millisecond * 25) {
+		return nil, false
+	}
+	return nil, false
 }
 
 // managedSelectWorkersForUploading is a function that will select workers to be
