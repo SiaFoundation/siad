@@ -1968,6 +1968,9 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 	defer cmt.panicClose()
 
+	// Store the path of the overflow file for later.
+	overflowFilePath := filepath.Join(cmt.cm.persistDir, sectorOverflowFile)
+
 	// Add a storage folder to the contract manager tester.
 	storageFolderDir := filepath.Join(cmt.persistDir, "storageFolderOne")
 	// Create the storage folder dir.
@@ -2037,18 +2040,23 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 
 	// The overflow should be registered.
-	overflow := cmt.cm.sectorLocationsCountOverflow[id]
+	overflow, exist := cmt.cm.sectorLocationsCountOverflow.Overflow(id)
+	if !exist {
+		t.Fatal("overflow should exist")
+	}
 	if overflow != 1 {
 		t.Fatal("wrong overflow", overflow)
 	}
 
 	// Load the overflow file and confirm that the change was persisted.
-	loaded := make(map[sectorID]uint64)
-	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	loaded, err := newOverflowMap(overflowFilePath, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loadedOverflow := loaded[id]
+	loadedOverflow, exists := loaded.Overflow(id)
+	if !exists {
+		t.Fatal("overflow wasn't loaded")
+	}
 	if loadedOverflow != 1 {
 		t.Fatal("wrong overflow", loadedOverflow)
 	}
@@ -2069,26 +2077,25 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 		t.Fatal("wrong count after removing sector")
 	}
 
-	// The overflow map should be cleaned up.
-	_, exists := cmt.cm.sectorLocationsCountOverflow[id]
-	if exists {
-		t.Fatal("overflow entry should be cleared")
+	// The overflow map should be 0.
+	loadedOverflow, exists = cmt.cm.sectorLocationsCountOverflow.Overflow(id)
+	if !exists || loadedOverflow != 0 {
+		t.Fatal("overflow entry should be 0", loadedOverflow)
 	}
 
 	// Load the overflow file and confirm that the change was persisted.
-	loaded = make(map[sectorID]uint64)
-	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	loaded, err = newOverflowMap(overflowFilePath, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, exists = loaded[id]
-	if exists {
-		t.Fatal("overflow entry should be cleared")
+	loadedOverflow, exists = loaded.Overflow(id)
+	if !exists || loadedOverflow != 0 {
+		t.Fatal("overflow entry should be 0", loadedOverflow)
 	}
 
 	// Create multiple threads, all adding sectors at the same time.
-	nWrites := 10
-	nThreads := 10
+	nWrites := 5
+	nThreads := 5
 	var wg sync.WaitGroup
 	for i := 0; i < nThreads; i++ {
 		wg.Add(1)
@@ -2117,12 +2124,14 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 
 	// Load the overflow file and confirm that the change was persisted.
-	loaded = make(map[sectorID]uint64)
-	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	loaded, err = newOverflowMap(overflowFilePath, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loadedOverflow = loaded[id]
+	loadedOverflow, exists = loaded.Overflow(id)
+	if !exists {
+		t.Fatal("overflow wasn't loaded")
+	}
 	if loadedOverflow != uint64(nWrites*nThreads) {
 		t.Fatal("wrong overflow", loadedOverflow)
 	}
@@ -2154,19 +2163,18 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 
 	// The overflow map should be cleaned up.
-	_, exists = cmt.cm.sectorLocationsCountOverflow[id]
-	if exists {
-		t.Fatal("overflow entry should be cleared")
+	loadedOverflow, exists = cmt.cm.sectorLocationsCountOverflow.Overflow(id)
+	if !exists || loadedOverflow != 0 {
+		t.Fatal("overflow entry should be 0", loadedOverflow)
 	}
 
 	// Load the overflow file and confirm that the change was persisted.
-	loaded = make(map[sectorID]uint64)
-	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	loaded, err = newOverflowMap(overflowFilePath, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, exists = loaded[id]
-	if exists {
-		t.Fatal("overflow entry should be cleared")
+	loadedOverflow, exists = loaded.Overflow(id)
+	if !exists || loadedOverflow != 0 {
+		t.Fatal("overflow entry should be 0", loadedOverflow)
 	}
 }

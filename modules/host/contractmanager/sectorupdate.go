@@ -392,28 +392,15 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 		return nil
 	}
 
-	wal.cm.sectorLocationsCountOverflowMu.Lock()
-	defer wal.cm.sectorLocationsCountOverflowMu.Unlock()
-
 	// Check the existing overflow for potential recovery.
-	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
+	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow.Overflow(su.ID)
 
 	// Only persist if there is a value > 0 that we haven't persisted yet, or if
 	// the persisted value is outdated.
 	if (!exist && su.Count > 0) || (existingOverflow != overflow) {
-		if overflow == 0 {
-			delete(wal.cm.sectorLocationsCountOverflow, su.ID)
-		} else {
-			wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
-		}
-		err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
+		err = wal.cm.sectorLocationsCountOverflow.SetOverflow(su.ID, overflow)
 		if err != nil {
-			if !exist {
-				delete(wal.cm.sectorLocationsCountOverflow, su.ID)
-			} else {
-				wal.cm.sectorLocationsCountOverflow[su.ID] = existingOverflow
-			}
-			err = errors.AddContext(err, "ERROR: unable to write sector overflow metadata when adding sector")
+			err = errors.AddContext(err, "ERROR: unable to set overflow")
 			wal.cm.log.Printf(err.Error())
 			atomic.AddUint64(&sf.atomicFailedWrites, 1)
 			return err

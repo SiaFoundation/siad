@@ -133,7 +133,7 @@ func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 
 		// Get the potential overflow and add it.
 		count64 := uint64(count)
-		overflow := cm.sectorLocationsCountOverflow[id]
+		overflow, _ := cm.sectorLocationsCountOverflow.Overflow(id)
 		count64 += overflow
 
 		// Create the location.

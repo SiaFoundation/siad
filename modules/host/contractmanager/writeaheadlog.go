@@ -92,7 +92,6 @@ type (
 		// guaranteed to have completed.
 		fileSettingsTmp    modules.File
 		fileWALTmp         modules.File
-		overflowFilePath   string
 		syncChan           chan struct{}
 		uncommittedChanges []stateChange
 		committedSettings  savedSettings

@@ -48,7 +48,7 @@ const (
 
 	// sectorOverflowFile is the path to the file used if a virtual sector's
 	// counter becomes greater than the max value of a uint16.
-	sectorOverflowFile = "sector_overflow.json"
+	sectorOverflowFile = "sector_overflow.dat"
 )
 
 const (
