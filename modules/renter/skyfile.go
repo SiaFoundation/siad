@@ -597,9 +597,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 	// Create the context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
+		ctx, _ = context.WithTimeout(r.tg.StopCtx(), timeout)
 	}
 
 	go func(start time.Time) {

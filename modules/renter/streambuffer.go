@@ -279,10 +279,10 @@ func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id modules.
 // then return the data. The data is not safe to modify.
 func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 	select {
+	case <-ds.dataAvailable:
 	case <-ctx.Done():
 		fmt.Println("oh no, we timed out")
 		return nil, errors.New("could not get data from data section, context timed out")
-	case <-ds.dataAvailable:
 	}
 	return ds.externData, ds.externErr
 }
