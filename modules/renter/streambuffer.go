@@ -13,6 +13,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -536,7 +537,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
-	go func() {
+	go func(start time.Time) {
 		defer close(ds.dataAvailable)
 
 		// Ensure that the streambuffer has not closed.
@@ -552,12 +553,13 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 
 		select {
 		case response := <-responseChan:
+			fmt.Printf("received datasection %v fetchsize %v err %v after %vms\n", index, fetchSize, response.staticErr, time.Since(start).Milliseconds())
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
 			ds.externData = response.staticData
 		case <-sb.tg.StopChan():
 			ds.externErr = errors.New("failed to read response from ReadStream")
 		}
-	}()
+	}(time.Now())
 	return ds
 }
 
