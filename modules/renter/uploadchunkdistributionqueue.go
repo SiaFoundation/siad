@@ -102,9 +102,10 @@ func (u *ucdqFifo) Pop() *unfinishedUploadChunk {
 	return u.List.Remove(mr).(*unfinishedUploadChunk)
 }
 
-// addUC will add an unfinished upload chunk to the queue. The chunk will be put
-// into a lane based on whether the memory was requested with priority or not.
-func (ucdq *uploadChunkDistributionQueue) callAddUC(uc *unfinishedUploadChunk) {
+// callAddUploadChunk will add an unfinished upload chunk to the queue. The
+// chunk will be put into a lane based on whether the memory was requested with
+// priority or not.
+func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploadChunk) {
 	// We need to hold a lock for the whole process of adding a UC.
 	ucdq.mu.Lock()
 	defer ucdq.mu.Unlock()
@@ -218,23 +219,8 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// it through the queue and it's okay to move onto the next chunk.
 	close(uc.staticWorkDistributedChan)
 
-	// TODO: This is debugging only. Scan all the pieces and see how many are
-	// empty.
-	emptyPieces := 0
-	for _, pcd := range uc.physicalChunkData {
-		empty := true
-		for _, b := range pcd {
-			if b != 0 {
-				empty = false
-			}
-		}
-		if empty {
-			emptyPieces++
-		}
-	}
-
 	uc.managedUpdateDistributionTime()
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers. Chunk has %v out of %v empty pieces.", uc.staticIndex, uc.staticSiaPath, jobsDistributed, emptyPieces, len(uc.physicalChunkData))
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
 	// Cleanup is required after distribution to ensure that memory is released
 	// for any pieces which don't have a worker.
 	r.managedCleanUpUploadChunk(uc)

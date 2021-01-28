@@ -403,7 +403,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 
 	// Distribute the chunk to the workers.
-	r.staticUploadChunkDistributionQueue.callAddUC(chunk)
+	r.staticUploadChunkDistributionQueue.callAddUploadChunk(chunk)
 }
 
 // staticEncryptAndCheckIntegrity will run through the pieces that are

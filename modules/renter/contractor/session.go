@@ -170,6 +170,8 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 	// Perform the upload.
 	_, sectorRoot, err := hs.session.Append(data)
 	if err != nil {
+		// Return the sector root so that it can be logged and used for
+		// debugging in the event of an error.
 		return sectorRoot, err
 	}
 	return sectorRoot, nil
