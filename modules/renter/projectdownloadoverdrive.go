@@ -250,7 +250,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 	// number of workers that need to launch in order to complete the download.
 	workersWanted := pdc.workerSet.staticErasureCoder.MinPieces()
 	if numLWF < workersWanted {
-		fmt.Println("workers wanted")
+		fmt.Println("workers wanted", numLWF, workersWanted, latestReturn)
 		return workersWanted - numLWF, latestReturn
 	}
 
