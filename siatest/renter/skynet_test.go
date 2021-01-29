@@ -86,9 +86,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 	}
 
-	subTests = []siatest.SubTest{{
-		Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-	}
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
@@ -420,14 +417,14 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	var skyfileLayout modules.SkyfileLayout
 	skyfileLayout.Decode(baseSector)
+
+	// Assert the skyfile layout's data and parity pieces matches the defaults
 	if int(skyfileLayout.FanoutDataPieces) != modules.RenterDefaultDataPieces {
 		t.Fatal("unexpected number of data pieces")
 	}
 	if int(skyfileLayout.FanoutParityPieces) != modules.RenterDefaultParityPieces {
 		t.Fatal("unexpected number of parity pieces")
 	}
-	t.Log(skyfileLayout.FanoutDataPieces)
-	t.Log(skyfileLayout.FanoutParityPieces)
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the skylink referenced.
