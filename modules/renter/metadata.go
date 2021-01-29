@@ -354,7 +354,7 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 	if r.isFileNodeBlocked(sf) {
 		// Delete the file
 		r.log.Println("Deleting blocked fileNode at:", siaPath)
-		return bubbledSiaFileMetadata{}, errors.Compose(r.DeleteFile(siaPath), ErrSkylinkBlocked)
+		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
 	}
 
 	// Calculate file health

@@ -2278,6 +2278,18 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Adding links to the block list does not immediately delete the files, but
+	// the health/bubble loops should eventually delete the files.
+	//
+	// First verify the test assumptions and confirm that the files still exist
+	// in the renter.
+	for _, siaPath := range blockedSiaPaths {
+		_, err = r.RenterFileRootGet(siaPath)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
 	// Add both skylinks back to the blocklist
 	remove = []string{}
 	if isHash {
@@ -2295,18 +2307,6 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	}
 	if len(sbg.Blocklist) != 2 {
 		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 2, len(sbg.Blocklist))
-	}
-
-	// Adding links to the block list does not immediately delete the files, but
-	// the health/bubble loops should eventually delete the files.
-	//
-	// First verify the test assumptions and confirm that the files still exist
-	// in the renter.
-	for _, siaPath := range blockedSiaPaths {
-		_, err = r.RenterFileRootGet(siaPath)
-		if err != nil {
-			t.Error(err)
-		}
 	}
 
 	// Wait until all the files have been deleted
