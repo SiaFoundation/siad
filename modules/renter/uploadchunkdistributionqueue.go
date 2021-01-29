@@ -232,9 +232,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// to report a better state. We opted not to do that here because 25ms is
 			// not a huge penalty to pay and there's a fair amount of complexity
 			// involved in switching to a better solution.
-			if !r.tg.Sleep(uploadChunkDistributionBackoff) {
-				return nil, false
-			}
+			r.tg.Sleep(uploadChunkDistributionBackoff)
 		}
 		if distributed && priority {
 			// If the chunk was distributed successfully and we pulled the chunk
