@@ -144,7 +144,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
 				worker: resp.worker,
 			})
-			fmt.Printf("pdc %v adding avail piece %v for worker %v\n", hex.EncodeToString(pdc.id[:]), pieceIndex, resp.worker.staticHostPubKeyStr[64:])
+			fmt.Printf("%v | adding avail piece %v for worker %v\n", hex.EncodeToString(pdc.id[:]), pieceIndex, resp.worker.staticHostPubKeyStr[64:])
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
@@ -332,7 +332,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
-	fmt.Printf("launched RJ on worker %v success %v\n", w.staticHostPubKeyStr, added)
+	fmt.Printf("%v | launched RJ on worker %v success %v\n", hex.EncodeToString(pdc.id[:]), w.staticHostPubKeyStr[64:], added)
 
 	// Update the status of the piece that was launched. 'launched' should be
 	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
