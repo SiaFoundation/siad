@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -232,21 +233,17 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // timeout. This can be optimized to always create the data source when it was
 // requested, but we should only do so after gathering some real world feedback
 // that indicates we would benefit from this.
-func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
-	// Create the context for the data source - a child of the renter
-	// threadgroup but otherwise independent. This is very important as the
-	// datasource is cached and outlives the request scope.
-	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
-
-	// If this function exits with an error we need to call cancel, due to the
-	// many returns here we use a boolean that cancels by default, only if we
-	// reach the very end of this function we do not call cancel.
-	cancel := true
-	defer func() {
-		if cancel {
-			cancelFunc()
-		}
-	}()
+func (r *Renter) skylinkDataSource(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (streamBufferDataSource, error) {
+	// Create the context using the given timeout, this timeout should only be
+	// applicable to downloading the base sector because the data source might
+	// outlive the request.
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
 
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
@@ -280,36 +277,43 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
 
+	// Create the context for the data source - a child of the renter
+	// threadgroup but otherwise independent.
+	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
+
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher
 	if len(fanoutBytes) > 0 {
 		// Derive the fanout key
 		fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
+			cancelFunc()
 			return nil, errors.AddContext(err, "unable to derive encryption key")
 		}
 
 		// Create the erasure coder
 		ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
 		if err != nil {
+			cancelFunc()
 			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
 		}
 
 		// Create a PCWS for every chunk
 		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
 		if err != nil {
+			cancelFunc()
 			return nil, errors.AddContext(err, "error parsing skyfile fanout")
 		}
 		for i, chunk := range fanoutChunks {
 			pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
 			if err != nil {
+				cancelFunc()
 				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 			}
 			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
 		}
 	}
 
-	cancel = false
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
 		staticLayout:   layout,
