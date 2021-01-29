@@ -86,7 +86,6 @@ func TestSkynet(t *testing.T) {
 		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
-		
 	}
 
 	// Run tests
