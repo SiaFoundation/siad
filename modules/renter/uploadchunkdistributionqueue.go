@@ -222,11 +222,11 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// from the priority lane, there is nothing more to do.
 			continue
 		}
-		ucdq.mu.Lock()
 		if distributed && !priority {
 			// If the chunk was distributed successfully and we pulled the chunk
 			// from the low priority lane, we need to subtract from the priority
 			// buildup as the low priority lane has made progress.
+			ucdq.mu.Lock()
 			ucdq.priorityBuildup -= float64(nextUC.staticMemoryNeeded)
 			if ucdq.priorityBuildup < 0 {
 				ucdq.priorityBuildup = 0
@@ -237,6 +237,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		if !distributed && priority {
 			// If the chunk was not distributed, we need to push it back to the
 			// front of the priority lane and then cycle again.
+			ucdq.mu.Lock()
 			ucdq.priorityLane.PushFront(nextUC)
 			ucdq.mu.Unlock()
 			continue
@@ -246,6 +247,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// the low priority lane. The next iteration may grab a high
 			// priority chunk if a new high prio chunk has appeared while we
 			// were checking on this chunk.
+			ucdq.mu.Lock()
 			ucdq.lowPriorityLane.PushFront(nextUC)
 			ucdq.mu.Unlock()
 			continue

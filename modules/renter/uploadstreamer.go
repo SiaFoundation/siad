@@ -320,10 +320,14 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 	// Wait for all chunks to become available.
 	for _, chunk := range chunks {
-		<-chunk.staticAvailableChan
-		chunk.mu.Lock()
-		err := chunk.err
-		chunk.mu.Unlock()
+		select {
+		case <-r.tg.StopChan():
+			err = errors.New("upload timed out, renter has shutdown")
+		case <-chunk.staticAvailableChan:
+			chunk.mu.Lock()
+			err = chunk.err
+			chunk.mu.Unlock()
+		}
 		if err != nil {
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
