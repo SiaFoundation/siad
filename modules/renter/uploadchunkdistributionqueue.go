@@ -40,14 +40,14 @@ const (
 	// data that a node can maintain at the cost of latency for new uploads.
 	lowPriorityMinThroughput = 0.1
 
-	// workerBusyThreshold is the number of jobs a worker needs to have to be
-	// considered busy. A threshold of 1 for example means the worker is 'busy'
-	// if it has 1 upload job or more in its queue.
+	// workerUploadBusyThreshold is the number of jobs a worker needs to have to
+	// be considered busy. A threshold of 1 for example means the worker is
+	// 'busy' if it has 1 upload job or more in its queue.
 	workerUploadBusyThreshold = 1
 
-	// workerOverloadedThreshold is the number of jobs a worker needs to have to
-	// be considered overloaded. A threshold of 3 for example means the worker
-	// is 'overloaded' if there are 3 jobs or more in its queue.
+	// workerUploadOverloadedThreshold is the number of jobs a worker needs to
+	// have to be considered overloaded. A threshold of 3 for example means the
+	// worker is 'overloaded' if there are 3 jobs or more in its queue.
 	workerUploadOverloadedThreshold = 3
 )
 
