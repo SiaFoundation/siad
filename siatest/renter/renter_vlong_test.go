@@ -434,17 +434,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	// Run the test for a set amount of time.
 	timer := time.NewTimer(2 * time.Minute)
 	stop := make(chan struct{})
-	errChan := make(chan error)
 	go func() {
-		var err error
-		select {
-		case <-timer.C:
-		case err = <-errChan:
-		}
+		<-timer.C
 		close(stop)
-		if err != nil {
-			t.Fatal(err)
-		}
 	}()
 	wg := new(sync.WaitGroup)
 	r := tg.Renters()[0]
@@ -497,13 +489,13 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to get Dirs", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to get Dirs", threadName)))
 				return
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			sp, err := dir.Join(persist.RandomSuffix())
 			if err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName)))
 				return
 			}
 			// 30% chance for the file to be a 0-byte file.
@@ -514,17 +506,17 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Upload the file
 			lf, err := r.FilesDir().NewFile(size)
 			if err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
 				return
 			}
 			rf, err := r.Upload(lf, sp, dataPieces, parityPieces, false)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName)))
 				return
 			}
 			err = r.WaitForUploadHealth(rf)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error with upload health", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error with upload health", threadName)))
 				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(1000))*time.Millisecond + time.Second) // between 1s and 2s
@@ -544,7 +536,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Get existing files and choose one randomly.
 			files, err := r.Files(false)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName)))
 				return
 			}
 			// If there are no files we try again later.
@@ -561,17 +553,17 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			lf, err := r.FilesDir().NewFile(size)
 			if err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
 				return
 			}
 			rf, err := r.Upload(lf, sp, dataPieces, parityPieces, true)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName)))
 				return
 			}
 			err = r.WaitForUploadHealth(rf)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error with upload health", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error with upload health", threadName)))
 				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
@@ -592,7 +584,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Get existing files and choose one randomly.
 			files, err := r.Files(false)
 			if err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName)))
 				return
 			}
 			// If there are no files we try again later.
@@ -603,19 +595,19 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			err = r.RenterRenamePost(sp, modules.RandomSiaPath(), false)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error renaming file", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error renaming file", threadName)))
 				return
 			}
 			// 50% chance to replace renamed file with new one.
 			if fastrand.Intn(2) == 0 {
 				lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
 				if err != nil {
-					errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName))
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
 					return
 				}
 				err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
 				if isErr(err) {
-					errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName))
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName)))
 					return
 				}
 			}
@@ -636,7 +628,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Get existing files and choose one randomly.
 			files, err := r.Files(false)
 			if err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName)))
 				return
 			}
 			// If there are no files we try again later.
@@ -647,7 +639,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			err = r.RenterFileDeletePost(sp)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error deleting file", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error deleting file", threadName)))
 				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(5000))*time.Millisecond + time.Second) // between 5s and 6s
@@ -670,18 +662,18 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error getting dirs", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting dirs", threadName)))
 				return
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			sp, err := dir.Join(persist.RandomSuffix())
 			if err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName)))
 				return
 			}
 			err = r.RenterDirCreatePost(sp)
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error creating dir", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error creating dir", threadName)))
 				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
@@ -705,7 +697,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			if isErr(err) {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to get Dirs", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to get Dirs", threadName)))
 				return
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
@@ -717,7 +709,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				// 50% chance to delete and recreate the directory.
 				err = r.RenterDirDeletePost(dir)
 				if isErr(err) {
-					errChan <- errors.AddContext(err, fmt.Sprintf("%v: unable to delete Dir", threadName))
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to delete Dir", threadName)))
 					return
 				}
 				err := r.RenterDirCreatePost(dir)
@@ -725,7 +717,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				// decided that `siadir.New` returns a potentially existing
 				// directory instead.
 				if isErr(err) {
-					errChan <- errors.AddContext(err, fmt.Sprintf("%v: error creating dir", threadName))
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: error creating dir", threadName)))
 					return
 				}
 			} else {
@@ -734,7 +726,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				newParent := dirs[fastrand.Intn(len(dirs))]
 				newDir, err := newParent.Join(persist.RandomSuffix())
 				if err != nil {
-					errChan <- errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName))
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName)))
 					return
 				}
 				if strings.HasPrefix(newDir.String(), dir.String()) {
@@ -742,7 +734,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				}
 				err = r.RenterDirRenamePost(dir, newDir)
 				if isErr(err) {
-					errChan <- errors.AddContext(err, fmt.Sprintf("%v: error renaming dir", threadName))
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: error renaming dir", threadName)))
 					return
 				}
 			}
@@ -769,7 +761,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Choose random host.
 			host := hosts[fastrand.Intn(len(hosts))]
 			if err := tg.RemoveNode(host); err != nil {
-				errChan <- errors.AddContext(err, fmt.Sprintf("%v: error removing host", threadName))
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error removing host", threadName)))
 				return
 			}
 		}
