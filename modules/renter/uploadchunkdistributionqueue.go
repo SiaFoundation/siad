@@ -222,7 +222,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		// fail. If the call failed, the chunk should be re-inserted into the
 		// front of the low prior heap IFF the chunk was a low prio chunk.
 		distributed := ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
-		// If the chunk was not distributed, we want to block breifly to give
+		// If the chunk was not distributed, we want to block briefly to give
 		// the workers time to process the items in their queue. The only reason
 		// that a chunk will not be distributed is because workers have too much
 		// work in their queue already.
@@ -232,7 +232,7 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// to report a better state. We opted not to do that here because 25ms is
 			// not a huge penalty to pay and there's a fair amount of complexity
 			// involved in switching to a better solution.
-			r.tg.Sleep(uploadChunkDistributionBackoff)
+			ucdq.staticRenter.tg.Sleep(uploadChunkDistributionBackoff)
 		}
 		if distributed && priority {
 			// If the chunk was distributed successfully and we pulled the chunk
