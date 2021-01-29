@@ -137,6 +137,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
+		fmt.Println("resp piece indices", resp.pieceIndices, pdc.workersConsideredIndex)
 		for _, pieceIndex := range resp.pieceIndices {
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
 				worker: resp.worker,
