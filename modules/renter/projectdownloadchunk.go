@@ -62,10 +62,6 @@ type projectDownloadChunk struct {
 	pieceLength uint64
 	pieceOffset uint64
 
-	// skipLength is the amount of bytes we want to skip when recovering data
-	// from the erasure coder
-	skipLength uint64
-
 	// pricePerMS is the amount of money we are willing to spend on faster
 	// workers. If a certain set of workers is 100ms faster, but that exceeds
 	// the pricePerMS we are willing to pay for it, we won't use that faster
@@ -227,15 +223,19 @@ func (pdc *projectDownloadChunk) fail(err error) {
 // and then send the result down the response channel. If there is an error
 // during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
+	// Determine the amount of bytes the EC will need to skip from the recovered
+	// data when returning the data.
+	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
+
 	// Create a skipwriter that ensures we're recovering at the offset
 	buf := bytes.NewBuffer(nil)
 	skipWriter := &skipWriter{
 		writer: buf,
-		skip:   int(pdc.skipLength),
+		skip:   int(skipLength),
 	}
 
 	// Recover the pieces in to a single byte slice.
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk+pdc.skipLength, skipWriter)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk+skipLength, skipWriter)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 		return

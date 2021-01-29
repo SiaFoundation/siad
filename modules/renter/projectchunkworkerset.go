@@ -523,10 +523,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
-	// Determine the amount of bytes the EC will need to skip from the recovered
-	// data when returning the data.
-	skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
-
 	// Create the workerResponseChan.
 	//
 	// The worker response chan is allocated to be quite large. This is because
@@ -555,8 +551,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
-
-		skipLength: skipLength,
 
 		pricePerMS: pricePerMS,
 

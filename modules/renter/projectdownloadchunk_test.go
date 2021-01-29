@@ -59,7 +59,6 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
 	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
-	skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
 
 	sliced := make([][]byte, len(pieces))
 	for i, piece := range pieces {
@@ -75,8 +74,6 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
-
-		skipLength: skipLength,
 
 		dataPieces: sliced,
 

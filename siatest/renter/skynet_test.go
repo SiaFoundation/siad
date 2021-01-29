@@ -1425,8 +1425,8 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 
 	// calculate random range parameters
 	segment := uint64(crypto.SegmentSize)
-	offset := fastrand.Uint64n(size-modules.SectorSize) + modules.SectorSize
-	length := fastrand.Uint64n(size-offset-segment) + segment
+	offset := fastrand.Uint64n(size-modules.SectorSize) + 1
+	length := fastrand.Uint64n(size-offset-segment) + 1
 
 	// fetch the data at given range
 	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
