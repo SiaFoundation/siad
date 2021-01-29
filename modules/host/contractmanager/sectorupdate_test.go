@@ -2033,7 +2033,7 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 	cmt.cm.sectorLocations[id] = sl
 
-	// Add the same sector one more time. This pushes it to math.MAxUint16+1.
+	// Add the same sector one more time. This pushes it to math.MaxUint16+1.
 	err = cmt.cm.AddSector(root, data)
 	if err != nil {
 		t.Fatal(err)
