@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -235,7 +236,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 		for i, pieceDownload := range piece {
 			if !pieceDownload.launched || pieceDownload.downloadErr != nil {
 				if pieceDownload.downloadErr != nil {
-					fmt.Println("piece download err", i, pieceDownload.downloadErr, pieceDownload.worker.staticHostPubKeyStr)
+					fmt.Printf("%v piece download err %v %v #%v\n", hex.EncodeToString(pdc.id[:]), pieceDownload.downloadErr, pieceDownload.worker.staticHostPubKeyStr, i)
 				}
 				continue // skip
 			}
