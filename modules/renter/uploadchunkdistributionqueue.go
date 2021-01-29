@@ -332,6 +332,7 @@ func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*work
 		cache := w.staticCache()
 		w.mu.Lock()
 		onCooldown, _ := w.onUploadCooldown()
+		numUnprocessedChunks := w.unprocessedChunks.Len()
 		w.mu.Unlock()
 		gfu := cache.staticContractUtility.GoodForUpload
 		if onCooldown || !gfu {
@@ -342,9 +343,9 @@ func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*work
 		// 'overloaded' depending on how many jobs it has in its upload queue.
 		// Only available and busy workers are candidates to receive the
 		// unfinished chunk.
-		if w.unprocessedChunks.Len() < workerUploadBusyThreshold {
+		if numUnprocessedChunks < workerUploadBusyThreshold {
 			availableWorkers++
-		} else if w.unprocessedChunks.Len() < workerUploadOverloadedThreshold {
+		} else if numUnprocessedChunks < workerUploadOverloadedThreshold {
 			busyWorkers++
 		} else {
 			overloadedWorkers++
