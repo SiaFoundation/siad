@@ -53,6 +53,8 @@ type pieceDownload struct {
 // orchestrates the download, which means that it does not need to be thread
 // safe.
 type projectDownloadChunk struct {
+	id [8]byte
+
 	// Parameters for downloading a subset of the data within the chunk.
 	lengthInChunk uint64
 	offsetInChunk uint64
@@ -137,11 +139,11 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
-		fmt.Println("resp piece indices", resp.pieceIndices, pdc.workersConsideredIndex)
 		for _, pieceIndex := range resp.pieceIndices {
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
 				worker: resp.worker,
 			})
+			fmt.Printf("pdc %v adding avail piece %v for worker %v", pdc.id, pieceIndex, resp.worker.staticHostPubKeyStr[64:])
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
