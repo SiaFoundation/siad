@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -327,6 +328,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
+	fmt.Printf("launched RJ on worker %v success %v\n", w.staticHostPubKeyStr, added)
 
 	// Update the status of the piece that was launched. 'launched' should be
 	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If

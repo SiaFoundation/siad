@@ -202,6 +202,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			return false, time.Time{}, wakeChan, workerLateChan
 		}
 
+		fmt.Printf("found overdrive worker %v", worker.staticHostPubKeyStr)
 		// If there was a worker found, launch the worker.
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
@@ -298,6 +299,7 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 
 	// All needed overdrive workers have been launched. No need to try again
 	// until the current set of workers are late.
+	fmt.Printf("overdrive time until late %vms\n", time.Until(latestReturn).Milliseconds())
 	return nil, time.After(time.Until(latestReturn))
 }
 
