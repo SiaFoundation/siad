@@ -576,8 +576,19 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
-// MemoryStatus contains information about the status of the memory manager
+// MemoryStatus contains information about the status of the memory managers in
+// the renter.
 type MemoryStatus struct {
+	MemoryManagerStatus
+
+	Registry     MemoryManagerStatus `json:"registry"`
+	UserUpload   MemoryManagerStatus `json:"userupload"`
+	UserDownload MemoryManagerStatus `json:"userdownload"`
+	System       MemoryManagerStatus `json:"system"`
+}
+
+// MemoryManagerStatus contains the memory status of a single memory manager.
+type MemoryManagerStatus struct {
 	Available uint64 `json:"available"`
 	Base      uint64 `json:"base"`
 	Requested uint64 `json:"requested"`
@@ -588,9 +599,9 @@ type MemoryStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
-// Add combines two MemoryStatus objects into one.
-func (ms MemoryStatus) Add(ms2 MemoryStatus) MemoryStatus {
-	return MemoryStatus{
+// Add combines two MemoryManagerStatus objects into one.
+func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
+	return MemoryManagerStatus{
 		Available:         ms.Available + ms2.Available,
 		Base:              ms.Base + ms2.Base,
 		Requested:         ms.Requested + ms2.Requested,

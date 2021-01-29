@@ -105,15 +105,18 @@ func IsSiaDirUpdate(update writeaheadlog.Update) bool {
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(path, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaDir, error) {
+//
+// NOTE: the fullPath is expected to include the rootPath. The rootPath is used
+// to determine when to stop recursively creating siadir metadata.
+func New(fullPath, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to directory and ensure path contains all metadata
-	updates, err := createDirMetadataAll(path, rootPath, mode)
+	updates, err := createDirMetadataAll(fullPath, rootPath, mode)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create metadata for directory
-	md, update, err := createDirMetadata(path, mode)
+	md, update, err := createDirMetadata(fullPath, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +125,7 @@ func New(path, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaD
 	sd := &SiaDir{
 		metadata: md,
 		deps:     modules.ProdDependencies,
-		path:     path,
+		path:     fullPath,
 		wal:      wal,
 	}
 
@@ -193,7 +196,7 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode) ([]writeah
 		if err != nil {
 			return nil, err
 		}
-		if dirPath == string(filepath.Separator) {
+		if dirPath == string(filepath.Separator) || dirPath == "." {
 			dirPath = rootPath
 		}
 		_, update, err := createDirMetadata(dirPath, mode)
