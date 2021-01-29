@@ -143,7 +143,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
 				worker: resp.worker,
 			})
-			fmt.Printf("pdc %v adding avail piece %v for worker %v", string(pdc.id[:]), pieceIndex, resp.worker.staticHostPubKeyStr[64:])
+			fmt.Printf("pdc %v adding avail piece %v for worker %v\n", string(pdc.id[:]), pieceIndex, resp.worker.staticHostPubKeyStr[64:])
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
