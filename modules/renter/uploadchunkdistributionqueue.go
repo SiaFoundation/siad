@@ -144,6 +144,11 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 	// bumped.
 	ucdq.priorityLane.PushBack(uc)
 	if ucdq.lowPriorityLane.Len() == 0 {
+		// Consistency check
+		if ucdq.priorityBuildup != 0 {
+			ucdq.staticRenter.log.Critical("there should be no buildup if there is nothing in the low priority lane")
+		}
+
 		// No need to worry about priority buildup if there is nothing waiting
 		// in the low priority lane.
 		return
@@ -217,6 +222,20 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		// fail. If the call failed, the chunk should be re-inserted into the
 		// front of the low prior heap IFF the chunk was a low prio chunk.
 		distributed := ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
+		// If the chunk was not distributed, we want to block breifly to give
+		// the workers time to process the items in their queue. The only reason
+		// that a chunk will not be distributed is because workers have too much
+		// work in their queue already.
+		if !distributed {
+			// NOTE: This could potentially be improved by switching it to a channel
+			// that waits for new chunks to appear or waits for busy/overloaded workers
+			// to report a better state. We opted not to do that here because 25ms is
+			// not a huge penalty to pay and there's a fair amount of complexity
+			// involved in switching to a better solution.
+			if !r.tg.Sleep(uploadChunkDistributionBackoff) {
+				return nil, false
+			}
+		}
 		if distributed && priority {
 			// If the chunk was distributed successfully and we pulled the chunk
 			// from the priority lane, there is nothing more to do.
@@ -303,15 +322,6 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) ([]*w
 	workers, finalized := managedSelectWorkersForUploading(uc, r.staticWorkerPool.callWorkers())
 	if finalized {
 		return workers, true
-	}
-
-	// NOTE: This could potentially be improved by switching it to a channel
-	// that waits for new chunks to appear or waits for busy/overloaded workers
-	// to report a better state. We opted not to do that here because 25ms is
-	// not a huge penalty to pay and there's a fair amount of complexity
-	// involved in switching to a better solution.
-	if !r.tg.Sleep(uploadChunkDistributionBackoff) {
-		return nil, false
 	}
 	return nil, false
 }
