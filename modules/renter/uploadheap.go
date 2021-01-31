@@ -267,7 +267,7 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 	defer uh.mu.Unlock()
 	_, ok := uh.repairingChunks[id]
 	if !ok {
-		build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
+		// build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
 	}
 	delete(uh.repairingChunks, id)
 }
@@ -348,7 +348,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
-	} else if ct == chunkTypeStreamChunk && !existsRepairing {
+	} else if ct == chunkTypeStreamChunk {
 		// Make sure the chunk is removed from unstuck and stuck maps
 		delete(uh.unstuckHeapChunks, uuc.id)
 		delete(uh.stuckHeapChunks, uuc.id)

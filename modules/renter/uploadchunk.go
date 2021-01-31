@@ -359,7 +359,10 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		chunk.mu.Lock()
 		chunk.logicalChunkData = nil
 		chunk.workersRemaining = 0
+		chunk.err = errors.AddContext(err, "logical data was not successfully fetched during repair")
 		chunk.mu.Unlock()
+		close(chunk.staticAvailableChan)
+		close(chunk.staticUploadCompletedChan)
 		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
