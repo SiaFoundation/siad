@@ -1,9 +1,9 @@
 package api
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -106,7 +106,7 @@ func TestServerTimeout(t *testing.T) {
 	}
 
 	// Verify error msg
-	if string(body) != fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout) {
+	if !strings.Contains(string(body), "HTTP call exceeded the timeout") {
 		t.Fatal("Expected response body to contain the custom error message")
 	}
 }
