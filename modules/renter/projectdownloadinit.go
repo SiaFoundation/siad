@@ -333,14 +333,14 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
-			fmt.Printf("%v | debugsesh | time cost of %v is strictly higher than best set cost\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
+			fmt.Printf("%v | debugsesh | time cost of %v is strictly higher than best set cost\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			break
 		}
 
 		// If all workers in the working set are already cheaper than this
 		// worker, skip this worker.
 		if highestCost.Cmp(nextWorker.cost) <= 0 && enoughWorkers {
-			fmt.Printf("%v | debugsesh | all workers in worker set are cheaper than %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
+			fmt.Printf("%v | debugsesh | all workers in worker set are cheaper than %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			continue
 		}
 
@@ -373,7 +373,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Check whether the worker is useful at all. It may not be useful if
 		// the only pieces it has are already available via cheaper workers.
 		if !bestSpotEmpty && !workerUseful {
-			fmt.Printf("%v | debugsesh | best spot is not empty and worker is not useful %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
+			fmt.Printf("%v | debugsesh | best spot is not empty and worker is not useful %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			continue
 		}
 
@@ -407,14 +407,14 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 				newWorker = true
 			}
 
-			fmt.Printf("%v | debugsesh | best spot was empty: %v worker: %v enough workers: %v)\n", hex.EncodeToString(pdc.staticID[:]), bestSpotEmpty, nextWorker.worker.staticHostPubKeyStr, enoughWorkers)
+			fmt.Printf("%v | debugsesh | best spot was empty: %v at index: %v worker: %v enough workers: %v)\n", hex.EncodeToString(pdc.staticID[:]), bestSpotEmpty, bestSpotIndex, nextWorker.worker.staticHostPubKeyStr[64:], enoughWorkers)
 		} else {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
 			workingSet[bestSpotIndex] = nextWorker
 
-			fmt.Printf("%v | debugsesh | best spot not empty: %v worker: %v)\n", hex.EncodeToString(pdc.staticID[:]), bestSpotEmpty, nextWorker.worker.staticHostPubKeyStr)
+			fmt.Printf("%v | debugsesh | best spot for worker: %v was not empty\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 		}
 
 		// Determine whether the working set is now cheaper than the best set.
@@ -424,7 +424,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
-			fmt.Printf("%v | debugsesh | copying working set into best set (new worker: %v)\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
+			fmt.Printf("%v | debugsesh | copying working set into best set (worker: %v) (newworker:%v) (%v < %v) \n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:], newWorker, workingSetTotalCost.HumanString(), bestSetCost.HumanString())
+
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
 			// then changes to the working set will update the best set.
@@ -464,6 +465,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
+		if worker.unresolved {
+			fmt.Printf("%v | debugsesh | worker %v (from best set) still unresolved, needs %vms\n", hex.EncodeToString(pdc.staticID[:]), worker.worker.staticHostPubKeyStr[64:], time.Until(worker.completeTime).Milliseconds())
+		}
 	}
 
 	if totalWorkers < ec.MinPieces() {
