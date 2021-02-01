@@ -178,7 +178,7 @@ LOOP:
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
-		fmt.Printf("%v | baw %v buwNoBaw %v buwBetter %v buwWaitDuration %vms buwAdjustedDur %v bawAdjustedDur %v\n", hex.EncodeToString(pdc.staticID[:]), baw != nil, buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), buwAdjustedDuration, bawAdjustedDuration)
+		fmt.Printf("%v | %v | baw %v buwNoBaw %v buwBetter %v buwWaitDuration %vms buwAdjustedDur %v bawAdjustedDur %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), baw != nil, buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), buwAdjustedDuration, bawAdjustedDuration)
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}
 
@@ -220,7 +220,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 				continue
 			}
 		}
-		fmt.Printf("%v | overdrive worker %v launched, expected return in %vms - time since launch %vms\n", hex.EncodeToString(pdc.staticID[:]), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime).Milliseconds(), time.Since(pdc.staticLaunchTime).Milliseconds())
+		fmt.Printf("%v | %v | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime).Milliseconds())
 		return true, expectedReturnTime, nil, nil
 	}
 }
@@ -281,7 +281,7 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
 
-	fmt.Printf("%v | over drive status : needed %v latest return in %vms - time since launch %vms\n", hex.EncodeToString(pdc.staticID[:]), neededOverdriveWorkers, time.Until(latestReturn).Milliseconds(), time.Since(pdc.staticLaunchTime).Milliseconds())
+	fmt.Printf("%v | +%vms | over drive status : needed %v latest return in %vms\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), neededOverdriveWorkers, time.Until(latestReturn).Milliseconds())
 
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.
