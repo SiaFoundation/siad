@@ -62,6 +62,8 @@ type (
 		// The time it took for this job to complete is included for debugging
 		// purposes.
 		staticJobTime time.Duration
+
+		staticMetada jobReadSectorMetadata
 	}
 )
 
@@ -79,8 +81,8 @@ func (j *jobRead) callDiscard(err error) {
 
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
-
+			staticErr:        errors.Extend(err, ErrJobDiscarded),
+			staticMetada:     meta,
 			staticSectorRoot: root,
 			staticWorker:     w,
 		}
@@ -119,6 +121,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticSectorRoot: root,
 		staticWorker:     w,
 
+		staticMetada:  meta,
 		staticJobTime: readJobTime,
 	}
 	err := w.renter.tg.Launch(func() {

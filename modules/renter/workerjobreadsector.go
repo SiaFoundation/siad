@@ -20,7 +20,8 @@ type (
 
 	// jobReadSectorMetadata contains meta information about a readSector job.
 	jobReadSectorMetadata struct {
-		staticSector crypto.Hash
+		staticSector              crypto.Hash
+		staticLaunchedWorkerIndex int
 	}
 )
 
