@@ -360,12 +360,15 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		chunk.logicalChunkData = nil
 		chunk.workersRemaining = 0
 		chunk.err = errors.AddContext(err, "logical data was not successfully fetched during repair")
-		chunk.mu.Unlock()
 		close(chunk.staticAvailableChan)
 		close(chunk.staticUploadCompletedChan)
 		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
+		chunk.mu.Unlock()
 		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
+
+		// Remove the failed chunk from the repair heap.
+		r.uploadHeap.managedMarkRepairDone(chunk)
 
 		// If Sia is not currently online, the chunk doesn't need to be marked
 		// as stuck.
@@ -670,7 +673,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			}
 		}
 		// Remove the chunk from the repairingChunks map
-		r.uploadHeap.managedMarkRepairDone(uc.id)
+		r.uploadHeap.managedMarkRepairDone(uc)
 		// Signal garbage collector to free memory before returning it to the manager.
 		uc.logicalChunkData = nil
 		uc.physicalChunkData = nil

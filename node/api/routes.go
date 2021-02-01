@@ -238,10 +238,7 @@ func (api *API) buildHTTPRoutes() {
 	}
 
 	// Apply UserAgent middleware and return the Router
-	timeoutErrStr := fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)
-	timeoutErr := Error{
-		Message: timeoutErrStr,
-	}
+	timeoutErr := Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}
 	jsonErr, _ := json.Marshal(timeoutErr)
 	api.routerMu.Lock()
 	api.router = http.TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout, string(jsonErr))
