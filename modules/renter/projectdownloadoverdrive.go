@@ -178,7 +178,7 @@ LOOP:
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
-		fmt.Printf("%v | buwNoBaw %v buwBetter %v buwWaitDuration %vms baw not nil %v\n", hex.EncodeToString(pdc.id[:]), buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), baw != nil)
+		fmt.Printf("%v | baw %v buwNoBaw %v buwBetter %v buwWaitDuration %vms buwAdjustedDur %v bawAdjustedDur %v\n", hex.EncodeToString(pdc.id[:]), baw != nil, buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), buwAdjustedDuration, bawAdjustedDuration)
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}
 
