@@ -152,11 +152,11 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 // NOTE: This is intentionally not using the Remove interface of the heap
 // because the uploadChunkHeap does not utilize an index for the chunks in the
 // heap. The index of the chunks in the heap refers to the siafile index.
-func (uch *uploadChunkHeap) removeByID(cid uploadChunkID) {
+func (uch *uploadChunkHeap) removeByID(uuc *unfinishedUploadChunk) {
 	// Find the chunk index in the heap
 	index := -1
 	for i, c := range *uch {
-		if c.id != cid {
+		if c.id != uuc.id {
 			continue
 		}
 		index = i
@@ -164,7 +164,7 @@ func (uch *uploadChunkHeap) removeByID(cid uploadChunkID) {
 	}
 
 	//Remove the chunk from the heap
-	if index == -1 {
+	if index == -1 || (*uch)[index] != uuc {
 		// Chunk not found
 		return
 	}
@@ -262,14 +262,14 @@ func (uh *uploadHeap) managedPauseStatus() (bool, time.Time) {
 // managedMarkRepairDone removes the chunk from the repairingChunks map of the
 // uploadHeap. It also performs a sanity check that the chunk was in the map,
 // this is to ensure that we are adding and removing the chunks as expected
-func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
+func (uh *uploadHeap) managedMarkRepairDone(uuc *unfinishedUploadChunk) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	_, ok := uh.repairingChunks[id]
-	if !ok {
-		build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
+	existingUUC, ok := uh.repairingChunks[uuc.id]
+	if ok && existingUUC == uuc {
+		delete(uh.repairingChunks, uuc.id)
 	}
-	delete(uh.repairingChunks, id)
+	//	build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
 }
 
 // managedNumStuckChunks returns total number of stuck chunks in the heap and
@@ -355,7 +355,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 
 		// Remove the chunk from the heap slice if it currently exists
 		if exists {
-			uh.heap.removeByID(uuc.id)
+			uh.heap.removeByID(uuc)
 		}
 
 		// Add to the repair map
@@ -465,7 +465,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	if !existsrepairing {
 		delete(uh.unstuckHeapChunks, existingUUC.id)
 		delete(uh.stuckHeapChunks, existingUUC.id)
-		uh.heap.removeByID(existingUUC.id)
+		uh.heap.removeByID(existingUUC)
 		uh.mu.Unlock()
 		return existingUUC.fileEntry.Close()
 	}
@@ -483,16 +483,8 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// Wait for all workers to finish ongoing work on the existing chunk.
 	existingUUC.cancelWG.Wait()
 
-	// Mark the repair as done to remove the chunk from the repair map if the
-	// chunk is still incomplete or is complete but with 0 completed pieces.
-	// Otherwise the normal chunk cleanup process will clear it from the repair
-	// map.
-	existingUUC.mu.Lock()
-	chunkComplete := existingUUC.chunkComplete()
-	existingUUC.mu.Unlock()
-	if !chunkComplete {
-		uh.managedMarkRepairDone(existingUUC.id)
-	}
+	// Mark the repair as done.
+	uh.managedMarkRepairDone(existingUUC)
 	return nil
 }
 
@@ -546,27 +538,25 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 
 		staticMemoryManager: mm,
 
-		// memoryNeeded has to also include the logical data, and also
+		// staticMemoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
-		//
-		// TODO / NOTE: If we adjust the file to have a flexible encryption
-		// scheme, we'll need to adjust the overhead stuff too.
 		//
 		// TODO: Currently we request memory for all of the pieces as well
 		// as the minimum pieces, but we perhaps don't need to request all
 		// of that.
-		memoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
-		minimumPieces: entry.ErasureCode().MinPieces(),
-		piecesNeeded:  entry.ErasureCode().NumPieces(),
-		stuck:         stuck,
+		staticMemoryNeeded:  entry.PieceSize()*uint64(entry.ErasureCode().NumPieces()+entry.ErasureCode().MinPieces()) + uint64(entry.ErasureCode().NumPieces())*entry.MasterKey().Type().Overhead(),
+		staticMinimumPieces: entry.ErasureCode().MinPieces(),
+		staticPiecesNeeded:  entry.ErasureCode().NumPieces(),
+		stuck:               stuck,
 
 		physicalChunkData:        make([][]byte, entry.ErasureCode().NumPieces()),
 		staticExpectedPieceRoots: make([]crypto.Hash, entry.ErasureCode().NumPieces()),
 
 		staticAvailableChan:       make(chan struct{}),
 		staticUploadCompletedChan: make(chan struct{}),
-		pieceUsage:                make([]bool, entry.ErasureCode().NumPieces()),
-		unusedHosts:               make(map[string]struct{}, len(hosts)),
+
+		pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
+		unusedHosts: make(map[string]struct{}, len(hosts)),
 	}
 
 	// Every chunk can have a different set of unused hosts.
@@ -621,7 +611,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
-	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.minimumPieces) / float64(uuc.piecesNeeded-uuc.minimumPieces))
+	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.staticMinimumPieces) / float64(uuc.staticPiecesNeeded-uuc.staticMinimumPieces))
 	return uuc, nil
 }
 
@@ -1313,11 +1303,9 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
-	if !uuc.staticMemoryManager.Request(context.Background(), uuc.memoryNeeded, uuc.staticPriority) {
-		return errors.New("couldn't request memotatiy")
+	if !uuc.staticMemoryManager.Request(context.Background(), uuc.staticMemoryNeeded, uuc.staticPriority) {
+		return errors.New("couldn't request memory")
 	}
-	// Fetch the chunk in a separate goroutine, as it can take a long time and
-	// does not need to bottleneck the repair loop.
 	go r.threadedFetchAndRepairChunk(uuc)
 	return nil
 }
@@ -1399,15 +1387,15 @@ func (r *Renter) managedRepairLoop() error {
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
-		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.staticIndex, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
+		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.staticIndex, chunkPath, nextChunk.piecesCompleted, nextChunk.staticPiecesNeeded)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
 		r.staticWorkerPool.mu.RLock()
 		availableWorkers := len(r.staticWorkerPool.workers)
 		r.staticWorkerPool.mu.RUnlock()
-		if availableWorkers < nextChunk.minimumPieces {
-			r.repairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.minimumPieces)
+		if availableWorkers < nextChunk.staticMinimumPieces {
+			r.repairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.staticMinimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
 			// in the allowance to support the chunk.
 			if !nextChunk.stuck {
@@ -1415,11 +1403,11 @@ func (r *Renter) managedRepairLoop() error {
 				// minimum redundancy. Check if the allowance has enough hosts
 				// for the chunk to reach minimum redundancy
 				allowance := r.hostContractor.Allowance()
-				if allowance.Hosts < uint64(nextChunk.minimumPieces) {
+				if allowance.Hosts < uint64(nextChunk.staticMinimumPieces) {
 					// There are not enough hosts in the allowance for this
 					// chunk to reach minimum redundancy. Log an error, set the
 					// chunk as stuck, and close the file
-					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.minimumPieces)
+					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.staticMinimumPieces)
 					err := nextChunk.fileEntry.SetStuck(nextChunk.staticIndex, true)
 					if err != nil {
 						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.staticIndex, chunkPath, err)
@@ -1432,7 +1420,7 @@ func (r *Renter) managedRepairLoop() error {
 			// for now and close the file
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
-			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
+			r.uploadHeap.managedMarkRepairDone(nextChunk)
 			continue
 		}
 
@@ -1451,7 +1439,7 @@ func (r *Renter) managedRepairLoop() error {
 			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.staticIndex, chunkPath, err)
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
-			r.uploadHeap.managedMarkRepairDone(nextChunk.id)
+			r.uploadHeap.managedMarkRepairDone(nextChunk)
 			continue
 		}
 	}
