@@ -164,7 +164,6 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 			if time.Since(start).Seconds() > 10 {
 				fmt.Println("- - - - - - - - -")
 				fmt.Println("DOWNLOAD WAS LATE")
-				fmt.Println("- - - - - - - - -")
 				for _, lw := range resp.launchedWorkers {
 					fmt.Println(lw)
 				}

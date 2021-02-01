@@ -59,6 +59,9 @@ type pdcLaunchedWorkerInfo struct {
 }
 
 func (lwi *pdcLaunchedWorkerInfo) String() string {
+	if lwi.completeTime == (time.Time{}) {
+		return fmt.Sprintf("%v | worker %v has not responded yet after %vms, estimate was %vms", lwi.pdc, lwi.worker[64:], time.Since(lwi.launchTime).Milliseconds(), lwi.expectedTime.Milliseconds())
+	}
 	return fmt.Sprintf("%v | worker %v responded after %vms, job took %vms. estimate was %vms", lwi.pdc, lwi.worker[64:], lwi.totalTime.Milliseconds(), lwi.jobTime.Milliseconds(), lwi.expectedTime.Milliseconds())
 }
 
@@ -277,8 +280,8 @@ func (pdc *projectDownloadChunk) finalize() {
 	// Return the data to the caller.
 	dr := &downloadResponse{
 		launchedWorkers: pdc.launchedWorkers,
-		data: data,
-		err:  nil,
+		data:            data,
+		err:             nil,
 	}
 	pdc.downloadResponseChan <- dr
 }

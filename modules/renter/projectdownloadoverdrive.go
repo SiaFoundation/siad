@@ -203,6 +203,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			return false, time.Time{}, wakeChan, workerLateChan
 		}
 
+		delayMS := expBackoffDelayMS(retry)
 		// If there was a worker found, launch the worker.
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
@@ -212,11 +213,13 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			select {
 			case <-pdc.workerSet.staticRenter.tg.StopChan():
 				return false, time.Time{}, wakeChan, workerLateChan
-			case <-time.After(expBackoffDelayMS(retry)):
+			case <-time.After(delayMS):
+				fmt.Println("WAITED FOR", delayMS.Milliseconds())
 				retry++
 				continue
 			}
 		}
+		fmt.Printf("%v | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.id[:]), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime))
 		return true, expectedReturnTime, nil, nil
 	}
 }
