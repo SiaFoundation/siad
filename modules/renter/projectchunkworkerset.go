@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -603,11 +604,18 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	}
 	fastrand.Read(pdc.id[:])
 
+	fmt.Printf("%v | initialised %v %v\n", hex.EncodeToString(pdc.id[:]), pdc.offsetInChunk, pdc.lengthInChunk)
+
+	start := time.Now()
+
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()
 	if err != nil {
 		return nil, errors.Compose(err, ErrRootNotFound)
 	}
+
+	elapsed := time.Since(start)
+	fmt.Printf("%v | launched after %vms\n", hex.EncodeToString(pdc.id[:]), elapsed.Milliseconds())
 
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect

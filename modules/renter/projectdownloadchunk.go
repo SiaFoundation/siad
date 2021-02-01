@@ -59,7 +59,7 @@ type pdcLaunchedWorkerInfo struct {
 }
 
 func (lwi *pdcLaunchedWorkerInfo) String() string {
-	return fmt.Sprintf("%v | worker %v responded after %vms, job took %vms. estimate was %vms \n", lwi.pdc, lwi.worker[64:], lwi.totalTime.Milliseconds(), lwi.jobTime.Milliseconds(), lwi.expectedTime.Milliseconds())
+	return fmt.Sprintf("%v | worker %v responded after %vms, job took %vms. estimate was %vms", lwi.pdc, lwi.worker[64:], lwi.totalTime.Milliseconds(), lwi.jobTime.Milliseconds(), lwi.expectedTime.Milliseconds())
 }
 
 // projectDownloadChunk is a bunch of state that helps to orchestrate a download
