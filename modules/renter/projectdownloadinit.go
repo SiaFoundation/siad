@@ -529,7 +529,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 		case <-updateChan:
 			timings = append(timings, fmt.Sprintf("+%vms", time.Since(start).Milliseconds()))
 		case <-time.After(10 * time.Millisecond):
-			// we want to perform the check every 100ms regardless of the update
+			// we want to perform the check every 10ms regardless of the update
 			// chan as both a safety precaution, and to allow the penalty to
 			// take effect and prioritize a resolved worker instead
 		case <-pdc.ctx.Done():
