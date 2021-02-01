@@ -502,7 +502,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 		// being used as a time penalty which we'll attribute to unresolved
 		// workers. Ensuring resolved workers are being selected if we're
 		// waiting too long for unresolved workers to resolve.
-		unresolvedWorkerPenaly := time.Since(start)
+		// unresolvedWorkerPenaly := time.Since(start)
+		unresolvedWorkerPenaly := time.Duration(0)
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkerPenaly)
 
 		// Create an initial worker set
