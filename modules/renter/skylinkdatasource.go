@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -147,6 +148,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		n += downloadSize
 	}
 
+	start := time.Now()
 	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
 	err := sds.staticRenter.tg.Launch(func() {
@@ -154,8 +156,9 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		offset := 0
 		failed := false
 
-		for _, respChan := range downloadChans {
+		for i, respChan := range downloadChans {
 			resp := <-respChan
+			fmt.Printf("download pt %v/%v came in after %vms\n", i+1, len(downloadChans), time.Since(start).Milliseconds())
 			if resp.err == nil {
 				n := copy(data[offset:], resp.data)
 				offset += n
