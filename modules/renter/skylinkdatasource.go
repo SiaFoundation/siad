@@ -117,6 +117,8 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	}
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
 
+	start := time.Now()
+	
 	// Otherwise we are dealing with a large skyfile and have to aggregate the
 	// download responses for every chunk in the fanout. We keep reading from
 	// chunks until all the data has been read.
@@ -148,7 +150,6 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		n += downloadSize
 	}
 
-	start := time.Now()
 	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
 	err := sds.staticRenter.tg.Launch(func() {
