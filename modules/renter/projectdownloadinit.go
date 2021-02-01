@@ -332,6 +332,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// of the best set, there can be no more improvements to the best set,
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
+		fmt.Printf("%v | debugsesh | worker %v read duration %vms\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr, nextWorker.readDuration.Milliseconds())
+
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
 			fmt.Printf("%v | debugsesh | time cost of %v is strictly higher than best set cost\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			break
