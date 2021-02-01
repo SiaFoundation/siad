@@ -166,7 +166,7 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 	}
 	timePassed := time.Since(start)
 	if timePassed < time.Second*time.Duration(expectedSeconds) {
-		t.Fatalf("download took %v but should've been at least %v",
+		t.Errorf("download took %v but should've been at least %v",
 			timePassed, time.Second*time.Duration(expectedSeconds))
 	}
 	// Swap the limits and make sure the limit is still in effect.
@@ -184,7 +184,7 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 	}
 	timePassed = time.Since(start)
 	if timePassed < time.Second*time.Duration(expectedSeconds) {
-		t.Fatalf("download took %v but should've been at least %v",
+		t.Errorf("download took %v but should've been at least %v",
 			timePassed, time.Second*time.Duration(expectedSeconds))
 	}
 }
