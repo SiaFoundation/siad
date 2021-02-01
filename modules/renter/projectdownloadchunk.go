@@ -72,7 +72,10 @@ func (lwi *pdcLaunchedWorkerInfo) String() string {
 // orchestrates the download, which means that it does not need to be thread
 // safe.
 type projectDownloadChunk struct {
-	id [8]byte
+	// Debug helpers
+	staticID         [8]byte
+	staticLaunchTime time.Time
+	launchedWorkers  []*pdcLaunchedWorkerInfo
 
 	// Parameters for downloading a subset of the data within the chunk.
 	lengthInChunk uint64
@@ -109,8 +112,6 @@ type projectDownloadChunk struct {
 	availablePieces            [][]*pieceDownload
 	workersConsideredIndex     int
 	unresolvedWorkersRemaining int
-
-	launchedWorkers []*pdcLaunchedWorkerInfo
 
 	// dataPieces is the buffer that is used to place data as it comes back.
 	// There is one piece per chunk, and pieces can be nil. To know if the
@@ -368,7 +369,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 
 	// Track the launched worker
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &pdcLaunchedWorkerInfo{
-		pdc:          hex.EncodeToString(pdc.id[:]),
+		pdc:          hex.EncodeToString(pdc.staticID[:]),
 		worker:       w.staticHostPubKeyStr,
 		launchTime:   time.Now(),
 		expectedTime: time.Until(expectedCompleteTime),

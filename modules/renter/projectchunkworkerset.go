@@ -601,10 +601,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
 		workerState:          ws,
-	}
-	fastrand.Read(pdc.id[:])
 
-	fmt.Printf("%v | initialised %v %v\n", hex.EncodeToString(pdc.id[:]), pdc.offsetInChunk, pdc.lengthInChunk)
+		staticLaunchTime: time.Now(),
+	}
+	fastrand.Read(pdc.staticID[:])
+
+	fmt.Printf("%v | initialised %v %v\n", hex.EncodeToString(pdc.staticID[:]), pdc.offsetInChunk, pdc.lengthInChunk)
 
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()
