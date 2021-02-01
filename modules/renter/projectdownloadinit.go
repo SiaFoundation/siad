@@ -504,9 +504,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 		// being used as a time penalty which we'll attribute to unresolved
 		// workers. Ensuring resolved workers are being selected if we're
 		// waiting too long for unresolved workers to resolve.
-		// unresolvedWorkerPenaly := time.Since(start)
-		unresolvedWorkerPenaly := time.Duration(0)
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkerPenaly)
+		unresolvedWorkerPenalty := time.Since(start)
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkerPenalty)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
@@ -529,7 +528,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 		select {
 		case <-updateChan:
 			timings = append(timings, fmt.Sprintf("+%vms", time.Since(start).Milliseconds()))
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(10 * time.Millisecond):
 			// we want to perform the check every 100ms regardless of the update
 			// chan as both a safety precaution, and to allow the penalty to
 			// take effect and prioritize a resolved worker instead
