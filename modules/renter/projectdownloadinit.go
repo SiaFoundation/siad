@@ -321,9 +321,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 
 		// TODO: temporarily break as soon as we have enough workers
 		enoughWorkers := totalWorkers == ec.MinPieces()
-		if enoughWorkers {
-			break
-		}
+		// if enoughWorkers {
+		// 	break
+		// }
 
 		// If the time cost of this worker is strictly higher than the full cost
 		// of the best set, there can be no more improvements to the best set,
