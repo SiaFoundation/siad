@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -609,12 +610,18 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	fmt.Printf("%v | +0ms | initialised %v %v\n", hex.EncodeToString(pdc.staticID[:]), pdc.offsetInChunk, pdc.lengthInChunk)
 
 	// Launch the initial set of workers for the pdc.
-	err = pdc.launchInitialWorkers()
+	var timings []string
+	timings, err = pdc.launchInitialWorkers()
 	if err != nil {
 		return nil, errors.Compose(err, ErrRootNotFound)
 	}
 
-	fmt.Printf("%v | +%vms | launched %v %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), pdc.offsetInChunk, pdc.lengthInChunk)
+	var timingsStr string
+	if time.Since(pdc.staticLaunchTime).Seconds() > 3 {
+		timingsStr = strings.Join(timings[:], ",")
+	}
+
+	fmt.Printf("%v | +%vms | launched %v %v | %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), pdc.offsetInChunk, pdc.lengthInChunk, timingsStr)
 
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect

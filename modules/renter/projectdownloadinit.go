@@ -317,10 +317,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if totalWorkers > ec.MinPieces() {
 			pdc.workerSet.staticRenter.log.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
 		}
-		enoughWorkers := totalWorkers == ec.MinPieces()
 
-		// TODO: remove this, temporarily break as soon as we have enough
-		// workers
+		// TODO: temporarily break as soon as we have enough workers
+		enoughWorkers := totalWorkers == ec.MinPieces()
 		if enoughWorkers {
 			break
 		}
@@ -469,8 +468,10 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launchInitialWorkers will pick the initial set of workers that needs to be
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
-func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 	start := time.Now()
+
+	var timings []string
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -489,7 +490,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {
-			return errors.AddContext(err, "unable to build initial set of workers")
+			return nil, errors.AddContext(err, "unable to build initial set of workers")
 		}
 
 		// If the function returned an actual set of workers, we are good to
@@ -501,13 +502,14 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				}
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
-			return nil
+			return timings, nil
 		}
 
 		select {
 		case <-updateChan:
+			timings = append(timings, fmt.Sprintf("+%vms", time.Since(start).Milliseconds()))
 		case <-pdc.ctx.Done():
-			return errors.New("timed out while trying to build initial set of workers")
+			return nil, errors.New("timed out while trying to build initial set of workers")
 		}
 	}
 }
