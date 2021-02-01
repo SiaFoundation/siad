@@ -252,6 +252,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // Note that we only return this best set if all workers from the worker set are
 // resolved, if that is not the case we simply return nil.
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+	fmt.Printf("%v | debugsesh | creating initial set\n", hex.EncodeToString(pdc.staticID[:]))
+
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	GS := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil))
@@ -321,9 +323,10 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 
 		// TODO: temporarily break as soon as we have enough workers
 		enoughWorkers := totalWorkers == ec.MinPieces()
-		// if enoughWorkers {
-		// 	break
-		// }
+		if enoughWorkers {
+			fmt.Printf("%v | debugsesh | short circuit hit (pricePerMS %v)\n", hex.EncodeToString(pdc.staticID[:]), pdc.pricePerMS.HumanString())
+			// break
+		}
 
 		// If the time cost of this worker is strictly higher than the full cost
 		// of the best set, there can be no more improvements to the best set,
@@ -472,6 +475,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		return nil, nil
 	}
 
+	fmt.Printf("%v | debugsesh | initial set found\n", hex.EncodeToString(pdc.staticID[:]))
 	return bestSet, nil
 }
 
