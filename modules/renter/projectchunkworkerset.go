@@ -606,7 +606,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	}
 	fastrand.Read(pdc.staticID[:])
 
-	fmt.Printf("%v | initialised %v %v\n", hex.EncodeToString(pdc.staticID[:]), pdc.offsetInChunk, pdc.lengthInChunk)
+	fmt.Printf("%v | +0ms | initialised %v %v\n", hex.EncodeToString(pdc.staticID[:]), pdc.offsetInChunk, pdc.lengthInChunk)
 
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()

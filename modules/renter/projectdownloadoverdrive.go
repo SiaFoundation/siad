@@ -178,7 +178,7 @@ LOOP:
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
-		fmt.Printf("%v | %v | baw %v buwNoBaw %v buwBetter %v buwWaitDuration %vms buwAdjustedDur %v bawAdjustedDur %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), baw != nil, buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), buwAdjustedDuration, bawAdjustedDuration)
+		fmt.Printf("%v | +%vms | baw %v buwNoBaw %v buwBetter %v buwWaitDuration %vms buwAdjustedDur %v bawAdjustedDur %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), baw != nil, buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), buwAdjustedDuration, bawAdjustedDuration)
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}
 
@@ -220,7 +220,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 				continue
 			}
 		}
-		fmt.Printf("%v | %v | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime).Milliseconds())
+		fmt.Printf("%v | +%vms | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime).Milliseconds())
 		return true, expectedReturnTime, nil, nil
 	}
 }
