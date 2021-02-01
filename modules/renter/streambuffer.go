@@ -284,6 +284,14 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 	case <-ds.dataAvailable:
 	case <-ctx.Done():
 		fmt.Println("DS TIMEOUT")
+		go func(start time.Time) {
+			select {
+			case <-time.After(time.Minute):
+				fmt.Println("data wasn't even available after a full minute longer")
+			case <-ds.dataAvailable:
+				fmt.Printf("data became available %vms after it timed out\n", time.Since(start).Milliseconds())
+			}
+		}(time.Now())
 		return nil, errors.New("could not get data from data section, context timed out")
 	}
 	return ds.externData, ds.externErr
