@@ -126,8 +126,9 @@ type projectDownloadChunk struct {
 // downloadResponse is sent via a channel to the caller of
 // 'projectChunkWorkerSet.managedDownload'.
 type downloadResponse struct {
-	data []byte
-	err  error
+	launchedWorkers []*pdcLaunchedWorkerInfo
+	data            []byte
+	err             error
 }
 
 // successful is a small helper method that returns whether the piece was
@@ -247,8 +248,9 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
 	dr := &downloadResponse{
-		data: nil,
-		err:  err,
+		launchedWorkers: pdc.launchedWorkers,
+		data:            nil,
+		err:             err,
 	}
 	pdc.downloadResponseChan <- dr
 }
@@ -274,6 +276,7 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
+		launchedWorkers: pdc.launchedWorkers,
 		data: data,
 		err:  nil,
 	}

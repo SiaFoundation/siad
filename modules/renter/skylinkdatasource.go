@@ -118,7 +118,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
 
 	start := time.Now()
-	
+
 	// Otherwise we are dealing with a large skyfile and have to aggregate the
 	// download responses for every chunk in the fanout. We keep reading from
 	// chunks until all the data has been read.
@@ -157,9 +157,20 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		offset := 0
 		failed := false
 
-		for i, respChan := range downloadChans {
+		for _, respChan := range downloadChans {
 			resp := <-respChan
-			fmt.Printf("download pt %v/%v came in after %vms\n", i+1, len(downloadChans), time.Since(start).Milliseconds())
+			// fmt.Printf("download pt %v/%v came in after %vms\n", i+1, len(downloadChans), time.Since(start).Milliseconds())
+
+			fmt.Println("- - - - - - - - -")
+			fmt.Println("DOWNLOAD WAS LATE")
+			fmt.Println("- - - - - - - - -")
+			if time.Since(start).Seconds() > 10 {
+				for _, lw := range resp.launchedWorkers {
+					fmt.Println(lw)
+				}
+			}
+			fmt.Println("- - - - - - - - -")
+
 			if resp.err == nil {
 				n := copy(data[offset:], resp.data)
 				offset += n
