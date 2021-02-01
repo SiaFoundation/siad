@@ -219,7 +219,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 				continue
 			}
 		}
-		fmt.Printf("%v | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.id[:]), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime))
+		fmt.Printf("%v | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.id[:]), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime).Milliseconds())
 		return true, expectedReturnTime, nil, nil
 	}
 }
@@ -279,6 +279,8 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 	// Fetch the number of overdrive workers that are needed, and the latest
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
+
+	fmt.Printf("%v | over drive status : needed %v latest return in %vms\n", hex.EncodeToString(pdc.id[:]), neededOverdriveWorkers, time.Until(latestReturn).Milliseconds())
 
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.
