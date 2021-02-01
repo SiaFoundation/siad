@@ -614,6 +614,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.Compose(err, ErrRootNotFound)
 	}
 
+	fmt.Printf("%v | +%vms | initialised %v %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), pdc.offsetInChunk, pdc.lengthInChunk)
+
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect
 	// the responses and launch overdrive workers when necessary.
