@@ -36,6 +36,7 @@ type (
 	// worker. The queue also tracks performance metrics, which can then be used
 	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
+		timeEstimate time.Duration
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
@@ -245,7 +246,7 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 
 	// if we don't have any historic data yet, return a sane default of 100ms
 	if completed == 0 {
-		return 100 * time.Millisecond
+		return jq.timeEstimate
 	}
 
 	return time.Duration(weightedJobTime / completed)

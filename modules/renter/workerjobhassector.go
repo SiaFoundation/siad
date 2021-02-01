@@ -31,6 +31,8 @@ type (
 	// jobHasSectorQueue is a list of hasSector queries that have been assigned
 	// to the worker.
 	jobHasSectorQueue struct {
+		timeEstimate time.Duration
+
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime       float64
@@ -190,7 +192,7 @@ func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
 	// if we don't have any historic data yet, return a sane (slightly
 	// pessimistic) default of 100ms
 	if jq.weightedJobsCompleted == 0 {
-		return 100 * time.Millisecond
+		return jq.timeEstimate
 	}
 
 	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)

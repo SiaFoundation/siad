@@ -63,6 +63,8 @@ type (
 	// fail, because whatever condition resulted in the failure will still be
 	// present until some time has passed.
 	worker struct {
+		estimatesSet bool
+
 		// Atomics are used to minimize lock contention on the worker object.
 		atomicAccountBalanceCheckRunning uint64         // used for a sanity check
 		atomicCache                      unsafe.Pointer // points to a workerCache object

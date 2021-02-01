@@ -138,6 +138,7 @@ func (w *worker) staticUpdatePriceTable() {
 		})
 	}()
 
+	start := time.Now()
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
 	// the existing price table, which will allow the renter to continue
@@ -154,6 +155,23 @@ func (w *worker) staticUpdatePriceTable() {
 
 		// If there was no error, return.
 		if err == nil {
+			w.mu.Lock()
+			alreadySet := w.estimatesSet
+			if !alreadySet {
+				w.estimatesSet = true
+			}
+			w.mu.Unlock()
+
+			if !alreadySet {
+				w.staticJobHasSectorQueue.mu.Lock()
+				w.staticJobHasSectorQueue.timeEstimate = time.Since(start)
+				w.staticJobHasSectorQueue.mu.Unlock()
+
+				w.staticJobReadQueue.mu.Lock()
+				w.staticJobReadQueue.timeEstimate = time.Since(start)
+				w.staticJobReadQueue.mu.Unlock()
+			}
+
 			return
 		}
 
