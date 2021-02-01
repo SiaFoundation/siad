@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/heap"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"time"
@@ -329,12 +330,14 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
+			fmt.Printf("%v | debugsesh | time cost of %v is strictly higher than best set cost\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
 			break
 		}
 
 		// If all workers in the working set are already cheaper than this
 		// worker, skip this worker.
 		if highestCost.Cmp(nextWorker.cost) <= 0 && enoughWorkers {
+			fmt.Printf("%v | debugsesh | all workers in worker set are cheaper than %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
 			continue
 		}
 
@@ -367,6 +370,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Check whether the worker is useful at all. It may not be useful if
 		// the only pieces it has are already available via cheaper workers.
 		if !bestSpotEmpty && !workerUseful {
+			fmt.Printf("%v | debugsesh | best spot is not empty and worker is not useful %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
 			continue
 		}
 
@@ -399,11 +403,15 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			} else {
 				newWorker = true
 			}
+
+			fmt.Printf("%v | debugsesh | best spot was empty: %v worker: %v enough workers: %v)\n", hex.EncodeToString(pdc.staticID[:]), bestSpotEmpty, nextWorker.worker.staticHostPubKeyStr, enoughWorkers)
 		} else {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
 			workingSet[bestSpotIndex] = nextWorker
+
+			fmt.Printf("%v | debugsesh | best spot not empty: %v worker: %v)\n", hex.EncodeToString(pdc.staticID[:]), bestSpotEmpty, nextWorker.worker.staticHostPubKeyStr)
 		}
 
 		// Determine whether the working set is now cheaper than the best set.
@@ -413,6 +421,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
+			fmt.Printf("%v | debugsesh | copying working set into best set (new worker: %v)\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr)
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
 			// then changes to the working set will update the best set.
@@ -459,6 +468,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
+		fmt.Printf("%v | debugsesh | worker still unresolved\n", hex.EncodeToString(pdc.staticID[:]))
 		return nil, nil
 	}
 
