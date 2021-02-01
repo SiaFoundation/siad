@@ -161,15 +161,15 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 			resp := <-respChan
 			// fmt.Printf("download pt %v/%v came in after %vms\n", i+1, len(downloadChans), time.Since(start).Milliseconds())
 
-			fmt.Println("- - - - - - - - -")
-			fmt.Println("DOWNLOAD WAS LATE")
-			fmt.Println("- - - - - - - - -")
 			if time.Since(start).Seconds() > 10 {
+				fmt.Println("- - - - - - - - -")
+				fmt.Println("DOWNLOAD WAS LATE")
+				fmt.Println("- - - - - - - - -")
 				for _, lw := range resp.launchedWorkers {
 					fmt.Println(lw)
 				}
+				fmt.Println("- - - - - - - - -")
 			}
-			fmt.Println("- - - - - - - - -")
 
 			if resp.err == nil {
 				n := copy(data[offset:], resp.data)
