@@ -508,11 +508,10 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 		select {
 		case <-updateChan:
 			timings = append(timings, fmt.Sprintf("+%vms", time.Since(start).Milliseconds()))
-		case <-time.After(time.Second):
-			// we want to perform the check every second regardless of the
-			// update chan as both a safety precaution, and to allow the
-			// unresolvedWorkerPenalty to take effect and prioritize a resolved
-			// worker instead
+		case <-time.After(100 * time.Millisecond):
+			// we want to perform the check every 100ms regardless of the update
+			// chan as both a safety precaution, and to allow the penalty to
+			// take effect and prioritize a resolved worker instead
 		case <-pdc.ctx.Done():
 			return nil, errors.New("timed out while trying to build initial set of workers")
 		}
