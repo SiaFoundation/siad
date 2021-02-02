@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -19,50 +18,70 @@ import (
 // successfully complete the download
 var errNotEnoughPieces = errors.New("not enough pieces to complete download")
 
-// pieceDownload tracks a worker downloading a piece, whether that piece has
-// returned, and what time the piece is/was expected to return.
-//
-// NOTE: The actual piece data is stored in the projectDownloadChunk after the
-// download completes.
-type pieceDownload struct {
-	// 'completed', 'launched', and 'downloadErr' are status variables for the
-	// piece. If 'launched' is false, it means the piece download has not
-	// started yet, 'completed' will also be false.
+type (
+
+	// pieceDownload tracks a worker downloading a piece, whether that piece has
+	// returned, and what time the piece is/was expected to return.
 	//
-	// If 'launched' is true and 'completed' is false, it means the download is
-	// in progress and the result is not known.
-	//
-	// If 'completed' is true, the download has been attempted, if it was
-	// unsuccessful 'downloadErr' will contain the error with which it failed.
-	// If 'downloadErr' is nil however, it means the piece was successfully
-	// downloaded.
-	completed   bool
-	launched    bool
-	downloadErr error
+	// NOTE: The actual piece data is stored in the projectDownloadChunk after
+	// the download completes.
+	pieceDownload struct {
+		// 'completed', 'launched', and 'downloadErr' are status variables for
+		// the piece. If 'launched' is false, it means the piece download has
+		// not started yet, 'completed' will also be false.
+		//
+		// If 'launched' is true and 'completed' is false, it means the download
+		// is in progress and the result is not known.
+		//
+		// If 'completed' is true, the download has been attempted, if it was
+		// unsuccessful 'downloadErr' will contain the error with which it
+		// failed. If 'downloadErr' is nil however, it means the piece was
+		// successfully downloaded.
+		completed   bool
+		launched    bool
+		downloadErr error
 
-	// expectedCompleteTime indicates the time when the download is expected
-	// to complete. This is used to determine whether or not a download is late.
-	expectedCompleteTime time.Time
+		// expectedCompleteTime indicates the time when the download is expected
+		// to complete. This is used to determine whether or not a download is
+		// late.
+		expectedCompleteTime time.Time
 
-	worker *worker
-}
-
-type pdcLaunchedWorkerInfo struct {
-	pdc          string
-	worker       string
-	launchTime   time.Time
-	completeTime time.Time
-
-	expectedTime time.Duration
-	totalTime    time.Duration
-	jobTime      time.Duration
-}
-
-func (lwi *pdcLaunchedWorkerInfo) String() string {
-	if lwi.completeTime == (time.Time{}) {
-		return fmt.Sprintf("%v | worker %v has not responded yet after %vms, estimate was %vms", lwi.pdc, lwi.worker[64:], time.Since(lwi.launchTime).Milliseconds(), lwi.expectedTime.Milliseconds())
+		worker *worker
 	}
-	return fmt.Sprintf("%v | worker %v responded after %vms, job took %vms. estimate was %vms", lwi.pdc, lwi.worker[64:], lwi.totalTime.Milliseconds(), lwi.jobTime.Milliseconds(), lwi.expectedTime.Milliseconds())
+
+	// launchedWorkerInfo tracks information about the worker that has been
+	// launched. It is used solely for debugging purposes to enable tracking the
+	// chain of events that occurred when a download has timed out or failed.
+	launchedWorkerInfo struct {
+		launchTime           time.Time
+		completeTime         time.Time
+		expectedCompleteTime time.Time
+
+		// 'jobDuration' is the total amount of time it took to complete the job
+		jobDuration time.Duration
+
+		// 'totalDuration' is the total amount of time it took for the worker to
+		// complete the download since it was launched, or the time it took to
+		// fail.
+		totalDuration time.Duration
+
+		// 'expectedDuration' is the estimated amount of time for this worker to
+		// complete the download.
+		expectedDuration time.Duration
+
+		pdc    *projectDownloadChunk
+		worker *worker
+	}
+)
+
+// String implements the String interface.
+func (lwi *launchedWorkerInfo) String() string {
+	downloadComplete := lwi.completeTime != (time.Time{})
+	if downloadComplete {
+		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms", lwi.pdc.uid, lwi.worker.staticHostPubKeyStr[64:], lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds())
+	}
+
+	return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms but has not yet responded after %vms", lwi.pdc.uid, lwi.worker.staticHostPubKeyStr[64:], lwi.expectedDuration.Milliseconds(), time.Since(lwi.launchTime).Milliseconds())
 }
 
 // projectDownloadChunk is a bunch of state that helps to orchestrate a download
@@ -72,11 +91,6 @@ func (lwi *pdcLaunchedWorkerInfo) String() string {
 // orchestrates the download, which means that it does not need to be thread
 // safe.
 type projectDownloadChunk struct {
-	// Debug helpers
-	staticID         [8]byte
-	staticLaunchTime time.Time
-	launchedWorkers  []*pdcLaunchedWorkerInfo
-
 	// Parameters for downloading a subset of the data within the chunk.
 	lengthInChunk uint64
 	offsetInChunk uint64
@@ -125,14 +139,23 @@ type projectDownloadChunk struct {
 	workerResponseChan   chan *jobReadResponse
 	workerSet            *projectChunkWorkerSet
 	workerState          *pcwsWorkerState
+
+	// Debug helpers
+	uid             [8]byte
+	launchTime      time.Time
+	launchedWorkers []*launchedWorkerInfo
 }
 
 // downloadResponse is sent via a channel to the caller of
 // 'projectChunkWorkerSet.managedDownload'.
 type downloadResponse struct {
-	launchedWorkers []*pdcLaunchedWorkerInfo
-	data            []byte
-	err             error
+	data []byte
+	err  error
+
+	// launchedWorkers contains a list of worker information for the workers
+	// that were launched to try and complete this download. This field can be
+	// used for debugging purposes should the download time out or error out.
+	launchedWorkers []*launchedWorkerInfo
 }
 
 // successful is a small helper method that returns whether the piece was
@@ -185,27 +208,17 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		return
 	}
 
-	// Figure out which index this read corresponds to.
-	pieceIndex := -1
-	for i, root := range pdc.workerSet.staticPieceRoots {
-		if jrr.staticSectorRoot == root {
-			pieceIndex = i
-			break
-		}
-	}
+	// Grab the metadata from the response
+	metadata := jrr.staticMetadata
+	worker := metadata.staticWorker
+	pieceIndex := metadata.staticPieceRootIndex
+	launchedWorker := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
 
-	// Sanity check the root matches one of the worker set's piece roots
-	if pieceIndex == -1 {
-		pdc.workerSet.staticRenter.log.Critical("received job read response with a sector root that is not present in the worker set 's piece roots")
-		return
-	}
-
-	metadata := jrr.staticMetada
-	lw := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
-	lw.completeTime = time.Now()
-	lw.jobTime = jrr.staticJobTime
-	lw.totalTime = time.Since(lw.launchTime)
-	defer fmt.Println(lw)
+	// Update the launched worker information, we keep track of these metrics
+	// debugging purposes.
+	launchedWorker.completeTime = time.Now()
+	launchedWorker.jobDuration = jrr.staticJobTime
+	launchedWorker.totalDuration = time.Since(launchedWorker.launchTime)
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
@@ -213,7 +226,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		// failure.
 		pieceFound := false
 		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
+			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
 				if pieceFound {
 					build.Critical("The list of available pieces contains duplicates.") // sanity check
 				}
@@ -239,7 +252,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	pieceFound := false
 	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
+		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
 			if pieceFound {
 				build.Critical("The list of available pieces contains duplicates.") // sanity check
 			}
@@ -349,14 +362,17 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	}
 
 	// Create the read sector job for the worker.
-	launchedWorkerIndex := len(pdc.launchedWorkers)
+	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
+	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
 	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: pdc.workerResponseChan,
 			staticLength:       pdc.pieceLength,
 
 			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadSectorMetadata{
-				staticSector:              pdc.workerSet.staticPieceRoots[pieceIndex],
+				staticWorker:              w,
+				staticSectorRoot:          sectorRoot,
+				staticPieceRootIndex:      pieceIndex,
 				staticLaunchedWorkerIndex: launchedWorkerIndex,
 			}),
 		},
@@ -368,11 +384,13 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 
 	// Track the launched worker
-	pdc.launchedWorkers = append(pdc.launchedWorkers, &pdcLaunchedWorkerInfo{
-		pdc:          hex.EncodeToString(pdc.staticID[:]),
-		worker:       w.staticHostPubKeyStr,
-		launchTime:   time.Now(),
-		expectedTime: time.Until(expectedCompleteTime),
+	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
+		launchTime:           time.Now(),
+		expectedCompleteTime: expectedCompleteTime,
+		expectedDuration:     time.Until(expectedCompleteTime),
+
+		pdc:    pdc,
+		worker: w,
 	})
 
 	// Update the status of the piece that was launched. 'launched' should be

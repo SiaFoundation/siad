@@ -155,23 +155,15 @@ func (w *worker) staticUpdatePriceTable() {
 
 		// If there was no error, return.
 		if err == nil {
-			w.mu.Lock()
-			alreadySet := w.estimatesSet
-			if !alreadySet {
-				w.estimatesSet = true
+			// If this was the first time we successfully complete a price table
+			// update for this worker, we use the time it took as an initial
+			// estimate for both the HS and RJ queue.
+			if !w.staticInitialEstimatesSet() {
+				elapsed := time.Since(start)
+				w.staticJobHasSectorQueue.callSetInitialEstimate(elapsed)
+				w.staticJobReadQueue.callSetInitialEstimate(elapsed)
+				close(w.initialEstimatesSetChan)
 			}
-			w.mu.Unlock()
-
-			if !alreadySet {
-				w.staticJobHasSectorQueue.mu.Lock()
-				w.staticJobHasSectorQueue.timeEstimate = time.Since(start)
-				w.staticJobHasSectorQueue.mu.Unlock()
-
-				w.staticJobReadQueue.mu.Lock()
-				w.staticJobReadQueue.timeEstimate = time.Since(start)
-				w.staticJobReadQueue.mu.Unlock()
-			}
-
 			return
 		}
 

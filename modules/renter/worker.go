@@ -63,8 +63,6 @@ type (
 	// fail, because whatever condition resulted in the failure will still be
 	// present until some time has passed.
 	worker struct {
-		estimatesSet bool
-
 		// Atomics are used to minimize lock contention on the worker object.
 		atomicAccountBalanceCheckRunning uint64         // used for a sanity check
 		atomicCache                      unsafe.Pointer // points to a workerCache object
@@ -124,6 +122,12 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
+
+		// initialEstimatesSetChan is a channel that gets closed when we set the
+		//initial estimates on the HS and RJ queue. This ensures this is only
+		//done once, after the initial price table update.
+		initialEstimatesSetChan chan struct{}
+
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
 		renter   *Renter
@@ -191,6 +195,17 @@ func (w *worker) managedKill() {
 func (w *worker) staticKilled() bool {
 	select {
 	case <-w.killChan:
+		return true
+	default:
+		return false
+	}
+}
+
+// staticInitialEstimatesSet is a convenience function to determine if we've
+// already set the initial job queue estimates on the HS and RJ queue.
+func (w *worker) staticInitialEstimatesSet() bool {
+	select {
+	case <-w.initialEstimatesSetChan:
 		return true
 	default:
 		return false

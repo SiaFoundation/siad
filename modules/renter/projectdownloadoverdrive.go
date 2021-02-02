@@ -178,7 +178,6 @@ LOOP:
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
-		fmt.Printf("%v | +%vms | baw %v buwNoBaw %v buwBetter %v buwWaitDuration %vms buwAdjustedDur %v bawAdjustedDur %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), baw != nil, buwNoBaw, buwBetter, buwWaitDuration.Milliseconds(), buwAdjustedDuration, bawAdjustedDuration)
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}
 
@@ -204,7 +203,6 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			return false, time.Time{}, wakeChan, workerLateChan
 		}
 
-		delayMS := expBackoffDelayMS(retry)
 		// If there was a worker found, launch the worker.
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
@@ -214,13 +212,12 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			select {
 			case <-pdc.workerSet.staticRenter.tg.StopChan():
 				return false, time.Time{}, wakeChan, workerLateChan
-			case <-time.After(delayMS):
-				fmt.Println("WAITED FOR", delayMS.Milliseconds())
+			case <-time.After(expBackoffDelayMS(retry)):
 				retry++
 				continue
 			}
 		}
-		fmt.Printf("%v | +%vms | overdrive worker %v launched, expected return in %vms\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), worker.staticHostPubKeyStr[64:], time.Until(expectedReturnTime).Milliseconds())
+
 		return true, expectedReturnTime, nil, nil
 	}
 }
@@ -239,7 +236,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 		for i, pieceDownload := range piece {
 			if !pieceDownload.launched || pieceDownload.downloadErr != nil {
 				if pieceDownload.downloadErr != nil {
-					fmt.Printf("%v | piece download err %v %v #%v\n", hex.EncodeToString(pdc.staticID[:]), pieceDownload.downloadErr, pieceDownload.worker.staticHostPubKeyStr, i)
+					fmt.Printf("%v | piece download err %v %v #%v\n", hex.EncodeToString(pdc.uid[:]), pieceDownload.downloadErr, pieceDownload.worker.staticHostPubKeyStr, i)
 				}
 				continue // skip
 			}
@@ -280,8 +277,6 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 	// Fetch the number of overdrive workers that are needed, and the latest
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
-
-	fmt.Printf("%v | +%vms | over drive status : needed %v latest return in %vms\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), neededOverdriveWorkers, time.Until(latestReturn).Milliseconds())
 
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.

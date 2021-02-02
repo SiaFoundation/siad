@@ -98,7 +98,7 @@ func TestJobReadMetadata(t *testing.T) {
 					// set metadata, set it to something different than the
 					// sector root to ensure the response contains the sector
 					// given in the metadata
-					staticSector: crypto.Hash{1, 2, 3},
+					staticSectorRoot: crypto.Hash{1, 2, 3},
 				},
 			},
 		},
@@ -111,10 +111,10 @@ func TestJobReadMetadata(t *testing.T) {
 
 	// receive response and verify if metadata is set
 	jrr := <-responseChan
-	if jrr.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
-		t.Fatal("unexpected", jrr.staticSectorRoot, sectorRoot)
+	if jrr.staticMetadata.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
+		t.Fatal("unexpected", jrr.staticMetadata.staticSectorRoot, sectorRoot)
 	}
-	if jrr.staticWorker == nil || jrr.staticWorker.staticHostPubKeyStr != wt.host.PublicKey().String() {
+	if jrr.staticMetadata.staticWorker == nil || jrr.staticMetadata.staticWorker.staticHostPubKeyStr != wt.host.PublicKey().String() {
 		t.Fatal("unexpected")
 	}
 }

@@ -36,7 +36,13 @@ type (
 	// worker. The queue also tracks performance metrics, which can then be used
 	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
-		timeEstimate time.Duration
+		// initialEstimate is the duration returned as estimate as long as we
+		// have not completed a single job yet. It is currently set by the
+		// price table update mechanism to be the round trip time of the initial
+		// price table update. This is not perfect, but will do for now and
+		// provides a decent initial estimate.
+		initialEstimate time.Duration
+
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
@@ -56,36 +62,29 @@ type (
 		staticData []byte
 		staticErr  error
 
-		// Metadata related to the job query.
-		staticSectorRoot crypto.Hash
-		staticWorker     *worker
+		// Metadata related to the job.
+		staticMetadata jobReadSectorMetadata
 
-		// The time it took for this job to complete is included for debugging
-		// purposes.
+		// The time it took for this job to complete.
 		staticJobTime time.Duration
-
-		staticMetada jobReadSectorMetadata
 	}
 )
 
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
-	w := j.staticQueue.staticWorker()
-
-	// Extract the sector root from the metadata that's potentially set through
-	// the job's metadata
-	var root crypto.Hash
-	meta, ok := j.staticMetadata.(jobReadSectorMetadata)
+	// Extract the metadata from the job, this is not necessarily set so we have
+	// to do a safe cast.
+	var metadata jobReadSectorMetadata
+	md, ok := j.staticMetadata.(jobReadSectorMetadata)
 	if ok {
-		root = meta.staticSector
+		metadata = md
 	}
 
+	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
-			staticErr:        errors.Extend(err, ErrJobDiscarded),
-			staticMetada:     meta,
-			staticSectorRoot: root,
-			staticWorker:     w,
+			staticErr:      errors.Extend(err, ErrJobDiscarded),
+			staticMetadata: metadata,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -102,14 +101,12 @@ func (j *jobRead) callDiscard(err error) {
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
-	w := j.staticQueue.staticWorker()
-
-	// Extract the sector root from the metadata that's potentially set through
-	// the job's metadata
-	var root crypto.Hash
-	meta, ok := j.staticMetadata.(jobReadSectorMetadata)
+	// Extract the metadata from the job, this is not necessarily set so we have
+	// to do a safe cast.
+	var metadata jobReadSectorMetadata
+	md, ok := j.staticMetadata.(jobReadSectorMetadata)
 	if ok {
-		root = meta.staticSector
+		metadata = md
 	}
 
 	// Send the response in a goroutine so that the worker resources can be
@@ -119,12 +116,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticData: readData,
 		staticErr:  readErr,
 
-		staticSectorRoot: root,
-		staticWorker:     w,
-
-		staticMetada:  meta,
-		staticJobTime: readJobTime,
+		staticMetadata: metadata,
+		staticJobTime:  readJobTime,
 	}
+
+	w := j.staticQueue.staticWorker()
 	err := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
@@ -244,11 +240,9 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 		completed = jq.weightedJobsCompleted4m
 	}
 
-	// if we don't have any historic data yet, return a sane default of 100ms
 	if completed == 0 {
-		return jq.timeEstimate
+		return jq.initialEstimate
 	}
-
 	return time.Duration(weightedJobTime / completed)
 }
 
@@ -266,6 +260,14 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	return cost.Add(bandwidthCost)
+}
+
+// callSetInitialEstimate will set the given duration as the initial estimate,
+// returned as estimate when we have not processed any jobs yet.
+func (jq *jobReadQueue) callSetInitialEstimate(estimate time.Duration) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.initialEstimate = estimate
 }
 
 // managedUpdateJobTimeMetrics takes a length and the duration it took to fulfil

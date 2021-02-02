@@ -2,9 +2,7 @@ package renter
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -68,8 +66,8 @@ const (
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.
 type pcwsUnresolvedWorker struct {
-	// The expected time that the HasSector job will finish, and the worker will
-	// be able to resolve.
+	// The expected time that the worker will resolve. A worker is considered
+	// resolved if the HasSector job has finished.
 	staticExpectedResolvedTime time.Time
 
 	// The worker that is performing the HasSector job.
@@ -330,10 +328,10 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		return errors.New("worker is not RHP3 ready")
 	}
 
-	// Check whether the worker is on a cooldown, seeing as the PCWS is cached
-	// we do not want to exclude this worker, however we do want to take into
-	// consideration the cooldown period when we estimate the expected
-	// resolve time.
+	// Check whether the worker is on a cooldown. Because the PCWS is cached, we
+	// do not want to exclude this worker if it is on a cooldown, however we do
+	// want to take into consideration the cooldown period when we estimate the
+	// expected resolve time.
 	var coolDownPenalty time.Duration
 	if w.managedOnMaintenanceCooldown() {
 		wms := w.staticMaintenanceState
@@ -344,12 +342,12 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 
 	// Create and launch the job.
 	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
-	expectedHSTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
-	expectedResolveTime := expectedHSTime.Add(coolDownPenalty)
+	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
@@ -602,26 +600,17 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
 		workerState:          ws,
-
-		staticLaunchTime: time.Now(),
 	}
-	fastrand.Read(pdc.staticID[:])
 
-	fmt.Printf("%v | +0ms | initialised %v %v\n", hex.EncodeToString(pdc.staticID[:]), pdc.offsetInChunk, pdc.lengthInChunk)
+	// Set debug variables on the pdc
+	fastrand.Read(pdc.uid[:])
+	pdc.launchTime = time.Now()
 
 	// Launch the initial set of workers for the pdc.
-	var timings []string
-	timings, err = pdc.launchInitialWorkers()
+	err = pdc.launchInitialWorkers()
 	if err != nil {
 		return nil, errors.Compose(err, ErrRootNotFound)
 	}
-
-	var timingsStr string
-	if time.Since(pdc.staticLaunchTime).Seconds() > 3 {
-		timingsStr = strings.Join(timings[:], ",")
-	}
-
-	fmt.Printf("%v | +%vms | launched %v %v | %v\n", hex.EncodeToString(pdc.staticID[:]), time.Since(pdc.staticLaunchTime).Milliseconds(), pdc.offsetInChunk, pdc.lengthInChunk, timingsStr)
 
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect

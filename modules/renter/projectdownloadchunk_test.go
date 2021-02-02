@@ -257,10 +257,12 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
-		staticData:       pieces[3],
-		staticErr:        nil,
-		staticSectorRoot: crypto.MerkleRoot(pieces[3]),
-		staticWorker:     w,
+		staticData: pieces[3],
+		staticErr:  nil,
+		staticMetadata: jobReadSectorMetadata{
+			staticSectorRoot: crypto.MerkleRoot(pieces[3]),
+			staticWorker:     w,
+		},
 	}
 	pdc.handleJobReadResponse(success)
 	if !pdc.availablePieces[3][0].completed {
@@ -278,10 +280,13 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	// verify the pdc after a failed read
 	pdc.handleJobReadResponse(&jobReadResponse{
-		staticData:       nil,
-		staticErr:        errors.New("read failed"),
-		staticSectorRoot: empty, // it'll see this as piece index 0
-		staticWorker:     w,
+		staticData: nil,
+		staticErr:  errors.New("read failed"),
+		staticMetadata: jobReadSectorMetadata{
+			staticPieceRootIndex: 0,
+			staticSectorRoot:     empty,
+			staticWorker:         w,
+		},
 	})
 	if !pdc.availablePieces[0][0].completed {
 		t.Fatal("unexpected")

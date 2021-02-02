@@ -2,7 +2,6 @@ package renter
 
 import (
 	"container/heap"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"time"
@@ -86,6 +85,11 @@ import (
 // additional time that the worker is put back into the heap. This is overly
 // pessimistic, but guarantees that we do not overload a particular worker and
 // slow the entire download down.
+
+// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait for
+// unresolved workers to become resolved when trying to create the initial
+// worker set.
+const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
 
 // errNotEnoughWorkers is returned if the working set does not have enough
 // workers to successfully complete the download
@@ -252,8 +256,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // Note that we only return this best set if all workers from the worker set are
 // resolved, if that is not the case we simply return nil.
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
-	fmt.Printf("%v | debugsesh | creating initial set\n", hex.EncodeToString(pdc.staticID[:]))
-
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	GS := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil))
@@ -320,29 +322,19 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if totalWorkers > ec.MinPieces() {
 			pdc.workerSet.staticRenter.log.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
 		}
-
-		// TODO: temporarily break as soon as we have enough workers
 		enoughWorkers := totalWorkers == ec.MinPieces()
-		if enoughWorkers {
-			fmt.Printf("%v | debugsesh | short circuit hit (pricePerMS %v)\n", hex.EncodeToString(pdc.staticID[:]), pdc.pricePerMS.HumanString())
-			// break
-		}
 
 		// If the time cost of this worker is strictly higher than the full cost
 		// of the best set, there can be no more improvements to the best set,
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
-		fmt.Printf("%v | debugsesh | worker %v read duration %vms\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr, nextWorker.readDuration.Milliseconds())
-
 		if workerTimeCost.Cmp(bestSetCost) > 0 && enoughWorkers {
-			fmt.Printf("%v | debugsesh | time cost of %v is strictly higher than best set cost\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			break
 		}
 
 		// If all workers in the working set are already cheaper than this
 		// worker, skip this worker.
 		if highestCost.Cmp(nextWorker.cost) <= 0 && enoughWorkers {
-			fmt.Printf("%v | debugsesh | all workers in worker set are cheaper than %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			continue
 		}
 
@@ -375,7 +367,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Check whether the worker is useful at all. It may not be useful if
 		// the only pieces it has are already available via cheaper workers.
 		if !bestSpotEmpty && !workerUseful {
-			fmt.Printf("%v | debugsesh | best spot is not empty and worker is not useful %v\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 			continue
 		}
 
@@ -408,15 +399,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			} else {
 				newWorker = true
 			}
-
-			fmt.Printf("%v | debugsesh | best spot was empty: %v at index: %v worker: %v enough workers: %v)\n", hex.EncodeToString(pdc.staticID[:]), bestSpotEmpty, bestSpotIndex, nextWorker.worker.staticHostPubKeyStr[64:], enoughWorkers)
 		} else {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
 			workingSet[bestSpotIndex] = nextWorker
-
-			fmt.Printf("%v | debugsesh | best spot for worker: %v was not empty\n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:])
 		}
 
 		// Determine whether the working set is now cheaper than the best set.
@@ -426,8 +413,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
 		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
 		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
-			fmt.Printf("%v | debugsesh | copying working set into best set (worker: %v) (newworker:%v) (%v < %v) \n", hex.EncodeToString(pdc.staticID[:]), nextWorker.worker.staticHostPubKeyStr[64:], newWorker, workingSetTotalCost.HumanString(), bestSetCost.HumanString())
-
 			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
 			// then changes to the working set will update the best set.
@@ -467,9 +452,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
-		if worker.unresolved {
-			fmt.Printf("%v | debugsesh | worker %v (from best set) still unresolved, needs %vms\n", hex.EncodeToString(pdc.staticID[:]), worker.worker.staticHostPubKeyStr[64:], time.Until(worker.completeTime).Milliseconds())
-		}
 	}
 
 	if totalWorkers < ec.MinPieces() {
@@ -477,21 +459,18 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
-		fmt.Printf("%v | debugsesh | worker still unresolved\n", hex.EncodeToString(pdc.staticID[:]))
 		return nil, nil
 	}
 
-	fmt.Printf("%v | debugsesh | initial set found\n", hex.EncodeToString(pdc.staticID[:]))
 	return bestSet, nil
 }
 
 // launchInitialWorkers will pick the initial set of workers that needs to be
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
-func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
+func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	start := time.Now()
 
-	var timings []string
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -510,7 +489,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to build initial set of workers")
+			return errors.AddContext(err, "unable to build initial set of workers")
 		}
 
 		// If the function returned an actual set of workers, we are good to
@@ -522,18 +501,19 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]string, error) {
 				}
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
-			return timings, nil
+			return nil
 		}
 
 		select {
 		case <-updateChan:
-			timings = append(timings, fmt.Sprintf("+%vms", time.Since(start).Milliseconds()))
-		case <-time.After(10 * time.Millisecond):
-			// we want to perform the check every 10ms regardless of the update
-			// chan as both a safety precaution, and to allow the penalty to
-			// take effect and prioritize a resolved worker instead
+		case <-time.After(maxWaitUnresolvedWorkerUpdate):
+			// We want to limit the amount of time spent waiting for unresolved
+			// workers to become resolved. This is because we assign a penalty
+			// to unresolved workers, and on every iteration this penalty might
+			// have caused an already resolved worker to be favoured over the
+			// unresolved worker in the set.
 		case <-pdc.ctx.Done():
-			return nil, errors.New("timed out while trying to build initial set of workers")
+			return errors.New("timed out while trying to build initial set of workers")
 		}
 	}
 }
