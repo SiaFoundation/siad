@@ -472,14 +472,6 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 		return 0, modules.SectorSize
 	}
 
-	// The chunk download offset and chunk download length are different from
-	// the requested offset and length because the chunk download offset and
-	// length are required to be a factor of the segment size of the erasure
-	// codes.
-	//
-	// NOTE: This is one of the places where we assume we are using maximum
-	// distance separable erasure codes.
-
 	// Determine the download offset within a single piece. We get this by
 	// dividing the chunk offset by the number of pieces and then rounding
 	// down to the nearest segment size.

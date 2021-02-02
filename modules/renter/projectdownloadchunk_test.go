@@ -255,13 +255,18 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		{{launched: true, worker: w}},
 	}
 
+	lwi := launchedWorkerInfo{}
+	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
+
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
 		staticData: pieces[3],
 		staticErr:  nil,
 		staticMetadata: jobReadSectorMetadata{
-			staticSectorRoot: crypto.MerkleRoot(pieces[3]),
-			staticWorker:     w,
+			staticLaunchedWorkerIndex: 0,
+			staticPieceRootIndex:      3,
+			staticSectorRoot:          crypto.MerkleRoot(pieces[3]),
+			staticWorker:              w,
 		},
 	}
 	pdc.handleJobReadResponse(success)
