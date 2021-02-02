@@ -549,10 +549,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		offsetInChunk: offset,
 		lengthInChunk: length,
 
-		pricePerMS: pricePerMS,
-
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
+
+		pricePerMS: pricePerMS,
 
 		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
 		dataPieces:      make([][]byte, ec.NumPieces()),
