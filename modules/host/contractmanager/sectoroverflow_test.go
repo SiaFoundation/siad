@@ -66,14 +66,14 @@ func TestNewOverflowFile(t *testing.T) {
 	}
 
 	// FileSize should be an entry size.
-	if f.fileSize != overflowMapEntrySize {
+	if f.fileSize != overflowMapMetadataSize {
 		t.Fatal("wrong file size", f.fileSize, overflowMapEntrySize)
 	}
 
 	// Metadata should be correct.
-	expectedMD := make([]byte, overflowMapEntrySize)
+	expectedMD := make([]byte, overflowMapMetadataSize)
 	copy(expectedMD[:types.SpecifierLen], overflowMapVersion[:])
-	md := make([]byte, overflowMapEntrySize)
+	md := make([]byte, overflowMapMetadataSize)
 	_, err = f.f.ReadAt(md, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestNewOverflowFile(t *testing.T) {
 
 	// Manually write a random entry.
 	sid, overflow, entry := randomEntry()
-	_, err = f.f.WriteAt(entry, overflowMapEntrySize)
+	_, err = f.f.WriteAt(entry, overflowMapMetadataSize)
 	if err != nil {
 		t.Fatal("failed to write entry")
 	}
@@ -118,12 +118,12 @@ func TestNewOverflowFile(t *testing.T) {
 	}
 
 	// FileSize should be two entry sizes.
-	if f.fileSize != 2*overflowMapEntrySize {
+	if f.fileSize != overflowMapMetadataSize+overflowMapEntrySize {
 		t.Fatal("wrong file size", f.fileSize, 2*overflowMapEntrySize)
 	}
 
 	// Corrupt first page and close file.
-	_, err = f.f.WriteAt(fastrand.Bytes(overflowMapEntrySize), 0)
+	_, err = f.f.WriteAt(fastrand.Bytes(overflowMapMetadataSize), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestSetOverflow(t *testing.T) {
 		}
 
 		// FileSize should match.
-		expectedFileSize := overflowMapEntrySize + int64(nElements)*overflowMapEntrySize
+		expectedFileSize := overflowMapMetadataSize + int64(nElements)*overflowMapEntrySize
 		if f.fileSize != expectedFileSize {
 			t.Fatal("wrong file size", f.fileSize, expectedFileSize)
 		}
@@ -238,7 +238,7 @@ func TestSetOverflow(t *testing.T) {
 		nElements := i + 1
 
 		// Assert it.
-		assertEntry(sid, overflow, int64(nElements*overflowMapEntrySize), rawEntry, nElements)
+		assertEntry(sid, overflow, overflowMapMetadataSize+int64(i*overflowMapEntrySize), rawEntry, nElements)
 
 		// Change every entry we have added so far.
 		for idx, sid := range entries {
@@ -253,7 +253,7 @@ func TestSetOverflow(t *testing.T) {
 			}
 
 			// Assert it.
-			assertEntry(sid, overflow, int64((idx+1)*overflowMapEntrySize), rawEntry, nElements)
+			assertEntry(sid, overflow, overflowMapMetadataSize+int64((idx)*overflowMapEntrySize), rawEntry, nElements)
 		}
 	}
 }

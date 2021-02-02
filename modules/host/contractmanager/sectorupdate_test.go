@@ -2033,6 +2033,15 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 	cmt.cm.sectorLocations[id] = sl
 
+	// The overflow map should only contain metadata.
+	fi, err := os.Stat(overflowFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != overflowMapMetadataSize {
+		t.Fatal("wrong size", fi.Size(), overflowMapMetadataSize)
+	}
+
 	// Add the same sector one more time. This pushes it to math.MaxUint16+1.
 	err = cmt.cm.AddSector(root, data)
 	if err != nil {

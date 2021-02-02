@@ -13,21 +13,24 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TODO: I'm not sure how likely it is for this file to fill up to a
+// NOTE: I'm not sure how likely it is for this file to fill up to a
 // non-negligible size, but having it zero out unused entries in the future and
-// reuse them would be a nice-to-have f/u. If everything is working, this file
-// reaching 4 KiB in size would equal to 17.6 TiB of uploaded data. On 1 gbps
-// connection this takes 1.8 days of uploading. So this file shouldn't reach 4
-// MiB in size in the next 5 years. Also a host that got paid for uploading 17
-// PiB of data should be able to handle 4 MiB of metadata.
+// reuse them would be a nice-to-have f/u. Even with custom MDM programs, this
+// file reaching 4 KiB in size would equal to paying for 17.6 TiB of data
+// written to disk and reaching 4 MiB would therefore require paying for writing
+// 17 PiB of data. This is quite expensive and will benefit the host more than a
+// potential attacker.
 
 const (
 	// overflowMapEntrySize is the size of a single entry on the file. The first
-	// entry is reserved for the metadata. The remaining entries contain a
+	// 64 entries are reserved for the metadata. The remaining entries contain a
 	// section id and overflow number which make up for 20 bytes. The remaining
 	// bytes are padding for future extensions and to align the entries with
 	// physical pages on disk.
 	overflowMapEntrySize = 64
+
+	// overflowMapMetadataSize is the size of the reserved metadata.
+	overflowMapMetadataSize = 64 * overflowMapEntrySize // 4 kib
 )
 
 var (
@@ -43,14 +46,12 @@ type (
 	// overflowMap is a helper type which manages the persisted overflow map on
 	// disk and in memory.
 	overflowMap struct {
-		mu sync.Mutex
-
-		entryMap map[sectorID]overflowEntry
-
+		entryMap   map[sectorID]overflowEntry
 		staticDeps modules.Dependencies
+		fileSize   int64
 
-		fileSize int64
-		f        modules.File
+		f  modules.File
+		mu sync.Mutex
 	}
 
 	// overflowEntry is a single entry in the overflow map.
@@ -67,7 +68,6 @@ func newOverflowMap(path string, deps modules.Dependencies) (_ *overflowMap, err
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open overflow file")
 	}
-
 	// Close the file in case of an error.
 	defer func() {
 		if err != nil {
@@ -84,9 +84,7 @@ func newOverflowMap(path string, deps modules.Dependencies) (_ *overflowMap, err
 	// If it is empty, initialize it. Otherwise load it.
 	var entryMap map[sectorID]overflowEntry
 	if size == 0 {
-		size = overflowMapEntrySize
-		entryMap = make(map[sectorID]overflowEntry)
-		err = initOverflowFile(f)
+		size, entryMap, err = initOverflowFile(f)
 	} else {
 		entryMap, err = loadOverflowMap(f)
 	}
@@ -113,15 +111,16 @@ func newRawEntry(sid sectorID, overflow uint64) []byte {
 
 // initOverflowFile initializes the overflow file by writing the metadata to
 // disk.
-func initOverflowFile(f modules.File) error {
+func initOverflowFile(f modules.File) (int64, map[sectorID]overflowEntry, error) {
 	// Create the entry for the metadata.
-	md := make([]byte, overflowMapEntrySize)
+	mdSize := int64(overflowMapMetadataSize)
+	md := make([]byte, mdSize)
 
 	// Write the version to the beginning of the metadata.
 	copy(md[:types.SpecifierLen], overflowMapVersion[:])
 
 	_, err := f.WriteAt(md, 0)
-	return errors.AddContext(err, "failed to write overflow metadata")
+	return mdSize, make(map[sectorID]overflowEntry), errors.AddContext(err, "failed to write overflow metadata")
 }
 
 // loadOverflowFile loads an existing overflow map from disk.
@@ -136,14 +135,14 @@ func loadOverflowMap(f modules.File) (map[sectorID]overflowEntry, error) {
 	r := bufio.NewReader(f)
 
 	// Load the metadata.
-	md := make([]byte, overflowMapEntrySize)
+	md := make([]byte, overflowMapMetadataSize)
 	_, err = io.ReadFull(r, md)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load metadata")
 	}
 
 	// Compare it to what we expect.
-	expectedMD := make([]byte, overflowMapEntrySize)
+	expectedMD := make([]byte, overflowMapMetadataSize)
 	copy(expectedMD[:types.SpecifierLen], overflowMapVersion[:])
 	if !bytes.Equal(md, expectedMD) {
 		return nil, errOverflowMetadataCorrupt

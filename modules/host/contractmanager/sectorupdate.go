@@ -389,7 +389,7 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 
 	// Only persist if there is a value > 0 that we haven't persisted yet, or if
 	// the persisted value is outdated.
-	if (!exist && su.Count > 0) || (existingOverflow != overflow) {
+	if (!exist && overflow > 0) || (existingOverflow != overflow) {
 		err = wal.cm.sectorLocationsCountOverflow.SetOverflow(su.ID, overflow)
 		if err != nil {
 			err = errors.AddContext(err, "ERROR: unable to set overflow")
