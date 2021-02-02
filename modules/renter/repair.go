@@ -610,16 +610,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		if err != nil {
 			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
-			// Check if we should sleep for the error duration as some refresh paths
-			// might have been returned
-			if urp == nil {
-				select {
-				case <-time.After(healthLoopErrorSleepDuration):
-				case <-r.tg.StopChan():
-					return
-				}
-				continue
-			}
 		}
 		if urp == nil || urp.callNumChildDirs() == 0 {
 			// Treat a urp with no ChildDirs as an error and sleep to prevent
