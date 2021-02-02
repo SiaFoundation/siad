@@ -212,6 +212,19 @@ func (jq *jobGenericQueue) callNext() workerJob {
 	return nil
 }
 
+// callOnCooldown will return whether the worker queue is on a cooldown
+// alongside the duration of that cooldown in case there is one.
+func (jq *jobGenericQueue) callOnCooldown() (bool, time.Duration) {
+	jq.mu.Lock()
+	cdu := jq.cooldownUntil
+	jq.mu.Unlock()
+
+	if time.Now().Before(cdu) {
+		return true, time.Until(cdu)
+	}
+	return false, 0
+}
+
 // callReportFailure reports that a job has failed within the queue. This will
 // cause all remaining jobs in the queue to be discarded, and will put the queue
 // on cooldown.

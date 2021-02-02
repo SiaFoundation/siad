@@ -105,7 +105,7 @@ func newOverflowMap(path string, deps modules.Dependencies) (_ *overflowMap, err
 func newRawEntry(sid sectorID, overflow uint64) []byte {
 	entry := make([]byte, overflowMapEntrySize)
 	copy(entry[:len(sid)], sid[:])
-	binary.LittleEndian.PutUint64(entry[len(sid):len(sid)+8], overflow)
+	binary.LittleEndian.PutUint64(entry[len(sid):], overflow)
 	return entry
 }
 
