@@ -3,15 +3,18 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"strings"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,9 +25,9 @@ import (
 func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
-	// create a random sector
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
+	// create data
+	originalData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(originalData)
 
 	// create an EC and a passhtrough cipher key
 	ec := modules.NewRSSubCodeDefault()
@@ -34,7 +37,9 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	}
 
 	// RS encode the data
-	pieces, err := ec.Encode(sectorData)
+	data := make([]byte, modules.SectorSize)
+	copy(data, originalData)
+	pieces, err := ec.Encode(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +60,12 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
+	sliced := make([][]byte, len(pieces))
+	for i, piece := range pieces {
+		sliced[i] = make([]byte, pieceLength)
+		copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+	}
+
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
 	pdc := &projectDownloadChunk{
@@ -64,7 +75,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		dataPieces: pieces,
+		dataPieces: sliced,
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
@@ -78,9 +89,13 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	if downloadResponse.err != nil {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
-	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
-		t.Log(downloadResponse.data, "length:", len(downloadResponse.data))
-		t.Log(sectorData[offset:offset+length], "length:", len(sectorData[offset:offset+length]))
+	if !bytes.Equal(downloadResponse.data, originalData[offset:offset+length]) {
+		t.Log("offset", offset)
+		t.Log("length", length)
+		t.Log("bytes downloaded", len(downloadResponse.data))
+
+		t.Log("actual:\n", downloadResponse.data)
+		t.Log("expected:\n", originalData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
 }
@@ -213,9 +228,17 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		empty,
 		empty,
 		empty,
-		crypto.MerkleRoot(pieces[0]),
+		crypto.MerkleRoot(pieces[3]),
 		empty,
 	}
+
+	renter := new(Renter)
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+	renter.log = logger
+	pcws.staticRenter = renter
 
 	pdc := new(projectDownloadChunk)
 	pdc.workerSet = pcws
@@ -231,7 +254,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
-		staticData:       pieces[2],
+		staticData:       pieces[3],
 		staticErr:        nil,
 		staticSectorRoot: crypto.MerkleRoot(pieces[3]),
 		staticWorker:     w,
@@ -403,6 +426,82 @@ func TestGetPieceOffsetAndLen(t *testing.T) {
 		}
 	}()
 	getPieceOffsetAndLen(ec, 0, 0)
+}
+
+// TestGetPieceOffsetAndLenWithRecover is a unit test that isolates both
+// 'getPieceOffsetAndLen' in combination with the Recover function on the EC and
+// asserts we can properly encode and then recover at random offset and length
+func TestGetPieceOffsetAndLenWithRecover(t *testing.T) {
+	t.Parallel()
+
+	// create data
+	cntr := 0
+	originalData := make([]byte, modules.SectorSize)
+	for i := 0; i < int(modules.SectorSize); i += 2 {
+		binary.BigEndian.PutUint16(originalData[i:], uint16(cntr))
+		cntr += 1
+	}
+
+	// RS encode the data
+	data := make([]byte, modules.SectorSize)
+	copy(data, originalData)
+	ec := modules.NewRSSubCodeDefault()
+	pieces, err := ec.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Declare helper for testing.
+	run := func(offset, length uint64) {
+		pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+		skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
+
+		sliced := make([][]byte, len(pieces))
+		for i, piece := range pieces {
+			sliced[i] = make([]byte, pieceLength)
+			copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+		}
+
+		buf := bytes.NewBuffer(nil)
+		skipWriter := &skipWriter{
+			writer: buf,
+			skip:   int(skipLength),
+		}
+		err = ec.Recover(sliced, length+uint64(skipLength), skipWriter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := buf.Bytes()
+
+		expected := originalData[offset : offset+length]
+		if !bytes.Equal(actual, expected) {
+			t.Log("Input       :", offset, length, pieceOffset, pieceLength)
+			t.Log("original    :", originalData[:crypto.SegmentSize*8])
+			t.Log("expected    :", expected)
+			t.Log("expected len:", len(expected))
+			t.Log("actual      :", actual)
+			t.Log("actual   len:", len(actual))
+			t.Fatal("unexpected")
+		}
+	}
+
+	// Test some cases manually.
+	run(0, crypto.SegmentSize)
+	run(crypto.SegmentSize, crypto.SegmentSize)
+	run(2*crypto.SegmentSize, crypto.SegmentSize)
+	run(crypto.SegmentSize, 2*crypto.SegmentSize)
+	run(1, crypto.SegmentSize)
+	run(0, crypto.SegmentSize-1)
+	run(0, crypto.SegmentSize+1)
+	run(crypto.SegmentSize-1, crypto.SegmentSize+1)
+
+	// Test random inputs.
+	for rounds := 0; rounds < 100; rounds++ {
+		// random length and offset
+		length := (fastrand.Uint64n(5*crypto.SegmentSize) + 1)
+		offset := fastrand.Uint64n(modules.SectorSize - length)
+		run(offset, length)
+	}
 }
 
 // mockWorker is a helper function that returns a worker with a pricetable

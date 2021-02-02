@@ -56,18 +56,18 @@ type projectDownloadChunk struct {
 	lengthInChunk uint64
 	offsetInChunk uint64
 
+	// Values derived from the chunk download parameters. The offset and length
+	// specify the offset and length that will be sent to the host, which must
+	// be segment aligned.
+	pieceLength uint64
+	pieceOffset uint64
+
 	// pricePerMS is the amount of money we are willing to spend on faster
 	// workers. If a certain set of workers is 100ms faster, but that exceeds
 	// the pricePerMS we are willing to pay for it, we won't use that faster
 	// worker set. If it is within the budget however, we will favor the faster
 	// and more expensive worker set.
 	pricePerMS types.Currency
-
-	// Values derived from the chunk download parameters. The offset and length
-	// specify the offset and length that will be sent to the host, which must
-	// be segment aligned.
-	pieceLength uint64
-	pieceOffset uint64
 
 	// availablePieces are pieces that resolved workers think they can fetch.
 	//
@@ -223,31 +223,24 @@ func (pdc *projectDownloadChunk) fail(err error) {
 // and then send the result down the response channel. If there is an error
 // during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
-	// Helper variable.
-	ec := pdc.workerSet.staticErasureCoder
+	// Determine the amount of bytes the EC will need to skip from the recovered
+	// data when returning the data.
+	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
 
-	// The chunk download offset and chunk download length are different from
-	// the requested offset and length because the chunk download offset and
-	// length are required to be a factor of the segment size of the erasure
-	// codes.
-	//
-	// NOTE: This is one of the places where we assume we are using maximum
-	// distance separable erasure codes.
-	chunkDLOffset := pdc.pieceOffset * uint64(ec.MinPieces())
-	chunkDLLength := pdc.pieceLength * uint64(ec.MinPieces())
+	// Create a skipwriter that ensures we're recovering at the offset
+	buf := bytes.NewBuffer(nil)
+	skipWriter := &skipWriter{
+		writer: buf,
+		skip:   int(skipLength),
+	}
 
 	// Recover the pieces in to a single byte slice.
-	buf := bytes.NewBuffer(nil)
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, chunkDLOffset+chunkDLLength, buf)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk+skipLength, skipWriter)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 		return
 	}
 	data := buf.Bytes()
-
-	// The full set of data is recovered, truncate it down to just the pieces of
-	// data requested by the user and return.
-	data = data[pdc.offsetInChunk : pdc.offsetInChunk+pdc.lengthInChunk]
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
