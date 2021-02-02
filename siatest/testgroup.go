@@ -644,15 +644,32 @@ func (tg *TestGroup) Portals() []*TestNode {
 
 // RemoveNode removes a node from the group and shuts it down.
 func (tg *TestGroup) RemoveNode(tn *TestNode) error {
-	// Remote node from all data structures.
-	delete(tg.nodes, tn)
-	delete(tg.hosts, tn)
-	delete(tg.portals, tn)
-	delete(tg.renters, tn)
-	delete(tg.miners, tn)
+	return tg.RemoveNodeN(tn)
+}
+
+// RemoveNodeN removes multiple nodes from the group and shuts them down.
+func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(tns))
+	for i, tn := range tns {
+		// Remote node from all data structures.
+		delete(tg.nodes, tn)
+		delete(tg.hosts, tn)
+		delete(tg.portals, tn)
+		delete(tg.renters, tn)
+		delete(tg.miners, tn)
+
+		// Actual shutdown happens in another goroutine.
+		wg.Add(1)
+		go func(i int, tn *TestNode) {
+			errs[i] = tn.StopNode()
+			wg.Done()
+		}(i, tn)
+	}
+	wg.Wait()
 
 	// Close node.
-	return tn.StopNode()
+	return errors.Compose(errs...)
 }
 
 // Renters returns all the renters of the group. Note that the ordering of nodes in

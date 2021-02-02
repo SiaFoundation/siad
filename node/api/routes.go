@@ -238,10 +238,7 @@ func (api *API) buildHTTPRoutes() {
 	}
 
 	// Apply UserAgent middleware and return the Router
-	timeoutErrStr := fmt.Sprintf("HTTP call exceeded the timeout of %v:", httpServerTimeout)
-	timeoutErr := Error{
-		Message: timeoutErrStr,
-	}
+	timeoutErr := Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}
 	jsonErr, err := json.Marshal(timeoutErr)
 	if err != nil {
 		build.Critical("marshalling error on object that should be safe to marshal:", err)
