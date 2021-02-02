@@ -384,7 +384,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 
 		// Mark chunk as stuck because the renter was unable to fetch the
 		// logical data.
-		r.repairLog.Printf("Marking a chunk %v of file %s as stuck because the logical data could not be fetched: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 		err = chunk.fileEntry.SetStuck(chunk.staticIndex, true)
 		if err != nil {
 			r.repairLog.Printf("Error marking chunk %v of file %s as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
