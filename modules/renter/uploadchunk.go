@@ -362,8 +362,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		// remaining memory.
 		chunk.workersRemaining = 0
 
-		// Set the allocated slices for the data to nil for faster GC.
-		chunk.physicalChunkData = nil
+		// Set the logical chunk data to nil for faster GC. The physical chunk
+		// data is nil'd by managedCleanUpUploadChunk later.
 		chunk.logicalChunkData = nil
 
 		// Set the error to indicate the failure happened when fetching the
