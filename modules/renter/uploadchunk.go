@@ -355,23 +355,24 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		// Return the erasure coding memory. This is not handled by the cleanup
 		// code.
 		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
-		chunk.mu.Lock()
-		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 
+		chunk.mu.Lock()
+		// Add the amount of freed EC memory to the chunk.
+		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		// Set the remaining workers to 0 for the cleanup code to free all
 		// remaining memory.
 		chunk.workersRemaining = 0
-
 		// Set the logical chunk data to nil for faster GC. The physical chunk
 		// data is nil'd by managedCleanUpUploadChunk later.
 		chunk.logicalChunkData = nil
-
 		// Set the error to indicate the failure happened when fetching the
 		// data.
 		err := fmt.Errorf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 		chunk.err = err
-		r.repairLog.Printf(err.Error())
 		chunk.mu.Unlock()
+
+		// Log error.
+		r.repairLog.Printf(err.Error())
 
 		// Cleanup the failed chunk without holding the lock.
 		r.managedCleanUpUploadChunk(chunk)
