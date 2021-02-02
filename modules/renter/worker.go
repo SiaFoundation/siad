@@ -263,11 +263,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		downloadChunks:    newDownloadChunks(),
-		unprocessedChunks: newUploadChunks(),
-		killChan:          make(chan struct{}),
-		wakeChan:          make(chan struct{}, 1),
-		renter:            r,
+		downloadChunks:          newDownloadChunks(),
+		unprocessedChunks:       newUploadChunks(),
+		initialEstimatesSetChan: make(chan struct{}),
+		killChan:                make(chan struct{}),
+		wakeChan:                make(chan struct{}, 1),
+		renter:                  r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()

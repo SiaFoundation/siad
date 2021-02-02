@@ -268,7 +268,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		uuc.sourceReader = ss
 
 		// Check if the chunk needs any work or if we can skip it.
-		if uuc.piecesCompleted < uuc.piecesNeeded {
+		if uuc.piecesCompleted < uuc.staticPiecesNeeded {
 			// Add the chunk to the upload heap's repair map.
 			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
 			if err != nil {
@@ -321,15 +321,15 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	// Wait for all chunks to become available.
 	for _, chunk := range chunks {
 		select {
-		case <-r.tg.StopCtx().Done():
-			return nil, errors.AddContext(err, "upload streamer failed to get all data available, renter shut down")
+		case <-r.tg.StopChan():
+			err = errors.New("upload timed out, renter has shutdown")
 		case <-chunk.staticAvailableChan:
 			chunk.mu.Lock()
-			err := chunk.err
+			err = chunk.err
 			chunk.mu.Unlock()
-			if err != nil {
-				return nil, errors.AddContext(err, "upload streamer failed to get all data available")
-			}
+		}
+		if err != nil {
+			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
 
