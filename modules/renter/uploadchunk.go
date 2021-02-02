@@ -352,29 +352,36 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Fetch the logical data for the chunk.
 	err = r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
-		// Logical data is not available, cannot upload. Chunk will not be
-		// distributed to workers, therefore set workersRemaining equal to zero.
-		// The erasure coding memory has not been released yet, be sure to
-		// release that as well.
-		chunk.mu.Lock()
-		chunk.logicalChunkData = nil
-		chunk.workersRemaining = 0
-		chunk.err = errors.AddContext(err, "logical data was not successfully fetched during repair")
-		close(chunk.staticAvailableChan)
-		close(chunk.staticUploadCompletedChan)
+		// Return the erasure coding memory. This is not handled by the cleanup
+		// code.
 		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+		chunk.mu.Lock()
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
-		chunk.mu.Unlock()
-		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 
-		// Remove the failed chunk from the repair heap.
-		r.uploadHeap.managedMarkRepairDone(chunk)
+		// Set the remaining workers to 0 for the cleanup code to free all
+		// remaining memory.
+		chunk.workersRemaining = 0
+
+		// Set the allocated slices for the data to nil for faster GC.
+		chunk.physicalChunkData = nil
+		chunk.logicalChunkData = nil
+
+		// Set the error to indicate the failure happened when fetching the
+		// data.
+		err := fmt.Errorf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
+		chunk.err = err
+		r.repairLog.Printf(err.Error())
+		chunk.mu.Unlock()
+
+		// Cleanup the failed chunk without holding the lock.
+		r.managedCleanUpUploadChunk(chunk)
 
 		// If Sia is not currently online, the chunk doesn't need to be marked
 		// as stuck.
 		if !r.g.Online() {
 			return
 		}
+
 		// Mark chunk as stuck because the renter was unable to fetch the
 		// logical data.
 		r.repairLog.Printf("Marking a chunk %v of file %s as stuck because the logical data could not be fetched: %v", chunk.staticIndex, chunk.staticSiaPath, err)
