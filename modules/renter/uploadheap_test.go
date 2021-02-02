@@ -309,7 +309,7 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
-	topChunkID := chunk1.id
+	topChunk := chunk1
 	chunks = append(chunks, chunk1, chunk2)
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
@@ -343,7 +343,7 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
-	middleChunkID := chunk1.id
+	middleChunk := chunk1
 	chunks = append(chunks, chunk1, chunk2)
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
@@ -351,7 +351,7 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
-	bottomChunkID := chunk2.id
+	bottomChunk := chunk2
 	chunks = append(chunks, chunk1, chunk2)
 
 	// Clear and reset the heap
@@ -377,17 +377,17 @@ func TestUploadHeap(t *testing.T) {
 
 	// Test removing the top chunk
 	uh.mu.Lock()
-	uh.heap.removeByID(topChunkID)
+	uh.heap.removeByID(topChunk)
 	if uh.heap.Len() != len(chunks)-1 {
 		t.Fatal("Chunk not removed from heap")
 	}
 	// Test removing the bottom chunk
-	uh.heap.removeByID(bottomChunkID)
+	uh.heap.removeByID(bottomChunk)
 	if uh.heap.Len() != len(chunks)-2 {
 		t.Fatal("Chunk not removed from heap")
 	}
 	// Test removing a chunk in the middle
-	uh.heap.removeByID(middleChunkID)
+	uh.heap.removeByID(middleChunk)
 	if uh.heap.Len() != len(chunks)-3 {
 		t.Fatal("Chunk not removed from heap")
 	}
@@ -730,7 +730,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 			},
 			stuck:                     false,
 			piecesCompleted:           -1,
-			piecesNeeded:              1,
+			staticPiecesNeeded:        1,
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryManager:       rt.renter.repairMemoryManager,
@@ -813,7 +813,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			fileEntry:                 sf.Copy(),
 			stuck:                     stuck,
 			piecesCompleted:           1,
-			piecesNeeded:              1,
+			staticPiecesNeeded:        1,
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryManager:       rt.renter.repairMemoryManager,
@@ -1088,7 +1088,7 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	}
 
 	// Clear the stream chunk from the repair map
-	uh.managedMarkRepairDone(streamChunk.id)
+	uh.managedMarkRepairDone(streamChunk)
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
@@ -1110,7 +1110,7 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	pushAndVerify(streamChunk)
 
 	// Clear the stream chunk from the repair map
-	uh.managedMarkRepairDone(streamChunk.id)
+	uh.managedMarkRepairDone(streamChunk)
 
 	// Add the local chunk directly to the repair map
 	uh.mu.Lock()
