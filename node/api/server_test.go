@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -105,8 +106,15 @@ func TestServerTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Parse error.
+	var msg Error
+	err = json.Unmarshal(body, &msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Verify error msg
-	if string(body) != fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout) {
+	if msg.Message != fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout) {
 		t.Fatal("Expected response body to contain the custom error message")
 	}
 }
