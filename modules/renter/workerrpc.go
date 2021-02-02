@@ -173,8 +173,15 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap the stream in a ratelimit.
-	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
+
+	// Wrap the stream in the renter's ratelimit
+	//
+	// NOTE: this only ratelimits the data going over the stream and not the raw
+	// bytes going over the wire, so the ratelimit might be off by a few bytes.
+	rlStream := ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan())
+
+	// Wrap the stream in global ratelimit.
+	return ratelimit.NewRLStream(rlStream, modules.GlobalRateLimits, w.renter.tg.StopChan()), nil
 }
 
 // managedRenew renews the contract with the worker's host.
