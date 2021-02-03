@@ -122,7 +122,7 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// subscription-related fields
-		staticSubscriber types.Specifier
+		staticSubscriptionInfo *subscriptionInfo
 
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.

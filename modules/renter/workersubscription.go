@@ -1,8 +1,10 @@
 package renter
 
 import (
+	"encoding/hex"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -12,16 +14,49 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // TODO: track spending in account
 
 var (
+	initialSubscriptionBudget = modules.DefaultMaxEphemeralAccountBalance.Div64(10)
+
 	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2
 
 	priceTableRetryInterval = time.Second
 )
+
+type (
+	subscriptionInfo struct {
+		// subscriptions is the map of subscriptions that the worker is supposed
+		// to subscribe to. The worker might not be subscribed to these values
+		// at all times due to interruptions but it will try to resubscribe as
+		// soon as possible.
+		// The worker will also try to unsubscribe from all subsriptions that it
+		// currently has which are not in this map.
+		subscriptions map[modules.SubscriptionID]struct{}
+
+		// activeSubscriptions are the subscriptions that the worker is
+		// currently subscribed to. This map is ideally equal to subscriptions
+		// but might temporarily diverge.
+		activeSubscriptions map[modules.SubscriptionID]struct{}
+
+		// utility fields
+		mu sync.Mutex
+	}
+)
+
+func priceTableValidFor(pt *workerPriceTable, duration time.Duration) bool {
+	minExpiry := time.Now().Add(duration)
+	return minExpiry.Before(pt.staticExpiryTime)
+}
+
+func (w *worker) managedHandleNotification(stream siamux.Stream) {
+	panic("not implemented")
+}
 
 func (w *worker) threadedSubscriptionLoop() {
 	if err := w.renter.tg.Add(); err != nil {
@@ -34,37 +69,119 @@ func (w *worker) threadedSubscriptionLoop() {
 		return
 	}
 
-	// Compute the deadline for the subscription.
-	//deadline := oldDeadline.Add(modules.SubscriptionPeriod)
-
-	// Make sure the price table iss
-
 	for {
+		// Check for shutdown
+		select {
+		case <-w.killChan:
+			return // shutdown
+		default:
+		}
 
+		// Prepare a unique handler for the host to subscribe to.
+		var subscriber types.Specifier
+		fastrand.Read(subscriber[:])
+		subscriberStr := hex.EncodeToString(subscriber[:])
+
+		// If the worker is on a cooldown, block until it is over.
+		if w.managedOnMaintenanceCooldown() {
+			cooldownTime := w.callStatus().MaintenanceCoolDownTime
+			w.renter.tg.Sleep(cooldownTime)
+			continue // try again
+		}
+
+		// Get a valid price table.
+		pt := w.managedPriceTableForSubscription(modules.SubscriptionPeriod)
+
+		// Compute the initial deadline.
+		deadline := time.Now().Add(modules.SubscriptionPeriod)
+
+		// Set the initial budget.
+		initialBudget := initialSubscriptionBudget
+		budget := modules.NewBudget(initialBudget)
+
+		// Track the withdrawal.
+		w.staticAccount.managedTrackWithdrawal(initialBudget)
+
+		// Begin the subscription session.
+		stream, err := w.managedBeginSubscription(initialBudget, w.staticAccount.staticID, subscriber)
+		if err != nil {
+			// Mark withdrawal as failed.
+			w.staticAccount.managedCommitWithdrawal(initialBudget, false)
+
+			// Log error and wait for some time before trying again.
+			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
+			w.renter.tg.Sleep(time.Second * 10)
+			continue
+		}
+
+		// Commit the withdrawal.
+		w.staticAccount.managedCommitWithdrawal(initialBudget, true)
+
+		// Register the handler. This can happen after beginning the subscription
+		// since we are not expecting any notifications yet.
+		err = w.renter.staticMux.NewListener(subscriberStr, w.managedHandleNotification)
+		if err != nil {
+			w.renter.log.Printf("Worker %v: failed to register host listener: %v", w.staticHostPubKeyStr, err)
+			w.renter.tg.Sleep(time.Second * 10)
+			continue
+		}
+
+		// Run the subscription. The error is checked after closing the handler
+		// and the refund.
+		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget)
+
+		// Close the handler.
+		err = w.renter.staticMux.CloseListener(subscriberStr)
+		if err != nil {
+			w.renter.log.Printf("Worker %v: failed to close host listener: %v", w.staticHostPubKeyStr, err)
+		}
+
+		// Deposit refund. This happens in any case.
+		refund := budget.Remaining()
+		w.staticAccount.managedTrackDeposit(refund)
+		w.staticAccount.managedCommitDeposit(refund, true)
+
+		// Check the error.
+		if errors.Contains(errSubscription, threadgroup.ErrStopped) {
+			return // shutdown
+		}
+		if err != nil {
+			w.renter.log.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
+			w.renter.tg.Sleep(time.Second * 10)
+		}
 	}
 }
 
-func priceTableValidFor(pt *workerPriceTable, duration time.Duration) bool {
-	minExpiry := time.Now().Add(duration)
-	return minExpiry.Before(pt.staticExpiryTime)
+func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget) error {
+	// Clear the active subsriptions at the end of this method.
+	subInfo := w.staticSubscriptionInfo
+	defer func() {
+		subInfo.mu.Lock()
+		subInfo.activeSubscriptions = make(map[modules.SubscriptionID]struct{})
+		subInfo.mu.Unlock()
+	}()
+
+	for {
+		panic("not implemented yet")
+	}
 }
 
-func (w *worker) managedPriceTableForSubscription(duration time.Duration) *workerPriceTable {
+func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modules.RPCPriceTable {
 	for {
 		// Get most recent price table.
 		pt := w.staticPriceTable()
 
 		// If the price table is valid, return it.
 		if priceTableValidFor(pt, duration) {
-			return pt
+			return &pt.staticPriceTable
 		}
 
 		// NOTE: The price table is not valid for the subsription. This
 		// theoretically should not happen a lot.
-		// The reason why not shouldn't happen often is that a price table is valid
-		// for rpcPriceGuaranteePeriod. That period is 10 minutes in production
-		// and gets renewed every 5 minutes. So we should always have a price
-		// table that is at least valid for another 5 minutes. The
+		// The reason why it shouldn't happen often is that a price table is
+		// valid for rpcPriceGuaranteePeriod. That period is 10 minutes in
+		// production and gets renewed every 5 minutes. So we should always have
+		// a price table that is at least valid for another 5 minutes. The
 		// SubscriptionPeriod also happens to be 5 minutes but we renew 2.5
 		// minutes before it ends.
 
@@ -120,7 +237,7 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 	}
 
 	// Send the subscriber.
-	return stream, modules.RPCWrite(stream, w.staticSubscriber)
+	return stream, modules.RPCWrite(stream, subscriber)
 }
 
 // stopSubscription gracefully stops a subscription session.

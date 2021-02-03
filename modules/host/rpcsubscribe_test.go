@@ -67,7 +67,7 @@ func assertNumSubscriptions(host *Host, n int) error {
 // assertSubscriptionInfos asserts the number of times a specific entry has been
 // subscribed to and returns the corresponding nsubscription infos.
 func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Hash, n int) ([]*subscriptionInfo, error) {
-	sid := deriveSubscriptionID(spk, tweak)
+	sid := modules.RegistrySubscriptionID(spk, tweak)
 	host.staticRegistrySubscriptions.mu.Lock()
 	subInfos, found := host.staticRegistrySubscriptions.subscriptions[sid]
 	if !found {
