@@ -229,6 +229,22 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 }
 
 func getPercentilesString(timings stats.Float64Data) string {
+	p50, err := timings.Percentile(50)
+	if err != nil {
+		return err.Error()
+	}
+	p60, err := timings.Percentile(60)
+	if err != nil {
+		return err.Error()
+	}
+	p70, err := timings.Percentile(70)
+	if err != nil {
+		return err.Error()
+	}
+	p80, err := timings.Percentile(80)
+	if err != nil {
+		return err.Error()
+	}
 	p90, err := timings.Percentile(90)
 	if err != nil {
 		return err.Error()
@@ -245,7 +261,7 @@ func getPercentilesString(timings stats.Float64Data) string {
 	if err != nil {
 		return err.Error()
 	}
-	return fmt.Sprintf("90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p90, p95, p99, p999)
+	return fmt.Sprintf("50p: %vms\n60p: %vms\n70p: %vms\n80p: %vms\n90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p50, p60, p70, p80, p90, p95, p99, p999)
 }
 
 // getMissingFiles will fetch a map of all the files that are missing or don't
