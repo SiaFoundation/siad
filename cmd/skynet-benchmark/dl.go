@@ -128,7 +128,7 @@ func dl() {
 			}
 
 			// Log result
-			fmt.Printf("%v downloads on %v threads finished in %v\n", dir, numThreads, start)
+			fmt.Printf("%v downloads on %v threads finished in %v\n", dir, numThreads, time.Since(start))
 			fmt.Println(getPercentilesString(timings))
 		}
 	}
