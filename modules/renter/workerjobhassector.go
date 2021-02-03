@@ -233,20 +233,25 @@ func (w *worker) initJobHasSectorQueue() {
 // bandwidth consumption of a has sector job. This helper function enables
 // getting at the expected bandwidth without having to instantiate a job.
 func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
-	// Roughly 40 roots can fit into a single frame. To be conservative, we use
-	// a value of 30.
-	//
-	// Roughly 150 responses can fit into a single frame. To be conservative, we
-	// use a value of 100.
-	uploadMult := numRoots / 30
-	downloadMult := numRoots / 100
+	// Roughly 10 roots (conservatively) can fit into a single frame. Therefor
+	// we ceil numRoots to the closest multiple of time and then divide by it.
+	// The has sector programs need about twice as much download bandwidth as
+	// they upload bandwidth, so we can just multiply by 2 there to be on the
+	// safe side.
+	mod := numRoots % 10
+	if mod != 0 {
+		numRoots += (10 - mod)
+	}
+	uploadMult := numRoots / 10
+	downloadMult := 2 * uploadMult
+
 	// A base of 1500 is used for the packet size. On ipv4, it is technically
 	// smaller, but siamux is general and the packet size is the Ethernet MTU
 	// (1500 bytes) minus any protocol overheads. It's possible if the renter is
 	// connected directly over an interface to a host that there is no overhead,
 	// which means siamux could use the full 1500 bytes. So we use the most
 	// conservative value here as well.
-	ul = uint64(1500 * (1 + uploadMult))
-	dl = uint64(1500 * (1 + downloadMult))
+	ul = uint64(1500 * uploadMult)
+	dl = uint64(1500 * downloadMult)
 	return
 }
