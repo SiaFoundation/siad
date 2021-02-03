@@ -53,7 +53,13 @@ func main() {
 		return
 	}
 	if cmd == "dl" {
-		dl()
+		output := captureOutput(dl)
+		skylink, err := uploadOutput(output)
+		if err != nil {
+			fmt.Println("Failed to upload results to Skynet", err)
+			return
+		}
+		fmt.Println("Uploaded output to skynet: ", skylink)
 		return
 	}
 

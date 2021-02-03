@@ -29,6 +29,12 @@ const (
 	dir4mb  = "4mb"
 	dir10mb = "10mb"
 
+	// A range of different thread counts.
+	threads1  = "1thread"
+	threads4  = "4threads"
+	threads16 = "16threads"
+	threads64 = "64threads"
+
 	// The exact sizes of each file. This size is chosen so that when the
 	// metadata is added to the file, and then the filesize is converted to a
 	// fetch size, the final fetch size is as close as possible to the filesize
@@ -55,107 +61,76 @@ const (
 func dl() {
 	fmt.Println("Performing dl command")
 
+	// Convenience variables
+	dirs := []string{dir64kb, dir1mb, dir4mb, dir10mb}
+	threadss := []string{threads1, threads4, threads16, threads64}
+	threadssCount := map[string]uint64{threads1: 1, threads4: 4, threads16: 16, threads64: 64}
+
 	// Establish the directories that we will be using for testing.
 	dirBasePath, err := modules.NewSiaPath(testSiaDirDL)
 	if err != nil {
 		fmt.Println("Could not create siapath for testing directory:", err)
 		return
 	}
-	dir64kbPath, err := dirBasePath.Join(dir64kb)
-	if err != nil {
-		fmt.Println("Could not create 64kb siapath for testing directory:", err)
-		return
-	}
-	dir1mbPath, err := dirBasePath.Join(dir1mb)
-	if err != nil {
-		fmt.Println("Could not create 1mb siapath for testing directory:", err)
-		return
-	}
-	dir4mbPath, err := dirBasePath.Join(dir4mb)
-	if err != nil {
-		fmt.Println("Could not create 4mb siapath for testing directory:", err)
-		return
-	}
-	dir10mbPath, err := dirBasePath.Join(dir10mb)
-	if err != nil {
-		fmt.Println("Could not create 10mb siapath for testing directory:", err)
-		return
+
+	// Create a map that contains the exact file size and fetch size. The
+	// filesize used is slightly smaller than the expected filesize to leave
+	// room for metadata overhead. The expected filesize used is the largest
+	// filesize that fits inside of the file limits for the metrics collector.
+	sizes := [][]uint64{
+		{exactSize64kb, fetchSize64kb},
+		{exactSize1mb, fetchSize1mb},
+		{exactSize4mb, fetchSize4mb},
+		{exactSize10mb, fetchSize10mb},
 	}
 
-	// Upload the files for each dir. The filesize used is slightly smaller than
-	// the expected filesize to leave room for metadata overhead. The expected
-	// filesize used is the largest filesize that fits inside of the file limits
-	// for the metrics collector.
-	err = uploadFileSet(dir64kbPath, exactSize64kb, fetchSize64kb)
-	if err != nil {
-		fmt.Println("Unable to upload 64kb files:", err)
-		return
+	fmt.Println("Beginning uploading test files.")
+
+	// Keep track of the sia paths to avoid having to recreate them later.
+	paths := make(map[string]modules.SiaPath)
+
+	// Iterate over every size category and thread count we're interested in and
+	// upload the file set to that corresponding sia dir. We re-upload all files
+	// to directories specific to both the size and thread count to avoid
+	// serving a skyfile from (internal) cache structures at all costs.
+	for i, dir := range dirs {
+		for _, threads := range threadss {
+			subPathStr := dir + threads
+			dirPath, err := dirBasePath.Join(subPathStr)
+			if err != nil {
+				fmt.Printf("Could not create '%v' siapath for testing directory, err:%v\n", subPathStr, err)
+				continue
+			}
+			paths[subPathStr] = dirPath
+			err = uploadFileSet(dirPath, sizes[i][0], sizes[i][1])
+			if err != nil {
+				fmt.Printf("Unable to upload %v files, err:%v", subPathStr, err)
+				return
+			}
+			fmt.Printf("%v files are ready to go.\n\n", subPathStr)
+		}
 	}
-	fmt.Println("64kb files are ready to go.")
-	err = uploadFileSet(dir1mbPath, exactSize1mb, fetchSize1mb)
-	if err != nil {
-		fmt.Println("Unable to upload 1mb files:", err)
-		return
-	}
-	fmt.Println("1mb files are ready to go.")
-	err = uploadFileSet(dir4mbPath, exactSize4mb, fetchSize4mb)
-	if err != nil {
-		fmt.Println("Unable to upload 4mb files:", err)
-		return
-	}
-	fmt.Println("4mb files are ready to go.")
-	err = uploadFileSet(dir10mbPath, exactSize10mb, fetchSize10mb)
-	if err != nil {
-		fmt.Println("Unable to upload 10mb files:", err)
-		return
-	}
-	fmt.Printf("10mb files are ready to go.\n\n")
 
 	fmt.Printf("Beginning download testing. Each test is %v files\n\n", filesPerDir)
 
-	// Download all of the 64kb files.
-	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads
-	downloadStart := time.Now()
 	for _, threads := range threadss {
-		fmt.Printf("64kb downloads on %v threads started\n", threads)
-		timings, err := downloadFileSet(dir64kbPath, exactSize64kb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 64kb files:", err)
+		for i, dir := range dirs {
+			// Create download parameters
+			path := paths[dir+threads]
+			numThreads := threadssCount[threads]
+
+			// Reset timer
+			start := time.Now()
+			fmt.Printf("%v downloads on %v threads started\n", dir, numThreads)
+			timings, err := downloadFileSet(path, int(sizes[i][0]), numThreads)
+			if err != nil {
+				fmt.Printf("Unable to download all %v files, err: %v\n", dir, err)
+			}
+
+			// Log result
+			fmt.Printf("%v downloads on %v threads finished in %v\n", dir, numThreads, start)
+			fmt.Println(getPercentilesString(timings))
 		}
-		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-		fmt.Println(getPercentilesString(timings))
-
-		downloadStart = time.Now()
-		fmt.Printf("1mb downloads on %v threads started\n", threads)
-		timings, err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 1mb files:", err)
-		}
-		fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-		fmt.Println(getPercentilesString(timings))
-
-		downloadStart = time.Now()
-		fmt.Printf("4mb downloads on %v threads started\n", threads)
-		timings, err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 4mb files:", err)
-		}
-		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads,
-			time.Since(downloadStart))
-
-		fmt.Println(getPercentilesString(timings))
-
-		downloadStart = time.Now()
-		fmt.Printf("10mb downloads on %v threads started\n", threads)
-		timings, err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
-		if err != nil {
-			fmt.Println("Unable to download all 10mb files:", err)
-		}
-		fmt.Printf("10mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
-
-		fmt.Println(getPercentilesString(timings))
-		downloadStart = time.Now()
-		fmt.Println()
 	}
 }
 
