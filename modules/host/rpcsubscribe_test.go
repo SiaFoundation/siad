@@ -927,12 +927,17 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 
 	// Check balance afterwards.
 	l := stream.Limit()
-	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + notificationUploaded)
-	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + notificationDownloaded)
+	notificationMu.Lock()
+	nu := notificationUploaded
+	nd := notificationDownloaded
+	nn := numNotifications
+	notificationMu.Unlock()
+	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + nu)
+	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + nd)
 	bandwidthCost := upCost.Add(downCost)
 	cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
 	cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
-	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(numNotifications)))
+	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(nn)))
 
 	currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	expected := expectedBalance.Sub(cost)
