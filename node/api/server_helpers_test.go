@@ -582,7 +582,11 @@ func (st *serverTester) announceHost() error {
 	if err != nil {
 		return err
 	}
-	initialHosts := len(hosts.Hosts)
+	initialHosts := make(map[modules.NetAddress]struct{})
+	// Create map of initialHosts
+	for _, h := range hosts.Hosts {
+		initialHosts[h.NetAddress] = struct{}{}
+	}
 
 	// Set the host to be accepting contracts.
 	acceptingContractsValues := url.Values{}
@@ -604,21 +608,25 @@ func (st *serverTester) announceHost() error {
 		return err
 	}
 	// wait for announcement
-	err = st.getAPI("/hostdb/active", &hosts)
-	if err != nil {
-		return err
-	}
-	for i := 0; i < 50 && len(hosts.Hosts) <= initialHosts; i++ {
-		time.Sleep(100 * time.Millisecond)
+	return build.Retry(100, 100*time.Millisecond, func() error {
 		err = st.getAPI("/hostdb/active", &hosts)
 		if err != nil {
 			return err
 		}
-	}
-	if len(hosts.Hosts) <= initialHosts {
+		// If we see more hosts now, then we return successful
+		if len(hosts.Hosts) > len(initialHosts) {
+			return nil
+		}
+		for _, h := range hosts.Hosts {
+			_, ok := initialHosts[h.NetAddress]
+			if !ok {
+				// If we see a new hosts, then we return successful
+				return nil
+			}
+		}
+		// There are no new hosts.
 		return errors.New("host announcement not seen")
-	}
-	return nil
+	})
 }
 
 // getAPI makes an API call and decodes the response.

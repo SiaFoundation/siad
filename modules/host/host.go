@@ -347,11 +347,11 @@ func (h *Host) managedUpdatePriceTable() {
 		SwapSectorCost:      types.NewCurrency64(1),
 
 		// Read related costs.
-		ReadBaseCost:   hes.SectorAccessPrice,
+		ReadBaseCost:   hes.SectorAccessPrice, // roughly equal to 64 kib download
 		ReadLengthCost: types.NewCurrency64(1),
 
 		// Write related costs.
-		WriteBaseCost:   types.NewCurrency64(1),
+		WriteBaseCost:   hes.SectorAccessPrice, // roughly equal to 64 kib download
 		WriteLengthCost: types.NewCurrency64(1),
 		WriteStoreCost:  hes.StoragePrice,
 

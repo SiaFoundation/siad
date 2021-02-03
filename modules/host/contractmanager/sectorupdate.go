@@ -1,6 +1,7 @@
 package contractmanager
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -38,7 +39,7 @@ func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 
 // managedAddPhysicalSector is a WAL operation to add a physical sector to the
 // contract manager.
-func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, count uint16) error {
+func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) error {
 	// Sanity check - data should have modules.SectorSize bytes.
 	if uint64(len(data)) != modules.SectorSize {
 		wal.cm.log.Critical("sector has the wrong size", modules.SectorSize, len(data))
@@ -103,6 +104,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 			}
 
 			// Try writing the sector metadata to disk.
+			count := uint64(1)
 			su := sectorUpdate{
 				Count:  count,
 				ID:     id,
@@ -163,7 +165,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 // managedAddVirtualSector will add a virtual sector to the contract manager.
 func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLocation) error {
 	// Update the location count.
-	if location.count == 65535 {
+	if location.count == math.MaxUint64 {
 		return modules.ErrMaxVirtualSectors
 	}
 	location.count++
@@ -356,11 +358,45 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 // writeSectorMetadata will take a sector update and write the related metadata
 // to disk.
 func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate) error {
-	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+	// COMPATV154 The original counter was a 16 bit value stored in the sector
+	// metadata. For compatibility reasons, we keep the first 16bit in the
+	// metadata but anything above that is stored in a dedicated overflow file.
+	var count uint16
+	var overflow uint64
+	if su.Count > math.MaxUint16 {
+		count = math.MaxUint16
+		overflow = su.Count - math.MaxUint16
+	} else {
+		count = uint16(su.Count)
+	}
+
+	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, count)
 	if err != nil {
 		wal.cm.log.Printf("ERROR: unable to write sector metadata to folder %v when adding sector: %v\n", su.Folder, err)
 		atomic.AddUint64(&sf.atomicFailedWrites, 1)
 		return err
+	}
+
+	// We should only ever need to update the overflow file when the count has
+	// reached the maximum.
+	if count != math.MaxUint16 {
+		atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
+		return nil
+	}
+
+	// Check the existing overflow for potential recovery.
+	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow.Overflow(su.ID)
+
+	// Only persist if there is a value > 0 that we haven't persisted yet, or if
+	// the persisted value is outdated.
+	if (!exist && overflow > 0) || (existingOverflow != overflow) {
+		err = wal.cm.sectorLocationsCountOverflow.SetOverflow(su.ID, overflow)
+		if err != nil {
+			err = errors.AddContext(err, "ERROR: unable to set overflow")
+			wal.cm.log.Printf(err.Error())
+			atomic.AddUint64(&sf.atomicFailedWrites, 1)
+			return err
+		}
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
 	return nil
@@ -401,7 +437,7 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	if exists {
 		err = cm.wal.managedAddVirtualSector(id, location)
 	} else {
-		err = cm.wal.managedAddPhysicalSector(id, sectorData, 1)
+		err = cm.wal.managedAddPhysicalSector(id, sectorData)
 	}
 	if errors.Contains(err, errDiskTrouble) {
 		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
