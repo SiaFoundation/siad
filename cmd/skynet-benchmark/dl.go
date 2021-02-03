@@ -228,6 +228,8 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 	return timings, nil
 }
 
+// getPercentilesString takes a set of timings and returns a bunch of percentile
+// statistics.
 func getPercentilesString(timings stats.Float64Data) string {
 	p50, err := timings.Percentile(50)
 	if err != nil {

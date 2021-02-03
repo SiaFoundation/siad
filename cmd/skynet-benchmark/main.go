@@ -48,20 +48,22 @@ func main() {
 	c = client.New(opts)
 
 	// Parse the options.
+	var benchmark benchmarkFn
 	if cmd == "basic" {
-		basicCheck()
-		return
-	}
-	if cmd == "dl" {
-		output := captureOutput(dl)
-		skylink, err := uploadOutput(output)
-		if err != nil {
-			fmt.Println("Failed to upload results to Skynet", err)
-			return
-		}
-		fmt.Println("Uploaded output to skynet: ", skylink)
+		benchmark = basicCheck
+	} else if cmd == "dl" {
+		benchmark = dl
+	} else {
+		fmt.Printf("Command '%v' not recognized. Options are 'dl' and 'basic'\n", cmd)
 		return
 	}
 
-	fmt.Printf("Command '%v' not recognized. Options are 'dl' and 'basic'\n", cmd)
+	// Run the benchmark and capture the output
+	output := captureOutput(benchmark)
+	skylink, err := uploadBenchmarkOutput(output)
+	if err != nil {
+		fmt.Println("Failed to upload results to Skynet", err)
+		return
+	}
+	fmt.Println("Uploaded output to skynet: ", skylink)
 }

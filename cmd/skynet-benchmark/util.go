@@ -12,7 +12,13 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-func captureOutput(f func()) string {
+// benchmarkFn is a helper type
+type benchmarkFn func()
+
+// captureOutput is a small helper function that takes a function as an argument
+// and runs that function, meanwhile capturing the output of stdout. The output
+// is then returned as a string.
+func captureOutput(f benchmarkFn) string {
 	stdout := os.Stdout
 	stderr := os.Stderr
 	defer func() {
@@ -21,18 +27,17 @@ func captureOutput(f func()) string {
 		log.SetOutput(os.Stderr)
 	}()
 
+	// create multiwriter to capture output
 	var buf bytes.Buffer
 	mw := io.MultiWriter(stdout, &buf)
 
-	// get pipe reader and writer | writes to pipe writer come out pipe reader
+	// create a pipe and replace stdout
 	r, w, _ := os.Pipe()
-
-	// replace stdout,stderr with pipe writer | all writes to stdout, stderr will go through pipe instead (fmt.print, log)
 	os.Stdout = w
 	os.Stderr = w
 	log.SetOutput(mw)
 
-	//create channel to control exit | will block until all copies are finished
+	// create channel to control when we can return (after copying is finished)
 	exit := make(chan bool)
 	go func() {
 		_, _ = io.Copy(mw, r)
@@ -45,7 +50,9 @@ func captureOutput(f func()) string {
 	return buf.String()
 }
 
-func uploadOutput(output string) (string, error) {
+// uploadBenchmarkOutput is a small helper function that uploads the given
+// output string to Skynet
+func uploadBenchmarkOutput(output string) (string, error) {
 	name := fmt.Sprintf("skynet-benchmark-%v", time.Now().Format("2021-Feb-02"))
 	siaPath, err := modules.NewSiaPath(name)
 	if err != nil {
