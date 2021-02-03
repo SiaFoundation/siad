@@ -2,6 +2,7 @@ package renter
 
 import (
 	"encoding/hex"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -10,7 +11,6 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -37,12 +37,12 @@ type (
 		// soon as possible.
 		// The worker will also try to unsubscribe from all subsriptions that it
 		// currently has which are not in this map.
-		subscriptions map[modules.SubscriptionID]struct{}
+		subscriptions map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest
 
 		// activeSubscriptions are the subscriptions that the worker is
 		// currently subscribed to. This map is ideally equal to subscriptions
 		// but might temporarily diverge.
-		activeSubscriptions map[modules.SubscriptionID]struct{}
+		activeSubscriptions map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest
 
 		// utility fields
 		mu sync.Mutex
@@ -161,7 +161,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// Clear the active subsriptions at the end of this method.
 		subInfo.mu.Lock()
-		subInfo.activeSubscriptions = make(map[modules.SubscriptionID]struct{})
+		subInfo.activeSubscriptions = make(map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest)
 		subInfo.mu.Unlock()
 	}()
 
@@ -214,12 +214,40 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			}
 		}
 
-		// TODO: create a diff between the active subscriptions and the desired
+		// Create a diff between the active subscriptions and the desired
 		// ones.
+		subInfo.mu.Lock()
+		var toUnsubscribe []modules.RPCRegistrySubscriptionRequest
+		for subID, req := range subInfo.activeSubscriptions {
+			_, subscribed := subInfo.subscriptions[subID]
+			if !subscribed {
+				toUnsubscribe = append(toUnsubscribe, *req)
+			}
+		}
+		var toSubscribe []modules.RPCRegistrySubscriptionRequest
+		for subID, req := range subInfo.subscriptions {
+			_, subscribed := subInfo.activeSubscriptions[subID]
+			if !subscribed {
+				toSubscribe = append(toSubscribe, *req)
+			}
+		}
+		subInfo.mu.Unlock()
 
-		// TODO: subscribe to missing subscriptions.
+		// Unsubscribe from unnecessary subscriptions.
+		if len(toUnsubscribe) > 0 {
+			err = unsubscribeFromRVs(stream, pt, toUnsubscribe)
+			if err != nil {
+				return errors.AddContext(err, "failed to unsubscribe from registry values")
+			}
+		}
 
-		// TODO: unsubscribe from redundant subscriptions.
+		// Subscribe to any missing values.
+		if len(toSubscribe) > 0 {
+			_, err = subscribeToRVs(stream, pt, toSubscribe)
+			if err != nil {
+				return errors.AddContext(err, "failed to subscribe to registry values")
+			}
+		}
 
 		// Wait until some time passed or until there is new work.
 		panic("not implemented yet")
@@ -315,18 +343,15 @@ func stopSubscription(stream siamux.Stream) error {
 	return stream.Close()
 }
 
-// subscribeToRV subscribes to the given publickey/tweak pair.
-func subcribeToRV(stream siamux.Stream, pubkey types.SiaPublicKey, tweak crypto.Hash, pt *modules.RPCPriceTable) (*modules.SignedRegistryValue, error) {
+// subscribeToRVs subscribes to the given publickey/tweak pairs.
+func subscribeToRVs(stream siamux.Stream, pt *modules.RPCPriceTable, requests []modules.RPCRegistrySubscriptionRequest) ([]modules.SignedRegistryValue, error) {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)
 	if err != nil {
 		return nil, err
 	}
 	// Send the request.
-	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
-		PubKey: pubkey,
-		Tweak:  tweak,
-	}})
+	err = modules.RPCWrite(stream, requests)
 	if err != nil {
 		return nil, err
 	}
@@ -336,28 +361,38 @@ func subcribeToRV(stream siamux.Stream, pubkey types.SiaPublicKey, tweak crypto.
 	if err != nil {
 		return nil, err
 	}
-	var rv *modules.SignedRegistryValue
-	if len(rvs) > 1 {
-		build.Critical("more responses than subscribed to values")
-	} else if len(rvs) == 1 {
-		rv = &rvs[0]
-		err = rv.Verify(pubkey.ToPublicKey())
+	// Check the length of the response.
+	if len(rvs) > len(requests) {
+		return nil, fmt.Errorf("host returned more rvs than we subscribed to %v > %v", len(rvs), len(requests))
 	}
-	return rv, err
+	// Verify response. The rvs should be returned in the same order as
+	// requested so we start by verifying against the first request and work our
+	// way through to the last one. If not all rvs are verified successfully
+	// after running out of requests, something is wrong.
+	left := rvs
+	for _, req := range requests {
+		rv := left[0]
+		err = rv.Verify(req.PubKey.ToPublicKey())
+		if err != nil {
+			continue // try next request
+		}
+		left = left[1:]
+	}
+	if len(left) > 0 {
+		return nil, fmt.Errorf("failed to verify %v of %v rvs", len(left), len(rvs))
+	}
+	return rvs, nil
 }
 
-// unsubscribeFromRV unsubscribes from the given publickey/tweak pair.
-func unsubcribeFromRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
+// unsubscribeFromRVs unsubscribes from the given publickey/tweak pairs.
+func unsubscribeFromRVs(stream siamux.Stream, pt *modules.RPCPriceTable, requests []modules.RPCRegistrySubscriptionRequest) error {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestUnsubscribe)
 	if err != nil {
 		return err
 	}
 	// Send the request.
-	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
-		PubKey: pubkey,
-		Tweak:  tweak,
-	}})
+	err = modules.RPCWrite(stream, requests)
 	if err != nil {
 		return err
 	}
