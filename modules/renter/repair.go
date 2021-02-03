@@ -608,8 +608,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		// Prepare the subtree for being bubbled
 		urp, err := r.managedPrepareForBubble(siaPath)
 		if err != nil {
-			// Log the error but don't sleep for the error duration as some refresh
-			// paths might have been returned
+			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
 		}
 		if urp == nil || urp.callNumChildDirs() == 0 {

@@ -35,6 +35,7 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 	// Create some directory tree paths
 	paths := []modules.SiaPath{
 		modules.RootSiaPath(),
+		{Path: ""},
 		{Path: "root"},
 		{Path: "root/SubDir1"},
 		{Path: "root/SubDir1/SubDir1"},
@@ -65,21 +66,43 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 		}
 	}
 
-	// There should only be the following paths in the map
+	// Verify the child and parent dir maps
 	uniquePaths := []modules.SiaPath{
 		{Path: "root/SubDir1/SubDir1/SubDir1"},
 		{Path: "root/SubDir1/SubDir2"},
 		{Path: "root/SubDir2/SubDir1"},
 		{Path: "root/SubDir2/SubDir2/SubDir2"},
 	}
-	if len(dirsToRefresh.childDirs) != len(uniquePaths) {
-		t.Fatalf("Expected %v paths in map but got %v", len(uniquePaths), len(dirsToRefresh.childDirs))
+	childDirs := dirsToRefresh.callNumChildDirs()
+	if childDirs != len(uniquePaths) {
+		t.Fatalf("Expected %v paths in child dir map but got %v", len(uniquePaths), childDirs)
 	}
+	dirsToRefresh.mu.Lock()
 	for _, path := range uniquePaths {
 		if _, ok := dirsToRefresh.childDirs[path]; !ok {
 			t.Fatal("Did not find path in map", path)
 		}
 	}
+	dirsToRefresh.mu.Unlock()
+	parentPaths := []modules.SiaPath{
+		{Path: ""},
+		{Path: "root"},
+		{Path: "root/SubDir1"},
+		{Path: "root/SubDir1/SubDir1"},
+		{Path: "root/SubDir2"},
+		{Path: "root/SubDir2/SubDir2"},
+	}
+	parentDir := dirsToRefresh.callNumParentDirs()
+	if parentDir != len(parentPaths) {
+		t.Fatalf("Expected %v paths in parent dir map but got %v", len(parentPaths), parentDir)
+	}
+	dirsToRefresh.mu.Lock()
+	for _, path := range parentPaths {
+		if _, ok := dirsToRefresh.parentDirs[path]; !ok {
+			t.Fatal("Did not find path in map", path)
+		}
+	}
+	dirsToRefresh.mu.Unlock()
 
 	// Make child directories and add a file to each
 	rsc, _ := modules.NewRSCode(1, 1)
