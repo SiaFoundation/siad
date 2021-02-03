@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -14,10 +13,6 @@ import (
 )
 
 func captureOutput(f func()) string {
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		panic(err)
-	}
 	stdout := os.Stdout
 	stderr := os.Stderr
 	defer func() {
@@ -25,22 +20,29 @@ func captureOutput(f func()) string {
 		os.Stderr = stderr
 		log.SetOutput(os.Stderr)
 	}()
-	os.Stdout = writer
-	os.Stderr = writer
-	log.SetOutput(writer)
-	out := make(chan string)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
+
+	var buf bytes.Buffer
+	mw := io.MultiWriter(stdout, &buf)
+
+	// get pipe reader and writer | writes to pipe writer come out pipe reader
+	r, w, _ := os.Pipe()
+
+	// replace stdout,stderr with pipe writer | all writes to stdout, stderr will go through pipe instead (fmt.print, log)
+	os.Stdout = w
+	os.Stderr = w
+	log.SetOutput(mw)
+
+	//create channel to control exit | will block until all copies are finished
+	exit := make(chan bool)
 	go func() {
-		var buf bytes.Buffer
-		wg.Done()
-		io.Copy(&buf, reader)
-		out <- buf.String()
+		_, _ = io.Copy(mw, r)
+		exit <- true
 	}()
-	wg.Wait()
+
 	f()
-	writer.Close()
-	return <-out
+	_ = w.Close()
+	<-exit
+	return buf.String()
 }
 
 func uploadOutput(output string) (string, error) {

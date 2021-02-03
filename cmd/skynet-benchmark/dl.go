@@ -107,11 +107,11 @@ func dl() {
 				fmt.Printf("Unable to upload %v files, err:%v", subPathStr, err)
 				return
 			}
-			fmt.Printf("%v files are ready to go.\n\n", subPathStr)
+			fmt.Printf("- %v files: OK\n", subPathStr)
 		}
 	}
 
-	fmt.Printf("Beginning download testing. Each test is %v files\n\n", filesPerDir)
+	fmt.Printf("Beginning download testing.\nEach test is %v files\n\n", filesPerDir)
 
 	for _, threads := range threadss {
 		for i, dir := range dirs {
