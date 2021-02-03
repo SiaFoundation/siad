@@ -2355,9 +2355,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 
 	// Wait until all the files have been deleted
 	//
-	// Using 15 checks at 1 second intervals because the health loop check
-	// interval in testing in 5s and there are potential error sleeps of 3s.
-	if err := build.Retry(15, time.Second, func() error {
+	// Using 30 checks at 1 second intervals because the health loop check
+	// interval in testing is 5s and there are potential error sleeps of 3s.
+	if err := build.Retry(30, time.Second, func() error {
 		for _, siaPath := range blockedSiaPaths {
 			_, err = r.RenterFileRootGet(siaPath)
 			if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
