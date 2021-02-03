@@ -223,7 +223,7 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.F
 
 	// Don't need to use atomics, all threads have returned.
 	if atomicDownloadErrors != 0 {
-		return nil, fmt.Errorf("there were %v errors while downloading", atomicDownloadErrors)
+		return timings, fmt.Errorf("there were %v errors while downloading", atomicDownloadErrors)
 	}
 	return timings, nil
 }
