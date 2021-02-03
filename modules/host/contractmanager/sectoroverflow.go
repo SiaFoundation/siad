@@ -76,10 +76,11 @@ func newOverflowMap(path string, deps modules.Dependencies) (_ *overflowMap, err
 	}()
 
 	// Determine size of file.
-	size, err := f.Seek(0, os.SEEK_END)
+	stat, err := f.Stat()
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to determine file size")
+		return nil, errors.AddContext(err, "failed to stat file")
 	}
+	size := stat.Size()
 
 	// If it is empty, initialize it. Otherwise load it.
 	var entryMap map[sectorID]overflowEntry
