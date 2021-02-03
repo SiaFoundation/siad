@@ -403,7 +403,7 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
 	if build.VersionCmp(entry.Version, "1.5.5") < 0 {
-		base = base * 0.99 // Slight penalty against slightly out of date hosts.
+		base = base * 0.90 // 10% penalty for hosts without the virtual sector fix
 	}
 
 	// Heavy penalty for hosts before the foundation hardfork.
