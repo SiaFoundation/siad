@@ -72,7 +72,7 @@ func (w *worker) threadedSubscriptionLoop() {
 	for {
 		// Check for shutdown
 		select {
-		case <-w.killChan:
+		case <-w.tg.StopChan():
 			return // shutdown
 		default:
 		}
@@ -85,7 +85,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		// If the worker is on a cooldown, block until it is over.
 		if w.managedOnMaintenanceCooldown() {
 			cooldownTime := w.callStatus().MaintenanceCoolDownTime
-			w.renter.tg.Sleep(cooldownTime)
+			w.tg.Sleep(cooldownTime)
 			continue // try again
 		}
 
@@ -110,7 +110,7 @@ func (w *worker) threadedSubscriptionLoop() {
 
 			// Log error and wait for some time before trying again.
 			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
-			w.renter.tg.Sleep(time.Second * 10)
+			w.tg.Sleep(time.Second * 10)
 			continue
 		}
 
@@ -122,7 +122,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		err = w.renter.staticMux.NewListener(subscriberStr, w.managedHandleNotification)
 		if err != nil {
 			w.renter.log.Printf("Worker %v: failed to register host listener: %v", w.staticHostPubKeyStr, err)
-			w.renter.tg.Sleep(time.Second * 10)
+			w.tg.Sleep(time.Second * 10)
 			continue
 		}
 
@@ -147,21 +147,81 @@ func (w *worker) threadedSubscriptionLoop() {
 		}
 		if err != nil {
 			w.renter.log.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
-			w.renter.tg.Sleep(time.Second * 10)
+			w.tg.Sleep(time.Second * 10)
 		}
 	}
 }
 
-func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget) error {
-	// Clear the active subsriptions at the end of this method.
+func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget) (err error) {
+	// Register some cleanup.
 	subInfo := w.staticSubscriptionInfo
 	defer func() {
+		// Close the stream gracefully.
+		err = errors.Compose(stopSubscription(stream))
+
+		// Clear the active subsriptions at the end of this method.
 		subInfo.mu.Lock()
 		subInfo.activeSubscriptions = make(map[modules.SubscriptionID]struct{})
 		subInfo.mu.Unlock()
 	}()
 
+	// Set the stream deadline to the subscription deadline.
+	err = stream.SetDeadline(deadline)
+	if err != nil {
+		return errors.AddContext(err, "failed to set stream deadlien to subscription deadline")
+	}
+
 	for {
+		// Check for shutdown
+		select {
+		case <-w.tg.StopChan():
+			return threadgroup.ErrStopped // signal parent not to resubsribe
+		default:
+		}
+
+		// If the budget is half empty, fund it.
+		if budget.Remaining().Cmp(initialSubscriptionBudget.Div64(2)) < 0 {
+			fundAmt := initialSubscriptionBudget.Sub(budget.Remaining())
+
+			// Track the withdrawal.
+			w.staticAccount.managedTrackWithdrawal(fundAmt)
+
+			// Fund the subscription.
+			err = w.managedFundSubscription(stream, fundAmt)
+			if err != nil {
+				w.staticAccount.managedCommitWithdrawal(fundAmt, false)
+				return errors.AddContext(err, "failed to fund subscription")
+			}
+
+			// Success. Add the funds to the budget and signal to the account
+			// that the withdrawal was successful.
+			budget.Deposit(fundAmt)
+			w.staticAccount.managedCommitWithdrawal(fundAmt, true)
+		}
+
+		// If the subscription period is halfway over, extend it.
+		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
+			// Get a pricetable that is valid until the new deadline.
+			deadline = deadline.Add(modules.SubscriptionPeriod)
+			pt = w.managedPriceTableForSubscription(time.Until(deadline))
+
+			// Try extending the subscription.
+			// TODO: (req) there is a race here with incoming notifications.
+			// Need some special locking.
+			err = extendSubscription(stream, pt)
+			if err != nil {
+				return errors.AddContext(err, "failed to extend subscription")
+			}
+		}
+
+		// TODO: create a diff between the active subscriptions and the desired
+		// ones.
+
+		// TODO: subscribe to missing subscriptions.
+
+		// TODO: unsubscribe from redundant subscriptions.
+
+		// Wait until some time passed or until there is new work.
 		panic("not implemented yet")
 	}
 }
@@ -244,10 +304,12 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 func stopSubscription(stream siamux.Stream) error {
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestStop)
 	if err != nil {
+		err = errors.Compose(err, stream.Close())
 		return errors.AddContext(err, "StopSubscription failed to send specifier")
 	}
 	_, err = stream.Read(make([]byte, 1))
 	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		err = errors.Compose(err, stream.Close())
 		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
 	}
 	return stream.Close()

@@ -1591,7 +1591,6 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
-			killChan: make(chan struct{}),
 			wakeChan: make(chan struct{}, 1),
 		}
 	}
