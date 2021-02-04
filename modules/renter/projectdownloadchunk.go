@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -78,10 +79,10 @@ type (
 func (lwi *launchedWorkerInfo) String() string {
 	downloadComplete := lwi.completeTime != (time.Time{})
 	if downloadComplete {
-		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms", lwi.pdc.uid, lwi.worker.staticHostPubKeyStr[64:], lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds())
+		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds())
 	}
 
-	return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms but has not yet responded after %vms", lwi.pdc.uid, lwi.worker.staticHostPubKeyStr[64:], lwi.expectedDuration.Milliseconds(), time.Since(lwi.launchTime).Milliseconds())
+	return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms but has not yet responded after %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), time.Since(lwi.launchTime).Milliseconds())
 }
 
 // projectDownloadChunk is a bunch of state that helps to orchestrate a download

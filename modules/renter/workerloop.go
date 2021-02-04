@@ -183,8 +183,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 // worker is ready for async work.
 func (w *worker) managedAsyncReady() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+	if !w.staticSupportsRHP3() {
 		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
 		return false
 	}

@@ -591,6 +591,13 @@ func (spk SiaPublicKey) String() string {
 	return spk.Algorithm.String() + ":" + hex.EncodeToString(spk.Key)
 }
 
+// ShortString is a convenience function that returns a representation of the
+// public key that can be used for logging or debugging. It returns the
+// first 16 bytes of the actual key hex encoded.
+func (spk SiaPublicKey) ShortString() string {
+	return hex.EncodeToString(spk.Key[:16])
+}
+
 // UnmarshalJSON unmarshals a SiaPublicKey as JSON.
 func (spk *SiaPublicKey) UnmarshalJSON(b []byte) error {
 	spk.LoadString(string(bytes.Trim(b, `"`)))

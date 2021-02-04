@@ -495,6 +495,19 @@ func TestSiaPublicKeyString(t *testing.T) {
 	}
 }
 
+// TestSiaPublicKeyShortString does a quick check to verify that the ShortString
+// method on the SiaPublicKey is producing the expected output.
+func TestSiaPublicKeyShortString(t *testing.T) {
+	var spk SiaPublicKey
+	if err := json.Unmarshal([]byte(`{ "algorithm": "ed25519", "key": "5GhilFqVBKtSCedCZc6TIthzxvyBH9gPqqf+Z9hsfBo=" }`), &spk); err != nil {
+		t.Error(err)
+	}
+
+	if spk.ShortString() != "e46862945a9504ab5209e74265ce9322" {
+		t.Error("got wrong value for spk.ShortString():", spk.ShortString(), spk.String())
+	}
+}
+
 // TestSiaPublicKeyUnmarshalJSON checks that UnmarshalJSON supports both
 // encodings of SiaPublicKey.
 func TestSiaPublicKeyUnmarshalJSON(t *testing.T) {

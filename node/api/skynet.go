@@ -217,7 +217,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -487,7 +487,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -634,7 +634,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -931,7 +931,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	pricePerMS := DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
-		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
 			return

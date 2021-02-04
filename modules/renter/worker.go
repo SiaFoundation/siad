@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -210,6 +211,13 @@ func (w *worker) staticInitialEstimatesSet() bool {
 	default:
 		return false
 	}
+}
+
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minAsyncVersion) >= 0
 }
 
 // staticWake will wake the worker from sleeping. This should be called any time

@@ -13,7 +13,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -283,15 +282,6 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 	select {
 	case <-ds.dataAvailable:
 	case <-ctx.Done():
-		fmt.Println("DS TIMEOUT")
-		go func(start time.Time) {
-			select {
-			case <-time.After(time.Minute):
-				fmt.Println("data wasn't even available after a full minute longer")
-			case <-ds.dataAvailable:
-				fmt.Printf("data became available %vms after it timed out\n", time.Since(start).Milliseconds())
-			}
-		}(time.Now())
 		return nil, errors.New("could not get data from data section, context timed out")
 	}
 	return ds.externData, ds.externErr
@@ -563,7 +553,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
-	go func(start time.Time) {
+	go func() {
 		defer close(ds.dataAvailable)
 
 		// Ensure that the streambuffer has not closed.
@@ -584,7 +574,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		case <-sb.staticTG.StopChan():
 			ds.externErr = errors.New("failed to read response from ReadStream")
 		}
-	}(time.Now())
+	}()
 	return ds
 }
 

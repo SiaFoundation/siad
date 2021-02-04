@@ -108,45 +108,6 @@ func TestParsePeriod(t *testing.T) {
 	}
 }
 
-// TestParseCurrency probes the parseCurrency function.
-func TestParseCurrency(t *testing.T) {
-	tests := []struct {
-		in, out string
-		err     error
-	}{
-		{"x", "", ErrParseCurrencyUnits},
-		{"1", "", ErrParseCurrencyUnits},
-		{"pS", "", ErrParseCurrencyAmount},
-		{"1pS", "1000000000000", nil},
-		{"1 pS", "1000000000000", nil},
-		{"2nS ", "2000000000000000", nil},
-		{"2 nS", "2000000000000000", nil},
-		{"0uS", "0", nil},
-		{"0 uS", "0", nil},
-		{"10mS", "10000000000000000000000", nil},
-		{"10 mS", "10000000000000000000000", nil},
-		{"2SC", "2000000000000000000000000", nil},
-		{"2 SC", "2000000000000000000000000", nil},
-		{" 1KS ", "1000000000000000000000000000", nil},
-		{"1 KS", "1000000000000000000000000000", nil},
-		{"4MS", "4000000000000000000000000000000", nil},
-		{"4 MS", "4000000000000000000000000000000", nil},
-		{"2GS", "2000000000000000000000000000000000", nil},
-		{" 2 GS ", "2000000000000000000000000000000000", nil},
-		{"1TS", "1000000000000000000000000000000000000", nil},
-		{"1 TS", "1000000000000000000000000000000000000", nil},
-		{"0.5TS", "500000000000000000000000000000000000", nil},
-		{"0.5 TS", "500000000000000000000000000000000000", nil},
-		{"x SC", "", ErrParseCurrencyAmount},
-	}
-	for _, test := range tests {
-		res, err := parseCurrency(test.in)
-		if res != test.out || err != test.err {
-			t.Errorf("parseCurrency(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
-		}
-	}
-}
-
 // TestCurrencyUnits probes the currencyUnits function
 func TestCurrencyUnits(t *testing.T) {
 	tests := []struct {

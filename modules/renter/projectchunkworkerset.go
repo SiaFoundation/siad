@@ -324,7 +324,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	}
 
 	// Check whether the worker is on RHP3
-	if !w.managedAsyncReady() {
+	if !w.staticSupportsRHP3() {
 		return errors.New("worker is not RHP3 ready")
 	}
 

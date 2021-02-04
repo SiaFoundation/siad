@@ -152,7 +152,7 @@ func mangencmd(path string) {
 // utilshastingscmd is the handler for the command `siac utils hastings`.
 // converts a Siacoin amount into hastings.
 func utilshastingscmd(amount string) {
-	hastings, err := parseCurrency(amount)
+	hastings, err := types.ParseCurrency(amount)
 	if err != nil {
 		die(err)
 	}

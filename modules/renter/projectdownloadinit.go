@@ -258,7 +258,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
-	GS := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil))
+	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
 
 	// Keep track of the current best set, and the amount of time it will take
 	// the best set to return. And keep track of the current working set, and
@@ -283,7 +283,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	bestSet := make([]*pdcInitialWorker, ec.NumPieces())
 	workingSet := make([]*pdcInitialWorker, ec.NumPieces())
 
-	bestSetCost := GS // 1GS
+	bestSetCost := gs
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
