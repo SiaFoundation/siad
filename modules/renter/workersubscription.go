@@ -259,6 +259,9 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	}
 }
 
+// managedPriceTableForSubscription will fetch a price table that is valid for
+// the provided duration. If the current price table of the worker isn't valid
+// for that long, it will change its update time to trigger an update.
 func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modules.RPCPriceTable {
 	for {
 		// Get most recent price table.
@@ -279,13 +282,14 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// minutes before it ends.
 
 		// Trigger an update by setting the update time to now.
-		pt.staticUpdateTime = time.Now()
-		old := (*workerPriceTable)(atomic.SwapPointer(&w.atomicPriceTable, unsafe.Pointer(pt)))
+		newPT := *pt
+		newPT.staticUpdateTime = time.Time{}
+		oldPT := (*workerPriceTable)(atomic.SwapPointer(&w.atomicPriceTable, unsafe.Pointer(&newPT)))
 
 		// The old table's UID should be the same. Otherwise we just swapped out
 		// a new table and need to try again.
-		if old.staticPriceTable.UID != pt.staticPriceTable.UID {
-			w.staticSetPriceTable(old) // set back to the old one
+		if oldPT.staticPriceTable.UID != pt.staticPriceTable.UID {
+			w.staticSetPriceTable(oldPT) // set back to the old one
 			continue
 		}
 

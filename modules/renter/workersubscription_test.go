@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -140,5 +141,74 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	err = modules.RPCStopSubscription(stream)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestPriceTableForSubscription is a unit test for
+// managedPriceTableForSubscription.
+func TestPriceTableForSubscription(t *testing.T) {
+	// Create a worker that's not running its worker loop.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a unique price table for testing.
+	wptInvalid := &workerPriceTable{
+		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(-time.Microsecond), // Won't cover the period
+		staticUpdateTime: time.Now().Add(time.Hour),                                         // 1 hour from now
+	}
+	fastrand.Read(wptInvalid.staticPriceTable.UID[:])
+	wt.staticSetPriceTable(wptInvalid)
+
+	// Try to fetch a price table in a different goroutine. This should block
+	// since we don't have a valid price table.
+	var pt *modules.RPCPriceTable
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pt = wt.managedPriceTableForSubscription(modules.SubscriptionPeriod)
+	}()
+
+	// Wait for 1 second. The goroutine shouldn't finish.
+	select {
+	case <-done:
+		t.Fatal("goroutine finished even though it should block")
+	case <-time.After(time.Second):
+	}
+
+	// The price table should be updated to be renewed.
+	updatedPT := wt.staticPriceTable()
+	if !updatedPT.staticUpdateTime.IsZero() {
+		t.Fatal("update time of price table should be zero")
+	}
+	if updatedPT.staticPriceTable.UID != wptInvalid.staticPriceTable.UID {
+		t.Fatal("UIDs don't match")
+	}
+
+	// Create a new, valid price table and set it to simulate a price table
+	// update.
+	wptValid := &workerPriceTable{
+		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(100 * time.Millisecond), // Won't cover the period
+		staticUpdateTime: time.Now().Add(time.Hour),                                              // 1 hour from now
+	}
+	fastrand.Read(wptValid.staticPriceTable.UID[:])
+	wt.staticSetPriceTable(wptValid)
+
+	// Wait for the goroutine to finish.
+	select {
+	case <-time.After(5 * priceTableRetryInterval):
+		t.Fatal("goroutine won't stop")
+	case <-done:
+	}
+
+	// Make sure the correct price table was returned.
+	if !reflect.DeepEqual(*pt, wptValid.staticPriceTable) {
+		t.Fatal("invalid price table returned")
 	}
 }
