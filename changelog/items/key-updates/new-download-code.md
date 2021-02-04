@@ -1,1 +1,1 @@
-- Update download code
+- Improve download speeds and consistency.

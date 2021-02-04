@@ -4914,11 +4914,11 @@ be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
 minutes).
 
 **priceperms** | string  
-If 'priceperms' is set, the renter will use it as a budget to spend on faster,
-and thus potentially more expensive, hosts. If no unit is provided, the given
-value will be treated as hastings. Valid units are: "pS", "nS", "uS", "mS",
-"SC", "KS", "MS", "GS", "TS". If no value is provided the API will favour the
-fastest hosts.
+If the 'price per millisecond' is set, the renter will use it as a budget to
+spend on faster, and thus potentially more expensive, hosts. If no unit is
+provided, the given value will be treated as hastings. Valid units are: "pS",
+"nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS". If no value is provided the API
+will favour the fastest hosts.
 
 ### Response Body
 
@@ -5272,11 +5272,11 @@ value of 0 will be ignored. If no timeout is given, the default will be used,
 which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
 
 **priceperms** | string  
-If 'priceperms' is set, the renter will use it as a budget to spend on faster,
-and thus potentially more expensive, hosts. If no unit is provided, the given
-value will be treated as hastings. Valid units are: "pS", "nS", "uS", "mS",
-"SC", "KS", "MS", "GS", "TS". If no value is provided the API will favour the
-fastest hosts.
+If 'price per millisecond' is set, the renter will use it as a budget to spend
+on faster, and thus potentially more expensive, hosts. If no unit is provided,
+the given value will be treated as hastings. Valid units are: "pS", "nS", "uS",
+"mS", "SC", "KS", "MS", "GS", "TS". If no value is provided the API will favour
+the fastest hosts.
 
 ### Response Header
 
