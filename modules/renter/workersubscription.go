@@ -2,9 +2,6 @@ package renter
 
 import (
 	"encoding/hex"
-	"fmt"
-	"io"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +40,8 @@ type (
 		// currently subscribed to. This map is ideally equal to subscriptions
 		// but might temporarily diverge.
 		activeSubscriptions map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest
+
+		staticWakeChan chan struct{}
 
 		// utility fields
 		mu sync.Mutex
@@ -157,7 +156,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	subInfo := w.staticSubscriptionInfo
 	defer func() {
 		// Close the stream gracefully.
-		err = errors.Compose(stopSubscription(stream))
+		err = errors.Compose(modules.RPCStopSubscription(stream))
 
 		// Clear the active subsriptions at the end of this method.
 		subInfo.mu.Lock()
@@ -172,13 +171,6 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	}
 
 	for {
-		// Check for shutdown
-		select {
-		case <-w.tg.StopChan():
-			return threadgroup.ErrStopped // signal parent not to resubsribe
-		default:
-		}
-
 		// If the budget is half empty, fund it.
 		if budget.Remaining().Cmp(initialSubscriptionBudget.Div64(2)) < 0 {
 			fundAmt := initialSubscriptionBudget.Sub(budget.Remaining())
@@ -208,7 +200,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			// Try extending the subscription.
 			// TODO: (req) there is a race here with incoming notifications.
 			// Need some special locking.
-			err = extendSubscription(stream, pt)
+			err = modules.RPCExtendSubscription(stream, pt)
 			if err != nil {
 				return errors.AddContext(err, "failed to extend subscription")
 			}
@@ -235,7 +227,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// Unsubscribe from unnecessary subscriptions.
 		if len(toUnsubscribe) > 0 {
-			err = unsubscribeFromRVs(stream, pt, toUnsubscribe)
+			err = modules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
 			if err != nil {
 				return errors.AddContext(err, "failed to unsubscribe from registry values")
 			}
@@ -243,14 +235,27 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// Subscribe to any missing values.
 		if len(toSubscribe) > 0 {
-			_, err = subscribeToRVs(stream, pt, toSubscribe)
+			_, err = modules.RPCSubscribeToRVs(stream, toSubscribe)
 			if err != nil {
 				return errors.AddContext(err, "failed to subscribe to registry values")
 			}
 		}
 
 		// Wait until some time passed or until there is new work.
-		panic("not implemented yet")
+		t := time.NewTimer(time.Second)
+		select {
+		case <-w.tg.StopChan():
+			return threadgroup.ErrStopped // shutdown
+		case <-t.C:
+			// continue right away since the timer is drained.
+			continue
+		case <-subInfo.staticWakeChan:
+		}
+
+		// We didn't receive from the timer's channel. Stop it and drain it.
+		if !t.Stop() {
+			<-t.C
+		}
 	}
 }
 
@@ -305,128 +310,10 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 			err = errors.Compose(err, stream.Close())
 		}
 	}()
-
-	// initiate the RPC
-	err = modules.RPCWrite(stream, modules.RPCRegistrySubscription)
-	if err != nil {
-		return nil, err
-	}
-
-	// Write the pricetable uid.
-	err = modules.RPCWrite(stream, w.staticPriceTable().staticPriceTable.UID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCRegistrySubscription, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
-	if err != nil {
-		return nil, err
-	}
-
-	// Send the subscriber.
-	return stream, modules.RPCWrite(stream, subscriber)
-}
-
-// stopSubscription gracefully stops a subscription session.
-func stopSubscription(stream siamux.Stream) error {
-	err := modules.RPCWrite(stream, modules.SubscriptionRequestStop)
-	if err != nil {
-		err = errors.Compose(err, stream.Close())
-		return errors.AddContext(err, "StopSubscription failed to send specifier")
-	}
-	_, err = stream.Read(make([]byte, 1))
-	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
-		err = errors.Compose(err, stream.Close())
-		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
-	}
-	return stream.Close()
-}
-
-// subscribeToRVs subscribes to the given publickey/tweak pairs.
-func subscribeToRVs(stream siamux.Stream, pt *modules.RPCPriceTable, requests []modules.RPCRegistrySubscriptionRequest) ([]modules.SignedRegistryValue, error) {
-	// Send the type of the request.
-	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)
-	if err != nil {
-		return nil, err
-	}
-	// Send the request.
-	err = modules.RPCWrite(stream, requests)
-	if err != nil {
-		return nil, err
-	}
-	// Read response.
-	var rvs []modules.SignedRegistryValue
-	err = modules.RPCRead(stream, &rvs)
-	if err != nil {
-		return nil, err
-	}
-	// Check the length of the response.
-	if len(rvs) > len(requests) {
-		return nil, fmt.Errorf("host returned more rvs than we subscribed to %v > %v", len(rvs), len(requests))
-	}
-	// Verify response. The rvs should be returned in the same order as
-	// requested so we start by verifying against the first request and work our
-	// way through to the last one. If not all rvs are verified successfully
-	// after running out of requests, something is wrong.
-	left := rvs
-	for _, req := range requests {
-		rv := left[0]
-		err = rv.Verify(req.PubKey.ToPublicKey())
-		if err != nil {
-			continue // try next request
-		}
-		left = left[1:]
-	}
-	if len(left) > 0 {
-		return nil, fmt.Errorf("failed to verify %v of %v rvs", len(left), len(rvs))
-	}
-	return rvs, nil
-}
-
-// unsubscribeFromRVs unsubscribes from the given publickey/tweak pairs.
-func unsubscribeFromRVs(stream siamux.Stream, pt *modules.RPCPriceTable, requests []modules.RPCRegistrySubscriptionRequest) error {
-	// Send the type of the request.
-	err := modules.RPCWrite(stream, modules.SubscriptionRequestUnsubscribe)
-	if err != nil {
-		return err
-	}
-	// Send the request.
-	err = modules.RPCWrite(stream, requests)
-	if err != nil {
-		return err
-	}
-	return nil
+	return modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
 }
 
 // FundSubscription pays the host to increase the subscription budget.
 func (w *worker) managedFundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
-	// Send the type of the request.
-	err := modules.RPCWrite(stream, modules.SubscriptionRequestPrepay)
-	if err != nil {
-		return err
-	}
-
-	// Provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCRegistrySubscription, fundAmt, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// extendSubscription extends the subscription with the given price table.
-func extendSubscription(stream siamux.Stream, pt *modules.RPCPriceTable) error {
-	// Send the type of the request.
-	err := modules.RPCWrite(stream, modules.SubscriptionRequestExtend)
-	if err != nil {
-		return err
-	}
-
-	// Write the pricetable uid.
-	err = modules.RPCWrite(stream, pt.UID)
-	if err != nil {
-		return err
-	}
-	return nil
+	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, w.staticCache().staticBlockHeight, fundAmt)
 }
