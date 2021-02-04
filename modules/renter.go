@@ -1250,7 +1250,7 @@ type Renter interface {
 	// a price per millisecond. The timeout ensures fetching the base sector
 	// does not surpass it, the price per millisecond is the budget we are
 	// allowed to spend on faster hosts.
-	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration, types.Currency) error
+	PinSkylink(link Skylink, sup SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
