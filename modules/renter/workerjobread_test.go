@@ -17,7 +17,6 @@ import (
 func TestJobExpectedJobTime(t *testing.T) {
 	t.Parallel()
 
-	dur40MS := 40 * time.Millisecond
 	dur80MS := 80 * time.Millisecond
 	dur120MS := 120 * time.Millisecond
 
@@ -25,19 +24,13 @@ func TestJobExpectedJobTime(t *testing.T) {
 	w.initJobReadQueue()
 	jrq := w.staticJobReadQueue
 	for _, readLength := range []uint64{1 << 16, 1 << 20, 1 << 24} {
-		// verify sane default if the queue has no historic data
-		ejt := jrq.callExpectedJobTime(readLength)
-		if ejt != dur40MS {
-			t.Fatal("unexpected")
-		}
-
 		// update the jobqueue a bunch of times with random read times between
 		// 80 and 120ms and assert the expected job time keeps returning a value
 		// between those boundaries
 		for i := 0; i < 1000; i++ {
 			randJobTime := time.Duration(fastrand.Intn(40)+80) * time.Millisecond
 			jrq.managedUpdateJobTimeMetrics(readLength, randJobTime)
-			ejt = jrq.callExpectedJobTime(readLength)
+			ejt := jrq.callExpectedJobTime(readLength)
 			if ejt < dur80MS || ejt > dur120MS {
 				t.Fatal("unexpected")
 			}
