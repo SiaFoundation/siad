@@ -608,9 +608,9 @@ func skynetrestorecmd(backupPath string) {
 		die("Unable to open backup file:", err)
 	}
 	defer func() {
-		if err := f.Close(); err != nil {
-			die("Unable to close backup file:", err)
-		}
+		// Attempt to close the file, API call appears to close file so ignore the
+		// error to avoid getting an error for closing a closed file.
+		_ = f.Close()
 	}()
 
 	// Create backup
