@@ -115,7 +115,7 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, back
 // functions
 func TestSkylinkToFromSysPath(t *testing.T) {
 	t.Parallel()
-	expectedPath := filepath.Join("AA", "BE", "KW", "Z_wc2R9qlhYkzbG8mImFVi08kBu1nsvvwPLBtpEg")
+	expectedPath := filepath.Join("AA", "BE", "KWZ_wc2R9qlhYkzbG8mImFVi08kBu1nsvvwPLBtpEg")
 
 	// Test creating a path
 	path := SkylinkToSysPath(testSkylink)
