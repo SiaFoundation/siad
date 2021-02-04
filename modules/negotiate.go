@@ -1109,6 +1109,9 @@ func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionR
 	// way through to the last one. If not all rvs are verified successfully
 	// after running out of requests, something is wrong.
 	left := rvs
+	if len(left) == 0 {
+		return rvs, nil
+	}
 	for _, req := range requests {
 		rv := left[0]
 		err = rv.Verify(req.PubKey.ToPublicKey())

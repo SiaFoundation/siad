@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
 
@@ -240,6 +241,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticBalanceTarget: balanceTarget,
 
 		staticRegistryCache: newRegistryCache(registryCacheSize),
+
+		staticSubscriptionInfo: &subscriptionInfo{
+			subscriptions:       make(map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest),
+			activeSubscriptions: make(map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest),
+			staticWakeChan:      make(chan struct{}),
+		},
 
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics

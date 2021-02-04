@@ -24,6 +24,8 @@ var (
 	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2
 
 	priceTableRetryInterval = time.Second
+
+	subscriptionLoopInterval = time.Second
 )
 
 type (
@@ -54,7 +56,43 @@ func priceTableValidFor(pt *workerPriceTable, duration time.Duration) bool {
 }
 
 func (w *worker) managedHandleNotification(stream siamux.Stream) {
-	panic("not implemented")
+	// Close the stream when done.
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Print("managedHandleNotification: failed to close stream: ", err)
+		}
+	}()
+
+	// Read the notification type.
+	var snt modules.RPCRegistrySubscriptionNotificationType
+	err := modules.RPCRead(stream, &snt)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to read notification type: ", err)
+		return
+	}
+
+	// Handle the notification.
+	switch snt.Type {
+	case modules.SubscriptionResponseSubscriptionSuccess:
+		// TODO: same race as mentioned in the other comment. Once we receive
+		// the this notification, we know that future notifications will
+		// potentially use a different pricetable.
+	default:
+		w.renter.log.Print("managedHandleNotification: unknown notification type")
+		return
+	case modules.SubscriptionResponseRegistryValue:
+	}
+
+	// Read the update.
+	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+	err = modules.RPCRead(stream, &sneu)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to read entry update: ", err)
+		return
+	}
+
+	// Update the worker cache.
+	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
 }
 
 func (w *worker) threadedSubscriptionLoop() {
@@ -127,7 +165,7 @@ func (w *worker) threadedSubscriptionLoop() {
 
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
-		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget)
+		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget)
 
 		// Close the handler.
 		err = w.renter.staticMux.CloseListener(subscriberStr)
@@ -151,12 +189,15 @@ func (w *worker) threadedSubscriptionLoop() {
 	}
 }
 
-func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget) (err error) {
+// managedSubscriptionLoop handles an existing subscription session. It will add
+// subscriptions, remove subscriptions, fund the subscription and extend it
+// indefinitely.
+func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget, expectedBudget types.Currency) (err error) {
 	// Register some cleanup.
 	subInfo := w.staticSubscriptionInfo
 	defer func() {
 		// Close the stream gracefully.
-		err = errors.Compose(modules.RPCStopSubscription(stream))
+		err = errors.Compose(err, modules.RPCStopSubscription(stream))
 
 		// Clear the active subsriptions at the end of this method.
 		subInfo.mu.Lock()
@@ -172,8 +213,8 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 	for {
 		// If the budget is half empty, fund it.
-		if budget.Remaining().Cmp(initialSubscriptionBudget.Div64(2)) < 0 {
-			fundAmt := initialSubscriptionBudget.Sub(budget.Remaining())
+		if budget.Remaining().Cmp(expectedBudget.Div64(2)) < 0 {
+			fundAmt := expectedBudget.Sub(budget.Remaining())
 
 			// Track the withdrawal.
 			w.staticAccount.managedTrackWithdrawal(fundAmt)
@@ -204,6 +245,12 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			if err != nil {
 				return errors.AddContext(err, "failed to extend subscription")
 			}
+
+			// Set the stream deadline to the new subscription deadline.
+			err = stream.SetDeadline(deadline)
+			if err != nil {
+				return errors.AddContext(err, "failed to set stream deadlien to subscription deadline")
+			}
 		}
 
 		// Create a diff between the active subscriptions and the desired
@@ -214,6 +261,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			_, subscribed := subInfo.subscriptions[subID]
 			if !subscribed {
 				toUnsubscribe = append(toUnsubscribe, *req)
+				delete(subInfo.activeSubscriptions, modules.RegistrySubscriptionID(req.PubKey, req.Tweak))
 			}
 		}
 		var toSubscribe []modules.RPCRegistrySubscriptionRequest
@@ -221,6 +269,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			_, subscribed := subInfo.activeSubscriptions[subID]
 			if !subscribed {
 				toSubscribe = append(toSubscribe, *req)
+				subInfo.activeSubscriptions[modules.RegistrySubscriptionID(req.PubKey, req.Tweak)] = req
 			}
 		}
 		subInfo.mu.Unlock()
@@ -242,7 +291,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		}
 
 		// Wait until some time passed or until there is new work.
-		t := time.NewTimer(time.Second)
+		t := time.NewTimer(subscriptionLoopInterval)
 		select {
 		case <-w.tg.StopChan():
 			return threadgroup.ErrStopped // shutdown
