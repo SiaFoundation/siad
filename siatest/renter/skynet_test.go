@@ -2709,6 +2709,15 @@ func testSkynetIncludeLayout(t *testing.T, tg *siatest.TestGroup) {
 	if strSkynetFileLayout == "" {
 		t.Fatal("unexpected")
 	}
+	var layout2 modules.SkyfileLayout
+	layoutBytes, err := hex.DecodeString(strSkynetFileLayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout2.Decode(layoutBytes)
+	if !reflect.DeepEqual(layout, layout2) {
+		t.Fatal("unexpected")
+	}
 }
 
 // testSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
