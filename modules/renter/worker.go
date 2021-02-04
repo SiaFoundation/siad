@@ -125,7 +125,7 @@ type (
 		// Utilities.
 
 		// initialEstimatesSetChan is a channel that gets closed when we set the
-		//initial estimates on the HS and RJ queue. This ensures this is only
+		// initial estimates on the HS and RJ queue. This ensures this is only
 		//done once, after the initial price table update.
 		initialEstimatesSetChan chan struct{}
 
