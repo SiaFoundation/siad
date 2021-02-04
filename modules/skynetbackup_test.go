@@ -2,6 +2,7 @@ package modules
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -44,8 +45,11 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 	// Create baseSector
 	fileData := []byte("Super interesting skyfile data")
 	baseSector, _ := BuildBaseSector(layoutBytes, nil, smBytes, fileData)
-	// Backup and Restore test
-	testBackupAndRestore(t, baseSector, fileData)
+	// Backup and Restore test with no reader supplied
+	testBackupAndRestore(t, baseSector, fileData, nil)
+	// Backup and Restore test with reader supplied
+	backupReader := bytes.NewReader(fileData)
+	testBackupAndRestore(t, baseSector, fileData, backupReader)
 
 	// Large file test
 	//
@@ -64,13 +68,13 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 	// Backup and Restore test
 	size := 2 * int(SectorSize)
 	fileData = fastrand.Bytes(size)
-	testBackupAndRestore(t, baseSector, fileData)
+	backupReader = bytes.NewReader(fileData)
+	testBackupAndRestore(t, baseSector, fileData, backupReader)
 }
 
 // testBackupAndRestore executes the test code for TestBackupAndRestoreSkylink
-func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte) {
+func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, backupReader io.Reader) {
 	// Create backup
-	backupReader := bytes.NewReader(fileData)
 	var buf bytes.Buffer
 	err := BackupSkylink(testSkylink, baseSector, backupReader, &buf)
 	if err != nil {
@@ -90,6 +94,11 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte) {
 		t.Log("original baseSector:", baseSector)
 		t.Log("restored baseSector:", restoreBaseSector)
 		t.Fatal("BaseSector bytes not equal")
+	}
+	if backupReader == nil {
+		// If there was no backupReader then this was a small file and only the
+		// basesector was needed so there is no additional file data to compare
+		return
 	}
 	restoredData, err := ioutil.ReadAll(restoreReader)
 	if err != nil {
