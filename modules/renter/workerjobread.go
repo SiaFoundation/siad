@@ -43,6 +43,13 @@ type (
 	// worker. The queue also tracks performance metrics, which can then be used
 	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
+		// initialEstimate is the duration returned as estimate as long as we
+		// have not completed a single job yet. It is currently set by the
+		// price table update mechanism to be the round trip time of the initial
+		// price table update. This is not perfect, but will do for now and
+		// provides a decent initial estimate.
+		initialEstimate time.Duration
+
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
@@ -225,10 +232,8 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 		weightedJobTime = jq.weightedJobTime4m
 		completed = jq.weightedJobsCompleted4m
 	}
-
-	// if we don't have any historic data yet, return a sane default of 40ms
 	if completed == 0 {
-		return 40 * time.Millisecond
+		return jq.initialEstimate
 	}
 	return time.Duration(weightedJobTime / completed)
 }
@@ -247,6 +252,14 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	return cost.Add(bandwidthCost)
+}
+
+// callSetInitialEstimate will set the given duration as the initial estimate,
+// returned as estimate when we have not processed any jobs yet.
+func (jq *jobReadQueue) callSetInitialEstimate(estimate time.Duration) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.initialEstimate = estimate
 }
 
 // managedUpdateJobTimeMetrics takes a length and the duration it took to fulfil

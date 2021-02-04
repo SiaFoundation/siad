@@ -31,6 +31,13 @@ type (
 	// jobHasSectorQueue is a list of hasSector queries that have been assigned
 	// to the worker.
 	jobHasSectorQueue struct {
+		// initialEstimate is the duration returned as estimate as long as we
+		// have not completed a single job yet. It is currently set by the
+		// price table update mechanism to be the round trip time of the initial
+		// price table update. This is not perfect, but will do for now and
+		// provides a decent initial estimate.
+		initialEstimate time.Duration
+
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime       float64
@@ -180,9 +187,20 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	return now.Add(estimate), nil
 }
 
+// callSetInitialEstimate will set the given duration as the initial estimate,
+// returned as estimate when we have not processed any jobs yet.
+func (jq *jobHasSectorQueue) callSetInitialEstimate(estimate time.Duration) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.initialEstimate = estimate
+}
+
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
+	if jq.weightedJobsCompleted == 0 {
+		return jq.initialEstimate
+	}
 	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
 }
 

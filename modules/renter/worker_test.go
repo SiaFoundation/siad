@@ -239,3 +239,43 @@ func TestManagedAsyncReady(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 }
+
+// TestJobQueueInitialEstimate verifies the initial time estimates are set on
+// both the HS and RJ queues right after performing the pricetable update for
+// the first time.
+func TestJobQueueInitialEstimate(t *testing.T) {
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// allow the worker some time to fetch a PT
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		if !w.staticPriceTable().staticValid() {
+			return errors.New("price table not fetched yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify it has set the initial estimates on both queues
+	if w.staticJobHasSectorQueue.callExpectedJobTime(fastrand.Uint64n(10)) == 0 {
+		t.Fatal("unexpected")
+	}
+	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
+		t.Fatal("unexpected")
+	}
+	if !w.staticInitialEstimatesSet() {
+		t.Fatal("unexpected")
+	}
+}

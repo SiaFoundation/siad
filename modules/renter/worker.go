@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -122,6 +123,12 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
+
+		// initialEstimatesSetChan is a channel that gets closed when we set the
+		//initial estimates on the HS and RJ queue. This ensures this is only
+		//done once, after the initial price table update.
+		initialEstimatesSetChan chan struct{}
+
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
 		renter   *Renter
@@ -204,6 +211,24 @@ func (w *worker) staticWake() {
 	}
 }
 
+// staticInitialEstimatesSet is a convenience function to determine if we've
+// already set the initial job queue estimates on the HS and RJ queue.
+func (w *worker) staticInitialEstimatesSet() bool {
+	select {
+	case <-w.initialEstimatesSetChan:
+		return true
+	default:
+		return false
+	}
+}
+
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minAsyncVersion) >= 0
+}
+
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	_, ok, err := r.hostDB.Host(hostPubKey)
@@ -246,11 +271,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		downloadChunks:    newDownloadChunks(),
-		unprocessedChunks: newUploadChunks(),
-		killChan:          make(chan struct{}),
-		wakeChan:          make(chan struct{}, 1),
-		renter:            r,
+		downloadChunks:          newDownloadChunks(),
+		unprocessedChunks:       newUploadChunks(),
+		initialEstimatesSetChan: make(chan struct{}),
+		killChan:                make(chan struct{}),
+		wakeChan:                make(chan struct{}, 1),
+		renter:                  r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()
