@@ -20,10 +20,6 @@ import (
 )
 
 var (
-	// ErrParseCurrencyInteger is returned when the input is unable to be parsed
-	// into a currency unit due to a non-integer value.
-	ErrParseCurrencyInteger = errors.New("non-integer number of hastings")
-
 	// ErrParsePeriodAmount is returned when the input is unable to be parsed
 	// into a period unit due to a malformed amount.
 	ErrParsePeriodAmount = errors.New("malformed amount")

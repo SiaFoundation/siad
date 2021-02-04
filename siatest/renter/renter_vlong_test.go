@@ -443,10 +443,40 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	// Upload params.
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
+	// Define helper error checking function
+	//
+	// isErr will ignore errors arising from paths not existing or path overloads.
+	// This is because the goal of the stress test is to ensure that all the
+	// creating, renaming, and deleting does not cause panics or race conditions.
+	// It is almost guaranteed that the parallel threads will encounter these
+	// types of errors but that is OK.
+	isErr := func(err error) bool {
+		if err == nil {
+			return false
+		}
+		if strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return false
+		}
+		if strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
+			return false
+		}
+		if strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+			return false
+		}
+		// Ignore os.IsNotExist errors
+		if strings.Contains(err.Error(), "no such file or directory") {
+			return false
+		}
+		if errors.Contains(err, siatest.ErrFileNotTracked) {
+			return false
+		}
+		return true
+	}
 	// One thread uploads new files.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Upload New File Thread"
 		for {
 			select {
 			case <-stop:
@@ -455,19 +485,18 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to upload the file to.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			if err != nil && !isErr(err) {
 				continue
 			}
-			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				continue
-			}
-			if err != nil {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to get Dirs", threadName)))
+				return
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			sp, err := dir.Join(persist.RandomSuffix())
 			if err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName)))
+				return
 			}
 			// 30% chance for the file to be a 0-byte file.
 			size := int(modules.SectorSize) + siatest.Fuzz()
@@ -477,14 +506,18 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Upload the file
 			lf, err := r.FilesDir().NewFile(size)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
+				return
 			}
 			rf, err := r.Upload(lf, sp, dataPieces, parityPieces, false)
-			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName)))
+				return
 			}
-			if err := r.WaitForUploadHealth(rf); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
-				t.Fatal(err)
+			err = r.WaitForUploadHealth(rf)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error with upload health", threadName)))
+				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(1000))*time.Millisecond + time.Second) // between 1s and 2s
 		}
@@ -493,6 +526,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Force Upload Thread"
 		for {
 			select {
 			case <-stop:
@@ -501,8 +535,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get existing files and choose one randomly.
 			files, err := r.Files(false)
-			if err != nil {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName)))
+				return
 			}
 			// If there are no files we try again later.
 			if len(files) == 0 {
@@ -518,14 +553,18 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			lf, err := r.FilesDir().NewFile(size)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
+				return
 			}
 			rf, err := r.Upload(lf, sp, dataPieces, parityPieces, true)
-			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) && !errors.Contains(err, siatest.ErrFileNotTracked) {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName)))
+				return
 			}
-			if err := r.WaitForUploadHealth(rf); err != nil && !errors.Contains(err, siatest.ErrFileNotTracked) {
-				t.Fatal(err)
+			err = r.WaitForUploadHealth(rf)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error with upload health", threadName)))
+				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
 		}
@@ -535,6 +574,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Rename Thread"
 		for {
 			select {
 			case <-stop:
@@ -544,7 +584,8 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Get existing files and choose one randomly.
 			files, err := r.Files(false)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName)))
+				return
 			}
 			// If there are no files we try again later.
 			if len(files) == 0 {
@@ -553,18 +594,21 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			err = r.RenterRenamePost(sp, modules.RandomSiaPath(), false)
-			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error renaming file", threadName)))
+				return
 			}
 			// 50% chance to replace renamed file with new one.
 			if fastrand.Intn(2) == 0 {
 				lf, err := r.FilesDir().NewFile(int(modules.SectorSize) + siatest.Fuzz())
 				if err != nil {
-					t.Fatal(err)
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to create NewFile", threadName)))
+					return
 				}
 				err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
-				if err != nil && !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
-					t.Fatal(err)
+				if isErr(err) {
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to upload file", threadName)))
+					return
 				}
 			}
 			time.Sleep(time.Duration(fastrand.Intn(4000))*time.Millisecond + time.Second) // between 4s and 5s
@@ -574,6 +618,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Delete Files Thread"
 		for {
 			select {
 			case <-stop:
@@ -583,7 +628,8 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Get existing files and choose one randomly.
 			files, err := r.Files(false)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting files", threadName)))
+				return
 			}
 			// If there are no files we try again later.
 			if len(files) == 0 {
@@ -592,8 +638,9 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
 			err = r.RenterFileDeletePost(sp)
-			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error deleting file", threadName)))
+				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(5000))*time.Millisecond + time.Second) // between 5s and 6s
 		}
@@ -602,6 +649,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Create Empty Dirs Thread"
 		for {
 			select {
 			case <-stop:
@@ -610,22 +658,23 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to create a dir in.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			if err != nil && !isErr(err) {
 				continue
 			}
-			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				continue
-			}
-			if err != nil {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error getting dirs", threadName)))
+				return
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			sp, err := dir.Join(persist.RandomSuffix())
 			if err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName)))
+				return
 			}
-			if err := r.RenterDirCreatePost(sp); err != nil {
-				t.Fatal(err)
+			err = r.RenterDirCreatePost(sp)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error creating dir", threadName)))
+				return
 			}
 			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
 		}
@@ -635,6 +684,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Delete Dir Thread"
 		for {
 			select {
 			case <-stop:
@@ -643,14 +693,12 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to delete.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			if err != nil && !isErr(err) {
 				continue
 			}
-			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-				continue
-			}
-			if err != nil {
-				t.Fatal(err)
+			if isErr(err) {
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to get Dirs", threadName)))
+				return
 			}
 			dir := dirs[fastrand.Intn(len(dirs))]
 			// Make sure that dir isn't the root.
@@ -659,15 +707,18 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			if fastrand.Intn(2) == 0 {
 				// 50% chance to delete and recreate the directory.
-				if err := r.RenterDirDeletePost(dir); err != nil {
-					t.Fatal(err)
+				err = r.RenterDirDeletePost(dir)
+				if isErr(err) {
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: unable to delete Dir", threadName)))
+					return
 				}
 				err := r.RenterDirCreatePost(dir)
 				// NOTE we could probably avoid ignoring ErrPathOverload if we
 				// decided that `siadir.New` returns a potentially existing
 				// directory instead.
-				if err != nil && !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
-					t.Fatal(err)
+				if isErr(err) {
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: error creating dir", threadName)))
+					return
 				}
 			} else {
 				// 50% chance to rename the directory to be the child of a
@@ -675,13 +726,16 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				newParent := dirs[fastrand.Intn(len(dirs))]
 				newDir, err := newParent.Join(persist.RandomSuffix())
 				if err != nil {
-					t.Fatal(err)
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: siapath Join error", threadName)))
+					return
 				}
 				if strings.HasPrefix(newDir.String(), dir.String()) {
 					continue // can't rename folder into itself
 				}
-				if err := r.RenterDirRenamePost(dir, newDir); err != nil {
-					t.Fatal(err)
+				err = r.RenterDirRenamePost(dir, newDir)
+				if isErr(err) {
+					t.Error(errors.AddContext(err, fmt.Sprintf("%v: error renaming dir", threadName)))
+					return
 				}
 			}
 			time.Sleep(time.Duration(fastrand.Intn(500))*time.Millisecond + 500*time.Millisecond) // between 0.5s and 1s
@@ -691,6 +745,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		threadName := "Kill Host Thread"
 		for {
 			select {
 			case <-stop:
@@ -706,7 +761,8 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			// Choose random host.
 			host := hosts[fastrand.Intn(len(hosts))]
 			if err := tg.RemoveNode(host); err != nil {
-				t.Fatal(err)
+				t.Error(errors.AddContext(err, fmt.Sprintf("%v: error removing host", threadName)))
+				return
 			}
 		}
 	}()

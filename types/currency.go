@@ -35,6 +35,10 @@ var (
 	// ErrParseCurrencyAmount is returned when the input is unable to be parsed
 	// into a currency unit due to a malformed amount.
 	ErrParseCurrencyAmount = errors.New("malformed amount")
+	// ErrParseCurrencyInteger is returned when the input is unable to be parsed
+	// into a currency unit due to a non-integer value.
+	ErrParseCurrencyInteger = errors.New("non-integer number of hastings")
+
 	// ErrParseCurrencyUnits is returned when the input is unable to be parsed
 	// into a currency unit due to missing units.
 	ErrParseCurrencyUnits = errors.New("amount is missing currency units; run 'wallet --help' for a list of units. Currency units are case sensitive")
@@ -238,7 +242,7 @@ func ParseCurrency(amount string) (string, error) {
 			// scan into big.Rat
 			r, ok := new(big.Rat).SetString(value)
 			if !ok {
-				return "", errors.New("malformed amount")
+				return "", ErrParseCurrencyAmount
 			}
 			// convert units
 			exp := 24 + 3*(int64(i)-4)
@@ -246,16 +250,15 @@ func ParseCurrency(amount string) (string, error) {
 			r.Mul(r, new(big.Rat).SetInt(mag))
 			// r must be an integer at this point
 			if !r.IsInt() {
-				return "", errors.New("non-integer number of hastings")
+				return "", ErrParseCurrencyInteger
 			}
 			return r.RatString(), nil
 		}
 	}
-
 	// check for hastings separately
 	if strings.HasSuffix(amount, "H") {
 		return strings.TrimSuffix(amount, "H"), nil
 	}
 
-	return "", errors.New("amount is missing currency units")
+	return "", ErrParseCurrencyUnits
 }
