@@ -646,8 +646,13 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefres
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
+	// Add the rootDir to urp
+	err := urp.callAdd(rootDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to add initial rootDir to uniqueRefreshPaths")
+	}
+
 	// Define DirectoryInfo function
-	var err error
 	var mu sync.Mutex
 	dlf := func(di modules.DirectoryInfo) {
 		mu.Lock()
