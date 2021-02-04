@@ -20,15 +20,9 @@ import (
 )
 
 var (
-	// ErrParseCurrencyAmount is returned when the input is unable to be parsed
-	// into a currency unit due to a malformed amount.
-	ErrParseCurrencyAmount = errors.New("malformed amount")
 	// ErrParseCurrencyInteger is returned when the input is unable to be parsed
 	// into a currency unit due to a non-integer value.
 	ErrParseCurrencyInteger = errors.New("non-integer number of hastings")
-	// ErrParseCurrencyUnits is returned when the input is unable to be parsed
-	// into a currency unit due to missing units.
-	ErrParseCurrencyUnits = errors.New("amount is missing currency units; run 'wallet --help' for a list of units. Currency units are case sensitive")
 
 	// ErrParsePeriodAmount is returned when the input is unable to be parsed
 	// into a period unit due to a malformed amount.
@@ -239,39 +233,6 @@ func currencyUnitsWithExchangeRate(c types.Currency, rate *types.ExchangeRate) s
 	}
 
 	return fmt.Sprintf("%s (%s)", cString, rate.ApplyAndFormat(c))
-}
-
-// parseCurrency converts a siacoin amount to base units.
-func parseCurrency(amount string) (string, error) {
-	units := []string{"pS", "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS"}
-	amount = strings.TrimSpace(amount)
-	for i, unit := range units {
-		if strings.HasSuffix(amount, unit) {
-			// Trim spaces after removing the suffix to allow spaces between the
-			// value and the unit.
-			value := strings.TrimSpace(strings.TrimSuffix(amount, unit))
-			// scan into big.Rat
-			r, ok := new(big.Rat).SetString(value)
-			if !ok {
-				return "", ErrParseCurrencyAmount
-			}
-			// convert units
-			exp := 24 + 3*(int64(i)-4)
-			mag := new(big.Int).Exp(big.NewInt(10), big.NewInt(exp), nil)
-			r.Mul(r, new(big.Rat).SetInt(mag))
-			// r must be an integer at this point
-			if !r.IsInt() {
-				return "", ErrParseCurrencyInteger
-			}
-			return r.RatString(), nil
-		}
-	}
-	// check for hastings separately
-	if strings.HasSuffix(amount, "H") {
-		return strings.TrimSuffix(amount, "H"), nil
-	}
-
-	return "", ErrParseCurrencyUnits
 }
 
 // parseRatelimit converts a ratelimit input string of to an int64 representing

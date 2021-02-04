@@ -402,7 +402,7 @@ func walletseedscmd() {
 
 // walletsendsiacoinscmd sends siacoins to a destination address.
 func walletsendsiacoinscmd(amount, dest string) {
-	hastings, err := parseCurrency(amount)
+	hastings, err := types.ParseCurrency(amount)
 	if err != nil {
 		die("Could not parse amount:", err)
 	}
