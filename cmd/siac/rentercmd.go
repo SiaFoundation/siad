@@ -428,7 +428,7 @@ func rentercmd() {
 
 	// File and Contract Data
 	fmt.Println()
-	fmt.Printf(`Data Storage:`)
+	fmt.Println(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
