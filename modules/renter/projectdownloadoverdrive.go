@@ -5,7 +5,14 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+)
+
+var (
+	// errNoWorkersAvailable is returned by the overdrive code when an overdrive
+	// worker is needed, but none are available.
+	errNoWorkersAvailable = errors.New("no workers available")
 )
 
 // TODO: Better handling of time.After
@@ -110,13 +117,13 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 // return value will be 'nil' and instead two channels will be returned which
 // help to indicate when the unresolved worker is resolved.
 //
-// The time.Duration indicatees how long until the preferred worker would be
+// The time.Duration indicates how long until the preferred worker would be
 // late, and the channel will be closed when new worker updates are available.
 //
 // TODO: Remember the edge case where all unresolved workers have not returned
 // yet and there are no other options. There is no timer in that case, only
 // blocking on workersUpdatedChan.
-func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-chan struct{}, <-chan time.Time, error) {
 	// Find the best unresolved worker. The return values include an 'adjusted
 	// duration', which indicates how long the worker takes accounting for
 	// pricing, and the 'wait duration', which is the max amount of time that we
@@ -168,7 +175,7 @@ LOOP:
 		// All 'nil' return values, meaning the download can succeed by waiting
 		// for already launched workers to return, but cannot succeed by
 		// launching new workers because no new workers are available.
-		return nil, 0, nil, nil
+		return nil, 0, nil, nil, errNoWorkersAvailable
 	}
 
 	// Return the buw values unconditionally if there is no baw. Also return the
@@ -176,11 +183,11 @@ LOOP:
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
-		return nil, 0, updateChan, time.After(buwWaitDuration)
+		return nil, 0, updateChan, time.After(buwWaitDuration), nil
 	}
 
 	// Return the baw.
-	return baw, uint64(bawPieceIndex), nil, nil
+	return baw, uint64(bawPieceIndex), nil, nil, nil
 }
 
 // tryLaunchOverdriveWorker will attempt to launch an overdrive worker. A worker
@@ -191,14 +198,17 @@ LOOP:
 // returned which indicates an update to the worker state, and a time.After()
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
-func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time, error) {
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
 	retry := 0
 	for {
-		worker, pieceIndex, wakeChan, workerLateChan := pdc.findBestOverdriveWorker()
+		worker, pieceIndex, wakeChan, workerLateChan, err := pdc.findBestOverdriveWorker()
+		if err != nil {
+			return false, time.Time{}, nil, nil, errors.AddContext(err, "could not find overdrive worker")
+		}
 		if worker == nil {
-			return false, time.Time{}, wakeChan, workerLateChan
+			return false, time.Time{}, wakeChan, workerLateChan, nil
 		}
 
 		// If there was a worker found, launch the worker.
@@ -209,14 +219,14 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			// with jobs in case the queue is on a cooldown.
 			select {
 			case <-pdc.workerSet.staticRenter.tg.StopChan():
-				return false, time.Time{}, wakeChan, workerLateChan
+				return false, time.Time{}, wakeChan, workerLateChan, nil
 			case <-time.After(expBackoffDelayMS(retry)):
 				retry++
 				continue
 			}
 		}
 
-		return true, expectedReturnTime, nil, nil
+		return true, expectedReturnTime, nil, nil, nil
 	}
 }
 
@@ -268,7 +278,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 // channels, one of which will fire when tryOverdrive should be called again. If
 // there are no more overdrive workers to try, these channels may both be 'nil'
 // and therefore will never fire.
-func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Time, error) {
 	// Fetch the number of overdrive workers that are needed, and the latest
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
@@ -281,9 +291,12 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 		// expectedReadyChan, one of which will fire when the next overdrive
 		// worker is ready. If there are no more overdrive workers, these
 		// channels will be nil and therefore never fire.
-		workerLaunched, expectedReturnTime, wakeChan, expectedReadyChan := pdc.tryLaunchOverdriveWorker()
+		workerLaunched, expectedReturnTime, wakeChan, expectedReadyChan, err := pdc.tryLaunchOverdriveWorker()
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "could not find ovedrive worker")
+		}
 		if !workerLaunched {
-			return wakeChan, expectedReadyChan
+			return wakeChan, expectedReadyChan, nil
 		}
 
 		// Worker launched successfully, update the latestReturnTime to account
@@ -295,7 +308,7 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 
 	// All needed overdrive workers have been launched. No need to try again
 	// until the current set of workers are late.
-	return nil, time.After(time.Until(latestReturn))
+	return nil, time.After(time.Until(latestReturn)), nil
 }
 
 // addCostPenalty takes a certain job time and adds a penalty to it depending on

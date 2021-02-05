@@ -5089,8 +5089,10 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	}()
 
 	// add a host that corrupts downloads.
-	deps1 := dependencies.NewDependencyCorruptMDMOutput()
-	deps2 := dependencies.NewDependencyCorruptMDMOutput()
+	deps1 := dependencies.NewDependencyCorruptReadSector()
+	deps2 := dependencies.NewDependencyCorruptReadSector()
+	deps1.Disable()
+	deps2.Disable()
 	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
 	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
 	hostParams1.HostDeps = deps1
@@ -5113,13 +5115,28 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Enable the dependencies and download again.
-	deps1.Fail()
-	deps2.Fail()
-	_, _, err = renter.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "all workers failed") {
+	// Enable the dependencies
+	deps1.Enable()
+	deps2.Enable()
+
+	// Create a new renter (to ensure we're not serving from cache)
+	renterParams := node.Renter(filepath.Join(testDir, "renter2"))
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
 		t.Fatal(err)
 	}
+	renter = tg.Renters()[1]
+
+	// Download again
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err == nil || !(strings.Contains(err.Error(), "all workers failed") ||
+		strings.Contains(err.Error(), "no workers available")) {
+		t.Fatal(err)
+	}
+
+	// Disable the dependencies
+	deps1.Disable()
+	deps2.Disable()
 
 	// Download one more time. It should work again. Do it in a loop since the
 	// workers might be on a cooldown.

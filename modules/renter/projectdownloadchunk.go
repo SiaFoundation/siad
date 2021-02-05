@@ -426,12 +426,12 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// Check whether the download is comlete. An error means that the
 		// download has failed and can no longer make progress.
 		completed, err := pdc.finished()
-		if completed {
-			pdc.finalize()
-			return
-		}
 		if err != nil {
 			pdc.fail(err)
+			return
+		}
+		if completed {
+			pdc.finalize()
 			return
 		}
 
@@ -440,7 +440,11 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		workersUpdatedChan, workersLateChan, err := pdc.tryOverdrive()
+		if err != nil {
+			pdc.fail(err)
+			return
+		}
 
 		// Determine when the next overdrive check needs to run.
 		select {

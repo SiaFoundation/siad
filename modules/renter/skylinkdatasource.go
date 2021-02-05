@@ -213,7 +213,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	}
 	resp := <-respChan
 	if resp.err != nil {
-		return nil, errors.AddContext(err, "base sector download did not succeed")
+		return nil, errors.AddContext(resp.err, "base sector download did not succeed")
 	}
 	baseSector := resp.data
 	if len(baseSector) < modules.SkyfileLayoutSize {
