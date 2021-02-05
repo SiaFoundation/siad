@@ -282,7 +282,8 @@ type (
 
 	// RPCRegistrySubscriptionNotificationEntryUpdate contains an updated entry.
 	RPCRegistrySubscriptionNotificationEntryUpdate struct {
-		Entry SignedRegistryValue
+		Entry  SignedRegistryValue
+		PubKey types.SiaPublicKey
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table

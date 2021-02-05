@@ -88,7 +88,7 @@ func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Ha
 
 // readAndAssertRegistryValueNotification reads a notification, checks that the
 // notification is valid and compares the entry to the provided one.
-func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io.Reader) error {
+func readAndAssertRegistryValueNotification(spk types.SiaPublicKey, rv modules.SignedRegistryValue, r io.Reader) error {
 	var snt modules.RPCRegistrySubscriptionNotificationType
 	err := modules.RPCRead(r, &snt)
 	if err != nil {
@@ -104,6 +104,9 @@ func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io
 	}
 	if !reflect.DeepEqual(rv, sneu.Entry) {
 		return errors.New("wrong entry in notification")
+	}
+	if !reflect.DeepEqual(sneu.PubKey, spk) {
+		return errors.New("wrong pubkey returned")
 	}
 	return nil
 }
@@ -284,7 +287,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Read the notification and make sure it's the right one.
-	err = readAndAssertRegistryValueNotification(rv, notificationReader)
+	err = readAndAssertRegistryValueNotification(spk, rv, notificationReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +501,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Read the notification and make sure it's the right one.
-	err = readAndAssertRegistryValueNotification(rv, notificationReader)
+	err = readAndAssertRegistryValueNotification(spk, rv, notificationReader)
 	if err != nil {
 		t.Fatal(err)
 	}

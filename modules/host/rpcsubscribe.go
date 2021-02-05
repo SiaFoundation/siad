@@ -318,7 +318,7 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 			defer stream.Close()
 
 			// Notify the caller.
-			err = sendNotification(stream, rv)
+			err = sendNotification(stream, pubKey, rv)
 			if err != nil {
 				h.log.Debug("failed to write notification to buffer", err)
 				return
@@ -436,7 +436,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 
 // sendNotification marshals an entry notification and writes it to the provided
 // writer.
-func sendNotification(stream io.Writer, rv modules.SignedRegistryValue) error {
+func sendNotification(stream io.Writer, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 	buf := new(bytes.Buffer)
 	err := modules.RPCWrite(buf, modules.RPCRegistrySubscriptionNotificationType{
 		Type: modules.SubscriptionResponseRegistryValue,
@@ -445,7 +445,8 @@ func sendNotification(stream io.Writer, rv modules.SignedRegistryValue) error {
 		return errors.AddContext(err, "failed to write notification header to buffer")
 	}
 	err = modules.RPCWrite(buf, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry: rv,
+		Entry:  rv,
+		PubKey: spk,
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to write entry to buffer")
