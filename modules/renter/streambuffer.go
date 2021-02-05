@@ -313,7 +313,9 @@ func (s *stream) Close() error {
 		sbs.managedRemoveStream(sb)
 
 		// Cancel the stream's context
-		s.staticCancel()
+		if s.staticCancel != nil {
+			s.staticCancel()
+		}
 	})
 	return nil
 }
