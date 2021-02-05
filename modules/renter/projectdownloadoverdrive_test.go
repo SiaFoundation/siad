@@ -142,9 +142,9 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	ec := modules.NewRSSubCodeDefault()
 
 	// mock two workers with different traits
-	w1 := mockWorker(5) // avg 200ms job time
+	w1 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	w1.staticHostPubKeyStr = "w1"
-	w2 := mockWorker(10) // avg 100ms job time
+	w2 := mockWorker(100 * time.Millisecond) // avg 100ms job time
 	w2.staticHostPubKeyStr = "w2"
 
 	// mock a pdc
@@ -236,8 +236,8 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 	}
 
 	// mock two workers with different traits
-	w1 := mockWorker(10) // avg 100ms job time
-	w2 := mockWorker(5)  // avg 200ms job time
+	w1 := mockWorker(100 * time.Millisecond) // avg 100ms job time
+	w2 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	uws = []*pcwsUnresolvedWorker{
 		{
 			staticWorker:               w1,

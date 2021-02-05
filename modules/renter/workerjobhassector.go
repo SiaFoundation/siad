@@ -40,8 +40,7 @@ type (
 
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
-		weightedJobTime       float64
-		weightedJobsCompleted float64
+		weightedJobTime float64
 
 		*jobGenericQueue
 	}
@@ -123,14 +122,9 @@ func (j *jobHasSector) callExecute() {
 	}
 	j.staticQueue.callReportSuccess()
 
-	// Job was a success, update the performance stats on the queue.
+	// Update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
-	jq.mu.Lock()
-	jq.weightedJobTime *= jobHasSectorPerformanceDecay
-	jq.weightedJobsCompleted *= jobHasSectorPerformanceDecay
-	jq.weightedJobTime += float64(jobTime)
-	jq.weightedJobsCompleted++
-	jq.mu.Unlock()
+	jq.callUpdateJobTimeMetrics(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
@@ -191,29 +185,26 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	return now.Add(estimate), nil
 }
 
-// callSetInitialEstimate will set the given duration as the initial estimate,
-// returned as estimate when we have not processed any jobs yet.
-func (jq *jobHasSectorQueue) callSetInitialEstimate(estimate time.Duration) {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	jq.initialEstimate = estimate
-}
-
-// expectedJobTime will return the amount of time that a job is expected to
-// take, given the current conditions of the queue.
-func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
-	if jq.weightedJobsCompleted == 0 {
-		return jq.initialEstimate
-	}
-	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
-}
-
 // callExpectedJobTime returns the expected amount of time that this job will
 // take to complete.
 func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime(numSectors)
+}
+
+// callUpdateJobTimeMetrics recalculates the queue's weighted job time using the
+// given job time duration.
+func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
+}
+
+// expectedJobTime will return the amount of time that a job is expected to
+// take, given the current conditions of the queue.
+func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
+	return time.Duration(jq.weightedJobTime)
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
