@@ -327,7 +327,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	}
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := mockWorker(10)
+	worker := mockWorker(100 * time.Millisecond)
 	worker.staticHostPubKeyStr = spk.String()
 
 	// mock a pcws
