@@ -113,9 +113,7 @@ func (j *jobHasSector) callExecute() {
 
 	// Update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
-	jq.mu.Lock()
-	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
-	jq.mu.Unlock()
+	jq.callUpdateJobTimeMetrics(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
