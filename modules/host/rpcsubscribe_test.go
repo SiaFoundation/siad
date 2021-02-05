@@ -105,7 +105,7 @@ func readAndAssertRegistryValueNotification(spk types.SiaPublicKey, rv modules.S
 	if !reflect.DeepEqual(rv, sneu.Entry) {
 		return errors.New("wrong entry in notification")
 	}
-	if !reflect.DeepEqual(sneu.PubKey, spk) {
+	if !sneu.PubKey.Equals(spk) {
 		return errors.New("wrong pubkey returned")
 	}
 	return nil
