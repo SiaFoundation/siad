@@ -428,7 +428,7 @@ func rentercmd() {
 
 	// File and Contract Data
 	fmt.Println()
-	fmt.Printf(`Data Storage:`)
+	fmt.Println(`Data Storage:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
@@ -668,7 +668,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 
 	// parse funds
 	if allowanceFunds != "" {
-		hastings, err := parseCurrency(allowanceFunds)
+		hastings, err := types.ParseCurrency(allowanceFunds)
 		if err != nil {
 			die("Could not parse amount:", err)
 		}
@@ -718,7 +718,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse the payment contract initial funding
 	if allowancePaymentContractInitialFunding != "" {
-		priceStr, err := parseCurrency(allowancePaymentContractInitialFunding)
+		priceStr, err := types.ParseCurrency(allowancePaymentContractInitialFunding)
 		if err != nil {
 			die("Could not parse payment contract initial funding:", err)
 		}
@@ -783,7 +783,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxrpcprice
 	if allowanceMaxRPCPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxRPCPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxRPCPrice)
 		if err != nil {
 			die("Could not parse max rpc price:", err)
 		}
@@ -798,7 +798,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxcontractprice
 	if allowanceMaxContractPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxContractPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxContractPrice)
 		if err != nil {
 			die("Could not parse max contract price:", err)
 		}
@@ -812,7 +812,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxdownloadbandwidthprice
 	if allowanceMaxDownloadBandwidthPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxDownloadBandwidthPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxDownloadBandwidthPrice)
 		if err != nil {
 			die("Could not parse max download bandwidth price:", err)
 		}
@@ -827,7 +827,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxsectoraccessprice
 	if allowanceMaxSectorAccessPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxSectorAccessPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxSectorAccessPrice)
 		if err != nil {
 			die("Could not parse max sector access price:", err)
 		}
@@ -842,7 +842,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxstorageprice
 	if allowanceMaxStoragePrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxStoragePrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxStoragePrice)
 		if err != nil {
 			die("Could not parse max storage price:", err)
 		}
@@ -857,7 +857,7 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	}
 	// parse maxuploadbandwidthprice
 	if allowanceMaxUploadBandwidthPrice != "" {
-		priceStr, err := parseCurrency(allowanceMaxUploadBandwidthPrice)
+		priceStr, err := types.ParseCurrency(allowanceMaxUploadBandwidthPrice)
 		if err != nil {
 			die("Could not parse max upload bandwidth price:", err)
 		}
@@ -952,7 +952,7 @@ The following units can be used to set the allowance:
 			break
 		}
 
-		hastings, err := parseCurrency(allowanceFunds)
+		hastings, err := types.ParseCurrency(allowanceFunds)
 		if err != nil {
 			fmt.Printf("Could not parse currency in '%v': %v\n", allowanceFunds, err)
 			continue
@@ -2086,7 +2086,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 		os.Exit(exitCodeUsage)
 	}
 	if len(args) > 0 {
-		hastings, err := parseCurrency(args[0])
+		hastings, err := types.ParseCurrency(args[0])
 		if err != nil {
 			die("Could not parse amount:", err)
 		}
