@@ -216,7 +216,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
-			if !w.managedAsyncReady() || jrq.cooldownUntil.After(time.Now()) {
+			onCoolDown, _ := jrq.callOnCooldown()
+			if !w.managedAsyncReady() || onCoolDown {
 				continue
 			}
 
