@@ -122,9 +122,9 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
-		
+
 		// staticSetInitialEstimates is an object that ensures the initial queue
-		// estimates, of the HS and RJ queues, are only set once.
+		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
 
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
