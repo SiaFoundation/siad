@@ -91,6 +91,23 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 		return
 	}
 
+	// Check if the host tried to cheat us.
+	// 1. (TODO) Check if the host sent us an update we are not subsribed to
+
+	// 2. Check if the host was trying to cheat us with an outdated entry.
+	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
+	if exists && sneu.Entry.Revision <= latestRev {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+	}
+
+	// 3. Verify the signature.
+	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
+	if err != nil {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+	}
+
 	// Update the worker cache.
 	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
 }

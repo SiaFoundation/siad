@@ -40,6 +40,11 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 // worker tester. They are already unit-tested against a host in
 // rpcsubscribe_test.go but better safe than sorry.
 func TestSubscriptionHelpersWithWorker(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +158,11 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 // TestPriceTableForSubscription is a unit test for
 // managedPriceTableForSubscription.
 func TestPriceTableForSubscription(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a worker that's not running its worker loop.
 	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
@@ -221,6 +231,11 @@ func TestPriceTableForSubscription(t *testing.T) {
 
 // TestSubscriptionLoop is a unit test for managedSubscriptionLoop.
 func TestSubscriptionLoop(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a worker that's not running its worker loop.
 	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
 	if err != nil {
@@ -406,4 +421,12 @@ func TestSubscriptionLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	wg.Wait()
+
+	// Subscription info should be reset.
+	subInfo.mu.Lock()
+	activeSubs := len(subInfo.activeSubscriptions)
+	subInfo.mu.Unlock()
+	if activeSubs != 0 {
+		t.Fatal("wrong number of active subscriptions:", activeSubs)
+	}
 }
