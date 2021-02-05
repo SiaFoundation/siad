@@ -148,14 +148,14 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	// migrate to the async protocol.
 	numAsyncWorkers := 0
 	for _, worker := range workers {
-		// check host version
-		if !worker.staticSupportsRHP3() {
+		cache := worker.staticCache()
+		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
 			continue
 		}
 
 		// check for price gouging
 		pt := worker.staticPriceTable().staticPriceTable
-		err := checkPDBRGouging(pt, worker.staticCache().staticRenterAllowance)
+		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
 			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue

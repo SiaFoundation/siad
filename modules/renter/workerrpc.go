@@ -39,8 +39,9 @@ type programResponse struct {
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
-	if !w.staticSupportsRHP3() {
-		build.Critical("Executing new RHP RPC on host with version", w.staticCache().staticHostVersion)
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
 	}
 
 	// track the withdrawal
@@ -82,7 +83,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// provide payment
-	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
 		return
 	}
@@ -149,7 +150,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 // staticNewStream returns a new stream to the worker's host
 func (w *worker) staticNewStream() (siamux.Stream, error) {
-	if !w.staticSupportsRHP3() {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
 		return nil, errors.New("host doesn't support this")
 	}

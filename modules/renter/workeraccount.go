@@ -453,7 +453,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 // are likely to prevent the refill from being successful.
 func (w *worker) managedNeedsToRefillAccount() bool {
 	// No need to refill the account if the worker's host does not support RHP3.
-	if !w.staticSupportsRHP3() {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
 	// No need to refill the account if the worker is on maintenance cooldown.
@@ -473,7 +473,7 @@ func (w *worker) managedNeedsToRefillAccount() bool {
 // sync the renter's account balance with the host's version of the account.
 func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 	// No need to sync the account if the worker's host does not support RHP3.
-	if !w.staticSupportsRHP3() {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
 	// No need to sync the account if the worker's RHP3 is on cooldown.

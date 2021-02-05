@@ -205,7 +205,7 @@ func TestManagedAsyncReady(t *testing.T) {
 	// ensure cache indicates host version meets min requirements
 	w.newCache()
 	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minRHP3Version,
+		staticHostVersion: minAsyncVersion,
 	}))
 
 	// ensure the worker has a maintenancestate, by default it will pass the

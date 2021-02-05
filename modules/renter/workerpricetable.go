@@ -61,7 +61,7 @@ type (
 // host prices.
 func (w *worker) managedNeedsToUpdatePriceTable() bool {
 	// No need to update the prices if the worker's host does not support RHP3.
-	if !w.staticSupportsRHP3() {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
 	// No need to update the price table if the worker's RHP3 is on cooldown.

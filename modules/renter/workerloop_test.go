@@ -193,7 +193,7 @@ func TestJobAsync(t *testing.T) {
 	w.staticLoopState.atomicWriteDataLimit = 10e6
 	w.staticMaintenanceState = &workerMaintenanceState{}
 	cache := &workerCache{
-		staticHostVersion: minRHP3Version,
+		staticHostVersion: minAsyncVersion,
 	}
 	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(cache))
 	w.staticSetPriceTable(&workerPriceTable{

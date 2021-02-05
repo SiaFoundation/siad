@@ -54,9 +54,9 @@ const (
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.
 type pcwsUnresolvedWorker struct {
-	// The expected time that the worker will resolve. A worker is considered
-	// resolved if the HasSector job has finished.
-	staticExpectedResolvedTime time.Time
+	// The expected time that the HasSector job will finish, and the worker will
+	// be able to resolve.
+	staticExpectedCompleteTime time.Time
 
 	// The worker that is performing the HasSector job.
 	staticWorker *worker
@@ -308,37 +308,19 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		return err
 	}
 
-	// Check whether the worker is on RHP3
-	if !w.staticSupportsRHP3() {
-		return errors.New("worker is not RHP3 ready")
-	}
-
-	// Check whether the worker is on a cooldown. Because the PCWS is cached, we
-	// do not want to exclude this worker if it is on a cooldown, however we do
-	// want to take into consideration the cooldown period when we estimate the
-	// expected resolve time.
-	var coolDownPenalty time.Duration
-	if w.managedOnMaintenanceCooldown() {
-		wms := w.staticMaintenanceState
-		wms.mu.Lock()
-		coolDownPenalty = time.Until(wms.cooldownUntil)
-		wms.mu.Unlock()
-	}
-
 	// Create and launch the job.
 	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
-	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	expectedCompleteTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
-	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
 		staticWorker: w,
 
-		staticExpectedResolvedTime: expectedResolveTime,
+		staticExpectedCompleteTime: expectedCompleteTime,
 	}
 
 	// Add the unresolved worker to the worker state. Technically this doesn't

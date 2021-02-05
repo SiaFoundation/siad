@@ -19,15 +19,14 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// minRHP3Version defines the minimum version that supports RHP3.
-	minRHP3Version = "1.4.10"
+	// minAsyncVersion defines the minimum version that supports RHP3.
+	minAsyncVersion = "1.4.10"
 
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
@@ -123,7 +122,7 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
-
+		
 		// staticSetInitialEstimates is an object that ensures the initial queue
 		// estimates, of the HS and RJ queues, are only set once.
 		staticSetInitialEstimates sync.Once
@@ -208,13 +207,6 @@ func (w *worker) staticWake() {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
-}
-
-// staticSupportsRHP3 is a convenience function to determine whether the host is
-// on a version that supports the RHP3 protocol.
-func (w *worker) staticSupportsRHP3() bool {
-	cache := w.staticCache()
-	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.

@@ -146,13 +146,13 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Determine the expected readDuration and cost for this worker. Add the
-		// readDuration to the staticExpectedResolvedTime to get the full
-		// complete time for the download - staticExpectedResolvedTime in the
+		// readDuration to the staticExpectedCompleteTime to get the full
+		// complete time for the download - staticExpectedCompleteTime in the
 		// unresolved worker here refers to the expected complete time of the
 		// HasSector job.
 		cost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
 		readDuration := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-		completeTime := uw.staticExpectedResolvedTime.Add(readDuration)
+		completeTime := uw.staticExpectedCompleteTime.Add(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know

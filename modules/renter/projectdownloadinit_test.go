@@ -81,19 +81,19 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	worker3 := mockWorker("host3", dur50MS)
 
 	// define a list of unresolved workers, note that the expected order is
-	// influenced here by `staticExpectedResolvedTime`
+	// influenced here by `staticExpectedCompleteTime`
 	now := time.Now()
 	unresolvedWorkers := []*pcwsUnresolvedWorker{
 		{
-			staticExpectedResolvedTime: now.Add(dur100MS),
+			staticExpectedCompleteTime: now.Add(dur100MS),
 			staticWorker:               worker1,
 		}, // 300ms
 		{
-			staticExpectedResolvedTime: now.Add(dur50MS),
+			staticExpectedCompleteTime: now.Add(dur50MS),
 			staticWorker:               worker2,
 		}, // 150ms
 		{
-			staticExpectedResolvedTime: now.Add(dur200MS),
+			staticExpectedCompleteTime: now.Add(dur200MS),
 			staticWorker:               worker3,
 		}, // 250ms
 	}
