@@ -205,7 +205,7 @@ func TestManagedAsyncReady(t *testing.T) {
 	// ensure cache indicates host version meets min requirements
 	w.newCache()
 	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minAsyncVersion,
+		staticHostVersion: minRHP3Version,
 	}))
 
 	// ensure the worker has a maintenancestate, by default it will pass the
@@ -244,6 +244,9 @@ func TestManagedAsyncReady(t *testing.T) {
 // both the HS and RJ queues right after performing the pricetable update for
 // the first time.
 func TestJobQueueInitialEstimate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	wt, err := newWorkerTester(t.Name())
