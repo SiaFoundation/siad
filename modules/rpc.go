@@ -36,6 +36,7 @@ const (
 	SubscriptionResponseRegistryValue
 
 	SubscriptionResponseSubscriptionSuccess
+	SubscriptionResponseUnsubscribeSuccess
 )
 
 var (
