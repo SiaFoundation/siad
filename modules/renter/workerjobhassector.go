@@ -122,7 +122,7 @@ func (j *jobHasSector) callExecute() {
 	}
 	j.staticQueue.callReportSuccess()
 
-	// Update the performance stats on the queue.
+	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
 	jq.callUpdateJobTimeMetrics(jobTime)
 }

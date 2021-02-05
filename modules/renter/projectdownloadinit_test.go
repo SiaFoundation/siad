@@ -72,6 +72,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 		w.newPriceTable()
 		w.initJobReadQueue()
 		w.staticJobReadQueue.weightedJobTime64k = float64(expectedJobTime)
+		w.staticJobReadQueue.weightedJobsCompleted64k = 1
 		return w
 	}
 
