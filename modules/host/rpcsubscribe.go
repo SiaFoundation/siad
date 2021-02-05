@@ -101,7 +101,7 @@ func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryI
 }
 
 // RemoveSubscriptions removes one or multiple subscriptions.
-func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, entryIDs ...subscriptionID) {
+func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, entryIDs []subscriptionID) {
 	// Delete from the info first.
 	info.mu.Lock()
 	for _, entryID := range entryIDs {
@@ -193,7 +193,7 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 	}
 
 	// Remove the subscription.
-	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids...)
+	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids)
 	return nil
 }
 
@@ -418,7 +418,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 			entryIDs = append(entryIDs, entryID)
 		}
 		info.mu.Unlock()
-		h.staticRegistrySubscriptions.RemoveSubscriptions(info)
+		h.staticRegistrySubscriptions.RemoveSubscriptions(info, entryIDs)
 	}()
 
 	// The subscription RPC is a request/response loop that continues for as

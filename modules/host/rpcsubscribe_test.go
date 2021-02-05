@@ -70,19 +70,20 @@ func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Ha
 	sid := deriveSubscriptionID(spk, tweak)
 	host.staticRegistrySubscriptions.mu.Lock()
 	subInfos, found := host.staticRegistrySubscriptions.subscriptions[sid]
+	host.staticRegistrySubscriptions.mu.Unlock()
 	if !found {
-		host.staticRegistrySubscriptions.mu.Unlock()
 		return nil, errors.New("subscription not found for id")
 	}
-	if len(subInfos) != 1 {
-		host.staticRegistrySubscriptions.mu.Unlock()
+	if len(subInfos) != n {
 		return nil, fmt.Errorf("wrong number of subscription infos %v != %v", len(subInfos), n)
 	}
 	var infos []*subscriptionInfo
 	for _, info := range subInfos {
 		infos = append(infos, info)
+		if _, ok := info.subscriptions[sid]; !ok {
+			return nil, errors.New("info doesn't contain subscription")
+		}
 	}
-	host.staticRegistrySubscriptions.mu.Unlock()
 	return infos, nil
 }
 
