@@ -482,6 +482,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 
 	// give it a name and set an initial estimate on the HS queue
 	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
+	w.staticJobHasSectorQueue.weightedJobsCompleted = 1
 	w.staticHostPubKeyStr = "myworker"
 
 	// ensure PT is valid and host is considered RHP3 ready
