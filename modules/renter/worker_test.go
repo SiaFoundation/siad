@@ -260,25 +260,11 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// allow the worker some time to fetch a PT
-	err = build.Retry(600, 100*time.Millisecond, func() error {
-		if !w.staticPriceTable().staticValid() {
-			return errors.New("price table not fetched yet")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// verify it has set the initial estimates on both queues
 	if w.staticJobHasSectorQueue.callExpectedJobTime(fastrand.Uint64n(10)) == 0 {
 		t.Fatal("unexpected")
 	}
 	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
-		t.Fatal("unexpected")
-	}
-	if !w.staticInitialEstimatesSet() {
 		t.Fatal("unexpected")
 	}
 }

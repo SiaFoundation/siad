@@ -82,7 +82,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// provide payment
-	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
+	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
 		return
 	}
