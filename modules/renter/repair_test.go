@@ -1747,7 +1747,7 @@ func TestPrepareForBubble(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Make sure the root directory has a current  lastHealthCheckTime
+	// Make sure the root directory has a current lastHealthCheckTime
 	currentMetadata := siadir.Metadata{
 		AggregateLastHealthCheckTime: time.Now(),
 		LastHealthCheckTime:          time.Now(),
