@@ -33,8 +33,7 @@ type (
 	jobHasSectorQueue struct {
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
-		weightedJobTime       float64
-		weightedJobsCompleted float64
+		weightedJobTime float64
 
 		*jobGenericQueue
 	}
@@ -178,7 +177,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
-	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
+	return time.Duration(jq.weightedJobTime)
 }
 
 // callExpectedJobTime returns the expected amount of time that this job will

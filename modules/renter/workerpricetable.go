@@ -147,7 +147,7 @@ func (w *worker) staticUpdatePriceTable() {
 	defer func() {
 		// As a safety precaution, set the elapsed duration to be a second in
 		// case we did not manage to update the price table successfully.
-		if err != nil {
+		if err != nil && elapsed < time.Second {
 			elapsed = time.Second
 		}
 		w.staticSetInitialEstimates.Do(func() {
