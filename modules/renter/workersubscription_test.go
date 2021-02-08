@@ -107,11 +107,17 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	if len(initialValues) != 2 {
 		t.Fatal("wrong number of values", len(initialValues))
 	}
-	if !reflect.DeepEqual(initialValues[0], srv1) {
+	if !reflect.DeepEqual(initialValues[0].Entry, srv1) {
 		t.Fatal("wrong value")
 	}
-	if !reflect.DeepEqual(initialValues[1], srv3) {
+	if !reflect.DeepEqual(initialValues[1].Entry, srv3) {
 		t.Fatal("wrong value")
+	}
+	if !initialValues[0].PubKey.Equals(spk1) {
+		t.Fatal("wrong pubkey")
+	}
+	if !initialValues[1].PubKey.Equals(spk3) {
+		t.Fatal("wrong pubkey")
 	}
 
 	// Fund the budget a bit.
@@ -398,6 +404,21 @@ func TestSubscriptionLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// The channels of the active subscriptions should be closed now.
+	subInfo.mu.Lock()
+	for _, sub := range subInfo.activeSubscriptions {
+		select {
+		case <-sub.subscribed:
+		default:
+			t.Error("not subscribed")
+		}
+		// The latest value should be nil since it doesn't exist on the host.
+		if sub.latestRV != nil {
+			t.Fatal("latest value should be nil")
+		}
+	}
+	subInfo.mu.Unlock()
 
 	// Remove the second subscription.
 	subInfo.mu.Lock()
