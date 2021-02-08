@@ -272,7 +272,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// allow the worker some time to fetch a PT and fund its EA
+	// allow the worker some time to fund its EA
 	if err := build.Retry(600, 100*time.Millisecond, func() error {
 		if w.staticAccount.managedMinExpectedBalance().IsZero() {
 			return errors.New("account not funded yet")
@@ -284,13 +284,13 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 
 	// fetch the worker's has sector jobs status and verify its output
 	status := w.callHasSectorJobStatus()
-	if !(status.AvgJobTime == 0 &&
-		status.ConsecutiveFailures == 0 &&
+	if !(status.ConsecutiveFailures == 0 &&
 		status.JobQueueSize == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected has sector job status", ToJSON(status))
 	}
+	initialAvg := status.AvgJobTime
 
 	// prevent the worker from doing any work by manipulating its read limit
 	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
@@ -318,7 +318,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	// process the job
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		status = w.callHasSectorJobStatus()
-		if status.AvgJobTime == 0 {
+		if status.AvgJobTime == initialAvg {
 			return fmt.Errorf("Unexpected has sector job status %v", ToJSON(status))
 		}
 		return nil

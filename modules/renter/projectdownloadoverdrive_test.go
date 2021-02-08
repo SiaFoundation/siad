@@ -104,7 +104,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	t.Parallel()
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := mockWorker(10)
+	worker := mockWorker(100 * time.Millisecond)
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0

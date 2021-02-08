@@ -193,12 +193,12 @@ func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duratio
 	return jq.expectedJobTime(numSectors)
 }
 
-// callUpdateJobTimeMetrics recalculates the queue's weighted job time using the
-// given job time duration.
+// callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
+// it to update the job performance metrics on the queue.
 func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
+	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to

@@ -516,7 +516,7 @@ func TestGetPieceOffsetAndLenWithRecover(t *testing.T) {
 
 // mockWorker is a helper function that returns a worker with a pricetable
 // and an initialised read queue that returns a non zero value for read
-// estimates depending on the given jobTime parameter.
+// estimates depending on the given jobTime value.
 func mockWorker(jobTime time.Duration) *worker {
 	worker := new(worker)
 	worker.newPriceTable()
