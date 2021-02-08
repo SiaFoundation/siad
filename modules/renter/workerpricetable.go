@@ -32,6 +32,10 @@ var (
 		Dev:      1 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
+
+	// minInitialEstimate is the minimum job time estimate that's set on the HS
+	// and RJ queue in case we fail to update the price table succesfully
+	minInitialEstimate = time.Second
 )
 
 type (
@@ -145,10 +149,11 @@ func (w *worker) staticUpdatePriceTable() {
 	// estimate for both the HS and RJ queue job time estimates.
 	var elapsed time.Duration
 	defer func() {
-		// As a safety precaution, set the elapsed duration to be a second in
-		// case we did not manage to update the price table successfully.
-		if err != nil && elapsed < time.Second {
-			elapsed = time.Second
+		// As a safety precaution, set the elapsed duration to the minimum
+		// estimate in case we did not manage to update the price table
+		// successfully.
+		if err != nil && elapsed < minInitialEstimate {
+			elapsed = minInitialEstimate
 		}
 		w.staticSetInitialEstimates.Do(func() {
 			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
