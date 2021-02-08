@@ -34,7 +34,7 @@ var (
 	}).(time.Duration)
 
 	// minInitialEstimate is the minimum job time estimate that's set on the HS
-	// and RJ queue in case we fail to update the price table succesfully
+	// and RJ queue in case we fail to update the price table successfully
 	minInitialEstimate = time.Second
 )
 
