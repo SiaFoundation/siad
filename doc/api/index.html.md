@@ -5264,6 +5264,13 @@ in the "Skynet-File-Metadata" response header. This might be useful in cases
 where the metadata is not used, or where the size of the response header is
 proving to be an issue.
 
+**include-layout** | string  
+If 'include-layout' is set to true, the API will return the layout in the
+"Skynet-File-Layout" response header. In most cases the layout is not needed for
+the download which is why it is not returned by default. Cases that require the
+layout include backing up skylinks where all the original upload information
+about a skylink is needed.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 

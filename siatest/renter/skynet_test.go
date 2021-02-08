@@ -71,6 +71,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
+		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -2704,6 +2705,61 @@ func testSkynetNoMetadata(t *testing.T, tg *siatest.TestGroup) {
 
 	strSkynetFileMetadata := header.Get("Skynet-File-Metadata")
 	if strSkynetFileMetadata != "" {
+		t.Fatal("unexpected")
+	}
+}
+
+// testSkynetIncludeLayout verifies the functionality of sending
+// a 'include-layout' query string parameter to the skylink GET route.
+func testSkynetIncludeLayout(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GET without specifying the 'include-layout' query string parameter
+	_, layout, err := r.SkynetSkylinkGetWithLayout(skylink, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(layout, modules.SkyfileLayout{}) {
+		t.Fatal("unexpected")
+	}
+
+	// GET with specifying the 'include-layout' query string parameter
+	_, layout, err = r.SkynetSkylinkGetWithLayout(skylink, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(layout, modules.SkyfileLayout{}) {
+		t.Fatal("unexpected")
+	}
+
+	// Perform a HEAD call to verify the same thing in the headers directly
+	params := url.Values{}
+	params.Set("include-layout", fmt.Sprintf("%t", true))
+	status, header, err := r.SkynetSkylinkHeadWithParameters(skylink, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
+	}
+
+	strSkynetFileLayout := header.Get("Skynet-File-Layout")
+	if strSkynetFileLayout == "" {
+		t.Fatal("unexpected")
+	}
+	var layout2 modules.SkyfileLayout
+	layoutBytes, err := hex.DecodeString(strSkynetFileLayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout2.Decode(layoutBytes)
+	if !reflect.DeepEqual(layout, layout2) {
 		t.Fatal("unexpected")
 	}
 }

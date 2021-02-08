@@ -70,25 +70,26 @@ func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Ha
 	sid := deriveSubscriptionID(spk, tweak)
 	host.staticRegistrySubscriptions.mu.Lock()
 	subInfos, found := host.staticRegistrySubscriptions.subscriptions[sid]
+	host.staticRegistrySubscriptions.mu.Unlock()
 	if !found {
-		host.staticRegistrySubscriptions.mu.Unlock()
 		return nil, errors.New("subscription not found for id")
 	}
-	if len(subInfos) != 1 {
-		host.staticRegistrySubscriptions.mu.Unlock()
+	if len(subInfos) != n {
 		return nil, fmt.Errorf("wrong number of subscription infos %v != %v", len(subInfos), n)
 	}
 	var infos []*subscriptionInfo
 	for _, info := range subInfos {
 		infos = append(infos, info)
+		if _, ok := info.subscriptions[sid]; !ok {
+			return nil, errors.New("info doesn't contain subscription")
+		}
 	}
-	host.staticRegistrySubscriptions.mu.Unlock()
 	return infos, nil
 }
 
 // readAndAssertRegistryValueNotification reads a notification, checks that the
 // notification is valid and compares the entry to the provided one.
-func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io.Reader) error {
+func readAndAssertRegistryValueNotification(spk types.SiaPublicKey, rv modules.SignedRegistryValue, r io.Reader) error {
 	var snt modules.RPCRegistrySubscriptionNotificationType
 	err := modules.RPCRead(r, &snt)
 	if err != nil {
@@ -104,6 +105,9 @@ func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io
 	}
 	if !reflect.DeepEqual(rv, sneu.Entry) {
 		return errors.New("wrong entry in notification")
+	}
+	if !sneu.PubKey.Equals(spk) {
+		return errors.New("wrong pubkey returned")
 	}
 	return nil
 }
@@ -284,7 +288,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Read the notification and make sure it's the right one.
-	err = readAndAssertRegistryValueNotification(rv, notificationReader)
+	err = readAndAssertRegistryValueNotification(spk, rv, notificationReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +502,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Read the notification and make sure it's the right one.
-	err = readAndAssertRegistryValueNotification(rv, notificationReader)
+	err = readAndAssertRegistryValueNotification(spk, rv, notificationReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -927,12 +931,17 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 
 	// Check balance afterwards.
 	l := stream.Limit()
-	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + notificationUploaded)
-	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + notificationDownloaded)
+	notificationMu.Lock()
+	nu := notificationUploaded
+	nd := notificationDownloaded
+	nn := numNotifications
+	notificationMu.Unlock()
+	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + nu)
+	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + nd)
 	bandwidthCost := upCost.Add(downCost)
 	cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
 	cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
-	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(numNotifications)))
+	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(nn)))
 
 	currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	expected := expectedBalance.Sub(cost)

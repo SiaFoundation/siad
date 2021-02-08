@@ -612,6 +612,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Parse the `include-layout` query string parameter.
+	var includeLayout bool
+	includeLayoutStr := queryForm.Get("include-layout")
+	if includeLayoutStr != "" {
+		includeLayout, err = strconv.ParseBool(includeLayoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'include-layout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse the timeout.
 	timeout := DefaultSkynetRequestTimeout
 	timeoutStr := queryForm.Get("timeout")
@@ -818,8 +829,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
 	// Set the Layout
-	w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
-
+	if includeLayout {
+		w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
+	}
 	// Set an appropriate Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
