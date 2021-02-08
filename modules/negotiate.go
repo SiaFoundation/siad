@@ -1143,6 +1143,15 @@ func RPCUnsubscribeFromRVs(stream siamux.Stream, requests []RPCRegistrySubscript
 	if err != nil {
 		return err
 	}
+	// Read the "OK" response.
+	var resp RPCRegistrySubscriptionNotificationType
+	err = RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+	if resp.Type != SubscriptionResponseUnsubscribeSuccess {
+		return fmt.Errorf("wrong type was returned: %v", resp.Type)
+	}
 	return nil
 }
 

@@ -349,6 +349,14 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 		err = errors.Compose(err, sf.Close())
 	}()
 
+	// First check if the fileNode is blocked. Blocking a file does not remove the
+	// file so this is required to ensuring the node is purging blocked files.
+	if r.isFileNodeBlocked(sf) {
+		// Delete the file
+		r.log.Println("Deleting blocked fileNode at:", siaPath)
+		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
+	}
+
 	// Calculate file health
 	health, stuckHealth, _, _, numStuckChunks, repairBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
@@ -405,6 +413,10 @@ func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []
 	metadataWorker := func() {
 		for siaPath := range siaPathChan {
 			md, err := r.managedCalculateFileMetadata(siaPath, hostOfflineMap, hostGoodForRenewMap)
+			if errors.Contains(err, ErrSkylinkBlocked) {
+				// If the fileNode is blocked we ignore the error and continue.
+				continue
+			}
 			if err != nil {
 				errMu.Lock()
 				errs = errors.Compose(errs, err)
