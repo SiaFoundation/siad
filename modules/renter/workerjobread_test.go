@@ -36,7 +36,7 @@ func TestJobExpectedJobTime(t *testing.T) {
 		// between those boundaries
 		for i := 0; i < 1000; i++ {
 			randJobTime := time.Duration(fastrand.Intn(40)+80) * time.Millisecond
-			jrq.managedUpdateJobTimeMetrics(readLength, randJobTime)
+			jrq.callUpdateJobTimeMetrics(readLength, randJobTime)
 			ejt = jrq.callExpectedJobTime(readLength)
 			if ejt < dur80MS || ejt > dur120MS {
 				t.Fatal("unexpected")

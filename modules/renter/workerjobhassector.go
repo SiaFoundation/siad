@@ -114,12 +114,7 @@ func (j *jobHasSector) callExecute() {
 
 	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
-	jq.mu.Lock()
-	jq.weightedJobTime *= jobHasSectorPerformanceDecay
-	jq.weightedJobsCompleted *= jobHasSectorPerformanceDecay
-	jq.weightedJobTime += float64(jobTime)
-	jq.weightedJobsCompleted++
-	jq.mu.Unlock()
+	jq.callUpdateJobTimeMetrics(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
@@ -192,6 +187,14 @@ func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duratio
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime(numSectors)
+}
+
+// callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
+// it to update the job performance metrics on the queue.
+func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
