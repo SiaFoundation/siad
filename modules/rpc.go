@@ -18,6 +18,10 @@ const (
 	// entry takes up in memory. This is a conservative estimation to prevent
 	// DoS attacks on the host.
 	SubscriptionEntrySize = 512
+
+	// RenewDecodeMaxLen is the maximum length for decoding received objects
+	// read during a contract renewal.
+	RenewDecodeMaxLen = 1 << 18 // 256 kib
 )
 
 // Subcription request related enum.
@@ -377,10 +381,11 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	return dc.Err()
 }
 
-// RPCRead tries to read the given object from the stream.
-func RPCRead(r io.Reader, obj interface{}) error {
+// RPCReadMaxLen tries to read the given object from the stream. It will
+// allocate at most maxLen bytes for the object.
+func RPCReadMaxLen(r io.Reader, obj interface{}, maxLen uint64) error {
 	resp := rpcResponse{nil, obj}
-	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	err := encoding.ReadObject(r, &resp, maxLen)
 	if err != nil {
 		return err
 	}
@@ -389,6 +394,11 @@ func RPCRead(r io.Reader, obj interface{}) error {
 		return errors.New(resp.err.Error())
 	}
 	return nil
+}
+
+// RPCRead tries to read the given object from the stream.
+func RPCRead(r io.Reader, obj interface{}) error {
+	return RPCReadMaxLen(r, obj, uint64(RPCMinLen))
 }
 
 // RPCWrite writes the given object to the stream.
