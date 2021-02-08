@@ -97,7 +97,7 @@ var (
 	// where we don't count all of the memory usage accurately.
 	repairMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
-		Standard: uint64(1 << 30), // 1.0 GiB
+		Standard: uint64(1 << 34), // 16.0 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
