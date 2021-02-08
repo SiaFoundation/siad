@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	// minAsyncVersion defines the minimum version that supports RHP3.
-	minAsyncVersion = "1.4.10"
+	// minRHP3Version defines the minimum version that supports RHP3.
+	minRHP3Version = "1.4.10"
 
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
@@ -205,7 +205,7 @@ func (w *worker) staticKilled() bool {
 // on a version that supports the RHP3 protocol.
 func (w *worker) staticSupportsRHP3() bool {
 	cache := w.staticCache()
-	return build.VersionCmp(cache.staticHostVersion, minAsyncVersion) >= 0
+	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // staticWake will wake the worker from sleeping. This should be called any time

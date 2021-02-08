@@ -487,7 +487,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// ensure PT is valid and host is considered RHP3 ready
 	w.staticPriceTable().staticExpiryTime = time.Now().Add(time.Hour)
 	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minAsyncVersion,
+		staticHostVersion: minRHP3Version,
 	}))
 
 	// launch the worker

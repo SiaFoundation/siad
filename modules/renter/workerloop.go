@@ -313,7 +313,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
+	if w.staticSupportsRHP3() {
 		// Ensure the renter's revision number of the underlying file contract
 		// is in sync with the host's revision number. This check must happen at
 		// the top as consecutive checks make use of the file contract for
