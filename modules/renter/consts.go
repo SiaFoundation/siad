@@ -31,15 +31,6 @@ func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy 
 
 // Default redundancy parameters.
 var (
-	// RepairThreshold defines the threshold at which the renter decides to
-	// repair a file. The renter will start repairing the file when the health
-	// is equal to or greater than this value.
-	RepairThreshold = build.Select(build.Var{
-		Dev:      0.25,
-		Standard: 0.25,
-		Testing:  0.25,
-	}).(float64)
-
 	// syncCheckInterval is how often the repair heap checks the consensus code
 	// to see if the renter is synced. This is created because the contractor
 	// may not update the synced channel until a block is received under some

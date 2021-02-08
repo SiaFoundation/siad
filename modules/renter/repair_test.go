@@ -95,6 +95,10 @@ func equalBubbledAggregateMetadata(md1, md2 siadir.Metadata, delta time.Duration
 	if md1.AggregateStuckHealth != md2.AggregateStuckHealth {
 		return fmt.Errorf("AggregateStuckHealth not equal, %v and %v", md1.AggregateStuckHealth, md2.AggregateStuckHealth)
 	}
+	// Check AggregateStuckSize
+	if md1.AggregateStuckSize != md2.AggregateStuckSize {
+		return fmt.Errorf("AggregateStuckSize not equal, %v and %v", md1.AggregateStuckSize, md2.AggregateStuckSize)
+	}
 
 	// Aggregate Skynet Fields
 	//
@@ -158,6 +162,10 @@ func equalBubbledDirectoryMetadata(md1, md2 siadir.Metadata, delta time.Duration
 	// Check StuckHealth
 	if md1.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("StuckHealth not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
+	}
+	// Check StuckSize
+	if md1.StuckSize != md2.StuckSize {
+		return fmt.Errorf("StuckSize not equal, %v and %v", md1.StuckSize, md2.StuckSize)
 	}
 
 	// Skynet Fields
@@ -408,7 +416,7 @@ func TestBubbleHealth(t *testing.T) {
 	// but no sub directories
 	rt.renter.managedUpdateRenterContractsAndUtilities()
 	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
-	fileHealth, _, _, _, _, _ := f.Health(offline, goodForRenew)
+	fileHealth, _, _, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
 	}
@@ -1442,7 +1450,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	// Grab initial metadata values
 	rt.renter.managedUpdateRenterContractsAndUtilities()
 	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
-	health, stuckHealth, _, _, numStuckChunks, repairBytes := sf.Health(offline, goodForRenew)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
 		t.Fatal(err)
@@ -1474,7 +1482,10 @@ func TestCalculateFileMetadata(t *testing.T) {
 		t.Fatalf("redundancy incorrect, expected %v got %v", redundancy, fileMetadata.Redundancy)
 	}
 	if fileMetadata.RepairBytes != repairBytes {
-		t.Fatalf("reduRepairBytesncorrect, expected %v got %v", repairBytes, fileMetadata.RepairBytes)
+		t.Fatalf("RepairBytes incorrect, expected %v got %v", repairBytes, fileMetadata.RepairBytes)
+	}
+	if fileMetadata.StuckBytes != stuckBytes {
+		t.Fatalf("StuckBytes incorrect, expected %v got %v", stuckBytes, fileMetadata.StuckBytes)
 	}
 	if fileMetadata.Size != fileSize {
 		t.Fatalf("size incorrect, expected %v got %v", fileSize, fileMetadata.Size)

@@ -65,6 +65,7 @@ func randomMetadata() Metadata {
 		AggregateRepairSize:          fastrand.Uint64n(100),
 		AggregateSize:                fastrand.Uint64n(100),
 		AggregateStuckHealth:         float64(fastrand.Intn(100)),
+		AggregateStuckSize:           fastrand.Uint64n(100),
 
 		AggregateSkynetFiles: fastrand.Uint64n(100),
 		AggregateSkynetSize:  fastrand.Uint64n(100),
@@ -80,6 +81,7 @@ func randomMetadata() Metadata {
 		RepairSize:          fastrand.Uint64n(100),
 		Size:                fastrand.Uint64n(100),
 		StuckHealth:         float64(fastrand.Intn(100)),
+		StuckSize:           fastrand.Uint64n(100),
 
 		SkynetFiles: fastrand.Uint64n(100),
 		SkynetSize:  fastrand.Uint64n(100),

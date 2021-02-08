@@ -53,6 +53,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	if md.AggregateStuckHealth != md2.AggregateStuckHealth {
 		return fmt.Errorf("AggregateStuckHealth not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
 	}
+	if md.AggregateStuckSize != md2.AggregateStuckSize {
+		return fmt.Errorf("AggregateStuckSize not equal, %v and %v", md.AggregateStuckSize, md2.AggregateStuckSize)
+	}
 
 	// Aggregate Skynet Fields
 	if md.AggregateSkynetFiles != md2.AggregateSkynetFiles {
@@ -95,6 +98,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	}
 	if md.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("StuckHealth not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
+	}
+	if md.StuckSize != md2.StuckSize {
+		return fmt.Errorf("StuckSize not equal, %v and %v", md.StuckSize, md2.StuckSize)
 	}
 
 	// Skynet Fields

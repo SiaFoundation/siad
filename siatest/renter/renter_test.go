@@ -5406,9 +5406,8 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   4,
-		Miners:  1,
-		Renters: 1,
+		Hosts:  6,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -5421,12 +5420,20 @@ func TestRenterRepairSize(t *testing.T) {
 		}
 	}()
 
+	// Add renter with dependency
+	renterParams := node.RenterTemplate
+	renterParams.RenterDeps = &dependencies.DependencyIgnoreFailedRepairs{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal("Failed to add renter", err)
+	}
+
 	// Grab renter
 	r := tg.Renters()[0]
 
 	// Define helper
 	m := tg.Miners()[0]
-	checkRepairSize := func(aggregateExpected, expected uint64) error {
+	checkRepairSize := func(dirSiaPath modules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
@@ -5437,21 +5444,55 @@ func TestRenterRepairSize(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			// Check repair totals
-			var err1, err2 error
+			// Check repair totals for root. Since there is no file in root the
+			// directory values should always be zero and the aggregate values should
+			// match the input.
 			dir := dis.Directories[0]
-			if dir.AggregateRepairSize != aggregateExpected {
-				err1 = fmt.Errorf("AggregateRepairSize should be %v but was %v", aggregateExpected, dir.AggregateRepairSize)
+			var rootErrs error
+			if dir.AggregateRepairSize != repairExpected {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: AggregateRepairSize should be %v but was %v", repairExpected, dir.AggregateRepairSize))
 			}
-			if dir.RepairSize != expected {
-				err2 = fmt.Errorf("RepairSize should be %v but was %v", expected, dir.RepairSize)
+			if dir.AggregateStuckSize != stuckExpected {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: AggregateStuckSize should be %v but was %v", stuckExpected, dir.AggregateStuckSize))
 			}
-			return errors.Compose(err1, err2)
+			if dir.RepairSize != 0 {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: RepairSize should be %v but was %v", 0, dir.RepairSize))
+			}
+			if dir.StuckSize != 0 {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: StuckSize should be %v but was %v", 0, dir.StuckSize))
+			}
+			// If the passed in dirSiaPath is also root then return
+			if dirSiaPath.IsRoot() {
+				return rootErrs
+			}
+
+			// Grab renter's siafile's directory
+			dis, err = r.RenterDirRootGet(dirSiaPath)
+			if err != nil {
+				return errors.Compose(err, rootErrs)
+			}
+			// Check repair totals. The Aggregate and Directory values should be the
+			// same.
+			dir = dis.Directories[0]
+			var dirErrs error
+			if dir.AggregateRepairSize != repairExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: AggregateRepairSize should be %v but was %v", dirSiaPath, repairExpected, dir.AggregateRepairSize))
+			}
+			if dir.AggregateStuckSize != stuckExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: AggregateStuckSize should be %v but was %v", dirSiaPath, stuckExpected, dir.AggregateStuckSize))
+			}
+			if dir.RepairSize != repairExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: RepairSize should be %v but was %v", dirSiaPath, repairExpected, dir.RepairSize))
+			}
+			if dir.StuckSize != stuckExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: StuckSize should be %v but was %v", dirSiaPath, stuckExpected, dir.StuckSize))
+			}
+			return errors.Compose(rootErrs, dirErrs)
 		})
 	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkRepairSize(0, 0); err != nil {
+	if err := checkRepairSize(modules.RootSiaPath(), 0, 0); err != nil {
 		t.Log("Initial Check Failed")
 		t.Error(err)
 	}
@@ -5459,30 +5500,78 @@ func TestRenterRepairSize(t *testing.T) {
 	// Upload a file
 	dp := 1
 	pp := len(tg.Hosts()) - dp
-	_, _, err = r.UploadNewFileBlocking(100, uint64(dp), uint64(pp), false)
+	_, rf, err := r.UploadNewFileBlocking(100, uint64(dp), uint64(pp), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirSiaPath, err := rf.SiaPath().Dir()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkRepairSize(0, 0); err != nil {
+	if err := checkRepairSize(dirSiaPath, 0, 0); err != nil {
 		t.Log("After Upload Check Failed")
 		t.Error(err)
 	}
 
-	// Take down hosts one by one and verify the repair values are dropping.
+	// Take down one host
 	hosts := tg.Hosts()
+	host := hosts[0]
+	if err := tg.StopNode(host); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark as stuck
+	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the file is marked as stuck it should register that stuck repair
+	expected := modules.SectorSize
+	if err := checkRepairSize(dirSiaPath, 0, expected); err != nil {
+		t.Log("First host stuck check failed")
+		t.Error(err)
+	}
+
+	// Mark as not stuck
+	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// With only one host taken down there should be no repair needed since the
+	// file won't be seen as needing repair
+	if err := checkRepairSize(dirSiaPath, 0, 0); err != nil {
+		t.Log("First host check failed")
+		t.Error(err)
+	}
+
+	// Take down the rest of the hosts one by one and verify the repair values are dropping.
+	hosts = hosts[1:]
 	for i, host := range hosts {
 		// Stop the host
 		if err := tg.StopNode(host); err != nil {
 			t.Fatal(err)
 		}
-		// Check that the aggregate repair size increases
-		expected := uint64(i+1) * modules.SectorSize
-		if err := checkRepairSize(expected, 0); err != nil {
+
+		// Check that the aggregate repair size increases.
+		expected += modules.SectorSize
+		if err := checkRepairSize(dirSiaPath, expected, 0); err != nil {
 			t.Log("Host loop failed", i)
 			t.Error(err)
 		}
+	}
+
+	// Mark as stuck again
+	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRepairSize(dirSiaPath, 0, expected); err != nil {
+		t.Log("Final stuck check failed")
+		t.Error(err)
 	}
 }
 
