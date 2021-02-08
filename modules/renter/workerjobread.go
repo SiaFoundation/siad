@@ -83,7 +83,7 @@ func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr:      errors.Extend(err, ErrJobDiscarded),
 			staticMetadata: metadata,
 		}
 		select {
@@ -108,14 +108,14 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	if ok {
 		metadata = md
 	}
-	
+
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
 	response := &jobReadResponse{
 		staticData: readData,
 		staticErr:  readErr,
-		
+
 		staticMetadata: metadata,
 		staticJobTime:  readJobTime,
 	}
