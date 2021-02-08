@@ -498,7 +498,7 @@ func TestFileHealth(t *testing.T) {
 		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, expected)
 	}
 
-	// Mark as non stuck
+	// Mark as not stuck
 	err = f.SetStuck(0, false)
 	if err != nil {
 		t.Fatal(err)
