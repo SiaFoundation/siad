@@ -29,24 +29,30 @@ var (
 )
 
 type (
-	subscriptionInfo struct {
+	subscriptionInfos struct {
 		// subscriptions is the map of subscriptions that the worker is supposed
 		// to subscribe to. The worker might not be subscribed to these values
 		// at all times due to interruptions but it will try to resubscribe as
 		// soon as possible.
 		// The worker will also try to unsubscribe from all subsriptions that it
 		// currently has which are not in this map.
-		subscriptions map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest
+		subscriptions map[modules.SubscriptionID]*subscription
 
 		// activeSubscriptions are the subscriptions that the worker is
 		// currently subscribed to. This map is ideally equal to subscriptions
 		// but might temporarily diverge.
-		activeSubscriptions map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest
+		activeSubscriptions map[modules.SubscriptionID]*subscription
 
 		staticWakeChan chan struct{}
 
 		// utility fields
 		mu sync.Mutex
+	}
+
+	subscription struct {
+		staticRequest *modules.RPCRegistrySubscriptionRequest
+		latestRV      *modules.SignedRegistryValue
+		subscribed    chan struct{}
 	}
 )
 
@@ -92,7 +98,12 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	}
 
 	// Check if the host tried to cheat us.
-	// 1. (TODO) Check if the host sent us an update we are not subsribed to
+	// 1. Check if the host sent us an update we are not subsribed to
+	_, subscribed := w.staticSubscriptionInfo.activeSubscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
+	if !subscribed {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+	}
 
 	// 2. Check if the host was trying to cheat us with an outdated entry.
 	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
@@ -218,7 +229,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// Clear the active subsriptions at the end of this method.
 		subInfo.mu.Lock()
-		subInfo.activeSubscriptions = make(map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest)
+		subInfo.activeSubscriptions = make(map[modules.SubscriptionID]*subscription)
 		subInfo.mu.Unlock()
 	}()
 
@@ -274,19 +285,19 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		// ones.
 		subInfo.mu.Lock()
 		var toUnsubscribe []modules.RPCRegistrySubscriptionRequest
-		for subID, req := range subInfo.activeSubscriptions {
+		for subID, sub := range subInfo.activeSubscriptions {
 			_, subscribed := subInfo.subscriptions[subID]
 			if !subscribed {
-				toUnsubscribe = append(toUnsubscribe, *req)
-				delete(subInfo.activeSubscriptions, modules.RegistrySubscriptionID(req.PubKey, req.Tweak))
+				toUnsubscribe = append(toUnsubscribe, *sub.staticRequest)
 			}
 		}
 		var toSubscribe []modules.RPCRegistrySubscriptionRequest
-		for subID, req := range subInfo.subscriptions {
+		var newSubscriptions []*subscription
+		for subID, sub := range subInfo.subscriptions {
 			_, subscribed := subInfo.activeSubscriptions[subID]
 			if !subscribed {
-				toSubscribe = append(toSubscribe, *req)
-				subInfo.activeSubscriptions[modules.RegistrySubscriptionID(req.PubKey, req.Tweak)] = req
+				toSubscribe = append(toSubscribe, *sub.staticRequest)
+				newSubscriptions = append(newSubscriptions, sub)
 			}
 		}
 		subInfo.mu.Unlock()
@@ -297,13 +308,24 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			if err != nil {
 				return errors.AddContext(err, "failed to unsubscribe from registry values")
 			}
+			// Remove unsubscribed entries from active subscriptions.
+			for _, req := range toUnsubscribe {
+				delete(subInfo.activeSubscriptions, modules.RegistrySubscriptionID(req.PubKey, req.Tweak))
+			}
 		}
 
 		// Subscribe to any missing values.
 		if len(toSubscribe) > 0 {
-			_, err = modules.RPCSubscribeToRVs(stream, toSubscribe)
+			rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
 			if err != nil {
 				return errors.AddContext(err, "failed to subscribe to registry values")
+			}
+			for i, req := range toSubscribe {
+				subInfo.activeSubscriptions[modules.RegistrySubscriptionID(req.PubKey, req.Tweak)] = newSubscriptions[i]
+				close(newSubscriptions[i].subscribed)
+			}
+			for _, rv := range rvs {
+				subInfo.activeSubscriptions[modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
 			}
 		}
 

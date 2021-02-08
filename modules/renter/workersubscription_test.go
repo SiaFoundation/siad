@@ -368,14 +368,21 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 	// Add 2 random rvs to subscription map.
 	srv1, spk1, _ := randomRegistryValue()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &modules.RPCRegistrySubscriptionRequest{
-		PubKey: spk1,
-		Tweak:  srv1.Tweak,
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk1,
+			Tweak:  srv1.Tweak,
+		},
+		subscribed: make(chan struct{}),
 	}
+
 	srv2, spk2, _ := randomRegistryValue()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &modules.RPCRegistrySubscriptionRequest{
-		PubKey: spk2,
-		Tweak:  srv2.Tweak,
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk2,
+			Tweak:  srv2.Tweak,
+		},
+		subscribed: make(chan struct{}),
 	}
 	subInfo.mu.Unlock()
 

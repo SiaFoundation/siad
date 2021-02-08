@@ -124,7 +124,7 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// subscription-related fields
-		staticSubscriptionInfo *subscriptionInfo
+		staticSubscriptionInfo *subscriptionInfos
 
 		// Utilities.
 		tg        threadgroup.ThreadGroup
@@ -242,9 +242,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 
 		staticRegistryCache: newRegistryCache(registryCacheSize),
 
-		staticSubscriptionInfo: &subscriptionInfo{
-			subscriptions:       make(map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest),
-			activeSubscriptions: make(map[modules.SubscriptionID]*modules.RPCRegistrySubscriptionRequest),
+		staticSubscriptionInfo: &subscriptionInfos{
+			subscriptions:       make(map[modules.SubscriptionID]*subscription),
+			activeSubscriptions: make(map[modules.SubscriptionID]*subscription),
 			staticWakeChan:      make(chan struct{}),
 		},
 

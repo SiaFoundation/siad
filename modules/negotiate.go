@@ -1083,7 +1083,7 @@ func RPCStopSubscription(stream siamux.Stream) error {
 }
 
 // RPCSubscribeToRVs subscribes to the given publickey/tweak pairs.
-func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionRequest) ([]SignedRegistryValue, error) {
+func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionRequest) ([]RPCRegistrySubscriptionNotificationEntryUpdate, error) {
 	// Send the type of the request.
 	err := RPCWrite(stream, SubscriptionRequestSubscribe)
 	if err != nil {
@@ -1110,8 +1110,9 @@ func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionR
 	// after running out of requests, something is wrong.
 	left := rvs
 	if len(left) == 0 {
-		return rvs, nil
+		return nil, nil
 	}
+	var initialNotifications []RPCRegistrySubscriptionNotificationEntryUpdate
 	for _, req := range requests {
 		rv := left[0]
 		err = rv.Verify(req.PubKey.ToPublicKey())
@@ -1119,11 +1120,15 @@ func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionR
 			continue // try next request
 		}
 		left = left[1:]
+		initialNotifications = append(initialNotifications, RPCRegistrySubscriptionNotificationEntryUpdate{
+			Entry:  rv,
+			PubKey: req.PubKey,
+		})
 	}
 	if len(left) > 0 {
 		return nil, fmt.Errorf("failed to verify %v of %v rvs", len(left), len(rvs))
 	}
-	return rvs, nil
+	return initialNotifications, nil
 }
 
 // RPCUnsubscribeFromRVs unsubscribes from the given publickey/tweak pairs.

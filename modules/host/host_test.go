@@ -968,7 +968,7 @@ func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPrice
 	if len(rvs) > 1 {
 		build.Critical("more responses than subscribed to values")
 	} else if len(rvs) == 1 {
-		rv = &rvs[0]
+		rv = &rvs[0].Entry
 	}
 	return rv, nil
 }
