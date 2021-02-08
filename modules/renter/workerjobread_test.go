@@ -99,6 +99,7 @@ func TestJobReadMetadata(t *testing.T) {
 					// sector root to ensure the response contains the sector
 					// given in the metadata
 					staticSectorRoot: crypto.Hash{1, 2, 3},
+					staticWorker:     w,
 				},
 			},
 		},
