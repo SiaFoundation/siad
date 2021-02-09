@@ -134,10 +134,6 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	if w.managedHasDownloadJob() {
-		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
-		return
-	}
 	if w.managedHasUploadJob() {
 		w.externLaunchSerialJob(w.managedPerformUploadChunkJob)
 		return
@@ -262,6 +258,11 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.externLaunchAsyncJob(job)
 		return true
 	}
+	job = w.staticJobLowPrioReadQueue.callNext()
+	if job != nil {
+		w.externLaunchAsyncJob(job)
+		return true
+	}
 	return false
 }
 
@@ -291,6 +292,7 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobUpdateRegistryQueue.callDiscardAll(err)
 	w.staticJobReadRegistryQueue.callDiscardAll(err)
 	w.staticJobReadQueue.callDiscardAll(err)
+	w.staticJobLowPrioReadQueue.callDiscardAll(err)
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
@@ -306,7 +308,7 @@ func (w *worker) threadedWorkLoop() {
 
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
-	defer w.managedKillDownloading()
+	defer w.staticJobLowPrioReadQueue.callKill()
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobUpdateRegistryQueue.callKill()
 	defer w.staticJobReadQueue.callKill()

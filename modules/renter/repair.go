@@ -612,9 +612,10 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
 		}
 		if urp == nil || urp.callNumChildDirs() == 0 {
-			// Treat a urp with no ChildDirs as an error and sleep to prevent
-			// potential rapid cycling.
-			r.log.Debugf("WARN: No refresh paths returned from '%v'", siaPath)
+			// This should never happen, build.Critical and sleep to prevent potential
+			// rapid cycling.
+			msg := fmt.Sprintf("WARN: No refresh paths returned from '%v'", siaPath)
+			build.Critical(msg)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
@@ -640,14 +641,22 @@ func (r *Renter) threadedUpdateRenterHealth() {
 // directories in the subtree that need to be updated. This includes updating
 // the metadatas for all the files in the subtree and updating the
 // LastHealthCheckTime for the supplied root directory.
+//
+// This method will at a minimum return a uniqueRefreshPaths with the rootDir
+// added.
 func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
+	// Add the rootDir to urp.
+	err := urp.callAdd(rootDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to add initial rootDir to uniqueRefreshPaths")
+	}
+
 	// Define DirectoryInfo function
-	var err error
 	var mu sync.Mutex
 	dlf := func(di modules.DirectoryInfo) {
 		mu.Lock()

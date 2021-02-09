@@ -670,7 +670,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Read the response. It contains the host's final revision sig and any
 	// additions it made.
 	var resp modules.RPCRenewContractCollateralResponse
-	err = modules.RPCRead(conn, &resp)
+	err = modules.RPCReadMaxLen(conn, &resp, modules.RenewDecodeMaxLen)
 	if err != nil {
 		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to read RPCRenewContractCollateralResponse")
 	}
@@ -724,7 +724,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// Read the host's signatures and add them to the transactions.
 	var hostSignatureResp modules.RPCRenewContractHostSignatures
-	err = modules.RPCRead(conn, &hostSignatureResp)
+	err = modules.RPCReadMaxLen(conn, &hostSignatureResp, modules.RenewDecodeMaxLen)
 	if err != nil {
 		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to read RPCRenewContractHostSignatures from host")
 	}

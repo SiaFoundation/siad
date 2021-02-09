@@ -194,7 +194,12 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 
 	// Remove the subscription.
 	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids)
-	return nil
+
+	// Respond with "OK".
+	err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+		Type: modules.SubscriptionResponseUnsubscribeSuccess,
+	})
+	return errors.AddContext(err, "failed to signal successfully unsubscribing from entries")
 }
 
 // managedHandleExtendSubscriptionRequest handles a request to extend the subscription.

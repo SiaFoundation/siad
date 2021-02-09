@@ -1248,40 +1248,13 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// We should be able to download
-	start := time.Now()
 	_, _, err = r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Error("Failed to download file", err)
 	}
 
-	// Check that the worker is not on cooldown.
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		rwg, err := r.RenterWorkersGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if rwg.TotalDownloadCoolDown == 0 {
-			// Do the download again to reset any cooldowns. Especially on CI,
-			// the amount of time between DownloadByStream and RenterWorkersGet
-			// can be longer than the base cooldown, but the cooldown eventually
-			// reaches 24 seconds, which should be enough time.
-			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
-			_, _, err = r.DownloadByStream(remoteFile)
-			if err != nil {
-				t.Fatal("Failed to download file", err)
-			}
-			t.Log(rwg.NumWorkers, time.Since(start))
-			return errors.New("there should be workers on download cooldown because we took their hosts offline")
-		}
-		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
-			return errors.New("there should be hosts that are not on cooldown")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Error(err)
-	}
-	// The workers should eventually come off of cooldown.
+	// The worker shouldn't be on a cooldown since the last download was successful
+	// and cleared the consecutive failures.
 	err = build.Retry(500, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
@@ -5425,12 +5398,19 @@ func TestRenterRepairSize(t *testing.T) {
 	r := tg.Renters()[0]
 
 	// Define helper
+	m := tg.Miners()[0]
 	checkRepairSize := func(aggregateExpected, expected uint64) error {
-		return build.Retry(100, 100*time.Millisecond, func() error {
+		return build.Retry(15, time.Second, func() error {
+			// Mine a block to make sure contracts are being updated for hosts.
+			if err := m.MineBlock(); err != nil {
+				return err
+			}
+			// Grab renter's root directory
 			dis, err := r.RenterDirRootGet(modules.RootSiaPath())
 			if err != nil {
 				return err
 			}
+			// Check repair totals
 			var err1, err2 error
 			dir := dis.Directories[0]
 			if dir.AggregateRepairSize != aggregateExpected {

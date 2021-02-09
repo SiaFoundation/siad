@@ -48,7 +48,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 
 	// Read request
 	var req modules.RPCRenewContractRequest
-	err = modules.RPCRead(stream, &req)
+	err = modules.RPCReadMaxLen(stream, &req, modules.RenewDecodeMaxLen)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to read renew contract request")
 	}
@@ -151,7 +151,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 
 	// Receive the txn signatures from the renter.
 	var renterSignatureResp modules.RPCRenewContractRenterSignatures
-	err = modules.RPCRead(stream, &renterSignatureResp)
+	err = modules.RPCReadMaxLen(stream, &renterSignatureResp, modules.RenewDecodeMaxLen)
 	if err != nil {
 		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to receive renter signatures")

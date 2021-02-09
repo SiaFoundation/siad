@@ -283,3 +283,15 @@ func (w *worker) initJobReadQueue() {
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }
+
+// initJobLowPrioReadQueue will initialize a queue for downloading sectors by
+// their root for the worker. This is only meant to be run once at startup.
+func (w *worker) initJobLowPrioReadQueue() {
+	// Sanity check that there is no existing job queue.
+	if w.staticJobLowPrioReadQueue != nil {
+		w.renter.log.Critical("incorret call on initJobReadQueue")
+	}
+	w.staticJobLowPrioReadQueue = &jobReadQueue{
+		jobGenericQueue: newJobGenericQueue(w),
+	}
+}
