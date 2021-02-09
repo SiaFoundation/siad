@@ -281,7 +281,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	success := &jobReadResponse{
 		staticData: pieces[3],
 		staticErr:  nil,
-		staticMetadata: jobReadSectorMetadata{
+		staticMetadata: jobReadMetadata{
 			staticLaunchedWorkerIndex: 0,
 			staticPieceRootIndex:      3,
 			staticSectorRoot:          crypto.MerkleRoot(pieces[3]),
@@ -306,7 +306,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	pdc.handleJobReadResponse(&jobReadResponse{
 		staticData: nil,
 		staticErr:  errors.New("read failed"),
-		staticMetadata: jobReadSectorMetadata{
+		staticMetadata: jobReadMetadata{
 			staticPieceRootIndex: 0,
 			staticSectorRoot:     empty,
 			staticWorker:         w,

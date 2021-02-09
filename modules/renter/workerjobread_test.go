@@ -94,7 +94,7 @@ func TestJobReadMetadata(t *testing.T) {
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
-				staticMetadata: jobReadSectorMetadata{
+				staticMetadata: jobReadMetadata{
 					// set metadata, set it to something different than the
 					// sector root to ensure the response contains the sector
 					// given in the metadata

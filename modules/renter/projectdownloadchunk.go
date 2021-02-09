@@ -149,7 +149,7 @@ type (
 
 // String implements the String interface.
 func (lwi *launchedWorkerInfo) String() string {
-	downloadComplete := lwi.completeTime != (time.Time{})
+	downloadComplete := !lwi.completeTime.IsZero()
 	if downloadComplete {
 		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds())
 	}
@@ -381,7 +381,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 			staticResponseChan: pdc.workerResponseChan,
 			staticLength:       pdc.pieceLength,
 
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadSectorMetadata{
+			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadMetadata{
 				staticWorker:              w,
 				staticSectorRoot:          sectorRoot,
 				staticPieceRootIndex:      pieceIndex,
