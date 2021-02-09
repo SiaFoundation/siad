@@ -368,7 +368,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	// The subscription maps should be empty.
 	subInfo := wt.staticSubscriptionInfo
 	subInfo.mu.Lock()
-	if len(subInfo.subscriptions) != 0 || len(subInfo.activeSubscriptions) != 0 {
+	if len(subInfo.subscriptions) != 0 {
 		subInfo.mu.Unlock()
 		t.Fatal("maps contain subscriptions")
 	}
@@ -380,6 +380,7 @@ func TestSubscriptionLoop(t *testing.T) {
 			Tweak:  srv1.Tweak,
 		},
 		subscribed: make(chan struct{}),
+		subscribe:  true,
 	}
 
 	srv2, spk2, _ := randomRegistryValue()
@@ -389,52 +390,76 @@ func TestSubscriptionLoop(t *testing.T) {
 			Tweak:  srv2.Tweak,
 		},
 		subscribed: make(chan struct{}),
+		subscribe:  true,
 	}
 	subInfo.mu.Unlock()
 
-	// After a bit of time we should be successfully subscribed.
-	err = build.Retry(10, time.Second, func() error {
-		subInfo.mu.Lock()
-		defer subInfo.mu.Unlock()
-		if len(subInfo.activeSubscriptions) != 2 {
-			return fmt.Errorf("wrong number of active subscriptions: %v", len(subInfo.activeSubscriptions))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	// Wake up worker.
+	select {
+	case subInfo.staticWakeChan <- struct{}{}:
+	default:
 	}
 
-	// The channels of the active subscriptions should be closed now.
-	subInfo.mu.Lock()
-	for _, sub := range subInfo.activeSubscriptions {
+	// Wait for the values to be subscribed to.
+	nActive := 0
+	for _, sub := range subInfo.subscriptions {
 		select {
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout")
 		case <-sub.subscribed:
-		default:
-			t.Error("not subscribed")
+		}
+		subInfo.mu.Lock()
+		// The subscription should be active.
+		if !sub.active {
+			t.Fatal("subscription should be active")
 		}
 		// The latest value should be nil since it doesn't exist on the host.
 		if sub.latestRV != nil {
 			t.Fatal("latest value should be nil")
 		}
+		subInfo.mu.Unlock()
+		nActive++
 	}
-	subInfo.mu.Unlock()
+
+	// There should be 2 active subscriptions.
+	if nActive != 2 {
+		t.Fatalf("wrong number of active subscriptions: %v", nActive)
+	}
 
 	// Remove the second subscription.
 	subInfo.mu.Lock()
-	delete(subInfo.subscriptions, modules.RegistrySubscriptionID(spk2, srv2.Tweak))
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)].subscribe = false
+
+	// Add a third subscription which should be removed automatically since
+	// "subscribe" is set to false from the beginning. Make sure the channel is
+	// closed.
+	srv3, spk3, _ := randomRegistryValue()
+	sub3 := &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk3,
+			Tweak:  srv3.Tweak,
+		},
+		subscribed: make(chan struct{}),
+		subscribe:  false,
+	}
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = sub3
 	subInfo.mu.Unlock()
 
 	// After a bit of time we should be successfully unsubscribed.
 	err = build.Retry(10, time.Second, func() error {
 		subInfo.mu.Lock()
 		defer subInfo.mu.Unlock()
-		if len(subInfo.activeSubscriptions) != 1 {
-			return fmt.Errorf("wrong number of active subscriptions: %v", len(subInfo.activeSubscriptions))
+		nActive := 0
+		for _, sub := range subInfo.subscriptions {
+			if sub.active {
+				nActive++
+			}
 		}
-		_, exists := subInfo.activeSubscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)]
-		if !exists {
-			return errors.New("wrong subscription got removed")
+		if nActive != 1 {
+			return fmt.Errorf("one subscription should be active %v", nActive)
+		}
+		if len(subInfo.subscriptions) != 1 {
+			return fmt.Errorf("there should only be one subscription in the map %v", len(subInfo.subscriptions))
 		}
 		return nil
 	})
@@ -452,9 +477,21 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// Subscription info should be reset.
 	subInfo.mu.Lock()
-	activeSubs := len(subInfo.activeSubscriptions)
-	subInfo.mu.Unlock()
-	if activeSubs != 0 {
-		t.Fatal("wrong number of active subscriptions:", activeSubs)
+	for _, sub := range subInfo.subscriptions {
+		if sub.active {
+			t.Fatal("no subscription should be active")
+		}
+		select {
+		case <-sub.subscribed:
+			t.Fatal("channels should be reset")
+		default:
+		}
 	}
+	// The channel of sub3 should be closed.
+	select {
+	case <-sub3.subscribed:
+	default:
+		t.Fatal("sub3 channel not closed")
+	}
+	subInfo.mu.Unlock()
 }

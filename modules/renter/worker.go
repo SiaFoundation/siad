@@ -250,9 +250,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticRegistryCache: newRegistryCache(registryCacheSize),
 
 		staticSubscriptionInfo: &subscriptionInfos{
-			subscriptions:       make(map[modules.SubscriptionID]*subscription),
-			activeSubscriptions: make(map[modules.SubscriptionID]*subscription),
-			staticWakeChan:      make(chan struct{}),
+			subscriptions:  make(map[modules.SubscriptionID]*subscription),
+			staticWakeChan: make(chan struct{}),
 		},
 
 		// Initialize the read and write limits for the async worker tasks.
