@@ -104,7 +104,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	t.Parallel()
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := mockWorker(10)
+	worker := mockWorker(100 * time.Millisecond)
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0
@@ -142,9 +142,9 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	ec := modules.NewRSSubCodeDefault()
 
 	// mock two workers with different traits
-	w1 := mockWorker(5) // avg 200ms job time
+	w1 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	w1.staticHostPubKeyStr = "w1"
-	w2 := mockWorker(10) // avg 100ms job time
+	w2 := mockWorker(100 * time.Millisecond) // avg 100ms job time
 	w2.staticHostPubKeyStr = "w2"
 
 	// mock a pdc
@@ -236,8 +236,8 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 	}
 
 	// mock two workers with different traits
-	w1 := mockWorker(10) // avg 100ms job time
-	w2 := mockWorker(5)  // avg 200ms job time
+	w1 := mockWorker(100 * time.Millisecond) // avg 100ms job time
+	w2 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	uws = []*pcwsUnresolvedWorker{
 		{
 			staticWorker:               w1,
