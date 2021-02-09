@@ -635,9 +635,9 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
 func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h, sh, uh, ush float64, nsc, rbr, sb uint64) {
-	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
-	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
-	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
+	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
+	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
+	worstHealth := CalculateHealth(0, minPieces, numPieces)
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
