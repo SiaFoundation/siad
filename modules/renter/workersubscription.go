@@ -56,11 +56,8 @@ type (
 	}
 )
 
-func priceTableValidFor(pt *workerPriceTable, duration time.Duration) bool {
-	minExpiry := time.Now().Add(duration)
-	return minExpiry.Before(pt.staticExpiryTime)
-}
-
+// managedHandleNotification handles incoming notifications from the host. It
+// verifies notifications and updates the worker's internal state accordingly.
 func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	// Close the stream when done.
 	defer func() {
@@ -68,6 +65,7 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 			w.renter.log.Print("managedHandleNotification: failed to close stream: ", err)
 		}
 	}()
+	subInfo := w.staticSubscriptionInfo
 
 	// Read the notification type.
 	var snt modules.RPCRegistrySubscriptionNotificationType
@@ -97,30 +95,39 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 		return
 	}
 
-	// Check if the host tried to cheat us.
-	// 1. Check if the host sent us an update we are not subsribed to
-	sub, exists := w.staticSubscriptionInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
-	if !exists || !sub.active {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown and
-		// closing the subscription session for a while.
-	}
+	// Verify the update. Start with the checks that don't require locking the
+	// subsription.
 
-	// 2. Check if the host was trying to cheat us with an outdated entry.
+	// Check if the host was trying to cheat us with an outdated entry.
 	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
 	if exists && sneu.Entry.Revision <= latestRev {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 	}
 
-	// 3. Verify the signature.
+	// Verify the signature.
 	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
 	if err != nil {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 	}
 
-	// Update the worker cache.
+	// The entry is valid. Update the cache.
 	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
+
+	// Check if the host sent us an update we are not subsribed to. This might
+	// not seem bad, but the host might want to spam us with valid entries that
+	// we are not interested in simply to have us pay for bandwidth.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
+	if !exists || (!sub.subscribe && !sub.active) {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+	}
+
+	// Update the subscription.
+	sub.latestRV = &sneu.Entry
 }
 
 func (w *worker) threadedSubscriptionLoop() {
@@ -397,7 +404,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		pt := w.staticPriceTable()
 
 		// If the price table is valid, return it.
-		if priceTableValidFor(pt, duration) {
+		if pt.staticValidFor(duration) {
 			return &pt.staticPriceTable
 		}
 
@@ -451,6 +458,7 @@ func (w *worker) managedFundSubscription(stream siamux.Stream, fundAmt types.Cur
 	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, w.staticCache().staticBlockHeight, fundAmt)
 }
 
+// Unsubscribe marks the provided entries as not subscribed to and notifies the worker of the change. It will then handle
 func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest) {
 	subInfo := w.staticSubscriptionInfo
 
@@ -478,19 +486,21 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 
 	// Add one subscription for every request that we are not yet subscribed to.
 	subInfo.mu.Lock()
+	var subs []*subscription
 	var subChans []chan struct{}
 	for i, req := range requests {
 		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
-		_, exists := subInfo.subscriptions[sid]
+		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
-			c := make(chan struct{})
-			subInfo.subscriptions[sid] = &subscription{
+			sub = &subscription{
 				staticRequest: &requests[i],
-				subscribed:    c,
+				subscribed:    make(chan struct{}),
 				subscribe:     true,
 			}
-			subChans = append(subChans, c)
+			subInfo.subscriptions[sid] = sub
 		}
+		subs = append(subs, sub)
+		subChans = append(subChans, sub.subscribed)
 	}
 	subInfo.mu.Unlock()
 
@@ -500,7 +510,7 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 	default:
 	}
 
-	// Wait for the new subscriptions to be done.
+	// Wait for all subscriptions to complete.
 	for _, c := range subChans {
 		select {
 		case <-c:
@@ -513,20 +523,15 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 
 	// Collect the values.
 	var notifications []modules.RPCRegistrySubscriptionNotificationEntryUpdate
-	for _, req := range requests {
-		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
-		sub, exists := subInfo.subscriptions[sid]
-		if !exists {
-			// The value was unsubscribed while waiting for it to be subscribed.
-			continue
-		}
+	for _, sub := range subs {
 		if sub.latestRV == nil {
-			// The value was subscribed, but it doesn't exist on the host yet.
+			// The value was subscribed to, but it doesn't exist on the host
+			// yet.
 			continue
 		}
 		notifications = append(notifications, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 			Entry:  *sub.latestRV,
-			PubKey: req.PubKey,
+			PubKey: sub.staticRequest.PubKey,
 		})
 	}
 	return notifications, nil

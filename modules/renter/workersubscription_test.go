@@ -273,7 +273,7 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// The fresh price table should be valid for the subscription.
 	wpt := wt.staticPriceTable()
-	if !priceTableValidFor(wpt, modules.SubscriptionPeriod) {
+	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
 		t.Fatal("price table not valid for long enough")
 	}
 
