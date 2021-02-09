@@ -188,7 +188,7 @@ func skynetbackupcmd(skylinkStr, backupPath string) {
 	if err != nil {
 		die("Unable to create backup:", err)
 	}
-	fmt.Println("Backup successfully create at ", backupPath)
+	fmt.Println("Backup successfully created at ", backupPath)
 }
 
 // skynetblocklistaddcmd adds skylinks to the blocklist

@@ -5442,12 +5442,19 @@ func TestRenterRepairSize(t *testing.T) {
 	r := tg.Renters()[0]
 
 	// Define helper
+	m := tg.Miners()[0]
 	checkRepairSize := func(aggregateExpected, expected uint64) error {
-		return build.Retry(100, 100*time.Millisecond, func() error {
+		return build.Retry(15, time.Second, func() error {
+			// Mine a block to make sure contracts are being updated for hosts.
+			if err := m.MineBlock(); err != nil {
+				return err
+			}
+			// Grab renter's root directory
 			dis, err := r.RenterDirRootGet(modules.RootSiaPath())
 			if err != nil {
 				return err
 			}
+			// Check repair totals
 			var err1, err2 error
 			dir := dis.Directories[0]
 			if dir.AggregateRepairSize != aggregateExpected {

@@ -3,6 +3,7 @@ package host
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -1035,6 +1036,15 @@ func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCP
 	}})
 	if err != nil {
 		return err
+	}
+	// Read the "OK" response.
+	var resp modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+	if resp.Type != modules.SubscriptionResponseUnsubscribeSuccess {
+		return fmt.Errorf("wrong type was returned: %v", resp.Type)
 	}
 	return nil
 }
