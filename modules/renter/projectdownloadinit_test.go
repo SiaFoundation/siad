@@ -157,23 +157,21 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
 	}
 
-	// manually manipulate the cooldown for worker 1's jobreadqueue, this should
-	// again be reflected in the complete time
-	worker1.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Second)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	// pass in an unresolved worker penalty, this should again be reflected in
+	// the complete time
+	wh = pdc.initialWorkerHeap(unresolvedWorkers, time.Second)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	completeTimeInS = math.Round(time.Until(first.completeTime).Seconds())
 	if completeTimeInS != 2 {
 		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
 	}
 
-	// pass in an unresolved worker penalty, this should again be reflected in
-	// the complete time
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, time.Second)
-	first = heap.Pop(&wh).(*pdcInitialWorker)
-	completeTimeInS = math.Round(time.Until(first.completeTime).Seconds())
-	if completeTimeInS != 3 {
-		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
+	// manually manipulate the cooldown for worker 1's jobreadqueue, this should
+	// skip the worker
+	worker1.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Second)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	if wh.Len() != 0 {
+		t.Fatal("unexpected", wh.Len())
 	}
 
 	// NOTE: unfortunately this unit test does not verify whether resolved

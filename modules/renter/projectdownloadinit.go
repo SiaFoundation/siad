@@ -156,20 +156,20 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			continue
 		}
 
+		// Verify whether the read queue is on a cooldown, if so skip this
+		// worker.
+		jrq := uw.staticWorker.staticJobReadQueue
+		onCoolDown, _ := jrq.callOnCooldown()
+		if onCoolDown {
+			continue
+		}
+
 		// Fetch the resolveTime, which is the time until the HS job is expected
 		// to resolve. If that time is in the past, set it to a time in the
 		// future, equal to the amount that it's late.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
 			resolveTime = time.Now().Add(time.Since(resolveTime))
-		}
-
-		// Verify whether the read queue is on a cooldown, if so account for
-		// that by adding the cooldown duration to the resolve time.
-		jrq := uw.staticWorker.staticJobReadQueue
-		onCoolDown, coolDownDuration := jrq.callOnCooldown()
-		if onCoolDown {
-			resolveTime = resolveTime.Add(coolDownDuration)
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
