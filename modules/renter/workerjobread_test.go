@@ -89,7 +89,7 @@ func TestJobReadMetadata(t *testing.T) {
 	ctx := context.Background()
 	responseChan := make(chan *jobReadResponse)
 
-	jhs := &jobReadSector{
+	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: responseChan,
 			staticLength:       modules.SectorSize,
@@ -97,19 +97,29 @@ func TestJobReadMetadata(t *testing.T) {
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
-				staticMetadata: jobReadSectorMetadata{
+				staticMetadata: jobReadMetadata{
 					// set metadata, set it to something different than the
 					// sector root to ensure the response contains the sector
 					// given in the metadata
 					staticSectorRoot: crypto.Hash{1, 2, 3},
+					staticWorker:     w,
 				},
 			},
 		},
 		staticSector: sectorRoot,
 		staticOffset: 0,
 	}
-	if !w.staticJobReadQueue.callAdd(jhs) {
+	if !w.staticJobReadQueue.callAdd(jrs) {
 		t.Fatal("Could not add job to queue")
+	}
+
+	// verify the job properly returns the metadata
+	metadata := jrs.staticJobReadMetadata()
+	if metadata == (jobReadMetadata{}) {
+		t.Fatal("unexpected")
+	}
+	if metadata.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
+		t.Fatal("unexpected")
 	}
 
 	// receive response and verify if metadata is set

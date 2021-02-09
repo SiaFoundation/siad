@@ -25,8 +25,7 @@ const (
 type (
 	// jobRead contains information about a Read query.
 	jobRead struct {
-		staticLength uint64
-
+		staticLength       uint64
 		staticResponseChan chan *jobReadResponse
 
 		*jobGeneric
@@ -60,28 +59,38 @@ type (
 		staticErr  error
 
 		// Metadata related to the job.
-		staticMetadata jobReadSectorMetadata
+		staticMetadata jobReadMetadata
 
 		// The time it took for this job to complete.
 		staticJobTime time.Duration
 	}
+
+	// jobReadMetadata contains meta information about a read job.
+	jobReadMetadata struct {
+		staticSectorRoot          crypto.Hash
+		staticPieceRootIndex      uint64
+		staticLaunchedWorkerIndex uint64
+		staticWorker              *worker
+	}
 )
 
-// callDiscard will discard a job, forwarding the error to the caller.
-func (j *jobRead) callDiscard(err error) {
-	// Extract the metadata from the job, this is not necessarily set so we have
-	// to do a safe cast.
-	var metadata jobReadSectorMetadata
-	md, ok := j.staticMetadata.(jobReadSectorMetadata)
+// staticJobReadMetadata returns the read job's metadata.
+func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
+	var metadata jobReadMetadata
+	md, ok := j.staticGetMetadata().(jobReadMetadata)
 	if ok {
 		metadata = md
 	}
+	return metadata
+}
 
+// callDiscard will discard a job, forwarding the error to the caller.
+func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr:      errors.Extend(err, ErrJobDiscarded),
-			staticMetadata: metadata,
+			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -98,14 +107,6 @@ func (j *jobRead) callDiscard(err error) {
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
-	// Extract the metadata from the job, this is not necessarily set so we have
-	// to do a safe cast.
-	var metadata jobReadSectorMetadata
-	md, ok := j.staticMetadata.(jobReadSectorMetadata)
-	if ok {
-		metadata = md
-	}
-
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
@@ -113,10 +114,9 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticData: readData,
 		staticErr:  readErr,
 
-		staticMetadata: metadata,
+		staticMetadata: j.staticJobReadMetadata(),
 		staticJobTime:  readJobTime,
 	}
-
 	w := j.staticQueue.staticWorker()
 	err := w.renter.tg.Launch(func() {
 		select {
