@@ -220,9 +220,6 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
 
-			// set metadata
-			staticSector: crypto.Hash{},
-
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,

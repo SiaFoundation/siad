@@ -25,16 +25,8 @@ const (
 type (
 	// jobRead contains information about a Read query.
 	jobRead struct {
-		staticLength uint64
-
+		staticLength       uint64
 		staticResponseChan chan *jobReadResponse
-
-		// job metadata
-		//
-		// staticSector can be set by the caller. This field is set in the job
-		// response so that upon getting the response the caller knows which job
-		// was completed.
-		staticSector crypto.Hash
 
 		*jobGeneric
 	}
