@@ -119,7 +119,12 @@ type (
 // CalculateHealth is the calculation for determining the health of a chunk or
 // file
 func CalculateHealth(goodPieces, minPieces, numPieces int) float64 {
-	return 1 - float64(goodPieces-minPieces)/float64(numPieces-minPieces)
+	health := 1 - float64(goodPieces-minPieces)/float64(numPieces-minPieces)
+	// Round percentage to 2 digits.
+	health = health * 10e3
+	health = math.Round(health)
+	health = health / 10e3
+	return health
 }
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
