@@ -3,6 +3,7 @@ package siafile
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1473,10 +1474,15 @@ func TestCalculateHealth(t *testing.T) {
 		}
 	}
 
+	// Prepare rounding helper.
+	round := func(h float64) float64 {
+		return math.Round(h*10e3) / 10e3
+	}
+
 	// 0 good pieces
 	mp := fastrand.Intn(10) + 1  // +1 avoid 0 minpieces
 	np := mp + fastrand.Intn(10) // +mp to avoid 0 paritypieces
-	h := 1 - float64(0-mp)/float64(np-mp)
+	h := round(1 - float64(0-mp)/float64(np-mp))
 	checkHealth(0, mp, np, h)
 
 	// Full health
@@ -1488,6 +1494,6 @@ func TestCalculateHealth(t *testing.T) {
 	mp = fastrand.Intn(10) + 1  // +1 avoid 0 minpieces
 	np = mp + fastrand.Intn(10) // +mp to avoid 0 paritypieces
 	gp := fastrand.Intn(np)
-	h = 1 - float64(gp-mp)/float64(np-mp)
+	h = round(1 - float64(gp-mp)/float64(np-mp))
 	checkHealth(gp, mp, np, h)
 }
