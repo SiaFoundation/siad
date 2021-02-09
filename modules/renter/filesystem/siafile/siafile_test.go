@@ -1480,20 +1480,32 @@ func TestCalculateHealth(t *testing.T) {
 	}
 
 	// 0 good pieces
-	mp := fastrand.Intn(10) + 1  // +1 avoid 0 minpieces
-	np := mp + fastrand.Intn(10) // +mp to avoid 0 paritypieces
+	mp := fastrand.Intn(10) + 1 // +1 avoid 0 minpieces
+	// +1 and +mp to avoid 0 paritypieces and numPieces == minPieces
+	np := mp + fastrand.Intn(10) + 1
 	h := round(1 - float64(0-mp)/float64(np-mp))
 	checkHealth(0, mp, np, h)
 
 	// Full health
-	mp = fastrand.Intn(10) + 1  // +1 avoid 0 minpieces
-	np = mp + fastrand.Intn(10) // +mp to avoid 0 paritypieces
+	mp = fastrand.Intn(10) + 1 // +1 avoid 0 minpieces
+	// +1 and +mp to avoid 0 paritypieces and numPieces == minPieces
+	np = mp + fastrand.Intn(10) + 1
 	checkHealth(np, mp, np, 0)
 
 	// In the middle
-	mp = fastrand.Intn(10) + 1  // +1 avoid 0 minpieces
-	np = mp + fastrand.Intn(10) // +mp to avoid 0 paritypieces
+	mp = fastrand.Intn(10) + 1 // +1 avoid 0 minpieces
+	// +1 and +mp to avoid 0 paritypieces and numPieces == minPieces
+	np = mp + fastrand.Intn(10) + 1
 	gp := fastrand.Intn(np)
 	h = round(1 - float64(gp-mp)/float64(np-mp))
 	checkHealth(gp, mp, np, h)
+
+	// Recover check
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected critical")
+		}
+	}()
+	checkHealth(0, 0, 0, 0)
 }

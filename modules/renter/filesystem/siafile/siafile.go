@@ -119,6 +119,11 @@ type (
 // CalculateHealth is the calculation for determining the health of a chunk or
 // file
 func CalculateHealth(goodPieces, minPieces, numPieces int) float64 {
+	// Divide by zero check
+	if minPieces == numPieces {
+		build.Critical("minPieces cannot equal numPieces")
+	}
+	// Calculate health
 	health := 1 - float64(goodPieces-minPieces)/float64(numPieces-minPieces)
 	// Round percentage to 2 digits.
 	health = health * 10e3
