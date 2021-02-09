@@ -648,7 +648,7 @@ func (p *renterHostPair) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicK
 	}
 
 	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, blockHeight, amount, p.staticRenterSK)
+	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, blockHeight, amount, p.staticAccountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
 		return err
@@ -866,7 +866,14 @@ func (p *renterHostPair) managedBeginSubscription(fundAmt types.Currency, fundAc
 			err = errors.Compose(err, stream.Close())
 		}
 	}()
-	return modules.RPCBeginSubscription(stream, p, p.staticHT.host.publicKey, p.pt, fundAmt, fundAcc, p.staticHT.host.BlockHeight()+6, subscriber)
+
+	// Fetch the price table.
+	pt, err := p.managedFetchPriceTable()
+	if err != nil {
+		return nil, err
+	}
+
+	return modules.RPCBeginSubscription(stream, p, p.staticHT.host.publicKey, pt, fundAmt, fundAcc, pt.HostBlockHeight, subscriber)
 }
 
 // managedLatestRevision performs a RPCLatestRevision to get the latest revision
