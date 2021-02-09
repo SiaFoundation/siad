@@ -195,7 +195,6 @@ func TestManagedAsyncReady(t *testing.T) {
 	w.initJobLowPrioReadQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
-	w.initJobReadRegistryQueue()
 
 	timeInFuture := time.Now().Add(time.Hour)
 	timeInPast := time.Now().Add(-time.Hour)
