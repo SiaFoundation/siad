@@ -128,11 +128,10 @@ type (
 		staticSubscriptionInfo *subscriptionInfos
 
 		// Utilities.
-		tg        threadgroup.ThreadGroup
-		_killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
-		mu        sync.Mutex
-		renter    *Renter
-		wakeChan  chan struct{} // Worker will check queues if given a wake signal.
+		tg       threadgroup.ThreadGroup
+		mu       sync.Mutex
+		renter   *Renter
+		wakeChan chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
 
@@ -279,8 +278,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
 
-	// Close the threadgroup if the parent threadgroup is closed.
-	err = r.tg.OnStop(w.tg.Stop)
+	// Close the worker when the renter is stopped.
+	err = r.tg.OnStop(func() error {
+		w.managedKill()
+		return nil
+	})
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to register OnStop for worker threadgroup")
 	}
