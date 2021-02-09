@@ -225,6 +225,8 @@ have the nickname be the same as the filename.
 
 ### Skynet tasks
 
+* `siac skynet backup` back up a skyfile.
+
 * `siac skynet blocklist` lists the merkleroots of all blocked skylinks.
 
 * `siac skynet blocklist add [skylink]` will add any skylinks separated by
@@ -263,6 +265,8 @@ It defaults to private.
 
 * `siac skynet portals remove [url]` removes the Skynet portal from the
 persisted list. The Skynet portal URL is of the form `url:port`.
+
+* `siac skynet restore` restore a skyfile.
 
 * `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
   deleting them from your list of stored files or directories.

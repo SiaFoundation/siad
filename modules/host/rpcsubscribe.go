@@ -30,9 +30,11 @@ type (
 	// subscriptionInfo holds the information required to respond to a
 	// subscriber and to correctly charge it.
 	subscriptionInfo struct {
-		notificationCost  types.Currency
-		minExpectedRevNum uint64
-		mu                sync.Mutex
+		closed           bool
+		notificationCost types.Currency
+		latestRevNum     map[subscriptionID]uint64
+		subscriptions    map[subscriptionID]struct{}
+		mu               sync.Mutex
 
 		staticBudget     *modules.RPCBudget
 		staticID         subscriptionInfoID
@@ -68,6 +70,8 @@ func newRegistrySubscriptions() *registrySubscriptions {
 func newSubscriptionInfo(stream siamux.Stream, budget *modules.RPCBudget, notificationsCost types.Currency, subscriber types.Specifier) *subscriptionInfo {
 	info := &subscriptionInfo{
 		notificationCost: notificationsCost,
+		latestRevNum:     make(map[subscriptionID]uint64),
+		subscriptions:    make(map[subscriptionID]struct{}),
 		staticBudget:     budget,
 		staticStream:     stream,
 		staticSubscriber: hex.EncodeToString(subscriber[:]),
@@ -78,6 +82,14 @@ func newSubscriptionInfo(stream siamux.Stream, budget *modules.RPCBudget, notifi
 
 // AddSubscriptions adds one or multiple subscriptions.
 func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryIDs ...subscriptionID) {
+	// Add to the info first.
+	info.mu.Lock()
+	for _, id := range entryIDs {
+		info.subscriptions[id] = struct{}{}
+	}
+	info.mu.Unlock()
+
+	// Then add to the global subscription map.
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	for _, entryID := range entryIDs {
@@ -89,7 +101,15 @@ func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryI
 }
 
 // RemoveSubscriptions removes one or multiple subscriptions.
-func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, entryIDs ...subscriptionID) {
+func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, entryIDs []subscriptionID) {
+	// Delete from the info first.
+	info.mu.Lock()
+	for _, entryID := range entryIDs {
+		delete(info.subscriptions, entryID)
+	}
+	info.mu.Unlock()
+
+	// Remove them from the global subscription map.
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	for _, entryID := range entryIDs {
@@ -106,7 +126,7 @@ func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, ent
 }
 
 // managedHandleSubscribeRequest handles a new subscription.
-func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable, subs map[subscriptionID]struct{}) error {
+func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable) error {
 	stream := info.staticStream
 
 	// Read the requests.
@@ -144,14 +164,21 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 
 	// Add the subscriptions.
 	h.staticRegistrySubscriptions.AddSubscriptions(info, ids...)
-	for _, id := range ids {
-		subs[id] = struct{}{}
-	}
+	return nil
+}
+
+// managedHandleStopSubscription gracefully disables notifications and waits for
+// ongoing notifications to be sent.
+func (h *Host) managedHandleStopSubscription(info *subscriptionInfo) error {
+	// Flush notifications and prevent new ones.
+	info.mu.Lock()
+	info.closed = true
+	info.mu.Unlock()
 	return nil
 }
 
 // managedHandleUnsubscribeRequest handles a request to unsubscribe.
-func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable, subs map[subscriptionID]struct{}) error {
+func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable) error {
 	stream := info.staticStream
 
 	// Read the requests.
@@ -166,15 +193,17 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 	}
 
 	// Remove the subscription.
-	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids...)
-	for _, id := range ids {
-		delete(subs, id)
-	}
-	return nil
+	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids)
+
+	// Respond with "OK".
+	err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+		Type: modules.SubscriptionResponseUnsubscribeSuccess,
+	})
+	return errors.AddContext(err, "failed to signal successfully unsubscribing from entries")
 }
 
 // managedHandleExtendSubscriptionRequest handles a request to extend the subscription.
-func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs map[subscriptionID]struct{}, oldDeadline time.Time, info *subscriptionInfo, limit *modules.BudgetLimit) (*modules.RPCPriceTable, time.Time, error) {
+func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, oldDeadline time.Time, info *subscriptionInfo, limit *modules.BudgetLimit) (*modules.RPCPriceTable, time.Time, error) {
 	// Get new deadline.
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 
@@ -190,12 +219,15 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 	}
 
 	// Check payment against the new prices.
-	cost := modules.MDMSubscriptionMemoryCost(pt, uint64(len(subs)))
+	info.mu.Lock()
+	defer info.mu.Unlock()
+	cost := modules.MDMSubscriptionMemoryCost(pt, uint64(len(info.subscriptions)))
 	if !info.staticBudget.Withdraw(cost) {
 		return nil, time.Time{}, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleExtendSubscriptionRequest")
 	}
 
-	// Update the notification cost.
+	// Update the notification cost. Hold a lock while doing so to make sure no
+	// notifications are sent in the meantime.
 	info.notificationCost = pt.SubscriptionNotificationCost
 
 	// Update the limit.
@@ -276,15 +308,24 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 			// to allow for multiple notifications in parallel.
 			info.mu.Lock()
 			defer info.mu.Unlock()
+			if info.closed {
+				return
+			}
+
+			// Check if we are still subscribed.
+			if _, subscribed := info.subscriptions[id]; !subscribed {
+				return
+			}
 
 			// Check if we have already updated the subscriber with a higher
 			// revision number for that entry than the minExpectedRevNum. This
 			// might happen due to a race and should be avoided. Otherwise the
 			// subscriber might think that we are trying to cheat them.
-			if rv.Revision < info.minExpectedRevNum {
+			latestRevNum, exists := info.latestRevNum[id]
+			if exists && rv.Revision <= latestRevNum {
 				return
 			}
-			info.minExpectedRevNum = rv.Revision + 1
+			info.latestRevNum[id] = rv.Revision
 
 			// Withdraw the base notification cost.
 			ok := info.staticBudget.Withdraw(info.notificationCost)
@@ -301,7 +342,7 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 			defer stream.Close()
 
 			// Notify the caller.
-			err = sendNotification(stream, rv)
+			err = sendNotification(stream, pubKey, rv)
 			if err != nil {
 				h.log.Debug("failed to write notification to buffer", err)
 				return
@@ -321,7 +362,7 @@ func subscriptionResponseStream(info *subscriptionInfo, sm *siamux.SiaMux) (siam
 }
 
 // managedRPCRegistrySubscribe handles the RegistrySubscribe rpc.
-func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, err error) {
+func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn, err error) {
 	// Read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
@@ -351,6 +392,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, e
 	// reading from the stream means uploading from the host's perspective. That
 	// makes the writeCost the DownloadBandwidthCost.
 	budget := modules.NewBudget(pd.Amount())
+	bandwidthLimit := modules.NewBudgetLimit(budget, pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 	// Prepare a refund method which is called at the end of the rpc.
 	refund := func() {
 		// Refund the unused budget
@@ -358,7 +400,6 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, e
 			err = errors.Compose(err, h.staticAccountManager.callRefund(pd.AccountID(), budget.Remaining()))
 		}
 	}
-	bandwidthLimit := modules.NewBudgetLimit(budget, pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 	err = stream.SetLimit(bandwidthLimit)
 	if err != nil {
 		return refund, errors.AddContext(err, "failed to set budget limit on stream")
@@ -372,16 +413,17 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, e
 	}
 
 	// Keep count of the unique subscriptions to be able to charge accordingly.
-	subscriptions := make(map[subscriptionID]struct{})
 	info := newSubscriptionInfo(stream, budget, pt.SubscriptionNotificationCost, subscriber)
 
 	// Clean up the subscriptions at the end.
 	defer func() {
-		entryIDs := make([]subscriptionID, 0, len(subscriptions))
-		for entryID := range subscriptions {
+		info.mu.Lock()
+		var entryIDs []subscriptionID
+		for entryID := range info.subscriptions {
 			entryIDs = append(entryIDs, entryID)
 		}
-		h.staticRegistrySubscriptions.RemoveSubscriptions(info, entryIDs...)
+		info.mu.Unlock()
+		h.staticRegistrySubscriptions.RemoveSubscriptions(info, entryIDs)
 	}()
 
 	// The subscription RPC is a request/response loop that continues for as
@@ -397,13 +439,16 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, e
 		// Handle requests.
 		switch requestType {
 		case modules.SubscriptionRequestSubscribe:
-			err = h.managedHandleSubscribeRequest(info, pt, subscriptions)
+			err = h.managedHandleSubscribeRequest(info, pt)
 		case modules.SubscriptionRequestUnsubscribe:
-			err = h.managedHandleUnsubscribeRequest(info, pt, subscriptions)
+			err = h.managedHandleUnsubscribeRequest(info, pt)
 		case modules.SubscriptionRequestExtend:
-			pt, deadline, err = h.managedHandleExtendSubscriptionRequest(stream, subscriptions, deadline, info, bandwidthLimit)
+			pt, deadline, err = h.managedHandleExtendSubscriptionRequest(stream, deadline, info, bandwidthLimit)
 		case modules.SubscriptionRequestPrepay:
 			err = h.managedHandlePrepayBandwidth(stream, info)
+		case modules.SubscriptionRequestStop:
+			err = h.managedHandleStopSubscription(info)
+			return refund, err
 		default:
 			return refund, errors.New("unknown request type")
 		}
@@ -416,7 +461,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, e
 
 // sendNotification marshals an entry notification and writes it to the provided
 // writer.
-func sendNotification(stream io.Writer, rv modules.SignedRegistryValue) error {
+func sendNotification(stream io.Writer, spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
 	buf := new(bytes.Buffer)
 	err := modules.RPCWrite(buf, modules.RPCRegistrySubscriptionNotificationType{
 		Type: modules.SubscriptionResponseRegistryValue,
@@ -425,7 +470,8 @@ func sendNotification(stream io.Writer, rv modules.SignedRegistryValue) error {
 		return errors.AddContext(err, "failed to write notification header to buffer")
 	}
 	err = modules.RPCWrite(buf, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry: rv,
+		Entry:  rv,
+		PubKey: spk,
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to write entry to buffer")

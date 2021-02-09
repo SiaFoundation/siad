@@ -64,7 +64,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 		// available. Note that no price penalty is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
 		uwLate := false
-		hasSectorTime := time.Until(uw.staticExpectedCompleteTime)
+		hasSectorTime := time.Until(uw.staticExpectedResolvedTime)
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
 			uwLate = true

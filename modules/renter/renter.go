@@ -45,7 +45,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblocklist"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -149,12 +148,15 @@ type hostContractor interface {
 	RefreshedContract(fcid types.FileContractID) bool
 
 	// RenewContract takes an established connection to a host and renews the
-	// contract with that host.
-	RenewContract(conn net.Conn, hpk types.SiaPublicKey, params proto.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error
+	// given contract with that host.
+	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB, pt *modules.RPCPriceTable) (modules.RenterContract, []types.Transaction, error)
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
+
+	// UpdateWorkerPool updates the workerpool currently in use by the contractor.
+	UpdateWorkerPool(modules.WorkerPool)
 }
 
 type renterFuseManager interface {
@@ -234,30 +236,47 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
+	// Memory management
+	//
+	// registryMemoryManager is used for updating registry entries and reading
+	// them.
+	//
+	// userUploadManager is used for user-initiated uploads
+	//
+	// userDownloadMemoryManager is used for user-initiated downloads
+	//
+	// repairMemoryManager is used for repair work scheduled by siad
+	//
+	registryMemoryManager     *memoryManager
+	userUploadMemoryManager   *memoryManager
+	userDownloadMemoryManager *memoryManager
+	repairMemoryManager       *memoryManager
+
 	// Utilities.
-	cs                    modules.ConsensusSet
-	deps                  modules.Dependencies
-	g                     modules.Gateway
-	w                     modules.Wallet
-	hostContractor        hostContractor
-	hostDB                modules.HostDB
-	log                   *persist.Logger
-	persist               persistence
-	persistDir            string
-	memoryManager         *memoryManager
-	mu                    *siasync.RWMutex
-	repairLog             *persist.Logger
-	staticAccountManager  *accountManager
-	staticAlerter         *modules.GenericAlerter
-	staticFileSystem      *filesystem.FileSystem
-	staticFuseManager     renterFuseManager
-	staticSkykeyManager   *skykey.SkykeyManager
-	staticStreamBufferSet *streamBufferSet
-	tg                    threadgroup.ThreadGroup
-	tpool                 modules.TransactionPool
-	wal                   *writeaheadlog.WAL
-	staticWorkerPool      *workerPool
-	staticMux             *siamux.SiaMux
+	cs                                 modules.ConsensusSet
+	deps                               modules.Dependencies
+	g                                  modules.Gateway
+	w                                  modules.Wallet
+	hostContractor                     hostContractor
+	hostDB                             modules.HostDB
+	log                                *persist.Logger
+	persist                            persistence
+	persistDir                         string
+	mu                                 *siasync.RWMutex
+	repairLog                          *persist.Logger
+	staticAccountManager               *accountManager
+	staticAlerter                      *modules.GenericAlerter
+	staticFileSystem                   *filesystem.FileSystem
+	staticFuseManager                  renterFuseManager
+	staticSkykeyManager                *skykey.SkykeyManager
+	staticStreamBufferSet              *streamBufferSet
+	tg                                 threadgroup.ThreadGroup
+	tpool                              modules.TransactionPool
+	wal                                *writeaheadlog.WAL
+	staticWorkerPool                   *workerPool
+	staticMux                          *siamux.SiaMux
+	memoryManager                      *memoryManager
+	staticUploadChunkDistributionQueue *uploadChunkDistributionQueue
 }
 
 // Close closes the Renter and its dependencies
@@ -276,7 +295,20 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 		return modules.MemoryStatus{}, err
 	}
 	defer r.tg.Done()
-	return r.memoryManager.callStatus(), nil
+
+	repairStatus := r.repairMemoryManager.callStatus()
+	userDownloadStatus := r.userDownloadMemoryManager.callStatus()
+	userUploadStatus := r.userUploadMemoryManager.callStatus()
+	registryStatus := r.registryMemoryManager.callStatus()
+	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus)
+	return modules.MemoryStatus{
+		MemoryManagerStatus: total,
+
+		Registry:     registryStatus,
+		System:       repairStatus,
+		UserDownload: userDownloadStatus,
+		UserUpload:   userUploadStatus,
+	}, nil
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -813,6 +845,9 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
+	if cc.Synced {
+		_ = r.tg.Launch(r.staticWorkerPool.callUpdate)
+	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
@@ -984,6 +1019,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:          tpool,
 	}
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
+	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.uploadHeap.pauseChan)
 
 	// Init the statsChan and close it right away to signal that no scan is
@@ -1014,7 +1050,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create account manager")
 	}
-	r.memoryManager = newMemoryManager(memoryDefault, memoryPriorityDefault, r.tg.StopChan())
+
+	r.registryMemoryManager = newMemoryManager(registryMemoryDefault, registryMemoryPriorityDefault, r.tg.StopChan())
+	r.userUploadMemoryManager = newMemoryManager(userUploadMemoryDefault, userUploadMemoryPriorityDefault, r.tg.StopChan())
+	r.userDownloadMemoryManager = newMemoryManager(userDownloadMemoryDefault, userDownloadMemoryPriorityDefault, r.tg.StopChan())
+	r.repairMemoryManager = newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, r.tg.StopChan())
+
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
@@ -1041,6 +1082,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
+	// Set the worker pool on the contractor.
+	r.hostContractor.UpdateWorkerPool(r.staticWorkerPool)
+
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
 	skykeyManDir := build.SkynetDir()
@@ -1051,9 +1095,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
-
-	// Start a goroutine to periodically clear the stats.
-	go r.threadedInvalidateStatsCache()
 
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.

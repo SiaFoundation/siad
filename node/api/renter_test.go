@@ -1245,11 +1245,17 @@ func TestRenterPricesHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stHost1.panicClose()
+	if err := stHost1.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 	stHost2, err := blankServerTester(t.Name() + " - Host 2")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stHost2.panicClose()
+	if err := stHost2.setHostStorage(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Connect all the nodes and announce all of the hosts.
 	sts := []*serverTester{st, stHost1, stHost2}
@@ -1262,6 +1268,10 @@ func TestRenterPricesHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = announceAllHosts(sts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.miner.AddBlock()
 	if err != nil {
 		t.Fatal(err)
 	}

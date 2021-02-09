@@ -5065,6 +5065,28 @@ value of 5 minutes. The minimum is 1 second.
 }
 ```
 
+## /skynet/restore [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/restore" --data-binary @backup.dat
+```
+
+restore a skyfile from a backup reader. The backup reader should be generated
+from the `client` package method `SkynetSkylinkBackup`.
+
+**NOTE:** The `/skynet/restore` endpoint is intended to use the backup created
+with the `SkynetSkylinkBackup` `client` method. 
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg", // string
+}
+```
+
 ## /skynet/root [GET]
 > curl example  
 
@@ -5234,6 +5256,13 @@ If 'no-response-metadata' is set to true, the API will not return the metadata
 in the "Skynet-File-Metadata" response header. This might be useful in cases
 where the metadata is not used, or where the size of the response header is
 proving to be an issue.
+
+**include-layout** | string  
+If 'include-layout' is set to true, the API will return the layout in the
+"Skynet-File-Layout" response header. In most cases the layout is not needed for
+the download which is why it is not returned by default. Cases that require the
+layout include backing up skylinks where all the original upload information
+about a skylink is needed.
 
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 

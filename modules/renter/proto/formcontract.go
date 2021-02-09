@@ -13,7 +13,7 @@ import (
 // FormContract forms a contract with a host and submits the contract
 // transaction to tpool. The contract is added to the ContractSet and its
 // metadata is returned.
-func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
+func (cs *ContractSet) FormContract(params modules.ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
 	// Check that the host version is high enough. This should never happen
 	// because hosts with old versions should be filtered / blocked by the
 	// contractor anyway.
@@ -61,10 +61,10 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
-	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
+	si, hk := modules.PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
 	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 	// Create our key.
-	ourSK, ourPK := GenerateKeyPair(params.RenterSeed, fcTxn)
+	ourSK, ourPK := modules.GenerateContractKeyPair(params.RenterSeed, fcTxn)
 	// Create unlock conditions.
 	uc := types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{

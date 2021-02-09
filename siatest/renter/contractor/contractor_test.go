@@ -2334,7 +2334,15 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 
 	// Wait for active contracts
+	numTries = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numTries++
 		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
@@ -2617,10 +2625,10 @@ func TestFreshSettingsForRenew(t *testing.T) {
 	}
 	// Check that we haven't renewed.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		r.PrintDebugInfo(t, true, true, true)
 		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 1, 0, 0)
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2687,10 +2695,11 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 		}
 	}()
 
-	// Add a renter with a  toggle-able dependency for using stale host settings
+	// Add a renter with a toggle-able dependency for using stale host settings
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	defaultSettingsDep := &dependencies.DependencyDefaultRenewSettings{}
 	renterParams.ContractorDeps = defaultSettingsDep
+	renterParams.ContractSetDeps = defaultSettingsDep
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -2750,7 +2759,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityError,
-		Cause:    "rejected for high paying renter valid output",
+		Cause:    "rejected for low paying host valid output",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}

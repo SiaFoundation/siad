@@ -3,6 +3,9 @@ package renter
 import (
 	"strings"
 	"sync/atomic"
+
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // errCausedByRevisionMismatch returns true if (we suspect) the given error is
@@ -42,7 +45,13 @@ func (w *worker) externTryFixRevisionMismatch() {
 
 	// Track the outcome of the revision mismatch fix - this ensures a proper
 	// working of the maintenance cooldown mechanism.
-	w.managedTrackRevisionMismatchFixErr(err)
+	// NOTE: A renewal is a serial job so the renewal is actually done at this
+	// point. A ErrContractRenewing simply indicates that the contractor hasn't
+	// set the contract back to not being renewed. We don't increment the
+	// cooldown to make sure operations can continue.
+	if !errors.Contains(err, contractor.ErrContractRenewing) {
+		w.managedTrackRevisionMismatchFixErr(err)
+	}
 
 	if err != nil {
 		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)

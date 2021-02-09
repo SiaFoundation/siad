@@ -1118,7 +1118,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 			return nil
 		})
 		if err != nil {
-			return (err)
+			return err
 		}
 		if !so.OriginConfirmed {
 			return errors.New("origin transaction for storage obligation was not confirmed after blocks were mined")

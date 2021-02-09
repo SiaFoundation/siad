@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
@@ -40,9 +39,8 @@ type programResponse struct {
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		build.Critical("Executing new RHP RPC on host with version", cache.staticHostVersion)
+	if !w.staticSupportsRHP3() {
+		build.Critical("Executing new RHP RPC on host with version", w.staticCache().staticHostVersion)
 	}
 
 	// track the withdrawal
@@ -84,7 +82,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// provide payment
-	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
+	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
 		return
 	}
@@ -151,7 +149,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 // staticNewStream returns a new stream to the worker's host
 func (w *worker) staticNewStream() (siamux.Stream, error) {
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+	if !w.staticSupportsRHP3() {
 		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
 		return nil, errors.New("host doesn't support this")
 	}
@@ -174,16 +172,23 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap the stream in a ratelimit.
-	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
+
+	// Wrap the stream in the renter's ratelimit
+	//
+	// NOTE: this only ratelimits the data going over the stream and not the raw
+	// bytes going over the wire, so the ratelimit might be off by a few bytes.
+	rlStream := ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan())
+
+	// Wrap the stream in global ratelimit.
+	return ratelimit.NewRLStream(rlStream, modules.GlobalRateLimits, w.renter.tg.StopChan()), nil
 }
 
 // managedRenew renews the contract with the worker's host.
-func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
+func (w *worker) managedRenew(fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) (modules.RenterContract, []types.Transaction, error) {
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: unable to create a new stream")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: unable to create a new stream")
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -194,22 +199,22 @@ func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.Tr
 	// write the specifier.
 	err = modules.RPCWrite(stream, modules.RPCRenewContract)
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: failed to write RPC specifier")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to write RPC specifier")
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: failed to write price table uid")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: failed to write price table uid")
 	}
 
 	// have the contractset handle the renewal.
 	r := w.renter
-	err = w.renter.hostContractor.RenewContract(stream, w.staticHostPubKey, params, txnBuilder, r.tpool, r.hostDB)
+	newContract, txnSet, err := w.renter.hostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.hostDB, &pt)
 	if err != nil {
-		return errors.AddContext(err, "managedRenew: call to RenewContract failed")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: call to RenewContract failed")
 	}
 
-	return nil
+	return newContract, txnSet, nil
 }

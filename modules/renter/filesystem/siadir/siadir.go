@@ -69,8 +69,13 @@ type (
 		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
 		AggregateRemoteHealth        float64   `json:"aggregateremotehealth"`
+		AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 		AggregateSize                uint64    `json:"aggregatesize"`
 		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+
+		// Aggregate Skynet Specific Stats
+		AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
+		AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
 
 		// The following fields are information specific to the siadir that is not
 		// an aggregate of the entire sub directory tree
@@ -83,8 +88,13 @@ type (
 		NumStuckChunks      uint64      `json:"numstuckchunks"`
 		NumSubDirs          uint64      `json:"numsubdirs"`
 		RemoteHealth        float64     `json:"remotehealth"`
+		RepairSize          uint64      `json:"repairsize"`
 		Size                uint64      `json:"size"`
 		StuckHealth         float64     `json:"stuckhealth"`
+
+		// Skynet Specific Stats
+		SkynetFiles uint64 `json:"skynetfiles"`
+		SkynetSize  uint64 `json:"skynetsize"`
 
 		// Version is the used version of the header file.
 		Version string `json:"version"`

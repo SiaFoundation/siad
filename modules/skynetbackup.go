@@ -25,7 +25,7 @@ const (
 
 	// defaultDirDepth is the number of directories created when turning a skylink
 	// into a filepath.
-	defaultDirDepth = 3
+	defaultDirDepth = 2
 
 	// defaultDirLength is the character length of the directory name when turning
 	// a skylink into a filepath.
@@ -69,6 +69,12 @@ func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer i
 	err = writeBaseSector(writer, baseSector)
 	if err != nil {
 		return errors.AddContext(err, "unable to write baseSector")
+	}
+
+	// If no reader was provided then it means that it was a small file backup so
+	// the baseSector is all that is needed.
+	if reader == nil {
+		return nil
 	}
 
 	// Write the body of the skyfile
@@ -153,7 +159,10 @@ func readBaseSector(r io.Reader) ([]byte, error) {
 	// Read the header
 	baseSector := make([]byte, SectorSize)
 	_, err := io.ReadFull(r, baseSector)
-	return baseSector, errors.AddContext(err, "unable to read baseSector")
+	if err != nil && !(errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF)) {
+		return nil, errors.AddContext(err, "unable to read baseSector")
+	}
+	return baseSector, nil
 }
 
 // writeBackupBody writes the contents of the reader to the backup

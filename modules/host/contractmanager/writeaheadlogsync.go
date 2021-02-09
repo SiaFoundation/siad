@@ -80,6 +80,14 @@ func (wal *writeAheadLog) syncResources() {
 			}
 		}(sf)
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := wal.cm.sectorLocationsCountOverflow.Sync()
+		if err != nil {
+			wal.cm.log.Println("could not synchronize sector overflow file:", err)
+		}
+	}()
 
 	// Sync the temp WAL file, but do not perform the atmoic rename - the
 	// atomic rename must be guaranteed to happen after all of the other files

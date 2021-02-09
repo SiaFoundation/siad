@@ -342,6 +342,11 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cu := jq.cooldownUntil
 	jq.mu.Unlock()
 
+	// Check the queue is on a cooldown
+	if !jq.callOnCooldown() {
+		t.Error("queue should be on cooldown")
+	}
+
 	// The queue should be on cooldown now, adding a new job should fail.
 	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
@@ -395,6 +400,11 @@ func TestWorkerJobGeneric(t *testing.T) {
 	jq.mu.Unlock()
 	// Sleep off the cooldown.
 	time.Sleep(time.Until(cu))
+
+	// Check the cooldown status
+	if jq.callOnCooldown() {
+		t.Error("queue should not be on cooldown")
+	}
 
 	// Add a job with metadata to the queue
 	j5 := &jobTest{

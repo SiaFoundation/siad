@@ -14,18 +14,20 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
+	"container/list"
 	"sync"
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// minAsyncVersion defines the minimum version that supports RHP3.
-	minAsyncVersion = "1.4.10"
+	// minRHP3Version defines the minimum version that supports RHP3.
+	minRHP3Version = "1.4.10"
 
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
@@ -85,11 +87,11 @@ type (
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
-		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
-		uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
-		uploadRecentFailure       time.Time                // How recent was the last failure?
-		uploadRecentFailureErr    error                    // What was the reason for the last failure?
-		uploadTerminated          bool                     // Have we stopped uploading?
+		unprocessedChunks         *uploadChunks // Yet unprocessed work items.
+		uploadConsecutiveFailures int           // How many times in a row uploading has failed.
+		uploadRecentFailure       time.Time     // How recent was the last failure?
+		uploadRecentFailureErr    error         // What was the reason for the last failure?
+		uploadTerminated          bool          // Have we stopped uploading?
 
 		// The staticAccount represent the renter's ephemeral account on the
 		// host. It keeps track of the available balance in the account, the
@@ -119,6 +121,48 @@ type (
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
+
+// downloadChunks is a queue of download chunks.
+type downloadChunks struct {
+	*list.List
+}
+
+// newDownloadChunks initializes a new queue.
+func newDownloadChunks() *downloadChunks {
+	return &downloadChunks{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *downloadChunks) Pop() *unfinishedDownloadChunk {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*unfinishedDownloadChunk)
+}
+
+// uploadChunks is a queue of upload chunks.
+type uploadChunks struct {
+	*list.List
+}
+
+// newUploadChunks initializes a new queue.
+func newUploadChunks() *uploadChunks {
+	return &uploadChunks{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *uploadChunks) Pop() *unfinishedUploadChunk {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*unfinishedUploadChunk)
+}
 
 // managedKill will kill the worker.
 func (w *worker) managedKill() {
@@ -151,6 +195,13 @@ func (w *worker) staticWake() {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
+}
+
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
@@ -195,9 +246,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		killChan: make(chan struct{}),
-		wakeChan: make(chan struct{}, 1),
-		renter:   r,
+		unprocessedChunks: newUploadChunks(),
+		killChan:          make(chan struct{}),
+		wakeChan:          make(chan struct{}, 1),
+		renter:            r,
 	}
 	w.newPriceTable()
 	w.newMaintenanceState()

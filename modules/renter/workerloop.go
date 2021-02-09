@@ -106,13 +106,13 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
+	if w.managedNeedsToUpdatePriceTable() {
+		w.externLaunchSerialJob(w.staticUpdatePriceTable)
+		return
+	}
 	job := w.staticJobRenewQueue.callNext()
 	if job != nil {
 		w.externLaunchSerialJob(job.callExecute)
-		return
-	}
-	if w.managedNeedsToUpdatePriceTable() {
-		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
 	if w.managedNeedsToRefillAccount() {
@@ -179,8 +179,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 // worker is ready for async work.
 func (w *worker) managedAsyncReady() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+	if !w.staticSupportsRHP3() {
 		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
 		return false
 	}
@@ -209,6 +208,11 @@ func (w *worker) managedAsyncReady() bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
+	// Exit if the worker is not currently equipped to perform async tasks.
+	if !w.managedAsyncReady() {
+		return false
+	}
+
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
 	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
@@ -227,11 +231,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// price table, and account checks.
 	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
 		return true
-	}
-
-	// Exit if the worker is not currently equipped to perform async tasks.
-	if !w.managedAsyncReady() {
-		return false
 	}
 
 	// Check every potential async job that can be launched.
@@ -316,7 +315,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
+	if w.staticSupportsRHP3() {
 		// Ensure the renter's revision number of the underlying file contract
 		// is in sync with the host's revision number. This check must happen at
 		// the top as consecutive checks make use of the file contract for

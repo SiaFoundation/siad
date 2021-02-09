@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -89,19 +90,14 @@ func (w *worker) managedDropChunk(uc *unfinishedUploadChunk) {
 // managedDropUploadChunks will release all of the upload chunks that the worker
 // has received.
 func (w *worker) managedDropUploadChunks() {
-	// Make a copy of the slice under lock, clear the slice, then drop the
-	// chunks without a lock (managed function).
-	var chunksToDrop []*unfinishedUploadChunk
 	w.mu.Lock()
-	for i := 0; i < len(w.unprocessedChunks); i++ {
-		chunksToDrop = append(chunksToDrop, w.unprocessedChunks[i])
-	}
-	w.unprocessedChunks = w.unprocessedChunks[:0]
+	chunksToDrop := w.unprocessedChunks
+	w.unprocessedChunks = newUploadChunks()
 	w.mu.Unlock()
 
-	for i := 0; i < len(chunksToDrop); i++ {
-		w.managedDropChunk(chunksToDrop[i])
-		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunksToDrop[i].staticIndex, chunksToDrop[i].staticSiaPath)
+	for chunkToDrop := chunksToDrop.Pop(); chunkToDrop != nil; chunkToDrop = chunksToDrop.Pop() {
+		w.managedDropChunk(chunkToDrop)
+		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunkToDrop.staticIndex, chunkToDrop.staticSiaPath)
 	}
 }
 
@@ -135,7 +131,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 		w.managedDropChunk(uc)
 		return false
 	}
-	w.unprocessedChunks = append(w.unprocessedChunks, uc)
+	w.unprocessedChunks.PushBack(uc)
 	w.mu.Unlock()
 
 	// Send a signal informing the work thread that there is work.
@@ -148,7 +144,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 func (w *worker) managedHasUploadJob() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.unprocessedChunks) > 0
+	return w.unprocessedChunks.Len() > 0
 }
 
 // managedPerformUploadChunkJob will perform some upload work.
@@ -156,13 +152,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
 	w.mu.Lock()
-	if len(w.unprocessedChunks) == 0 {
-		w.mu.Unlock()
+	nextChunk := w.unprocessedChunks.Pop()
+	w.mu.Unlock()
+	if nextChunk == nil {
 		return
 	}
-	nextChunk := w.unprocessedChunks[0]
-	w.unprocessedChunks = w.unprocessedChunks[1:]
-	w.mu.Unlock()
 
 	// Make sure the chunk wasn't canceled.
 	nextChunk.cancelMU.Lock()
@@ -182,16 +176,12 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
-		nextChunk.mu.Lock()
-		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
-		nextChunk.mu.Unlock()
 		return
 	}
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
@@ -207,17 +197,19 @@ func (w *worker) managedPerformUploadChunkJob() {
 	err = checkUploadGouging(allowance, hostSettings)
 	if err != nil && !w.renter.deps.Disrupt("DisableUploadGouging") {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
 
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.
+	//
+	// Ignore the error if it's a ErrMaxVirtualSectors coming from a pre-1.5.5
+	// host.
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
-	if err != nil {
-		failureErr := fmt.Errorf("Worker failed to upload via the editor: %v", err)
-		w.renter.log.Debugln(failureErr)
+	ignoreErr := build.VersionCmp(hostSettings.Version, "1.5.5") < 0 && err != nil && strings.Contains(err.Error(), modules.ErrMaxVirtualSectors.Error())
+	if err != nil && !ignoreErr {
+		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
@@ -229,7 +221,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
-		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
@@ -247,7 +238,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	uc.memoryReleased += uint64(releaseSize)
 	uc.chunkSuccessProcessTimes = append(uc.chunkSuccessProcessTimes, time.Now())
 	uc.mu.Unlock()
-	w.renter.memoryManager.Return(uint64(releaseSize))
+	uc.staticMemoryManager.Return(uint64(releaseSize))
 	w.renter.managedCleanUpUploadChunk(uc)
 }
 
@@ -273,7 +264,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	// Determine what sort of help this chunk needs.
 	uc.mu.Lock()
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
-	chunkComplete := uc.piecesNeeded <= uc.piecesCompleted
+	chunkComplete := uc.staticPiecesNeeded <= uc.piecesCompleted
 	// If the chunk does not need help from this worker, release the chunk.
 	if chunkComplete || !candidateHost || !goodForUpload || onCooldown {
 		// This worker no longer needs to track this chunk.
@@ -287,9 +278,9 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		return nil, 0
 	}
 
-	// If the worker does not need help, add the worker to the sent of standby
+	// If the worker does not need help, add the worker to the set of standby
 	// chunks.
-	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
+	needsHelp := uc.staticPiecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	if !needsHelp {
 		uc.workersStandby = append(uc.workersStandby, w)
 		uc.mu.Unlock()
@@ -310,7 +301,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		}
 	}
 	if index == -1 {
-		build.Critical("worker was supposed to upload but couldn't find unused piece")
+		build.Critical("worker was supposed to upload but couldn't find unused piece:", len(uc.pieceUsage))
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
 		return nil, 0
@@ -325,6 +316,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 // managedUploadFailed is called if a worker failed to upload part of an unfinished
 // chunk.
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
+	w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, uc.staticIndex, uc.staticSiaPath, failureErr)
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
 	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
@@ -332,9 +324,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr
 		w.uploadConsecutiveFailures++
-		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
-		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.

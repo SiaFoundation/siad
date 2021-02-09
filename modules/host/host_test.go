@@ -3,11 +3,13 @@ package host
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -976,6 +978,19 @@ func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevisio
 	return p.managedLatestRevision(payByFC, p.pt.LatestRevisionCost, p.staticAccountID, p.staticFCID)
 }
 
+// StopSubscription gracefully stops a subscription session.
+func (p *renterHostPair) StopSubscription(stream siamux.Stream) error {
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestStop)
+	if err != nil {
+		return errors.AddContext(err, "StopSubscription failed to send specifier")
+	}
+	_, err = stream.Read(make([]byte, 1))
+	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
+	}
+	return stream.Close()
+}
+
 // SubscribeToRV subscribes to the given publickey/tweak pair.
 func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Send the type of the request.
@@ -1021,6 +1036,15 @@ func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCP
 	}})
 	if err != nil {
 		return err
+	}
+	// Read the "OK" response.
+	var resp modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+	if resp.Type != modules.SubscriptionResponseUnsubscribeSuccess {
+		return fmt.Errorf("wrong type was returned: %v", resp.Type)
 	}
 	return nil
 }

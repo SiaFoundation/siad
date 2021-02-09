@@ -173,9 +173,11 @@ type (
 		Health              float64
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
+		NumSkylinks         uint64
 		NumStuckChunks      uint64
 		OnDisk              bool
 		Redundancy          float64
+		RepairBytes         uint64
 		Size                uint64
 		StuckHealth         float64
 		UID                 SiafileUID

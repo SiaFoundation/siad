@@ -38,10 +38,10 @@ const defaultConnectionDeadline = 5 * time.Minute
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
 var rpcSettingsDeprecated = types.NewSpecifier("Settings")
 
-// cleanUpFn is a function that can be returned by a rpc handler. It will be
+// afterCloseFn is a function that can be returned by a rpc handler. It will be
 // called at the very end of the rpc after closing the stream, to make sure
-// tings like refunding bandwidth can accurately be handled.
-type cleanUpFn func()
+// things like refunding bandwidth can accurately be handled.
+type afterCloseFn func()
 
 // threadedUpdateHostname periodically runs 'managedLearnHostname', which
 // checks if the host's hostname has changed, and makes an updated host
@@ -351,7 +351,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 // threadedHandleStream handles incoming SiaMux streams.
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// close the stream when the method terminates
-	var cleanup cleanUpFn
+	var cleanup afterCloseFn
 	defer func() {
 		if h.dependencies.Disrupt("DisableStreamClose") {
 			return

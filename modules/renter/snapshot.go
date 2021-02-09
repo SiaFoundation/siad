@@ -15,7 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 
@@ -314,7 +313,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
+	rs := modules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
@@ -463,7 +462,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 		return modules.UploadedBackup{}, nil, errors.AddContext(err, "failed to get wallet's primary seed")
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
+	rs := modules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)

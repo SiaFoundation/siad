@@ -36,6 +36,13 @@ on top of Sia.`,
 		Run: skynetcmd,
 	}
 
+	skynetBackupCmd = &cobra.Command{
+		Use:   "backup [skylink] [backup path]",
+		Short: "Backup a skyfile to a file on disk.",
+		Long:  "Create a backup of a skyfile as a file on disk.",
+		Run:   wrap(skynetbackupcmd),
+	}
+
 	skynetBlocklistCmd = &cobra.Command{
 		Use:   "blocklist",
 		Short: "Add, remove, or list skylinks from the blocklist.",
@@ -125,6 +132,13 @@ by --public if you want it to be publicly available.`,
 		Run:   wrap(skynetportalsremovecmd),
 	}
 
+	skynetRestoreCmd = &cobra.Command{
+		Use:   "restore [backup source]",
+		Short: "Restore a skyfile from a backup file.",
+		Long:  "Restore a skyfile from a backup file.",
+		Run:   wrap(skynetrestorecmd),
+	}
+
 	skynetUnpinCmd = &cobra.Command{
 		Use:   "unpin [siapath]",
 		Short: "Unpin pinned skyfiles or directories.",
@@ -154,6 +168,27 @@ flag to fetch the skylink without actually uploading the file.`,
 func skynetcmd(cmd *cobra.Command, _ []string) {
 	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
+}
+
+// skynetbackupcmd will backup a skyfile by writing it to a backup writer.
+func skynetbackupcmd(skylinkStr, backupPath string) {
+	// Create backup file
+	f, err := os.Create(backupPath)
+	if err != nil {
+		die("Unable to create backup file:", err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			die("Unable to close backup file:", err)
+		}
+	}()
+
+	// Create backup
+	err = httpClient.SkynetSkylinkBackup(skylinkStr, f)
+	if err != nil {
+		die("Unable to create backup:", err)
+	}
+	fmt.Println("Backup successfully created at ", backupPath)
 }
 
 // skynetblocklistaddcmd adds skylinks to the blocklist
@@ -563,6 +598,27 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		die("Unable to Pin Skyfile:", err)
 	}
 	fmt.Printf("Skyfile pinned successfully\nSkylink: sia://%v\n", skylink)
+}
+
+// skynetrestorecmd will restore a skyfile from a backup writer.
+func skynetrestorecmd(backupPath string) {
+	// Open the backup file
+	f, err := os.Open(backupPath)
+	if err != nil {
+		die("Unable to open backup file:", err)
+	}
+	defer func() {
+		// Attempt to close the file, API call appears to close file so ignore the
+		// error to avoid getting an error for closing a closed file.
+		_ = f.Close()
+	}()
+
+	// Create backup
+	skylink, err := httpClient.SkynetSkylinkRestorePost(f)
+	if err != nil {
+		die("Unable to restore skyfile:", err)
+	}
+	fmt.Println("Restore successful! Skylink: ", skylink)
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple files or

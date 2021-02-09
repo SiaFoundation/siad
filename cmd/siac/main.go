@@ -17,8 +17,9 @@ import (
 
 var (
 	// General Flags
-	siaDir  string // Path to sia data dir
-	verbose bool   // Display additional information
+	alertSuppress bool
+	siaDir        string // Path to sia data dir
+	verbose       bool   // Display additional information
 
 	// Module Specific Flags
 	//
@@ -197,7 +198,7 @@ func statuscmd() {
 	}
 
 	// Renter Info
-	fmt.Printf(`Renter:`)
+	fmt.Println(`Renter:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
@@ -261,24 +262,27 @@ func main() {
 	rootCmd = initCmds()
 
 	// initialize client
-	initClient(rootCmd, &verbose, &httpClient, &siaDir)
+	initClient(rootCmd, &verbose, &httpClient, &siaDir, &alertSuppress)
 
-	// set API password if it was not set
-	setAPIPasswordIfNotSet()
+	// Perform some basic actions after cobra has initialized.
+	cobra.OnInitialize(func() {
+		// set API password if it was not set
+		setAPIPasswordIfNotSet()
 
-	// Check if the siaDir is set.
-	if siaDir == "" {
-		// No siaDir passed in, fetch the siaDir
-		siaDir = build.SiaDir()
-	}
+		// Check if the siaDir is set.
+		if siaDir == "" {
+			// No siaDir passed in, fetch the siaDir
+			siaDir = build.SiaDir()
+		}
 
-	// Check for Critical Alerts
-	alerts, err := httpClient.DaemonAlertsGet()
-	if err == nil && len(alerts.CriticalAlerts) > 0 {
-		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
-		fmt.Println("------------------")
-		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
-	}
+		// Check for Critical Alerts
+		alerts, err := httpClient.DaemonAlertsGet()
+		if err == nil && len(alerts.CriticalAlerts) > 0 && !alertSuppress {
+			printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
+			fmt.Println("------------------")
+			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
+		}
+	})
 
 	// run
 	if err := rootCmd.Execute(); err != nil {
@@ -301,6 +305,7 @@ func initCmds() *cobra.Command {
 
 	// create command tree (alphabetized by root command)
 	root.AddCommand(consensusCmd)
+	root.AddCommand(jsonCmd)
 
 	// Add feemanager commands
 	root.AddCommand(feeManagerCmd)
@@ -332,7 +337,7 @@ func initCmds() *cobra.Command {
 		renterFuseCmd, renterLostCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
 		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd,
 		renterHealthSummaryCmd)
-	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd)
+	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd, renterWorkersReadRegistryCmd, renterWorkersUpdateRegistryCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
@@ -371,7 +376,7 @@ func initCmds() *cobra.Command {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetIsBlockedCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetUnpinCmd, skynetUploadCmd)
+	skynetCmd.AddCommand(skynetBackupCmd, skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetIsBlockedCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetRestoreCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetConvertCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetConvertCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
@@ -379,7 +384,7 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
-	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
@@ -439,12 +444,13 @@ func initCmds() *cobra.Command {
 }
 
 // initClient initializes client cmd flags and default values
-func initClient(root *cobra.Command, verbose *bool, client *client.Client, siaDir *string) {
+func initClient(root *cobra.Command, verbose *bool, client *client.Client, siaDir *string, alertSuppress *bool) {
 	root.PersistentFlags().BoolVarP(verbose, "verbose", "v", false, "Display additional information")
 	root.PersistentFlags().StringVarP(&client.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&client.Password, "apipassword", "", "", "the password for the API's http authentication")
 	root.PersistentFlags().StringVarP(siaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.PersistentFlags().StringVarP(&client.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+	root.PersistentFlags().BoolVarP(alertSuppress, "alert-suppress", "s", false, "suppress siac alerts")
 }
 
 // setAPIPasswordIfNotSet sets API password if it was not set

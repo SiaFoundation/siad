@@ -105,15 +105,18 @@ func IsSiaDirUpdate(update writeaheadlog.Update) bool {
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(path, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaDir, error) {
+//
+// NOTE: the fullPath is expected to include the rootPath. The rootPath is used
+// to determine when to stop recursively creating siadir metadata.
+func New(fullPath, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to directory and ensure path contains all metadata
-	updates, err := createDirMetadataAll(path, rootPath, mode)
+	updates, err := createDirMetadataAll(fullPath, rootPath, mode)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create metadata for directory
-	md, update, err := createDirMetadata(path, mode)
+	md, update, err := createDirMetadata(fullPath, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +125,7 @@ func New(path, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaD
 	sd := &SiaDir{
 		metadata: md,
 		deps:     modules.ProdDependencies,
-		path:     path,
+		path:     fullPath,
 		wal:      wal,
 	}
 
@@ -193,7 +196,7 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode) ([]writeah
 		if err != nil {
 			return nil, err
 		}
-		if dirPath == string(filepath.Separator) {
+		if dirPath == string(filepath.Separator) || dirPath == "." {
 			dirPath = rootPath
 		}
 		_, update, err := createDirMetadata(dirPath, mode)
@@ -353,8 +356,12 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
 	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
+	sd.metadata.AggregateRepairSize = metadata.AggregateRepairSize
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+
+	sd.metadata.AggregateSkynetFiles = metadata.AggregateSkynetFiles
+	sd.metadata.AggregateSkynetSize = metadata.AggregateSkynetSize
 
 	sd.metadata.Health = metadata.Health
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
@@ -365,8 +372,12 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
 	sd.metadata.RemoteHealth = metadata.RemoteHealth
+	sd.metadata.RepairSize = metadata.RepairSize
 	sd.metadata.Size = metadata.Size
 	sd.metadata.StuckHealth = metadata.StuckHealth
+
+	sd.metadata.SkynetFiles = metadata.SkynetFiles
+	sd.metadata.SkynetSize = metadata.SkynetSize
 
 	sd.metadata.Version = metadata.Version
 

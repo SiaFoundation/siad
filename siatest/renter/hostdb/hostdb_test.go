@@ -307,7 +307,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 		retry++
 		hdag, err := renter.HostDbAllGet()
 		if err != nil {
-			return (err)
+			return err
 		}
 		sort.Slice(hdag.Hosts, func(i, j int) bool {
 			return hdag.Hosts[i].LastIPNetChange.Before(hdag.Hosts[j].LastIPNetChange)

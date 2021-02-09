@@ -193,6 +193,7 @@ func TestManagedAsyncReady(t *testing.T) {
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
 	w.initJobLowPrioReadQueue()
+	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobReadRegistryQueue()
 
@@ -206,7 +207,7 @@ func TestManagedAsyncReady(t *testing.T) {
 	// ensure cache indicates host version meets min requirements
 	w.newCache()
 	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minAsyncVersion,
+		staticHostVersion: minRHP3Version,
 	}))
 
 	// ensure the worker has a maintenancestate, by default it will pass the

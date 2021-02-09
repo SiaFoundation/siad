@@ -243,23 +243,21 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Take down all of the hosts and check if redundancy decreases.
-	hostsRemoved := 0
+	var hostsRemoved []*siatest.TestNode
+	hosts := tg.Hosts()
 	for i := uint64(0); i < parityPieces+dataPieces; i++ {
-		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
-			t.Fatal("Failed to shutdown host", err)
-		}
-		hostsRemoved++
+		hostsRemoved = append(hostsRemoved, hosts[i])
+	}
+	if err := tg.RemoveNodeN(hostsRemoved...); err != nil {
+		t.Fatal("Failed to shutdown host", err)
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
 	// Bring up hosts to replace the ones that went offline.
-	for hostsRemoved > 0 {
-		hostsRemoved--
-		_, err = tg.AddNodes(node.HostTemplate)
-		if err != nil {
-			t.Fatal("Failed to create a new host", err)
-		}
+	_, err = tg.AddNodeN(node.HostTemplate, len(hostsRemoved))
+	if err != nil {
+		t.Fatal("Failed to replace hosts", err)
 	}
 	// Read the contents of the file from disk.
 	b, err := ioutil.ReadFile(localFile.Path())
