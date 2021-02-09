@@ -56,6 +56,14 @@ var (
 		Run:   wrap(renterallowancecmd),
 	}
 
+	renterBubbleCmd = &cobra.Command{
+		Use:   "bubble [directory]",
+		Short: "Call bubble on a directory.",
+		Long: `Call bubble on a directory to manually force an update of the directories metadata.
+To bubble the root directory pass in '.' as the directory.`,
+		Run: wrap(renterbubblecmd),
+	}
+
 	renterBackupCreateCmd = &cobra.Command{
 		Use:   "createbackup [name]",
 		Short: "Create a backup of the renter's siafiles",
@@ -1339,6 +1347,30 @@ how large the files are.`)
 	fmt.Println()
 
 	return req
+}
+
+// renterbubblecmd is the handler for the command `siac renter
+// bubble`.
+func renterbubblecmd(directory string) {
+	// Parse the siapath
+	var siaPath modules.SiaPath
+	if directory == "." {
+		directory = "root" // For UX
+		siaPath = modules.RootSiaPath()
+	} else {
+		err := siaPath.LoadString(directory)
+		if err != nil {
+			die("Unable to load siapath:", err)
+		}
+	}
+	fmt.Println("Calling bubble on:", directory)
+
+	// Bubble Directory
+	err := httpClient.RenterBubblePost(siaPath, true, renterBubbleAll)
+	if err != nil {
+		die("Unable to bubble", directory, ":", err)
+	}
+	fmt.Println("Bubble successful!")
 }
 
 // renterbackcreatecmd is the handler for the command `siac renter

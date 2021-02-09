@@ -1252,6 +1252,19 @@ type Renter interface {
 
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
+
+	// BubbleMetadata calculates the updated values of a directory's metadata and
+	// updates the siadir metadata on disk then calls callThreadedBubbleMetadata
+	// on the parent directory so that it is only blocking for the current
+	// directory
+	BubbleMetadata(siaPath SiaPath) error
+
+	// PrepareForBubble prepares a directory to call bubble on and returns
+	// a uniqueRefreshPaths including all the paths of the directories in the
+	// subtree that need to be updated. This includes updating the metadatas for
+	// all the files in the subtree and updating the LastHealthCheckTime for the
+	// supplied root directory.
+	PrepareForBubble(rootDir SiaPath, force bool) ([]SiaPath, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

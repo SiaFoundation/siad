@@ -33,22 +33,22 @@ func (r *Renter) newUniqueRefreshPaths() *uniqueRefreshPaths {
 }
 
 // callAdd adds a path to uniqueRefreshPaths.
-func (ufp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
+func (urp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
 
 	// Check if the path is in the parent directory map
-	if _, ok := ufp.parentDirs[path]; ok {
+	if _, ok := urp.parentDirs[path]; ok {
 		return nil
 	}
 
 	// Check if the path is in the child directory map
-	if _, ok := ufp.childDirs[path]; ok {
+	if _, ok := urp.childDirs[path]; ok {
 		return nil
 	}
 
 	// Add path to the childDir map
-	ufp.childDirs[path] = struct{}{}
+	urp.childDirs[path] = struct{}{}
 
 	// Check all path elements to make sure any parent directories are removed
 	// from the child directory map and added to the parent directory map
@@ -60,50 +60,63 @@ func (ufp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
 			return errors.AddContext(err, contextStr)
 		}
 		// Check if the parentDir is in the childDirs map
-		if _, ok := ufp.childDirs[parentDir]; ok {
+		if _, ok := urp.childDirs[parentDir]; ok {
 			// Remove from childDir map and add to parentDir map
-			delete(ufp.childDirs, parentDir)
-			ufp.parentDirs[parentDir] = struct{}{}
+			delete(urp.childDirs, parentDir)
 		}
+		// Make sure the parentDir is in the parentDirs map
+		urp.parentDirs[parentDir] = struct{}{}
 		// Set path equal to the parentDir
 		path = parentDir
 	}
 	return nil
 }
 
+// callChildDirs returns a slice of the child directories currently being
+// tracked.
+func (urp *uniqueRefreshPaths) callChildDirs() []modules.SiaPath {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	siaPaths := make([]modules.SiaPath, 0, len(urp.childDirs))
+	for sp := range urp.childDirs {
+		siaPaths = append(siaPaths, sp)
+	}
+	return siaPaths
+}
+
 // callNumChildDirs returns the number of child directories currently being
 // tracked.
-func (ufp *uniqueRefreshPaths) callNumChildDirs() int {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	return len(ufp.childDirs)
+func (urp *uniqueRefreshPaths) callNumChildDirs() int {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	return len(urp.childDirs)
 }
 
 // callNumParentDirs returns the number of parent directories currently being
 // tracked.
-func (ufp *uniqueRefreshPaths) callNumParentDirs() int {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	return len(ufp.parentDirs)
+func (urp *uniqueRefreshPaths) callNumParentDirs() int {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	return len(urp.parentDirs)
 }
 
 // callRefreshAll uses the uniqueRefreshPaths's Renter to call
 // callThreadedBubbleMetadata on all the directories in the childDir map
-func (ufp *uniqueRefreshPaths) callRefreshAll() {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	for sp := range ufp.childDirs {
-		go ufp.r.callThreadedBubbleMetadata(sp)
+func (urp *uniqueRefreshPaths) callRefreshAll() {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	for sp := range urp.childDirs {
+		go urp.r.callThreadedBubbleMetadata(sp)
 	}
 }
 
 // callRefreshAllBlocking uses the uniqueRefreshPaths's Renter to call
 // managedBubbleMetadata on all the directories in the childDir map
-func (ufp *uniqueRefreshPaths) callRefreshAllBlocking() (err error) {
-	ufp.mu.Lock()
-	defer ufp.mu.Unlock()
-	for sp := range ufp.childDirs {
-		err = errors.Compose(err, ufp.r.managedBubbleMetadata(sp))
+func (urp *uniqueRefreshPaths) callRefreshAllBlocking() (err error) {
+	urp.mu.Lock()
+	defer urp.mu.Unlock()
+	for sp := range urp.childDirs {
+		err = errors.Compose(err, urp.r.managedBubbleMetadata(sp))
 	}
 	return
 }

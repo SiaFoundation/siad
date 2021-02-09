@@ -770,3 +770,17 @@ func (c *Client) RenterWorkersGet() (wps modules.WorkerPoolStatus, err error) {
 	err = c.get("/renter/workers", &wps)
 	return
 }
+
+// RenterBubblePost uses the /renter/bubble endpoint to manually trigger an
+// update to the directories metadata.
+func (c *Client) RenterBubblePost(siaPath modules.SiaPath, force, recursive bool) (err error) {
+	rootsiapath := siaPath.IsRoot()
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("siapath", sp)
+	values.Set("force", strconv.FormatBool(force))
+	values.Set("recursive", strconv.FormatBool(recursive))
+	values.Set("rootsiapath", strconv.FormatBool(rootsiapath))
+	err = c.post("/renter/bubble", values.Encode(), nil)
+	return
+}
