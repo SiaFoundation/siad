@@ -14,7 +14,6 @@ func (w *worker) callStatus() modules.WorkerStatus {
 	downloadTerminated := downloadQueue.killed
 	downloadQueueSize := downloadQueue.jobs.Len()
 	downloadCoolDownTime := downloadQueue.cooldownUntil.Sub(time.Now())
-	downloadQueue.mu.Unlock()
 
 	var downloadCoolDownErr string
 	if downloadQueue.recentErr != nil {
