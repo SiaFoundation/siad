@@ -591,8 +591,7 @@ func checkProjectDownloadGouging(pt modules.RPCPriceTable, allowance modules.All
 	totalCost := costProject.Mul64(numProjects)
 	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined PDBR pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
-		return errors.New(errStr)
+		return fmt.Errorf("combined PDBR pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 	}
 
 	return nil
