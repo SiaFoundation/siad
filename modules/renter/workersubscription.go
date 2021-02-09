@@ -30,6 +30,8 @@ var (
 )
 
 type (
+	// subscriptionInfos contains all of the registry subscription related
+	// information of a worker.
 	subscriptionInfos struct {
 		// subscriptions is the map of subscriptions that the worker is supposed
 		// to subscribe to. The worker might not be subscribed to these values
@@ -39,22 +41,49 @@ type (
 		// currently has which it is not supposed to be subscribed to.
 		subscriptions map[modules.SubscriptionID]*subscription
 
+		// staticWakeChan is a channel to tell the subscription loop that more
+		// work is available.
 		staticWakeChan chan struct{}
 
 		// utility fields
 		mu sync.Mutex
 	}
 
+	// subscription is a struct that provides additional information around a
+	// subscribed to registry entry.
 	subscription struct {
 		staticRequest *modules.RPCRegistrySubscriptionRequest
 
-		active    bool
+		// subscribe indicates whether the subscription should be kept active.
+		// If it is 'true', the worker will try to resubscribe if the session is
+		// interrupted.
 		subscribe bool
 
+		// subscribed is closed as soon as the corresponding entry is subscribed
+		// to and indicates that the worker is actively listening for updates.
+		// It's also closed when a subscription is deleted from the map due to
+		// no longer being necessary.
 		subscribed chan struct{}
-		latestRV   *modules.SignedRegistryValue
+
+		// latestRV is kept up-to-date with the latest known value for a
+		// subscribed entry and should only be checked if 'subscribed' is
+		// closed. It may be 'nil' even though a subscription is active in case
+		// the host doesn't know the subscribed entry. If the host does know,
+		// the initial value should be set before closing 'subscribed'.
+		latestRV *modules.SignedRegistryValue
 	}
 )
+
+// active returns 'true' if the subscription is currently active. That means the
+// subscribed channel was closed after a successful subscription request.
+func (sub *subscription) active() bool {
+	select {
+	case <-sub.subscribed:
+		return true
+	default:
+	}
+	return false
+}
 
 // managedHandleNotification handles incoming notifications from the host. It
 // verifies notifications and updates the worker's internal state accordingly.
@@ -121,7 +150,7 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
-	if !exists || (!sub.subscribe && !sub.active) {
+	if !exists {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 	}
@@ -253,8 +282,12 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		// Clear the active subsriptions at the end of this method.
 		subInfo.mu.Lock()
 		for _, sub := range subInfo.subscriptions {
-			sub.subscribed = make(chan struct{})
-			sub.active = false
+			// Replace closed channels.
+			select {
+			case <-sub.subscribed:
+				sub.subscribed = make(chan struct{})
+			default:
+			}
 		}
 		subInfo.mu.Unlock()
 	}()
@@ -314,67 +347,59 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		var toSubscribe []modules.RPCRegistrySubscriptionRequest
 		var subChans []chan struct{}
 		for sid, sub := range subInfo.subscriptions {
-			if !sub.subscribe && !sub.active {
+			if !sub.subscribe && !sub.active() {
 				// Delete the subscription. We are neither supposed to subscribe
 				// to it nor are we subscribed to it.
 				delete(subInfo.subscriptions, sid)
-				// Also close the channel if necessary since there is a chance
-				// that this sub was never active before and therefore the
-				// channel could still be open.
-				select {
-				case <-sub.subscribed:
-				default:
-					close(sub.subscribed)
-				}
-			} else if sub.active && !sub.subscribe {
-				// Delete the subscription and remember to actually unsubscribe
-				// later.
+				// Close its channel.
+				close(sub.subscribed)
+			} else if sub.active() && !sub.subscribe {
+				// Unsubscribe from the entry.
 				toUnsubscribe = append(toUnsubscribe, *sub.staticRequest)
-				delete(subInfo.subscriptions, sid)
-			} else if !sub.active && sub.subscribe {
-				// Mark the subscription as active and remember to subscribe
-				// later. Also remember to close the channel once subscribed.
+			} else if !sub.active() && sub.subscribe {
+				// Subscribe and remember the channel to close it later.
 				toSubscribe = append(toSubscribe, *sub.staticRequest)
 				subChans = append(subChans, sub.subscribed)
-				sub.active = true
 			}
 		}
 		subInfo.mu.Unlock()
 
-		// Subscribe/Unsubscribe appropriately. We do so within an inline
-		// function to be able to close all channels we need to close.
-		err = func() error {
-			defer func() {
-				for _, c := range subChans {
-					close(c)
-				}
-			}()
-
-			// Unsubscribe from unnecessary subscriptions.
-			if len(toUnsubscribe) > 0 {
-				err = modules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
-				if err != nil {
-					return errors.AddContext(err, "failed to unsubscribe from registry values")
-				}
+		// Unsubscribe from unnecessary subscriptions.
+		if len(toUnsubscribe) > 0 {
+			err = modules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
+			if err != nil {
+				return errors.AddContext(err, "failed to unsubscribe from registry values")
 			}
-
-			// Subscribe to any missing values.
-			if len(toSubscribe) > 0 {
-				rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
-				if err != nil {
-					return errors.AddContext(err, "failed to subscribe to registry values")
+			// Reset the subscription's channel to signal that it's no longer
+			// active.
+			subInfo.mu.Lock()
+			for _, req := range toUnsubscribe {
+				sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
+				sub, exists := subInfo.subscriptions[sid]
+				if !exists {
+					build.Critical("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
 				}
-				// Update the subscriptions with the received values.
-				subInfo.mu.Lock()
-				for _, rv := range rvs {
-					subInfo.subscriptions[modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
-				}
-				subInfo.mu.Unlock()
+				sub.subscribed = make(chan struct{})
 			}
-			return nil
-		}()
-		if err != nil {
-			return err
+			subInfo.mu.Unlock()
+		}
+
+		// Subscribe to any missing values.
+		if len(toSubscribe) > 0 {
+			rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
+			if err != nil {
+				return errors.AddContext(err, "failed to subscribe to registry values")
+			}
+			// Update the subscriptions with the received values.
+			subInfo.mu.Lock()
+			for _, rv := range rvs {
+				subInfo.subscriptions[modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
+			}
+			// Close the channels to signal that the subscription is done.
+			for _, c := range subChans {
+				close(c)
+			}
+			subInfo.mu.Unlock()
 		}
 
 		// Wait until some time passed or until there is new work.

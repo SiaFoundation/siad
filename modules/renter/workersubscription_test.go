@@ -410,7 +410,7 @@ func TestSubscriptionLoop(t *testing.T) {
 		}
 		subInfo.mu.Lock()
 		// The subscription should be active.
-		if !sub.active {
+		if !sub.active() {
 			t.Fatal("subscription should be active")
 		}
 		// The latest value should be nil since it doesn't exist on the host.
@@ -451,7 +451,7 @@ func TestSubscriptionLoop(t *testing.T) {
 		defer subInfo.mu.Unlock()
 		nActive := 0
 		for _, sub := range subInfo.subscriptions {
-			if sub.active {
+			if sub.active() {
 				nActive++
 			}
 		}
@@ -478,7 +478,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	// Subscription info should be reset.
 	subInfo.mu.Lock()
 	for _, sub := range subInfo.subscriptions {
-		if sub.active {
+		if sub.active() {
 			t.Fatal("no subscription should be active")
 		}
 		select {
