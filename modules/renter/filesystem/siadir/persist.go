@@ -359,6 +359,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateRepairSize = metadata.AggregateRepairSize
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+	sd.metadata.AggregateStuckSize = metadata.AggregateStuckSize
 
 	sd.metadata.AggregateSkynetFiles = metadata.AggregateSkynetFiles
 	sd.metadata.AggregateSkynetSize = metadata.AggregateSkynetSize
@@ -375,6 +376,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.RepairSize = metadata.RepairSize
 	sd.metadata.Size = metadata.Size
 	sd.metadata.StuckHealth = metadata.StuckHealth
+	sd.metadata.StuckSize = metadata.StuckSize
 
 	sd.metadata.SkynetFiles = metadata.SkynetFiles
 	sd.metadata.SkynetSize = metadata.SkynetSize
