@@ -494,134 +494,240 @@ func TestSubscriptionLoop(t *testing.T) {
 // TestSubscriptionLoop is a unit test for managedSubscriptionLoop that is
 // focused on subscribing and unsubscribing. It verifies that subscribed values
 // are received correctly and that they also update the worker's cache.
-//func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
-//	if testing.Short() {
-//		t.SkipNow()
-//	}
-//	t.Parallel()
-//
-//	// Create a worker that's not running its worker loop.
-//	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	defer func() {
-//		// Ignore threadgroup stopped error since we are manually closing the
-//		// threadgroup of the worker.
-//		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
-//			t.Fatal(err)
-//		}
-//	}()
-//
-//	// Prepare a unique handler for the host to subscribe to.
-//	var subscriber types.Specifier
-//	fastrand.Read(subscriber[:])
-//	subscriberStr := hex.EncodeToString(subscriber[:])
-//
-//	// Register the handler. This can happen after beginning the subscription
-//	// since we are not expecting any notifications yet.
-//	err = wt.renter.staticMux.NewListener(subscriberStr, wt.managedHandleNotification)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Get a price table and refill the account manually.
-//	wt.staticUpdatePriceTable()
-//	wt.managedRefillAccount()
-//
-//	// Create 2 entries and set one of them on the host.
-//	rv1, spk1, sk1 := randomRegistryValue()
-//	rv2, spk2, sk2 := randomRegistryValue()
-//	err = wt.UpdateRegistry(context.Background(), spk1, rv1)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	// Prepare 2 updates for the same entries for later.
-//	rv1a := rv1.Sign(sk1)
-//	rv2a := rv1.Sign(sk2)
-//
-//	// The fresh price table should be valid for the subscription.
-//	wpt := wt.staticPriceTable()
-//	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
-//		t.Fatal("price table not valid for long enough")
-//	}
-//
-//	// Compute the expected deadline.
-//	deadline := time.Now().Add(modules.SubscriptionPeriod)
-//
-//	// Set the initial budget.
-//	expectedBudget := initialSubscriptionBudget
-//	initialBudget := expectedBudget
-//	budget := modules.NewBudget(initialBudget)
-//
-//	// Begin the subscription.
-//	stream, err := wt.managedBeginSubscription(initialBudget, wt.staticAccount.staticID, subscriber)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Set the bandwidth limiter on the stream.
-//	pt := &wpt.staticPriceTable
-//	limit := modules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
-//	err = stream.SetLimit(limit)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Run the subscription loop in a separate goroutine.
-//	var wg sync.WaitGroup
-//	wg.Add(1)
-//	go func() {
-//		defer wg.Done()
-//		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget)
-//		if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
-//			t.Error(err)
-//			return
-//		}
-//	}()
-//
-//	// Subscribe to both entries.
-//	rvs, err := wt.Subscribe(context.Background(), []modules.RPCRegistrySubscriptionRequest{
-//		{
-//			PubKey: spk1,
-//			Tweak:  rv1.Tweak,
-//		},
-//		{
-//			PubKey: spk2,
-//			Tweak:  rv2.Tweak,
-//		},
-//	}...)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Only 1 value should be returned since the host only knows about 1 entry yet.
-//
-//	// Make sure the budget is funded.
-//	err = build.Retry(10, time.Second, func() error {
-//		// Compute bandwidth cost before subscribing.
-//		downloadBeforeCost := pt.DownloadBandwidthCost.Mul64(downloadBefore)
-//		uploadBeforeCost := pt.UploadBandwidthCost.Mul64(uploadBefore)
-//		bandwidthBeforeCost := downloadBeforeCost.Add(uploadBeforeCost)
-//
-//		balanceBeforeFund := initialBudget.Sub(bandwidthBeforeCost)
-//		fundAmt := expectedBudget.Sub(balanceBeforeFund)
-//
-//		// Compute the total bandwidth cost.
-//		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
-//		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
-//		bandwidthCost := downloadCost.Add(uploadCost)
-//
-//		// The remaining budget should be the initial budget plus the amount of money
-//		// funded minus the total bandwidth cost.
-//		remainingBudget := initialBudget.Add(fundAmt).Sub(bandwidthCost)
-//		if !remainingBudget.Equals(budget.Remaining()) {
-//			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
-//		}
-//		return nil
-//	})
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//}
-//
+func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker that's not running its worker loop.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// Ignore threadgroup stopped error since we are manually closing the
+		// threadgroup of the worker.
+		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Fatal(err)
+		}
+	}()
+
+	// Prepare a unique handler for the host to subscribe to.
+	var subscriber types.Specifier
+	fastrand.Read(subscriber[:])
+	subscriberStr := hex.EncodeToString(subscriber[:])
+
+	// Get a price table and refill the account manually.
+	wt.staticUpdatePriceTable()
+	wt.managedRefillAccount()
+
+	// Prepare a helper to update an entry on a deactivated worker without
+	// affecting the cache.
+	update := func(spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
+		c := make(chan *jobUpdateRegistryResponse, 1)
+		j := wt.newJobUpdateRegistry(context.Background(), c, spk, rv)
+		_, err = j.managedUpdateRegistry()
+		return err
+	}
+
+	// Create 2 entries and set one of them on the host.
+	rv1, spk1, sk1 := randomRegistryValue()
+	rv2, spk2, sk2 := randomRegistryValue()
+	err = update(spk1, rv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Prepare 2 updates for the same entries for later.
+	rv1a := rv1
+	rv2a := rv2
+	rv1a.Revision++
+	rv2a.Revision++
+	rv1a = rv1a.Sign(sk1)
+	rv2a = rv2a.Sign(sk2)
+
+	// The fresh price table should be valid for the subscription.
+	wpt := wt.staticPriceTable()
+	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
+		t.Fatal("price table not valid for long enough")
+	}
+
+	// Compute the expected deadline.
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
+
+	// Set the initial budget.
+	expectedBudget := initialSubscriptionBudget
+	initialBudget := expectedBudget
+	budget := modules.NewBudget(initialBudget)
+	pt := &wpt.staticPriceTable
+
+	// Begin the subscription.
+	stream, err := wt.managedBeginSubscription(initialBudget, wt.staticAccount.staticID, subscriber)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the subscription loop in a separate goroutine.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget, subscriberStr)
+		if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Error(err)
+			return
+		}
+	}()
+
+	// Subscribe to both entries.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	rvs, err := wt.Subscribe(ctx, []modules.RPCRegistrySubscriptionRequest{
+		{
+			PubKey: spk1,
+			Tweak:  rv1.Tweak,
+		},
+		{
+			PubKey: spk2,
+			Tweak:  rv2.Tweak,
+		},
+	}...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only 1 value should be returned since the host only knows about 1 entry yet.
+	if len(rvs) != 1 {
+		t.Fatalf("expected len to be 1 but was %v", len(rvs))
+	}
+	if !reflect.DeepEqual(rvs[0].Entry, rv1) {
+		t.Fatal("wrong entry was returned")
+	}
+	if !rvs[0].PubKey.Equals(spk1) {
+		t.Fatal("wrong pubkey was returned")
+	}
+
+	// The worker should have updated the cache.
+	cache := wt.staticRegistryCache
+	cachedRev, exists := cache.Get(spk1, rv1.Tweak)
+	if !exists || cachedRev != rv1.Revision {
+		t.Fatal("cache wasn't updated correctyl")
+	}
+	_, exists = cache.Get(spk2, rv2.Tweak)
+	if exists {
+		t.Fatal("cache shouldn't be updated for rv2")
+	}
+
+	// The workers internal state should reflect the subscription.
+	subInfo := wt.staticSubscriptionInfo
+	subInfo.mu.Lock()
+	if len(subInfo.subscriptions) != 2 {
+		t.Fatal("should have 2 subscriptions")
+	}
+	subInfo.mu.Unlock()
+
+	// Unsubscribe from rv1.
+	wt.Unsubscribe([]modules.RPCRegistrySubscriptionRequest{
+		{
+			PubKey: spk1,
+			Tweak:  rv1.Tweak,
+		},
+	}...)
+
+	// The worker should eventually only have 1 subscription.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		subInfo.mu.Lock()
+		defer subInfo.mu.Unlock()
+		if len(subInfo.subscriptions) != 1 {
+			return errors.New("should have 1 subscriptions")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update h
+	err = update(spk1, rv1a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = update(spk2, rv2a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The worker should receive the notification for the subscribed entry and
+	// update the cache.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// rv1 should still be the same
+		cachedRev, exists := cache.Get(spk1, rv1.Tweak)
+		if !exists {
+			return errors.New("cached entry doesn't exist")
+		}
+		if cachedRev != rv1.Revision {
+			return fmt.Errorf("rv1: wrong cached value %v != %v", cachedRev, rv1.Revision)
+		}
+		// rv2 should be updated to rv2a
+		cachedRev, exists = cache.Get(spk2, rv2.Tweak)
+		if !exists {
+			return errors.New("cached entry doesn't exist")
+		}
+		if cachedRev != rv2a.Revision {
+			return fmt.Errorf("rv2: wrong cached value %v != %v", cachedRev, rv2a.Revision)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The worker should also have updated the subscription.
+	subInfo.mu.Lock()
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, rv2a.Tweak)]
+	if !exists {
+		t.Fatal("rv2's subscription doesn't exist")
+	}
+	if !reflect.DeepEqual(*sub.latestRV, rv2a) {
+		t.Log(sub.latestRV)
+		t.Log(rv2a)
+		t.Fatal("latestRV wasn't updated")
+	}
+	subInfo.mu.Unlock()
+
+	// Stop the loop by shutting down the worker.
+	err = wt.tg.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	// Check that the budget was withdrawn from correctly.
+	err = build.Retry(10, time.Second, func() error {
+		limit := stream.Limit()
+
+		// Compute bandwidth cost.
+		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
+		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
+		bandwidthCost := downloadCost.Add(uploadCost)
+
+		// TODO: Compute subscription cost.
+
+		// TODO: Compute notification cost.
+
+		// TODO: Compute extension cost.
+
+		// Compute the total cost.
+		totalCost := bandwidthCost
+
+		// Compute the remaining budget
+		remainingBudget := initialBudget.Sub(totalCost)
+		if !remainingBudget.Equals(budget.Remaining()) {
+			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

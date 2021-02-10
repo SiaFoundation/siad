@@ -97,9 +97,20 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	}()
 	subInfo := w.staticSubscriptionInfo
 
+	// TODO: add the stream to the budget.
+
+	// TODO: withdraw notification cost.
+
+	// The stream should have a sane deadline.
+	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to set deadlien on stream: ", err)
+		return
+	}
+
 	// Read the notification type.
 	var snt modules.RPCRegistrySubscriptionNotificationType
-	err := modules.RPCRead(stream, &snt)
+	err = modules.RPCRead(stream, &snt)
 	if err != nil {
 		w.renter.log.Print("managedHandleNotification: failed to read notification type: ", err)
 		return
@@ -133,6 +144,8 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	if exists && sneu.Entry.Revision < latestRev {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
+		w.renter.log.Printf("managedHandleNotification: %v < %v", sneu.Entry.Revision, latestRev)
+		return
 	}
 
 	// Verify the signature.
@@ -140,6 +153,8 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	if err != nil {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
+		w.renter.log.Printf("managedHandleNotification: failed to verify signature: %v", err)
+		return
 	}
 
 	// The entry is valid. Update the cache.
@@ -151,15 +166,21 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
-	if !exists || sub.latestRV.Revision >= sneu.Entry.Revision {
+	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
+		w.renter.log.Printf("managedHandleNotification: %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
+		return
 	}
 
 	// Update the subscription.
 	sub.latestRV = &sneu.Entry
 }
 
+// threadedSubscriptionLoop is the main subscription loop. It opens a
+// subscription with the host and then calls managedSubscriptionLoop to keep the
+// subscription alive. If the subscription dies, threadedSubscriptionLoop will
+// start it again.
 func (w *worker) threadedSubscriptionLoop() {
 	if err := w.tg.Add(); err != nil {
 		return
@@ -336,12 +357,23 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 			// Try extending the subscription.
 			// TODO: (req) there is a race here with incoming notifications.
-			// Need some special locking.
+			// Need some special handling.
 			err = modules.RPCExtendSubscription(stream, pt)
 			if err != nil {
 				return errors.AddContext(err, "failed to extend subscription")
 			}
 
+			// Count the number of active subscriptions.
+			var nSubs uint64
+			for _, sub := range subInfo.subscriptions {
+				if sub.active() {
+					nSubs++
+				}
+			}
+			// TODO: Withdraw from budget.
+			//	if !budget.Withdraw(modules.MDMSubscriptionMemoryCost(pt, nSubs)) {
+			//		return errors.New("failed to withdraw subscription extension cost from budget")
+			//	}
 			// Set the stream deadline to the new subscription deadline.
 			err = stream.SetDeadline(deadline)
 			if err != nil {
@@ -407,6 +439,10 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 				}
 				w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
 			}
+			// TODO: Withdraw from budget.
+			//	if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
+			//		return errors.New("failed to withdraw subscription payment from budget")
+			//	}
 			// Update the subscriptions with the received values.
 			subInfo.mu.Lock()
 			for _, rv := range rvs {
