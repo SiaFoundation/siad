@@ -97,7 +97,7 @@ var (
 	// where we don't count all of the memory usage accurately.
 	repairMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
-		Standard: uint64(1 << 34), // 16.0 GiB
+		Standard: uint64(1 << 31), // 2.0 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
@@ -115,7 +115,7 @@ var (
 
 	// repairMemoryPriorityDefault is the amount of memory that is held in
 	// reserve explicitly for priority actions.
-	repairMemoryPriorityDefault = repairMemoryDefault / 2
+	repairMemoryPriorityDefault = repairMemoryDefault / 4
 
 	// gcMemoryThreshold is the amount of memory after which a memory manager
 	// triggers a garbage collection.
