@@ -88,7 +88,7 @@ func (sub *subscription) active() bool {
 
 // managedHandleNotification handles incoming notifications from the host. It
 // verifies notifications and updates the worker's internal state accordingly.
-func (w *worker) managedHandleNotification(stream siamux.Stream) {
+func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *modules.RPCPriceTable, budget *modules.RPCBudget) {
 	// Close the stream when done.
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -97,9 +97,19 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	}()
 	subInfo := w.staticSubscriptionInfo
 
+	// Since the price table is updated by the subscription loop, we need a lock
+	// to access the value.
+	subInfo.mu.Lock()
+	pt := *priceTable
+	subInfo.mu.Unlock()
+
 	// TODO: add the stream to the budget.
 
-	// TODO: withdraw notification cost.
+	// Withdraw notification cost.
+	if !budget.Withdraw(pt.SubscriptionNotificationCost) {
+		w.renter.log.Print("managedHandleNotification: failed to withdraw notification cost")
+		return
+	}
 
 	// The stream should have a sane deadline.
 	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
@@ -313,7 +323,9 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 	// Register the handler. This can happen after beginning the subscription
 	// since we are not expecting any notifications yet.
-	err = w.renter.staticMux.NewListener(subscriber, w.managedHandleNotification)
+	err = w.renter.staticMux.NewListener(subscriber, func(stream siamux.Stream) {
+		w.managedHandleNotification(stream, pt, budget)
+	})
 	if err != nil {
 		return errors.AddContext(err, "failed to register listener")
 	}
@@ -353,7 +365,13 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
 			// Get a pricetable that is valid until the new deadline.
 			deadline = deadline.Add(modules.SubscriptionPeriod)
-			pt = w.managedPriceTableForSubscription(time.Until(deadline))
+			newPT := w.managedPriceTableForSubscription(time.Until(deadline))
+
+			// Update the value of the price table pointer. The same value is
+			// used by the notification handler.
+			subInfo.mu.Lock()
+			*pt = *newPT
+			subInfo.mu.Unlock()
 
 			// Try extending the subscription.
 			// TODO: (req) there is a race here with incoming notifications.
@@ -439,10 +457,10 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 				}
 				w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
 			}
-			// TODO: Withdraw from budget.
-			//	if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
-			//		return errors.New("failed to withdraw subscription payment from budget")
-			//	}
+			// Withdraw from budget.
+			if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
+				return errors.New("failed to withdraw subscription payment from budget")
+			}
 			// Update the subscriptions with the received values.
 			subInfo.mu.Lock()
 			for _, rv := range rvs {

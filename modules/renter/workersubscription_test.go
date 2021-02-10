@@ -702,6 +702,15 @@ func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
 	}
 	wg.Wait()
 
+	// Check that the subscriptions are cleared.
+	subInfo.mu.Lock()
+	for _, sub := range subInfo.subscriptions {
+		if sub.active() {
+			t.Fatal("no subscription should be active")
+		}
+	}
+	subInfo.mu.Unlock()
+
 	// Check that the budget was withdrawn from correctly.
 	err = build.Retry(10, time.Second, func() error {
 		limit := stream.Limit()
@@ -711,14 +720,17 @@ func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
 		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
 		bandwidthCost := downloadCost.Add(uploadCost)
 
-		// TODO: Compute subscription cost.
+		// Compute subscription cost. Subscribed to 2 entries of which 1
+		// existed.
+		subscriptionCost := modules.MDMSubscribeCost(pt, 1, 2)
 
-		// TODO: Compute notification cost.
+		// Compute notification cost.
+		notificationCost := pt.SubscriptionNotificationCost
 
 		// TODO: Compute extension cost.
 
 		// Compute the total cost.
-		totalCost := bandwidthCost
+		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost)
 
 		// Compute the remaining budget
 		remainingBudget := initialBudget.Sub(totalCost)
