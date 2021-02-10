@@ -170,7 +170,7 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 
 	// verify the pdc currently has no good overdrive worker yet, as there are
 	// no available pieces and thus no available workers
-	worker, _, _, _, _ := pdc.findBestOverdriveWorker()
+	worker, _, _, _ := pdc.findBestOverdriveWorker()
 	if worker != nil {
 		t.Fatal("unexpected", worker)
 	}
@@ -184,7 +184,7 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 
 	// expect the worker to still be nil, because we have an unresolved worker
 	// that has a better estimate
-	worker, _, _, _, _ = pdc.findBestOverdriveWorker()
+	worker, _, _, _ = pdc.findBestOverdriveWorker()
 	if worker != nil {
 		t.Fatal("unexpected", worker)
 	}
@@ -192,7 +192,7 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	// tweak it so the unresolved becomes slower than the first worker, for
 	// which we have an available piece
 	pdc.workerState.unresolvedWorkers["w2"].staticExpectedResolvedTime = now.Add(200 * time.Millisecond)
-	worker, pieceIndex, _, _, _ := pdc.findBestOverdriveWorker()
+	worker, pieceIndex, _, _ := pdc.findBestOverdriveWorker()
 	if worker != w1 {
 		t.Fatal("unexpected", worker)
 	}
@@ -206,7 +206,7 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	pdc.availablePieces[1] = append(pdc.availablePieces[1], &pieceDownload{
 		worker: w2,
 	})
-	worker, pieceIndex, _, _, _ = pdc.findBestOverdriveWorker()
+	worker, pieceIndex, _, _ = pdc.findBestOverdriveWorker()
 	if worker != w2 {
 		t.Fatal("unexpected", worker.staticHostPubKeyStr)
 	}
