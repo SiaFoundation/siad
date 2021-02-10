@@ -16,6 +16,7 @@ func TestLoadWAL(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Load legacy wal.
 	wal, err := ioutil.ReadFile("../../../persist/testdata/154hostwal.wal")
