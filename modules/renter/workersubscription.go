@@ -88,7 +88,7 @@ func (sub *subscription) active() bool {
 
 // managedHandleNotification handles incoming notifications from the host. It
 // verifies notifications and updates the worker's internal state accordingly.
-func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *modules.RPCPriceTable, budget *modules.RPCBudget) {
+func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *modules.RPCPriceTable, budget *modules.RPCBudget, limit *modules.BudgetLimit) {
 	// Close the stream when done.
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -103,7 +103,12 @@ func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *mod
 	pt := *priceTable
 	subInfo.mu.Unlock()
 
-	// TODO: add the stream to the budget.
+	// Add a limit to the stream.
+	err := stream.SetLimit(limit)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to set limit on notification stream: ", err)
+		return
+	}
 
 	// Withdraw notification cost.
 	if !budget.Withdraw(pt.SubscriptionNotificationCost) {
@@ -112,7 +117,7 @@ func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *mod
 	}
 
 	// The stream should have a sane deadline.
-	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
+	err = stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
 	if err != nil {
 		w.renter.log.Print("managedHandleNotification: failed to set deadlien on stream: ", err)
 		return
@@ -324,7 +329,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	// Register the handler. This can happen after beginning the subscription
 	// since we are not expecting any notifications yet.
 	err = w.renter.staticMux.NewListener(subscriber, func(stream siamux.Stream) {
-		w.managedHandleNotification(stream, pt, budget)
+		w.managedHandleNotification(stream, pt, budget, limit)
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to register listener")
