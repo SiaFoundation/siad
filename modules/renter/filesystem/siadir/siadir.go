@@ -72,6 +72,7 @@ type (
 		AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 		AggregateSize                uint64    `json:"aggregatesize"`
 		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+		AggregateStuckSize           uint64    `json:"aggregatestucksize"`
 
 		// Aggregate Skynet Specific Stats
 		AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
@@ -91,6 +92,7 @@ type (
 		RepairSize          uint64      `json:"repairsize"`
 		Size                uint64      `json:"size"`
 		StuckHealth         float64     `json:"stuckhealth"`
+		StuckSize           uint64      `json:"stucksize"`
 
 		// Skynet Specific Stats
 		SkynetFiles uint64 `json:"skynetfiles"`

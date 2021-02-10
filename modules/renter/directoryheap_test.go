@@ -63,8 +63,8 @@ func addDirectoriesToHeap(r *Renter, numDirs int, explored, remote bool) {
 		// higher than the non aggregate values. Using half the RepairThreshold
 		// so that non remote directories are still considered non remote.
 		if explored {
-			aggregateHealth = health + RepairThreshold/2
-			aggregateRemoteHealth = remoteHealth + RepairThreshold/2
+			aggregateHealth = health + modules.RepairThreshold/2
+			aggregateRemoteHealth = remoteHealth + modules.RepairThreshold/2
 		}
 
 		// Create the directory and push it on to the heap

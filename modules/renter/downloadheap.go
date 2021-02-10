@@ -131,7 +131,7 @@ func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownload
 	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
 	for _, worker := range r.staticWorkerPool.workers {
-		worker.callQueueDownloadChunk(udc)
+		go worker.threadedPerformDownloadChunkJob(udc)
 	}
 	r.staticWorkerPool.mu.RUnlock()
 

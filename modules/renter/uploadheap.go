@@ -710,7 +710,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// it is likely that we can not read the file in which case it can not
 		// be used for repair.
 		repairable := chunk.health <= 1 || chunk.onDisk
-		needsRepair := chunk.health >= RepairThreshold
+		needsRepair := modules.NeedsRepair(chunk.health)
 
 		if r.deps.Disrupt("AddUnrepairableChunks") && needsRepair {
 			incompleteChunks = append(incompleteChunks, chunk)
@@ -802,9 +802,10 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 			return siaPaths, nil
 		}
 
-		// If the directory that was just popped is healthy then return
+		// If the directory that was just popped does not need to be repaired then
+		// return
 		heapHealth, _ := dir.managedHeapHealth()
-		if heapHealth < RepairThreshold {
+		if !modules.NeedsRepair(heapHealth) {
 			r.repairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return siaPaths, nil
 		}
@@ -1065,9 +1066,10 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	if target == targetBackupChunks {
 		return
 	}
-	// If the worst ignored health is below the repair threshold, there is no
-	// need to re-add the directory to the directory heap.
-	if wh.health < RepairThreshold {
+	// If the worst ignored health is below the repair threshold, ie does not need
+	// to be repaired, there is no need to re-add the directory to the directory
+	// heap.
+	if !modules.NeedsRepair(wh.health) {
 		return
 	}
 
@@ -1164,14 +1166,14 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 			continue
 		}
 		// For normal repairs, ignore files that don't have any unstuck chunks
-		// or are healthy.
+		// or are healthy and not in need of repair.
 		//
 		// We can used the cached value of health because it is updated during
 		// bubble. Since the repair loop operates off of the metadata
 		// information updated by bubble this cached health is accurate enough
 		// to use in order to determine if a file has any chunks that need
 		// repair
-		ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
+		ignore := file.NumChunks() == file.NumStuckChunks() || !modules.NeedsRepair(file.Metadata().CachedHealth)
 		if target == targetUnstuckChunks && ignore {
 			err = file.Close()
 			if err != nil {
@@ -1344,10 +1346,10 @@ func (r *Renter) managedRepairLoop() error {
 	// smallRepair indicates whether or not the repair loop should process all
 	// of the chunks in the heap instead of just processing down to the minimum
 	// heap size. We want to process all of the chunks if the rest of the
-	// directory heap is in good health and there are no more chunks that could
-	// be added to the heap.
+	// directory heap is in good health, ie does not need to be repaired, and
+	// there are no more chunks that could be added to the heap.
 	dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
-	smallRepair := dirHeapHealth < RepairThreshold
+	smallRepair := !modules.NeedsRepair(dirHeapHealth)
 
 	// Limit the amount of time spent in each iteration of the repair loop so
 	// that changes to the directory heap take effect sooner rather than later.
@@ -1552,7 +1554,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
 		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
-		if r.uploadHeap.managedLen() == 0 && dirHeapHealth < RepairThreshold {
+		if r.uploadHeap.managedLen() == 0 && !modules.NeedsRepair(dirHeapHealth) {
 			// TODO: This has a tiny window where it might be dumping out chunks
 			// that need health, if the upload call is appending to the
 			// directory heap because there is a new upload.

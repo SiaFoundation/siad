@@ -59,7 +59,7 @@ func (d *directory) managedHeapHealth() (float64, bool) {
 	}
 
 	// Use the remoteHealth if it is at or worse than the RepairThreshold
-	if remoteHealth >= RepairThreshold {
+	if modules.NeedsRepair(remoteHealth) {
 		return remoteHealth, true
 	}
 	return health, false

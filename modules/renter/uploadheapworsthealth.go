@@ -1,5 +1,7 @@
 package renter
 
+import "gitlab.com/NebulousLabs/Sia/modules"
+
 type (
 	// worstIgnoredHealth is a helper struct for the callBuildAndPushChunks
 	// function. The struct and methods on the data are split out to improve
@@ -18,8 +20,8 @@ type (
 // updateWorstIgnoredHealth takes the health of a chunk that is being skipped
 // and updates the worst known health to account for this chunk.
 func (wh *worstIgnoredHealth) updateWorstIgnoredHealth(newHealth float64, newHealthRemote bool) {
-	// The new health is not worse if it is below the repair threshold.
-	if newHealth < RepairThreshold {
+	// The new health is not worse if it does not need to be repaired.
+	if !modules.NeedsRepair(newHealth) {
 		return
 	}
 	// The new health is not worse if it is not remote, but the worst health is
@@ -51,8 +53,8 @@ func (wh *worstIgnoredHealth) updateWorstIgnoredHealth(newHealth float64, newHea
 // better health than any chunk which is being ignored because its in another
 // directory.
 func (wh *worstIgnoredHealth) canSkip(chunkHealth float64, chunkRemote bool) bool {
-	// Can skip any chunk that is below the repair threshold.
-	if chunkHealth < RepairThreshold {
+	// Can skip any chunk that does not need to be repaired.
+	if !modules.NeedsRepair(chunkHealth) {
 		return true
 	}
 	// Cannot skip any chunks if we are not targeting unstuck chunks. Assuming
