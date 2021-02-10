@@ -32,7 +32,6 @@ func TestLoadWAL(t *testing.T) {
 
 	// Store wal in persist dir.
 	dstPath := filepath.Join(testdir, walFile)
-	println("dst", dstPath)
 	err = ioutil.WriteFile(dstPath, wal, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
