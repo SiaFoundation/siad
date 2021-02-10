@@ -444,11 +444,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan, err := pdc.tryOverdrive()
-		if err != nil {
-			pdc.fail(err)
-			return
-		}
+		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
 
 		// Determine when the next overdrive check needs to run.
 		select {
