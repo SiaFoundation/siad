@@ -214,7 +214,7 @@ func (w *worker) initJobHasSectorQueue() {
 // getting at the expected bandwidth without having to instantiate a job.
 func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
 	// closestMultipleOf is a small helper function that essentially rounds up
-	// x to the closest multiple y.
+	// 'num' to the closest multiple of 'multipleOf'.
 	closestMultipleOf := func(num, multipleOf int) int {
 		mod := num % multipleOf
 		if mod != 0 {
