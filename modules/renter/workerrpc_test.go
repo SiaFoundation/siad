@@ -2,13 +2,10 @@ package renter
 
 import (
 	"testing"
-	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -32,17 +29,6 @@ func TestExecuteProgramUsedBandwidth(t *testing.T) {
 		}
 	}()
 
-	// wait until we have a valid pricetable
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !wt.worker.staticPriceTable().staticValid() {
-			return errors.New("price table not updated yet")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("HasSector", func(t *testing.T) {
 		testExecuteProgramUsedBandwidthHasSector(t, wt)
 	})
@@ -63,7 +49,11 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobHasSector).callExpectedBandwidth()
+
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
+
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
