@@ -76,19 +76,11 @@ type (
 		staticHostPubKey    types.SiaPublicKey
 		staticHostPubKeyStr string
 
-		// Download variables related to queuing work. They have a separate
-		// mutex to minimize lock contention.
-		downloadChunks              *downloadChunks // Yet unprocessed work items.
-		downloadMu                  sync.Mutex
-		downloadTerminated          bool      // Has downloading been terminated for this worker?
-		downloadConsecutiveFailures int       // How many failures in a row?
-		downloadRecentFailure       time.Time // How recent was the last failure?
-		downloadRecentFailureErr    error     // What was the reason for the last failure?
-
 		// Job queues for the worker.
 		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
+		staticJobLowPrioReadQueue      *jobReadQueue
 		staticJobReadRegistryQueue     *jobReadRegistryQueue
 		staticJobRenewQueue            *jobRenewQueue
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
@@ -123,6 +115,11 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
+
+		// staticSetInitialEstimates is an object that ensures the initial queue
+		// estimates of the HS and RJ queues are only set once.
+		staticSetInitialEstimates sync.Once
+
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
 		renter   *Renter
@@ -254,7 +251,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		downloadChunks:    newDownloadChunks(),
 		unprocessedChunks: newUploadChunks(),
 		killChan:          make(chan struct{}),
 		wakeChan:          make(chan struct{}, 1),
@@ -264,6 +260,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobLowPrioReadQueue()
 	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()
