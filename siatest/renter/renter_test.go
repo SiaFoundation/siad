@@ -5094,16 +5094,15 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 
 	// Create a new renter (to ensure we're not serving from cache)
 	renterParams := node.Renter(filepath.Join(testDir, "renter2"))
-	_, err = tg.AddNodes(renterParams)
+	added, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
 	}
-	renter = tg.Renters()[1]
+	renter = added[0]
 
 	// Download again
 	_, _, err = renter.SkynetSkylinkGet(skylink)
-	if err == nil || !(strings.Contains(err.Error(), "all workers failed") ||
-		strings.Contains(err.Error(), "no workers available")) {
+	if err == nil || !strings.Contains(err.Error(), "all workers failed") {
 		t.Fatal(err)
 	}
 
@@ -5113,7 +5112,7 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 
 	// Download one more time. It should work again. Do it in a loop since the
 	// workers might be on a cooldown.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		_, _, err = renter.SkynetSkylinkGet(skylink)
 		return err
 	})

@@ -1732,7 +1732,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Verify fanout information
-	if piecesPerChunk != uint64(layout.FanoutDataPieces+layout.FanoutParityPieces) {
+	if piecesPerChunk != 1 {
 		t.Fatal("piecesPerChunk incorrect", piecesPerChunk)
 	}
 	if chunkRootsSize != crypto.HashSize*piecesPerChunk {
