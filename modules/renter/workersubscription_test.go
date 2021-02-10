@@ -235,7 +235,10 @@ func TestPriceTableForSubscription(t *testing.T) {
 	}
 }
 
-// TestSubscriptionLoop is a unit test for managedSubscriptionLoop.
+// TestSubscriptionLoop is a unit test for managedSubscriptionLoop. This
+// includes making sure that the loop will extend the subscription if necessary
+// and fund the budget if it runs low. It also tests that a subscription which
+// is added to the subscription map will be subscribed to or unsubscribed from.
 func TestSubscriptionLoop(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -255,18 +258,6 @@ func TestSubscriptionLoop(t *testing.T) {
 		}
 	}()
 
-	// Prepare a unique handler for the host to subscribe to.
-	var subscriber types.Specifier
-	fastrand.Read(subscriber[:])
-	subscriberStr := hex.EncodeToString(subscriber[:])
-
-	// Register the handler. This can happen after beginning the subscription
-	// since we are not expecting any notifications yet.
-	err = wt.renter.staticMux.NewListener(subscriberStr, wt.managedHandleNotification)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Get a price table and refill the account manually.
 	wt.staticUpdatePriceTable()
 	wt.managedRefillAccount()
@@ -276,6 +267,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
 		t.Fatal("price table not valid for long enough")
 	}
+	pt := &wpt.staticPriceTable
 
 	// Compute the expected deadline.
 	deadline := time.Now().Add(modules.SubscriptionPeriod)
@@ -285,19 +277,19 @@ func TestSubscriptionLoop(t *testing.T) {
 	initialBudget := expectedBudget.Div64(2)
 	budget := modules.NewBudget(initialBudget)
 
+	// Prepare a unique handler for the host to subscribe to.
+	var subscriber types.Specifier
+	fastrand.Read(subscriber[:])
+	subscriberStr := hex.EncodeToString(subscriber[:])
+
 	// Begin the subscription.
 	stream, err := wt.managedBeginSubscription(initialBudget, wt.staticAccount.staticID, subscriber)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Set the bandwidth limiter on the stream.
-	pt := &wpt.staticPriceTable
-	limit := modules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
-	err = stream.SetLimit(limit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Get the stream's bandwidth limit.
+	limit := stream.Limit()
 
 	// Remember bandwidth before subscription.
 	downloadBefore := limit.Downloaded()
@@ -308,7 +300,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget)
+		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget, subscriberStr)
 		if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 			t.Error(err)
 			return
@@ -317,6 +309,9 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// Make sure the budget is funded.
 	err = build.Retry(10, time.Second, func() error {
+		// Fetch latest limit. managedSubscriptionLoop changes it.
+		limit := stream.Limit()
+
 		// Compute bandwidth cost before subscribing.
 		downloadBeforeCost := pt.DownloadBandwidthCost.Mul64(downloadBefore)
 		uploadBeforeCost := pt.UploadBandwidthCost.Mul64(uploadBefore)
@@ -495,3 +490,138 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 	subInfo.mu.Unlock()
 }
+
+// TestSubscriptionLoop is a unit test for managedSubscriptionLoop that is
+// focused on subscribing and unsubscribing. It verifies that subscribed values
+// are received correctly and that they also update the worker's cache.
+//func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
+//	if testing.Short() {
+//		t.SkipNow()
+//	}
+//	t.Parallel()
+//
+//	// Create a worker that's not running its worker loop.
+//	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	defer func() {
+//		// Ignore threadgroup stopped error since we are manually closing the
+//		// threadgroup of the worker.
+//		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+//			t.Fatal(err)
+//		}
+//	}()
+//
+//	// Prepare a unique handler for the host to subscribe to.
+//	var subscriber types.Specifier
+//	fastrand.Read(subscriber[:])
+//	subscriberStr := hex.EncodeToString(subscriber[:])
+//
+//	// Register the handler. This can happen after beginning the subscription
+//	// since we are not expecting any notifications yet.
+//	err = wt.renter.staticMux.NewListener(subscriberStr, wt.managedHandleNotification)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	// Get a price table and refill the account manually.
+//	wt.staticUpdatePriceTable()
+//	wt.managedRefillAccount()
+//
+//	// Create 2 entries and set one of them on the host.
+//	rv1, spk1, sk1 := randomRegistryValue()
+//	rv2, spk2, sk2 := randomRegistryValue()
+//	err = wt.UpdateRegistry(context.Background(), spk1, rv1)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	// Prepare 2 updates for the same entries for later.
+//	rv1a := rv1.Sign(sk1)
+//	rv2a := rv1.Sign(sk2)
+//
+//	// The fresh price table should be valid for the subscription.
+//	wpt := wt.staticPriceTable()
+//	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
+//		t.Fatal("price table not valid for long enough")
+//	}
+//
+//	// Compute the expected deadline.
+//	deadline := time.Now().Add(modules.SubscriptionPeriod)
+//
+//	// Set the initial budget.
+//	expectedBudget := initialSubscriptionBudget
+//	initialBudget := expectedBudget
+//	budget := modules.NewBudget(initialBudget)
+//
+//	// Begin the subscription.
+//	stream, err := wt.managedBeginSubscription(initialBudget, wt.staticAccount.staticID, subscriber)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	// Set the bandwidth limiter on the stream.
+//	pt := &wpt.staticPriceTable
+//	limit := modules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+//	err = stream.SetLimit(limit)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	// Run the subscription loop in a separate goroutine.
+//	var wg sync.WaitGroup
+//	wg.Add(1)
+//	go func() {
+//		defer wg.Done()
+//		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget)
+//		if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+//			t.Error(err)
+//			return
+//		}
+//	}()
+//
+//	// Subscribe to both entries.
+//	rvs, err := wt.Subscribe(context.Background(), []modules.RPCRegistrySubscriptionRequest{
+//		{
+//			PubKey: spk1,
+//			Tweak:  rv1.Tweak,
+//		},
+//		{
+//			PubKey: spk2,
+//			Tweak:  rv2.Tweak,
+//		},
+//	}...)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	// Only 1 value should be returned since the host only knows about 1 entry yet.
+//
+//	// Make sure the budget is funded.
+//	err = build.Retry(10, time.Second, func() error {
+//		// Compute bandwidth cost before subscribing.
+//		downloadBeforeCost := pt.DownloadBandwidthCost.Mul64(downloadBefore)
+//		uploadBeforeCost := pt.UploadBandwidthCost.Mul64(uploadBefore)
+//		bandwidthBeforeCost := downloadBeforeCost.Add(uploadBeforeCost)
+//
+//		balanceBeforeFund := initialBudget.Sub(bandwidthBeforeCost)
+//		fundAmt := expectedBudget.Sub(balanceBeforeFund)
+//
+//		// Compute the total bandwidth cost.
+//		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
+//		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
+//		bandwidthCost := downloadCost.Add(uploadCost)
+//
+//		// The remaining budget should be the initial budget plus the amount of money
+//		// funded minus the total bandwidth cost.
+//		remainingBudget := initialBudget.Add(fundAmt).Sub(bandwidthCost)
+//		if !remainingBudget.Equals(budget.Remaining()) {
+//			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
+//		}
+//		return nil
+//	})
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//}
+//

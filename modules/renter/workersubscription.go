@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,7 +130,7 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 
 	// Check if the host was trying to cheat us with an outdated entry.
 	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
-	if exists && sneu.Entry.Revision <= latestRev {
+	if exists && sneu.Entry.Revision < latestRev {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 	}
@@ -150,7 +151,7 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
-	if !exists {
+	if !exists || sub.latestRV.Revision >= sneu.Entry.Revision {
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 	}
@@ -160,13 +161,18 @@ func (w *worker) managedHandleNotification(stream siamux.Stream) {
 }
 
 func (w *worker) threadedSubscriptionLoop() {
-	if err := w.renter.tg.Add(); err != nil {
+	if err := w.tg.Add(); err != nil {
 		return
 	}
-	defer w.renter.tg.Done()
+	defer w.tg.Done()
 
 	// No need to run loop if the host doesn't support it.
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
+		return
+	}
+
+	// Disable loop if necessary.
+	if w.renter.deps.Disrupt("DisableSubscriptionLoop") {
 		return
 	}
 
@@ -194,11 +200,6 @@ func (w *worker) threadedSubscriptionLoop() {
 			}
 		}
 
-		// Prepare a unique handler for the host to subscribe to.
-		var subscriber types.Specifier
-		fastrand.Read(subscriber[:])
-		subscriberStr := hex.EncodeToString(subscriber[:])
-
 		// If the worker is on a cooldown, block until it is over.
 		if w.managedOnMaintenanceCooldown() {
 			cooldownTime := w.callStatus().MaintenanceCoolDownTime
@@ -219,6 +220,11 @@ func (w *worker) threadedSubscriptionLoop() {
 		// Track the withdrawal.
 		w.staticAccount.managedTrackWithdrawal(initialBudget)
 
+		// Prepare a unique handler for the host to subscribe to.
+		var subscriber types.Specifier
+		fastrand.Read(subscriber[:])
+		subscriberStr := hex.EncodeToString(subscriber[:])
+
 		// Begin the subscription session.
 		stream, err := w.managedBeginSubscription(initialBudget, w.staticAccount.staticID, subscriber)
 		if err != nil {
@@ -234,24 +240,9 @@ func (w *worker) threadedSubscriptionLoop() {
 		// Commit the withdrawal.
 		w.staticAccount.managedCommitWithdrawal(initialBudget, true)
 
-		// Register the handler. This can happen after beginning the subscription
-		// since we are not expecting any notifications yet.
-		err = w.renter.staticMux.NewListener(subscriberStr, w.managedHandleNotification)
-		if err != nil {
-			w.renter.log.Printf("Worker %v: failed to register host listener: %v", w.staticHostPubKeyStr, err)
-			w.tg.Sleep(time.Second * 10)
-			continue
-		}
-
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
-		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget)
-
-		// Close the handler.
-		err = w.renter.staticMux.CloseListener(subscriberStr)
-		if err != nil {
-			w.renter.log.Printf("Worker %v: failed to close host listener: %v", w.staticHostPubKeyStr, err)
-		}
+		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
 		// Deposit refund. This happens in any case.
 		refund := budget.Remaining()
@@ -272,7 +263,7 @@ func (w *worker) threadedSubscriptionLoop() {
 // managedSubscriptionLoop handles an existing subscription session. It will add
 // subscriptions, remove subscriptions, fund the subscription and extend it
 // indefinitely.
-func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget, expectedBudget types.Currency) (err error) {
+func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget, expectedBudget types.Currency, subscriber string) (err error) {
 	// Register some cleanup.
 	subInfo := w.staticSubscriptionInfo
 	defer func() {
@@ -290,6 +281,24 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			}
 		}
 		subInfo.mu.Unlock()
+	}()
+
+	// Set the bandwidth limiter on the stream.
+	limit := modules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+	err = stream.SetLimit(limit)
+	if err != nil {
+		return errors.AddContext(err, "failed to set bandwidth limiter on the stream")
+	}
+
+	// Register the handler. This can happen after beginning the subscription
+	// since we are not expecting any notifications yet.
+	err = w.renter.staticMux.NewListener(subscriber, w.managedHandleNotification)
+	if err != nil {
+		return errors.AddContext(err, "failed to register listener")
+	}
+	// Close the handler at the end.
+	defer func() {
+		err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
 	}()
 
 	// Set the stream deadline to the subscription deadline.
@@ -389,6 +398,14 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
 			if err != nil {
 				return errors.AddContext(err, "failed to subscribe to registry values")
+			}
+			// Check that the initial values are not outdated and update the cache.
+			for _, rv := range rvs {
+				cachedRevision, exists := w.staticRegistryCache.Get(rv.PubKey, rv.Entry.Tweak)
+				if exists && rv.Entry.Revision < cachedRevision {
+					return fmt.Errorf("host returned an entry with revision %v which is smaller than cached revision %v for the same entry", rv.Entry.Revision, cachedRevision)
+				}
+				w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
 			}
 			// Update the subscriptions with the received values.
 			subInfo.mu.Lock()
