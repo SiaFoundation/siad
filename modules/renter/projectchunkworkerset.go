@@ -64,10 +64,12 @@ type pcwsUnresolvedWorker struct {
 
 // pcwsWorkerResponse contains a worker's response to a HasSector query. There
 // is a list of piece indices where the worker responded that they had the piece
-// at that index.
+// at that index. There is also an error field that will be set in the event an
+// error occurred while performing the HasSector query.
 type pcwsWorkerResponse struct {
 	worker       *worker
 	pieceIndices []uint64
+	err          error
 }
 
 // pcwsWorkerState contains the worker state for a single thread that is
@@ -274,6 +276,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	if resp.staticErr != nil {
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 			worker: w,
+			err:    resp.staticErr,
 		})
 		return
 	}
