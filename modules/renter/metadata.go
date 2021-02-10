@@ -67,8 +67,9 @@ func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) 
 	if err != nil {
 		return errors.AddContext(err, "unable to prepare subtree for bubble")
 	}
-	// TODO: can we not block and then have an errChan or something?
-	return urp.callRefreshAllBlocking()
+	// Call bubble in a non blocking manner
+	urp.callRefreshAll()
+	return nil
 }
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
