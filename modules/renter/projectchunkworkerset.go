@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -584,6 +585,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerSet:            pcws,
 		workerState:          ws,
 	}
+
+	// Set debug variables on the pdc
+	fastrand.Read(pdc.uid[:])
+	pdc.launchTime = time.Now()
 
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()

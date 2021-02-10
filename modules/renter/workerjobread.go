@@ -25,16 +25,8 @@ const (
 type (
 	// jobRead contains information about a Read query.
 	jobRead struct {
-		staticLength uint64
-
+		staticLength       uint64
 		staticResponseChan chan *jobReadResponse
-
-		// job metadata
-		//
-		// staticSector can be set by the caller. This field is set in the job
-		// response so that upon getting the response the caller knows which job
-		// was completed.
-		staticSector crypto.Hash
 
 		*jobGeneric
 	}
@@ -59,22 +51,39 @@ type (
 		staticData []byte
 		staticErr  error
 
-		// Metadata related to the job query.
-		staticSectorRoot crypto.Hash
-		staticWorker     *worker
+		// Metadata related to the job.
+		staticMetadata jobReadMetadata
+
+		// The time it took for this job to complete.
+		staticJobTime time.Duration
+	}
+
+	// jobReadMetadata contains meta information about a read job.
+	jobReadMetadata struct {
+		staticSectorRoot          crypto.Hash
+		staticPieceRootIndex      uint64
+		staticLaunchedWorkerIndex uint64
+		staticWorker              *worker
 	}
 )
+
+// staticJobReadMetadata returns the read job's metadata.
+func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
+	var metadata jobReadMetadata
+	md, ok := j.staticGetMetadata().(jobReadMetadata)
+	if ok {
+		metadata = md
+	}
+	return metadata
+}
 
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
-
-			staticSectorRoot: j.staticSector,
-
-			staticWorker: w,
+			staticErr:      errors.Extend(err, ErrJobDiscarded),
+			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -91,8 +100,6 @@ func (j *jobRead) callDiscard(err error) {
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
-	w := j.staticQueue.staticWorker()
-
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
@@ -100,10 +107,10 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticData: readData,
 		staticErr:  readErr,
 
-		staticSectorRoot: j.staticSector,
-
-		staticWorker: w,
+		staticMetadata: j.staticJobReadMetadata(),
+		staticJobTime:  readJobTime,
 	}
+	w := j.staticQueue.staticWorker()
 	err := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:

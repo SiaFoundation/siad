@@ -17,11 +17,6 @@ type (
 		staticOffset uint64
 		staticSector crypto.Hash
 	}
-
-	// jobReadSectorMetadata contains meta information about a readSector job.
-	jobReadSectorMetadata struct {
-		staticSector crypto.Hash
-	}
 )
 
 // callExecute executes the jobReadSector.
@@ -73,7 +68,10 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 			staticResponseChan: respChan,
 			staticLength:       length,
 
-			jobGeneric: newJobGeneric(ctx, queue, &jobReadSectorMetadata{staticSector: root}),
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadMetadata{
+				staticSectorRoot: root,
+				staticWorker:     w,
+			}),
 		},
 		staticOffset: offset,
 		staticSector: root,

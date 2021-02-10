@@ -89,33 +89,45 @@ func TestJobReadMetadata(t *testing.T) {
 	ctx := context.Background()
 	responseChan := make(chan *jobReadResponse)
 
-	jhs := &jobReadSector{
+	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: responseChan,
 			staticLength:       modules.SectorSize,
 
-			// set metadata, set it to something different than the sector root
-			// to ensure the response contains the sector given in the metadata
-			staticSector: crypto.Hash{1, 2, 3},
-
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
+				staticMetadata: jobReadMetadata{
+					// set metadata, set it to something different than the
+					// sector root to ensure the response contains the sector
+					// given in the metadata
+					staticSectorRoot: crypto.Hash{1, 2, 3},
+					staticWorker:     w,
+				},
 			},
 		},
 		staticSector: sectorRoot,
 		staticOffset: 0,
 	}
-	if !w.staticJobReadQueue.callAdd(jhs) {
+	if !w.staticJobReadQueue.callAdd(jrs) {
 		t.Fatal("Could not add job to queue")
+	}
+
+	// verify the job properly returns the metadata
+	metadata := jrs.staticJobReadMetadata()
+	if metadata == (jobReadMetadata{}) {
+		t.Fatal("unexpected")
+	}
+	if metadata.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
+		t.Fatal("unexpected")
 	}
 
 	// receive response and verify if metadata is set
 	jrr := <-responseChan
-	if jrr.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
-		t.Fatal("unexpected", jrr.staticSectorRoot, sectorRoot)
+	if jrr.staticMetadata.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
+		t.Fatal("unexpected", jrr.staticMetadata.staticSectorRoot, sectorRoot)
 	}
-	if jrr.staticWorker == nil || jrr.staticWorker.staticHostPubKeyStr != wt.host.PublicKey().String() {
+	if jrr.staticMetadata.staticWorker == nil || jrr.staticMetadata.staticWorker.staticHostPubKeyStr != wt.host.PublicKey().String() {
 		t.Fatal("unexpected")
 	}
 }

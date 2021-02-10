@@ -3,6 +3,8 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -13,96 +15,146 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// errNotEnoughPieces is returned when there are not enough pieces found to
-// successfully complete the download
-var errNotEnoughPieces = errors.New("not enough pieces to complete download")
+var (
+	// errNotEnoughPieces is returned when there are not enough pieces found to
+	// successfully complete the download
+	errNotEnoughPieces = errors.New("not enough pieces to complete download")
+)
 
-// pieceDownload tracks a worker downloading a piece, whether that piece has
-// returned, and what time the piece is/was expected to return.
-//
-// NOTE: The actual piece data is stored in the projectDownloadChunk after the
-// download completes.
-type pieceDownload struct {
-	// 'completed', 'launched', and 'downloadErr' are status variables for the
-	// piece. If 'launched' is false, it means the piece download has not
-	// started yet, 'completed' will also be false.
+type (
+	// pieceDownload tracks a worker downloading a piece, whether that piece has
+	// returned, and what time the piece is/was expected to return.
 	//
-	// If 'launched' is true and 'completed' is false, it means the download is
-	// in progress and the result is not known.
+	// NOTE: The actual piece data is stored in the projectDownloadChunk after
+	// the download completes.
+	pieceDownload struct {
+		// 'completed', 'launched', and 'downloadErr' are status variables for
+		// the piece. If 'launched' is false, it means the piece download has
+		// not started yet, 'completed' will also be false.
+		//
+		// If 'launched' is true and 'completed' is false, it means the download
+		// is in progress and the result is not known.
+		//
+		// If 'completed' is true, the download has been attempted, if it was
+		// unsuccessful 'downloadErr' will contain the error with which it
+		// failed. If 'downloadErr' is nil however, it means the piece was
+		// successfully downloaded.
+		completed   bool
+		launched    bool
+		downloadErr error
+
+		// expectedCompleteTime indicates the time when the download is expected
+		// to complete. This is used to determine whether or not a download is late.
+		expectedCompleteTime time.Time
+
+		worker *worker
+	}
+
+	// projectDownloadChunk is a bunch of state that helps to orchestrate a
+	// download from a projectChunkWorkerSet.
 	//
-	// If 'completed' is true, the download has been attempted, if it was
-	// unsuccessful 'downloadErr' will contain the error with which it failed.
-	// If 'downloadErr' is nil however, it means the piece was successfully
-	// downloaded.
-	completed   bool
-	launched    bool
-	downloadErr error
+	// The projectDownloadChunk is only ever accessed by a single thread which
+	// orchestrates the download, which means that it does not need to be thread
+	// safe.
+	projectDownloadChunk struct {
+		// Parameters for downloading a subset of the data within the chunk.
+		lengthInChunk uint64
+		offsetInChunk uint64
 
-	// expectedCompleteTime indicates the time when the download is expected
-	// to complete. This is used to determine whether or not a download is late.
-	expectedCompleteTime time.Time
+		// Values derived from the chunk download parameters. The offset and
+		// length specify the offset and length that will be sent to the host,
+		// which must be segment aligned.
+		pieceLength uint64
+		pieceOffset uint64
 
-	worker *worker
-}
+		// pricePerMS is the amount of money we are willing to spend on faster
+		// workers. If a certain set of workers is 100ms faster, but that
+		// exceeds the pricePerMS we are willing to pay for it, we won't use
+		// that faster worker set. If it is within the budget however, we will
+		// favor the faster and more expensive worker set.
+		pricePerMS types.Currency
 
-// projectDownloadChunk is a bunch of state that helps to orchestrate a download
-// from a projectChunkWorkerSet.
-//
-// The projectDownloadChunk is only ever accessed by a single thread which
-// orchestrates the download, which means that it does not need to be thread
-// safe.
-type projectDownloadChunk struct {
-	// Parameters for downloading a subset of the data within the chunk.
-	lengthInChunk uint64
-	offsetInChunk uint64
+		// availablePieces are pieces that resolved workers think they can
+		// fetch.
+		//
+		// workersConsideredIndex keeps track of what workers were already
+		// considered after looking at the 'resolvedWorkers' array defined on
+		// the pcws. This enables the worker selection code to realize which
+		// pieces in the worker set have been resolved since the last check.
+		//
+		// unresolvedWorkersRemaining is the number of unresolved workers at the
+		// time the available pieces were last updated. This enables counting
+		// the hopeful pieces without introducing a race condition in the
+		// finished check.
+		availablePieces            [][]*pieceDownload
+		workersConsideredIndex     int
+		unresolvedWorkersRemaining int
 
-	// Values derived from the chunk download parameters. The offset and length
-	// specify the offset and length that will be sent to the host, which must
-	// be segment aligned.
-	pieceLength uint64
-	pieceOffset uint64
+		// dataPieces is the buffer that is used to place data as it comes back.
+		// There is one piece per chunk, and pieces can be nil. To know if the
+		// download is complete, the number of non-nil pieces will be counted.
+		dataPieces [][]byte
 
-	// pricePerMS is the amount of money we are willing to spend on faster
-	// workers. If a certain set of workers is 100ms faster, but that exceeds
-	// the pricePerMS we are willing to pay for it, we won't use that faster
-	// worker set. If it is within the budget however, we will favor the faster
-	// and more expensive worker set.
-	pricePerMS types.Currency
+		// The completed data gets sent down the response chan once the full
+		// download is done.
+		ctx                  context.Context
+		downloadResponseChan chan *downloadResponse
+		workerResponseChan   chan *jobReadResponse
+		workerSet            *projectChunkWorkerSet
+		workerState          *pcwsWorkerState
 
-	// availablePieces are pieces that resolved workers think they can fetch.
-	//
-	// workersConsideredIndex keeps track of what workers were already
-	// considered after looking at the 'resolvedWorkers' array defined on the
-	// pcws. This enables the worker selection code to realize which pieces in
-	// the worker set have been resolved since the last check.
-	//
-	// unresolvedWorkersRemaining is the number of unresolved workers at the
-	// time the available pieces were last updated. This enables counting the
-	// hopeful pieces without introducing a race condition in the finished
-	// check.
-	availablePieces            [][]*pieceDownload
-	workersConsideredIndex     int
-	unresolvedWorkersRemaining int
+		// Debug helpers
+		uid             [8]byte
+		launchTime      time.Time
+		launchedWorkers []*launchedWorkerInfo
+	}
 
-	// dataPieces is the buffer that is used to place data as it comes back.
-	// There is one piece per chunk, and pieces can be nil. To know if the
-	// download is complete, the number of non-nil pieces will be counted.
-	dataPieces [][]byte
+	// launchedWorkerInfo tracks information about the worker that has been
+	// launched. It is used solely for debugging purposes to enable tracking the
+	// chain of events that occurred when a download has timed out or failed.
+	launchedWorkerInfo struct {
+		launchTime           time.Time
+		completeTime         time.Time
+		expectedCompleteTime time.Time
 
-	// The completed data gets sent down the response chan once the full
-	// download is done.
-	ctx                  context.Context
-	downloadResponseChan chan *downloadResponse
-	workerResponseChan   chan *jobReadResponse
-	workerSet            *projectChunkWorkerSet
-	workerState          *pcwsWorkerState
-}
+		// 'jobDuration' is the total amount of time it took to complete the job
+		jobDuration time.Duration
 
-// downloadResponse is sent via a channel to the caller of
-// 'projectChunkWorkerSet.managedDownload'.
-type downloadResponse struct {
-	data []byte
-	err  error
+		// 'totalDuration' is the total amount of time it took for the worker to
+		// complete the download since it was launched, or the time it took to
+		// fail.
+		totalDuration time.Duration
+
+		// 'expectedDuration' is the estimated amount of time for this worker to
+		// complete the download.
+		expectedDuration time.Duration
+
+		pdc    *projectDownloadChunk
+		worker *worker
+	}
+
+	// downloadResponse is sent via a channel to the caller of
+	// 'projectChunkWorkerSet.managedDownload'.
+	downloadResponse struct {
+		data []byte
+		err  error
+
+		// launchedWorkers contains a list of worker information for the workers
+		// that were launched to try and complete this download. This field can
+		// be used for debugging purposes should the download time out or error
+		// out.
+		launchedWorkers []*launchedWorkerInfo
+	}
+)
+
+// String implements the String interface.
+func (lwi *launchedWorkerInfo) String() string {
+	downloadComplete := !lwi.completeTime.IsZero()
+	if downloadComplete {
+		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds())
+	}
+
+	return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms but has not yet responded after %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), time.Since(lwi.launchTime).Milliseconds())
 }
 
 // successful is a small helper method that returns whether the piece was
@@ -155,14 +207,17 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		return
 	}
 
-	// Figure out which index this read corresponds to.
-	pieceIndex := 0
-	for i, root := range pdc.workerSet.staticPieceRoots {
-		if jrr.staticSectorRoot == root {
-			pieceIndex = i
-			break
-		}
-	}
+	// Grab the metadata from the response
+	metadata := jrr.staticMetadata
+	worker := metadata.staticWorker
+	pieceIndex := metadata.staticPieceRootIndex
+	launchedWorker := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
+
+	// Update the launched worker information, we keep track of these metrics
+	// debugging purposes.
+	launchedWorker.completeTime = time.Now()
+	launchedWorker.jobDuration = jrr.staticJobTime
+	launchedWorker.totalDuration = time.Since(launchedWorker.launchTime)
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
@@ -170,7 +225,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		// failure.
 		pieceFound := false
 		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
+			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
 				if pieceFound {
 					build.Critical("The list of available pieces contains duplicates.") // sanity check
 				}
@@ -200,7 +255,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	pieceFound := false
 	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
+		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
 			if pieceFound {
 				build.Critical("The list of available pieces contains duplicates.") // sanity check
 			}
@@ -215,6 +270,8 @@ func (pdc *projectDownloadChunk) fail(err error) {
 	dr := &downloadResponse{
 		data: nil,
 		err:  err,
+
+		launchedWorkers: pdc.launchedWorkers,
 	}
 	pdc.downloadResponseChan <- dr
 }
@@ -246,6 +303,8 @@ func (pdc *projectDownloadChunk) finalize() {
 	dr := &downloadResponse{
 		data: data,
 		err:  nil,
+
+		launchedWorkers: pdc.launchedWorkers,
 	}
 	pdc.downloadResponseChan <- dr
 }
@@ -315,18 +374,36 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	//
 	// TODO: Ideally we pass the context here so the job is cancellable
 	// in-flight.
+	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
+	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
 	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: pdc.workerResponseChan,
 			staticLength:       pdc.pieceLength,
 
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadSectorMetadata{staticSector: pdc.workerSet.staticPieceRoots[pieceIndex]}),
+			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadMetadata{
+				staticWorker:              w,
+				staticSectorRoot:          sectorRoot,
+				staticPieceRootIndex:      pieceIndex,
+				staticLaunchedWorkerIndex: launchedWorkerIndex,
+			}),
 		},
 		staticOffset: pdc.pieceOffset,
 		staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 	}
+
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
+
+	// Track the launched worker
+	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
+		launchTime:           time.Now(),
+		expectedCompleteTime: expectedCompleteTime,
+		expectedDuration:     time.Until(expectedCompleteTime),
+
+		pdc:    pdc,
+		worker: w,
+	})
 
 	// Update the status of the piece that was launched. 'launched' should be
 	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
