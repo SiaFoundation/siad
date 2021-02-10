@@ -226,7 +226,7 @@ func (w *worker) initJobHasSectorQueue() {
 // getting at the expected bandwidth without having to instantiate a job.
 func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
 	// closestMultipleOf is a small helper function that essentially rounds up
-	// x to the closest multiple y.
+	// 'num' to the closest multiple of 'multipleOf'.
 	closestMultipleOf := func(num, multipleOf int) int {
 		mod := num % multipleOf
 		if mod != 0 {
@@ -241,8 +241,11 @@ func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
 	downloadMultiplier := closestMultipleOf(numRoots, 10) / 10
 	uploadMultiplier := closestMultipleOf(numRoots, 15) / 15
 
+<<<<<<< HEAD
 	fmt.Println(downloadMultiplier)
 	fmt.Println(uploadMultiplier)
+=======
+>>>>>>> has-sector-bw-estimates
 	// A base of 1500 is used for the packet size. On ipv4, it is technically
 	// smaller, but siamux is general and the packet size is the Ethernet MTU
 	// (1500 bytes) minus any protocol overheads. It's possible if the renter is

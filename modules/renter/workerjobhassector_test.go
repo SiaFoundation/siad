@@ -99,8 +99,4 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 	if dl != 2 || ul != 2 {
 		t.Fatal("unexpected")
 	}
-	t.Log("iere")
-	dl, ul = numPacketsRequiredForSectors(74)
-	t.Log(dl * 1460)
-	t.Log(ul * 1460)
 }
