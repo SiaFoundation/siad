@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
@@ -564,8 +563,8 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 		if err != nil {
 			return ErrFileNotTracked
 		}
-		if file.MaxHealth >= renter.RepairThreshold {
-			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", renter.RepairThreshold, file.MaxHealth)
+		if modules.NeedsRepair(file.MaxHealth) {
+			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", modules.RepairThreshold, file.MaxHealth)
 		}
 		return nil
 	})

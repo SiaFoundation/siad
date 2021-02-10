@@ -131,3 +131,14 @@ type DependencySkipPrepareNextChunk struct {
 func (d *DependencySkipPrepareNextChunk) Disrupt(s string) bool {
 	return s == "skipPrepareNextChunk"
 }
+
+// DependencyIgnoreFailedRepairs ignores failed repairs and does not make the
+// file as stuck.
+type DependencyIgnoreFailedRepairs struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will ignore a failed repair.
+func (d *DependencyIgnoreFailedRepairs) Disrupt(s string) bool {
+	return s == "IgnoreFailedRepairs"
+}

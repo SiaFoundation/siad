@@ -3,6 +3,7 @@ package siafile
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -317,7 +318,7 @@ func TestFileHealth(t *testing.T) {
 	goodForRenewMap := make(map[string]bool)
 
 	// Confirm the health is correct
-	health, stuckHealth, userHealth, userStuckHealth, numStuckChunks, repairBytes := zeroFile.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, userHealth, userStuckHealth, numStuckChunks, repairBytes, stuckBytes := zeroFile.Health(offlineMap, goodForRenewMap)
 	if health != 0 {
 		t.Error("Expected health to be 0 but was", health)
 	}
@@ -336,6 +337,9 @@ func TestFileHealth(t *testing.T) {
 	if repairBytes != 0 {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, 0)
 	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
+	}
 
 	// Create File with 1 chunk
 	siaFilePath, _, source, _, sk, _, _, fileMode = newTestFileParams(1, true)
@@ -347,7 +351,7 @@ func TestFileHealth(t *testing.T) {
 	// file should be 0
 	//
 	// 1 - ((0 - 10) / 20)
-	health, stuckHealth, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Errorf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -357,6 +361,9 @@ func TestFileHealth(t *testing.T) {
 	expected := uint64(rsc.NumPieces()) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
 	// Add good pieces to first Piece Set
@@ -382,13 +389,16 @@ func TestFileHealth(t *testing.T) {
 	// since the two good pieces were added to the same pieceSet
 	//
 	// 1 - ((1 - 10) / 20)
-	health, _, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.45 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.45", health)
 	}
 	expected = uint64(rsc.NumPieces()-1) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
 	// Add one good pieces to second piece set, confirm health is now 1.40.
@@ -398,13 +408,16 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
 	expected = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
 	// Add another good pieces to second piece set, confirm health is still 1.40.
@@ -414,7 +427,7 @@ func TestFileHealth(t *testing.T) {
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
 		t.Fatal(err)
 	}
-	health, _, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -422,13 +435,16 @@ func TestFileHealth(t *testing.T) {
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
 	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
+	}
 
 	// Mark chunk as stuck
 	err := f.SetStuck(0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, _, _, numStuckChunks, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	// Health should now be 0 since there are no unstuck chunks
 	if health != 0 {
 		t.Fatalf("Health of file not as expected, got %v expected 0", health)
@@ -442,8 +458,73 @@ func TestFileHealth(t *testing.T) {
 		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
 	}
 	expected = uint64(rsc.NumPieces()-2) * modules.SectorSize
-	if repairBytes != expected {
-		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	if repairBytes != 0 {
+		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, 0)
+	}
+	if stuckBytes != expected {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, expected)
+	}
+
+	// Add good pieces until the file health is below the RepairThreshold
+	thresholdPieces := rsc.NumPieces() - 1
+	for i := 0; i < thresholdPieces; i++ {
+		spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{byte(i)}}
+		offlineMap[spk.String()] = false
+		goodForRenewMap[spk.String()] = true
+		if err := f.AddPiece(spk, 0, uint64(i), crypto.Hash{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Health should still be 0 since there are no unstuck chunks
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
+	if health != 0 {
+		t.Fatalf("Health of file not as expected, got %v expected 0", health)
+	}
+	// Stuck Health should now be 0.05
+	if stuckHealth != 0.05 {
+		t.Fatalf("Stuck Health of file not as expected, got %v expected 0.05", stuckHealth)
+	}
+	// There should be 1 stuck chunk
+	if numStuckChunks != 1 {
+		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
+	}
+	// There should be no repair bytes
+	if repairBytes != 0 {
+		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, 0)
+	}
+	// There should be stuck bytes
+	expected = uint64(rsc.NumPieces()-thresholdPieces) * modules.SectorSize
+	if stuckBytes != expected {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, expected)
+	}
+
+	// Mark as not stuck
+	err = f.SetStuck(0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Health should still be 0.05 now
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
+	if health != 0.05 {
+		t.Fatalf("Health of file not as expected, got %v expected 0.05", health)
+	}
+	// Stuck Health should now be 0
+	if stuckHealth != 0 {
+		t.Fatalf("Stuck Health of file not as expected, got %v expected 0", stuckHealth)
+	}
+	// There should be 0 stuck chunks
+	if numStuckChunks != 0 {
+		t.Fatalf("Expected 0 stuck chunks but found %v", numStuckChunks)
+	}
+	// There should be no repair bytes
+	if repairBytes != 0 {
+		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, 0)
+	}
+	// There should be no stuck bytes
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
 	// Create File with 2 chunks
@@ -459,7 +540,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check file health, since there are no pieces in the chunk yet no good
 	// pieces will be found resulting in a health of 1.5
-	health, _, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -468,6 +549,9 @@ func TestFileHealth(t *testing.T) {
 	expected = firstRepair + secondRepair
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
 	// Add good pieces to the first chunk
@@ -482,7 +566,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Check health, should still be 1.5 because other chunk doesn't have any
 	// good pieces
-	health, stuckHealth, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.5 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.5", health)
 	}
@@ -491,6 +575,9 @@ func TestFileHealth(t *testing.T) {
 	expected = firstRepair + secondRepair
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
 	// Add good pieces to second chunk, confirm health is 1.40 since both chunks
@@ -506,7 +593,7 @@ func TestFileHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	health, _, _, _, _, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, _, _, _, _, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
 	}
@@ -516,13 +603,16 @@ func TestFileHealth(t *testing.T) {
 	if repairBytes != expected {
 		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
 	}
+	if stuckBytes != 0 {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
+	}
 
 	// Mark second chunk as stuck
 	err = f.SetStuck(1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	health, stuckHealth, _, _, numStuckChunks, repairBytes = f.Health(offlineMap, goodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes = f.Health(offlineMap, goodForRenewMap)
 	// Since both chunks have the same health, the file health and the file stuck health should be the same
 	if health != 1.40 {
 		t.Fatalf("Health of file not as expected, got %v expected 1.40", health)
@@ -539,9 +629,11 @@ func TestFileHealth(t *testing.T) {
 	}
 	firstRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
 	secondRepair = uint64(rsc.NumPieces()-2) * modules.SectorSize
-	expected = firstRepair + secondRepair
-	if repairBytes != expected {
-		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, expected)
+	if repairBytes != firstRepair {
+		t.Errorf("Repair Bytes of file not as expected, got %v expected %v", repairBytes, firstRepair)
+	}
+	if stuckBytes != secondRepair {
+		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, secondRepair)
 	}
 }
 
@@ -871,7 +963,7 @@ func TestChunkHealth(t *testing.T) {
 	goodForRenewMap := make(map[string]bool)
 
 	// Check and Record file health of initialized file
-	fileHealth, _, _, _, _, repairBytes := sf.Health(offlineMap, goodForRenewMap)
+	fileHealth, _, _, _, _, repairBytes, stuckBytes := sf.Health(offlineMap, goodForRenewMap)
 	initHealth := float64(1) - (float64(0-rc.MinPieces()) / float64(rc.NumPieces()-rc.MinPieces()))
 	if fileHealth != initHealth {
 		t.Fatalf("Expected file to be %v, got %v", initHealth, fileHealth)
@@ -880,6 +972,9 @@ func TestChunkHealth(t *testing.T) {
 	expectedFileRepairBytes := sf.NumChunks() * expectedChunkRepairBytes
 	if repairBytes != expectedFileRepairBytes {
 		t.Errorf("Expected repairBytes to be %v, got %v", expectedFileRepairBytes, repairBytes)
+	}
+	if stuckBytes != 0 {
+		t.Errorf("Expected stuckBytes to be %v, got %v", 0, stuckBytes)
 	}
 
 	// Since we are using a pre set offlineMap, all the chunks should have the
@@ -1364,4 +1459,53 @@ func ensureMetadataValid(md Metadata) (err error) {
 	}()
 	md.backup()
 	return nil
+}
+
+// TestCalculateHealth probes the CalculateHealth functions
+func TestCalculateHealth(t *testing.T) {
+	t.Parallel()
+
+	// Define health check function
+	checkHealth := func(gp, mp, np int, h float64) {
+		health := CalculateHealth(gp, mp, np)
+		if health != h {
+			t.Logf("gp %v mp %v np %v", gp, mp, np)
+			t.Errorf("expected health of %v, got %v", h, health)
+		}
+	}
+
+	// Prepare rounding helper.
+	round := func(h float64) float64 {
+		return math.Round(h*10e3) / 10e3
+	}
+
+	// 0 good pieces
+	mp := fastrand.Intn(10) + 1 // +1 avoid 0 minpieces
+	// +1 and +mp to avoid 0 paritypieces and numPieces == minPieces
+	np := mp + fastrand.Intn(10) + 1
+	h := round(1 - float64(0-mp)/float64(np-mp))
+	checkHealth(0, mp, np, h)
+
+	// Full health
+	mp = fastrand.Intn(10) + 1 // +1 avoid 0 minpieces
+	// +1 and +mp to avoid 0 paritypieces and numPieces == minPieces
+	np = mp + fastrand.Intn(10) + 1
+	checkHealth(np, mp, np, 0)
+
+	// In the middle
+	mp = fastrand.Intn(10) + 1 // +1 avoid 0 minpieces
+	// +1 and +mp to avoid 0 paritypieces and numPieces == minPieces
+	np = mp + fastrand.Intn(10) + 1
+	gp := fastrand.Intn(np)
+	h = round(1 - float64(gp-mp)/float64(np-mp))
+	checkHealth(gp, mp, np, h)
+
+	// Recover check
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected critical")
+		}
+	}()
+	checkHealth(0, 0, 0, 0)
 }

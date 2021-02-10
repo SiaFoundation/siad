@@ -82,6 +82,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateRepairSize:          uint64(0),
 		AggregateSize:                uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
+		AggregateStuckSize:           uint64(0),
 
 		AggregateSkynetFiles: uint64(0),
 		AggregateSkynetSize:  uint64(0),
@@ -97,6 +98,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		RepairSize:          uint64(0),
 		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
+		StuckSize:           uint64(0),
 
 		SkynetFiles: uint64(0),
 		SkynetSize:  uint64(0),
@@ -191,7 +193,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 			// Update repair fields
 			metadata.AggregateRepairSize += fileMetadata.RepairBytes
+			metadata.AggregateStuckSize += fileMetadata.StuckBytes
 			metadata.RepairSize += fileMetadata.RepairBytes
+			metadata.StuckSize += fileMetadata.StuckBytes
 
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
@@ -286,6 +290,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateRepairSize += dirMetadata.AggregateRepairSize
 			metadata.AggregateSize += dirMetadata.AggregateSize
+			metadata.AggregateStuckSize += dirMetadata.AggregateStuckSize
 
 			// Update aggregate Skynet fields
 			metadata.AggregateSkynetFiles += dirMetadata.AggregateSkynetFiles
@@ -349,8 +354,16 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 		err = errors.Compose(err, sf.Close())
 	}()
 
+	// First check if the fileNode is blocked. Blocking a file does not remove the
+	// file so this is required to ensuring the node is purging blocked files.
+	if r.isFileNodeBlocked(sf) {
+		// Delete the file
+		r.log.Println("Deleting blocked fileNode at:", siaPath)
+		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
+	}
+
 	// Calculate file health
-	health, stuckHealth, _, _, numStuckChunks, repairBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
@@ -381,6 +394,7 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 			RepairBytes:         repairBytes,
 			Size:                sf.Size(),
 			StuckHealth:         stuckHealth,
+			StuckBytes:          stuckBytes,
 			UID:                 sf.UID(),
 		},
 	}, nil
@@ -405,6 +419,10 @@ func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []
 	metadataWorker := func() {
 		for siaPath := range siaPathChan {
 			md, err := r.managedCalculateFileMetadata(siaPath, hostOfflineMap, hostGoodForRenewMap)
+			if errors.Contains(err, ErrSkylinkBlocked) {
+				// If the fileNode is blocked we ignore the error and continue.
+				continue
+			}
 			if err != nil {
 				errMu.Lock()
 				errs = errors.Compose(errs, err)
@@ -659,7 +677,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 	// loops start at the root directory so there is no point triggering them
 	// until the root directory is updated
 	if siaPath.IsRoot() {
-		if metadata.AggregateHealth >= RepairThreshold {
+		if modules.NeedsRepair(metadata.AggregateHealth) {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:

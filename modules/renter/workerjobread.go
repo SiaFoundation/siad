@@ -38,12 +38,9 @@ type (
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
-		weightedJobTime64k       float64
-		weightedJobTime1m        float64
-		weightedJobTime4m        float64
-		weightedJobsCompleted64k float64
-		weightedJobsCompleted1m  float64
-		weightedJobsCompleted4m  float64
+		weightedJobTime64k float64
+		weightedJobTime1m  float64
+		weightedJobTime4m  float64
 
 		*jobGenericQueue
 	}
@@ -139,7 +136,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	// result in an error. Because there was no failure, the consecutive
 	// failures stat can be reset.
 	jq := j.staticQueue.(*jobReadQueue)
-	jq.managedUpdateJobTimeMetrics(j.staticLength, readJobTime)
+	jq.callUpdateJobTimeMetrics(j.staticLength, readJobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
@@ -219,25 +216,13 @@ func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
 func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
-	var completed float64
-	var weightedJobTime float64
-
 	if length <= 1<<16 {
-		weightedJobTime = jq.weightedJobTime64k
-		completed = jq.weightedJobsCompleted64k
+		return time.Duration(jq.weightedJobTime64k)
 	} else if length <= 1<<20 {
-		weightedJobTime = jq.weightedJobTime1m
-		completed = jq.weightedJobsCompleted1m
+		return time.Duration(jq.weightedJobTime1m)
 	} else {
-		weightedJobTime = jq.weightedJobTime4m
-		completed = jq.weightedJobsCompleted4m
+		return time.Duration(jq.weightedJobTime4m)
 	}
-
-	// if we don't have any historic data yet, return a sane default of 40ms
-	if completed == 0 {
-		return 40 * time.Millisecond
-	}
-	return time.Duration(weightedJobTime / completed)
 }
 
 // callExpectedJobCost returns an estimate for the price of performing a read
@@ -256,26 +241,17 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	return cost.Add(bandwidthCost)
 }
 
-// managedUpdateJobTimeMetrics takes a length and the duration it took to fulfil
+// callUpdateJobTimeMetrics takes a length and the duration it took to fulfil
 // that job and uses it to update the job performance metrics on the queue.
-func (jq *jobReadQueue) managedUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
+func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {
-		jq.weightedJobTime64k *= jobReadPerformanceDecay
-		jq.weightedJobsCompleted64k *= jobReadPerformanceDecay
-		jq.weightedJobTime64k += float64(jobTime)
-		jq.weightedJobsCompleted64k++
+		jq.weightedJobTime64k = expMovingAvg(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
 	} else if length <= 1<<20 {
-		jq.weightedJobTime1m *= jobReadPerformanceDecay
-		jq.weightedJobsCompleted1m *= jobReadPerformanceDecay
-		jq.weightedJobTime1m += float64(jobTime)
-		jq.weightedJobsCompleted1m++
+		jq.weightedJobTime1m = expMovingAvg(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
 	} else {
-		jq.weightedJobTime4m *= jobReadPerformanceDecay
-		jq.weightedJobsCompleted4m *= jobReadPerformanceDecay
-		jq.weightedJobTime4m += float64(jobTime)
-		jq.weightedJobsCompleted4m++
+		jq.weightedJobTime4m = expMovingAvg(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
 	}
 }
 
@@ -287,6 +263,18 @@ func (w *worker) initJobReadQueue() {
 		w.renter.log.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
+		jobGenericQueue: newJobGenericQueue(w),
+	}
+}
+
+// initJobLowPrioReadQueue will initialize a queue for downloading sectors by
+// their root for the worker. This is only meant to be run once at startup.
+func (w *worker) initJobLowPrioReadQueue() {
+	// Sanity check that there is no existing job queue.
+	if w.staticJobLowPrioReadQueue != nil {
+		w.renter.log.Critical("incorret call on initJobReadQueue")
+	}
+	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }

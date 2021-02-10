@@ -96,6 +96,7 @@ type (
 		// CachedUploadProgress is the upload progress of the file and is updated
 		// every time a piece is added to the siafile.
 		//
+		// TODO: Should the repair info be added here?
 		CachedRedundancy     float64           `json:"cachedredundancy"`
 		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
@@ -122,6 +123,7 @@ type (
 		//
 		// StuckHealth is the worst health of any of the file's stuck chunks
 		//
+		// TODO: Should the repair info be added here?
 		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
@@ -179,6 +181,7 @@ type (
 		Redundancy          float64
 		RepairBytes         uint64
 		Size                uint64
+		StuckBytes          uint64
 		StuckHealth         float64
 		UID                 SiafileUID
 	}

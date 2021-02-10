@@ -343,8 +343,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	jq.mu.Unlock()
 
 	// Check the queue is on a cooldown
-	onCoolDown, dur := jq.callOnCooldown()
-	if !onCoolDown || dur == time.Duration(0) {
+	if !jq.callOnCooldown() {
 		t.Error("queue should be on cooldown")
 	}
 
@@ -403,8 +402,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	time.Sleep(time.Until(cu))
 
 	// Check the cooldown status
-	onCoolDown, dur = jq.callOnCooldown()
-	if onCoolDown || dur != time.Duration(0) {
+	if jq.callOnCooldown() {
 		t.Error("queue should not be on cooldown")
 	}
 

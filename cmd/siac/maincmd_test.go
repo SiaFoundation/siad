@@ -55,14 +55,15 @@ Wallet:
   Siacoin Balance: \d+(\.\d*|) (SC|KS|MS))
 
 Renter:
-  Files:                  \d+
-  Total Stored:           \d+(\.\d+|) ( B|kB|MB|GB|TB)
-  Total Contract Data:    \d+(\.\d+|) ( B|kB|MB|GB|TB)
-  Repair Data Remaining:  \d+(\.\d+|) ( B|kB|MB|GB|TB)
-  Min Redundancy:         (\d+.\d{2}|-)
-  Active Contracts:       \d+
-  Passive Contracts:      \d+
-  Disabled Contracts:     \d+`
+  Files:                   \d+
+  Total Stored:            \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Total Renewing Data:     \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Repair Data Remaining:   \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Stuck Repair Remaining:  \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Min Redundancy:          (\d+.\d{2}|-)
+  Active Contracts:        \d+
+  Passive Contracts:       \d+
+  Disabled Contracts:      \d+`
 
 	rootCmdVerbosePartPattern := `Global Rate limits: 
   Download Speed: (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
