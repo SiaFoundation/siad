@@ -3213,7 +3213,7 @@ responses](#standard-responses).
 
 ```go
 // Call recursive bubble for non root directory
-curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/use/folder&recursive=true"  "localhost:9980/renter/bubble"
+curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/user/folder&recursive=true"  "localhost:9980/renter/bubble"
 
 // Call force bubble on the root directory
 curl -A "Sia-Agent" -u "":<apipassword> --data "rootsiapath=true&force=true"  "localhost:9980/renter/bubble"
@@ -3237,14 +3237,14 @@ If provided, no `siapath` should be provided.
 
 ### OPTIONAL
 **force** | boolean\
-Indicates if the bubble should only updated out of date directories. If
-`force` is true, all directories will be updated even if they have a recent
+Indicates if the bubble should only update out of date directories. If `force`
+is true, all directories will be updated even if they have a recent
 `LastHealthCheckTime`.
 
 **recursive** | boolean\
-Indicates if the bubble also be called on all subdirectories of the provided
-directory. **NOTE** it is not recommend to manually bubble entire
-filesystems, ie calling this endpoint recursively from the root directory.
+Indicates if the bubble should also be called on all subdirectories of the
+provided directory. **NOTE** it is not recommend to manually the bubble entire
+filesystem, i.e. calling this endpoint recursively from the root directory.
 
 ### Response
 

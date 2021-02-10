@@ -72,18 +72,6 @@ func (urp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
 	return nil
 }
 
-// callChildDirs returns a slice of the child directories currently being
-// tracked.
-func (urp *uniqueRefreshPaths) callChildDirs() []modules.SiaPath {
-	urp.mu.Lock()
-	defer urp.mu.Unlock()
-	siaPaths := make([]modules.SiaPath, 0, len(urp.childDirs))
-	for sp := range urp.childDirs {
-		siaPaths = append(siaPaths, sp)
-	}
-	return siaPaths
-}
-
 // callNumChildDirs returns the number of child directories currently being
 // tracked.
 func (urp *uniqueRefreshPaths) callNumChildDirs() int {

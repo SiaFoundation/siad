@@ -46,12 +46,29 @@ const (
 // BubbleMetadata calculates the updated values of a directory's metadata and
 // updates the siadir metadata on disk then calls callThreadedBubbleMetadata on
 // the parent directory so that it is only blocking for the current directory
-func (r *Renter) BubbleMetadata(siaPath modules.SiaPath) error {
+//
+// If the recursive boolean is supplied, all sub directories will be bubbled.
+//
+// If the force boolean is supplied, the LastHealthCheckTime of the directories
+// will be ignored so all directories will be considered.
+func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.managedBubbleMetadata(siaPath)
+
+	// If this is not a recursive call then call bubble
+	if !recursive {
+		return r.managedBubbleMetadata(siaPath)
+	}
+
+	// Prepare the subtree for bubble
+	urp, err := r.managedPrepareForBubble(siaPath, force)
+	if err != nil {
+		return errors.AddContext(err, "unable to prepare subtree for bubble")
+	}
+	// TODO: can we not block and then have an errChan or something?
+	return urp.callRefreshAllBlocking()
 }
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
@@ -275,6 +292,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// before the health loop has been able to set the LastHealthCheckTime.
 			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
+				// Check for the dependency to disable the LastHealthCheckTime
+				// correction, (LHCT = LastHealthCheckTime).
 				if !r.deps.Disrupt("DisableLHCTCorrection") {
 					err = r.tg.Launch(func() {
 						r.callThreadedBubbleMetadata(dirMetadata.sp)

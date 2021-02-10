@@ -315,11 +315,11 @@ func trimDownloadInfo(dis ...modules.DownloadInfo) (_ []modules.DownloadInfo, er
 
 // renterBubbleHandlerPOST handles the API calls to /renter/bubble.
 func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Parse the rootsiapath
+	// Parse the 'rootsiapath' parameter
 	rootSiaPath := false
 	var err error
 	if r := req.FormValue("rootsiapath"); r != "" {
-		rootSiaPath, err = strconv.ParseBool(r)
+		rootSiaPath, err = scanBool(r)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'rootsiapath' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -347,16 +347,16 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Parse the force
+	// Parse the 'force' parameter
 	force := false
 	if f := req.FormValue("force"); f != "" {
-		force, err = strconv.ParseBool(f)
+		force, err = scanBool(f)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
-	// Parse the recursive
+	// Parse the 'recursive' parameter
 	recursive := false
 	if r := req.FormValue("recursive"); r != "" {
 		recursive, err = strconv.ParseBool(r)
@@ -366,39 +366,10 @@ func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// If not recursive, then call bubble on the directory
-	if !recursive {
-		err = api.renter.BubbleMetadata(siaPath)
-		if err != nil {
-			WriteError(w, Error{"unable to bubble directory: " + err.Error()}, http.StatusInternalServerError)
-			return
-		}
-		WriteSuccess(w)
-		return
-	}
-
-	// If recursive, prepare the directory for bubble and get the subdirectories
-	siaPaths, err := api.renter.PrepareForBubble(siaPath, force)
+	// Call bubble
+	err = api.renter.BubbleMetadata(siaPath, force, recursive)
 	if err != nil {
-		WriteError(w, Error{"unable to prepare the directory for bubble: " + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-
-	// Try and call bubble on as many directories as possible
-	//
-	// We make individual calls here to avoid potentially preventing the renter
-	// shutting down because bubble can be quite expensive. Additionally we call
-	// them in a blocking manner to prevent against large requests potentially
-	// causing OOM or file handle related panics.
-	var bubbleErrs error
-	for _, sp := range siaPaths {
-		err = api.renter.BubbleMetadata(sp)
-		msg := fmt.Sprintf("unable to bubble directory %v", sp)
-		// If err == nil this will be a no-op
-		bubbleErrs = errors.Compose(bubbleErrs, errors.AddContext(err, msg))
-	}
-	if bubbleErrs != nil {
-		WriteError(w, Error{"unable to fully bubble directory: " + bubbleErrs.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"unable to bubble directory: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteSuccess(w)

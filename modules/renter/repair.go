@@ -30,29 +30,6 @@ var (
 	errNoStuckChunks = errors.New("no stuck chunks")
 )
 
-// PrepareForBubble prepares a directory to call bubble on and returns
-// a uniqueRefreshPaths including all the paths of the directories in the
-// subtree that need to be updated. This includes updating the metadatas for all
-// the files in the subtree and updating the LastHealthCheckTime for the
-// supplied root directory.
-//
-// This method will at a minimum return a uniqueRefreshPaths with the rootDir
-// added.
-//
-// If the force boolean is supplied, the LastHealthCheckTime of the directories
-// will be ignored so all directories will be considered.
-func (r *Renter) PrepareForBubble(rootDir modules.SiaPath, force bool) ([]modules.SiaPath, error) {
-	if err := r.tg.Add(); err != nil {
-		return nil, err
-	}
-	defer r.tg.Done()
-	urp, err := r.managedPrepareForBubble(rootDir, force)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to prepare directory for bubble")
-	}
-	return urp.callChildDirs(), nil
-}
-
 // managedAddRandomStuckChunks will try and add up to
 // maxRandomStuckChunksAddToHeap random stuck chunks to the upload heap
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modules.SiaPath, error) {
