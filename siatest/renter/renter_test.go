@@ -5599,14 +5599,14 @@ func TestMemoryStatus(t *testing.T) {
 		PriorityReserve:   0,
 	}
 	sys := modules.MemoryManagerStatus{
-		Available: 1 << 16, // 64 KiB
-		Base:      1 << 16, // 64 KiB
+		Available: 3 << 15, // 96 KiB
+		Base:      3 << 15, // 96 KiB
 		Requested: 0,
 
 		PriorityAvailable: 1 << 17, // 128 KiB
 		PriorityBase:      1 << 17, // 128 KiB
 		PriorityRequested: 0,
-		PriorityReserve:   1 << 16, // 64 KiB
+		PriorityReserve:   1 << 15, // 32 KiB
 	}
 	total := ud.Add(uu).Add(reg).Add(sys)
 
