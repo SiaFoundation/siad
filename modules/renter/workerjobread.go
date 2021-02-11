@@ -35,13 +35,6 @@ type (
 	// worker. The queue also tracks performance metrics, which can then be used
 	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
-		// initialEstimate is the duration returned as estimate as long as we
-		// have not completed a single job yet. It is currently set by the
-		// price table update mechanism to be the round trip time of the initial
-		// price table update. This is not perfect, but will do for now and
-		// provides a decent initial estimate.
-		initialEstimate time.Duration
-
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.

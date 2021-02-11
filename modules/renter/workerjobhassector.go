@@ -31,13 +31,6 @@ type (
 	// jobHasSectorQueue is a list of hasSector queries that have been assigned
 	// to the worker.
 	jobHasSectorQueue struct {
-		// initialEstimate is the duration returned as estimate as long as we
-		// have not completed a single job yet. It is currently set by the
-		// price table update mechanism to be the round trip time of the initial
-		// price table update. This is not perfect, but will do for now and
-		// provides a decent initial estimate.
-		initialEstimate time.Duration
-
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime float64
