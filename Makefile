@@ -31,6 +31,7 @@ pkgs = \
 	./compatibility \
 	./crypto \
 	./modules \
+	./modules/accounting \
 	./modules/consensus \
 	./modules/explorer \
 	./modules/feemanager \
@@ -59,6 +60,7 @@ pkgs = \
 	./persist \
 	./profile \
 	./siatest \
+	./siatest/accounting \
 	./siatest/consensus \
 	./siatest/daemon \
 	./siatest/dependencies \
@@ -93,11 +95,13 @@ lockcheckpkgs = \
 	./node/api \
 	./node/api/client \
 	./node/api/server \
+	./modules/accounting \
 	./modules/host/mdm \
 	./modules/host/registry \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
 	./modules/renter/skynetblocklist \
+	./siatest/accounting \
 	./skykey \
 	./types \
 	./types/typesutil \

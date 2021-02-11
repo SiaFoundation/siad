@@ -6,9 +6,6 @@ package node
 
 // TODO: Add support for the explorer.
 
-// TODO: Add support for custom dependencies and parameters for all of the
-// modules.
-
 import (
 	"fmt"
 	"path/filepath"
@@ -20,6 +17,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/accounting"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/explorer"
 	"gitlab.com/NebulousLabs/Sia/modules/feemanager"
@@ -60,6 +58,7 @@ type NodeParams struct {
 	// Example: if the ConsensusSet is custom, the Gateway should also be
 	// custom. The TransactionPool however does not need to be custom in this
 	// example.
+	CreateAccounting      bool
 	CreateConsensusSet    bool
 	CreateExplorer        bool
 	CreateFeeManager      bool
@@ -74,6 +73,7 @@ type NodeParams struct {
 	// module will be used instead of creating a new one. If a custom module is
 	// provided, the 'omit' flag for that module must be set to false (which is
 	// the default setting).
+	Accounting      modules.Accounting
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
 	FeeManager      modules.FeeManager
@@ -85,6 +85,7 @@ type NodeParams struct {
 	Wallet          modules.Wallet
 
 	// Dependencies for each module supporting dependency injection.
+	AccountingDeps   modules.Dependencies
 	ConsensusSetDeps modules.Dependencies
 	ContractorDeps   modules.Dependencies
 	ContractSetDeps  modules.Dependencies
@@ -134,6 +135,7 @@ type Node struct {
 	Mux *siamux.SiaMux
 
 	// The modules of the node. Modules that are not initialized will be nil.
+	Accounting      modules.Accounting
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
 	FeeManager      modules.FeeManager
@@ -179,6 +181,9 @@ func (np NodeParams) NumModules() (n int) {
 	if np.CreateFeeManager || np.FeeManager != nil {
 		n++
 	}
+	if np.CreateAccounting || np.Accounting != nil {
+		n++
+	}
 	return
 }
 
@@ -199,6 +204,10 @@ func printfRelease(format string, a ...interface{}) {
 // Close will call close on every module within the node, combining and
 // returning the errors.
 func (n *Node) Close() (err error) {
+	if n.Accounting != nil {
+		printlnRelease("Closing accounting...")
+		err = errors.Compose(err, n.Accounting.Close())
+	}
 	if n.Renter != nil {
 		printlnRelease("Closing renter...")
 		err = errors.Compose(err, n.Renter.Close())
@@ -554,6 +563,40 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		errChan <- errors.Extend(err, errors.New("unable to create renter"))
 		return nil, errChan
 	}
+
+	// Accounting.
+	acc, err := func() (modules.Accounting, error) {
+		if params.CreateAccounting && params.Accounting != nil {
+			return nil, errors.New("cannot create accounting and also use custom accounting")
+		}
+		if params.Accounting != nil {
+			return params.Accounting, nil
+		}
+		if !params.CreateAccounting {
+			return nil, nil
+		}
+		accoutingDeps := params.AccountingDeps
+		if accoutingDeps == nil {
+			accoutingDeps = modules.ProdDependencies
+		}
+		persistDir := filepath.Join(dir, modules.AccountingDir)
+
+		i++
+		printfRelease("(%d/%d) Loading accounting...\n", i, numModules)
+
+		// Load Accounting module
+		acc, err := accounting.NewCustomAccounting(fm, h, m, r, w, persistDir, accoutingDeps)
+		if err != nil {
+			return nil, err
+		}
+		return acc, nil
+	}()
+	if err != nil {
+		errChan <- errors.AddContext(err, "unable to create accounting module")
+		return nil, errChan
+	}
+
+	// Setup complete
 	printfRelease("API is now available, synchronous startup completed in %.3f seconds\n", time.Since(loadStartTime).Seconds())
 	go func() {
 		errChan <- errors.Compose(<-errChanCS, <-errChanRenter)
@@ -563,6 +606,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	return &Node{
 		Mux: mux,
 
+		Accounting:      acc,
 		ConsensusSet:    cs,
 		Explorer:        e,
 		FeeManager:      fm,

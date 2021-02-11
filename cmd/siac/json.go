@@ -80,7 +80,7 @@ func jsoncmd() {
 		die("could not get the renter status:", err)
 	}
 	rs.AllowanceFunds = rg.Settings.Allowance.Funds
-	_, _, rs.AllowanceUnspentUnallocated = renterallowancespendingbreakdown(rg)
+	_, _, rs.AllowanceUnspentUnallocated = rg.FinancialMetrics.SpendingBreakdown()
 
 	// Get the wallet balance.
 	wg, err := httpClient.WalletGet()
