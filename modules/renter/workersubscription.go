@@ -44,6 +44,16 @@ var (
 	// encountering an error.
 	// TODO: f/u more sophisticate cooldown
 	subscriptionLoopCooldown = 10 * time.Second
+
+	// stopSubscriptionGracePeriod is the period of time we wait after signaling
+	// the host that we want to stop the subscription. All the incoming
+	// bandwidth within this period will be accounted for correctly and help us
+	// to keep our EA balance expectations in sync with the host's.
+	stopSubscriptionGracePeriod = build.Select(build.Var{
+		Testing:  time.Second,
+		Dev:      3 * time.Second,
+		Standard: 3 * time.Second,
+	}).(time.Duration)
 )
 
 type (
@@ -355,25 +365,6 @@ func (w *worker) threadedSubscriptionLoop() {
 // subscriptions, remove subscriptions, fund the subscription and extend it
 // indefinitely.
 func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPriceTable, deadline time.Time, budget *modules.RPCBudget, expectedBudget types.Currency, subscriber string) (err error) {
-	// Register some cleanup.
-	subInfo := w.staticSubscriptionInfo
-	defer func() {
-		// Close the stream gracefully.
-		err = errors.Compose(err, modules.RPCStopSubscription(stream))
-
-		// Clear the active subsriptions at the end of this method.
-		subInfo.mu.Lock()
-		for _, sub := range subInfo.subscriptions {
-			// Replace closed channels.
-			select {
-			case <-sub.subscribed:
-				sub.subscribed = make(chan struct{})
-			default:
-			}
-		}
-		subInfo.mu.Unlock()
-	}()
-
 	// Set the bandwidth limiter on the stream.
 	limit := modules.NewBudgetLimit(budget, pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
 	err = stream.SetLimit(limit)
@@ -395,9 +386,35 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	if err != nil {
 		return errors.AddContext(err, "failed to register listener")
 	}
-	// Close the handler at the end.
+
+	// Register some cleanup.
+	subInfo := w.staticSubscriptionInfo
 	defer func() {
+		// Close the stream gracefully.
+		err = errors.Compose(err, modules.RPCStopSubscription(stream))
+
+		// After signalling to shut down the subscription, we wait for a short
+		// grace period to allow for incoming streams which were already read by
+		// the siamux but did not have the handler called upon them yet. This
+		// makes sure that our bandwidth expectations don't drift apart from the
+		// host's. We want to always wait for this even upon shutdown to make
+		// sure we refund our account correctly.
+		time.Sleep(stopSubscriptionGracePeriod)
+
+		// Close the handler.
 		err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
+
+		// Clear the active subsriptions at the end of this method.
+		subInfo.mu.Lock()
+		for _, sub := range subInfo.subscriptions {
+			// Replace closed channels.
+			select {
+			case <-sub.subscribed:
+				sub.subscribed = make(chan struct{})
+			default:
+			}
+		}
+		subInfo.mu.Unlock()
 	}()
 
 	// Set the stream deadline to the subscription deadline.
