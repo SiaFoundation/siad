@@ -430,12 +430,12 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// Check whether the download is comlete. An error means that the
 		// download has failed and can no longer make progress.
 		completed, err := pdc.finished()
-		if err != nil {
-			pdc.fail(err)
-			return
-		}
 		if completed {
 			pdc.finalize()
+			return
+		}
+		if err != nil {
+			pdc.fail(err)
 			return
 		}
 
