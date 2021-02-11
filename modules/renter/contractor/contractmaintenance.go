@@ -486,10 +486,6 @@ func (c *Contractor) managedLimitGFUHosts() {
 	portalMode := c.allowance.PortalMode()
 	wantedHosts := c.allowance.Hosts
 	c.mu.Unlock()
-	if portalMode {
-		// Nothing to do for portal.
-		return
-	}
 	// Get all GFU contracts and their score.
 	type gfuContract struct {
 		c     modules.RenterContract
