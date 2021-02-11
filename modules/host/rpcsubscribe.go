@@ -3,7 +3,6 @@ package host
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -446,7 +445,6 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 		}
 		// Check the errors.
 		if err != nil {
-			fmt.Println("host", err)
 			return refund, errors.AddContext(err, "failed to handle request")
 		}
 	}
