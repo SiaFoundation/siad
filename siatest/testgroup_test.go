@@ -206,16 +206,19 @@ func TestNewGroupPortal(t *testing.T) {
 		}
 	}()
 
-	// Add two portals with allowances that only require 1 host. This tests the
-	// portals expecting more contracts than what is defined by the allowance.
-	a := DefaultAllowance
-	a.Hosts = 1
+	// Add two portals with allowances. The first portal has an allowance that
+	// matches the number of hosts. The second one gets an allowance with 1 host
+	// since it is expected to form contracts with all hosts anyway.
 	portal1Params := node.Renter(filepath.Join(groupDir, "/portal1"))
 	portal1Params.CreatePortal = true
-	portal1Params.Allowance = a
+	a1 := DefaultAllowance
+	a1.Hosts = uint64(len(tg.Hosts()))
+	portal1Params.Allowance = a1
 	portal2Params := node.Renter(filepath.Join(groupDir, "/portal2"))
 	portal2Params.CreatePortal = true
-	portal2Params.Allowance = a
+	a2 := DefaultAllowance
+	a2.Hosts = 1
+	portal2Params.Allowance = a2
 	_, err = tg.AddNodes(portal1Params, portal2Params)
 	if err != nil {
 		t.Fatal("Failed to add portals to group: ", err)
