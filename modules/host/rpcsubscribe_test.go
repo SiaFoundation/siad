@@ -955,7 +955,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	close(cancelTicker)
 	updateWG.Wait()
 
-	// Close listener to prevent new incoming notifications.
+	// Close listener.
 	err = rhp.staticRenterMux.CloseListener(hex.EncodeToString(sub[:]))
 	if err != nil {
 		t.Fatal(err)
@@ -968,5 +968,31 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	err = assertNumSubscriptions(host, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Compute used bandwidth from limits. Nothing should have changed.
+	var nu, nd uint64
+	notificationMu.Lock()
+	for _, limit := range limits {
+		nu += limit.Uploaded()
+		nd += limit.Downloaded()
+	}
+	nn := numNotifications
+	notificationMu.Unlock()
+
+	// Check balance afterwards.
+	l := stream.Limit()
+	lu, ld := l.Uploaded(), l.Downloaded()
+	upCost := pt.UploadBandwidthCost.Mul64(lu + nu)
+	downCost := pt.DownloadBandwidthCost.Mul64(ld + nd)
+	bandwidthCost := upCost.Add(downCost)
+	cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
+	cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
+	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(nn)))
+
+	currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	expected := expectedBalance.Sub(cost)
+	if !currentBalance.Equals(expected) {
+		t.Fatalf("wrong balance %v != %v", currentBalance, expected)
 	}
 }
