@@ -40,6 +40,19 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops"
 }
 
+// DependencyDisableRepairAndHealthLoopsMulti prevents the background loops for
+// repairs and updating directory metadata from running in multiple places. This
+// includes threadedUploadAndRepair, threadedStuckLoop, and
+// threadedUpdateRenterHealth
+type DependencyDisableRepairAndHealthLoopsMulti struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will prevent the repair and health loops from running
+func (d *DependencyDisableRepairAndHealthLoopsMulti) Disrupt(s string) bool {
+	return s == "DisableRepairAndHealthLoops" || s == "DisableLHCTCorrection"
+}
+
 // DependencyAddUnrepairableChunks will have the repair loop always add chunks
 // to the upload heap even if they are unrepairable
 type DependencyAddUnrepairableChunks struct {

@@ -25,6 +25,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -5638,5 +5639,259 @@ func TestMemoryStatus(t *testing.T) {
 		siatest.PrintJSON(ms.MemoryManagerStatus)
 		siatest.PrintJSON(total)
 		t.Fatal("total")
+	}
+}
+
+// TestRenterBubble probes manually triggering a bubble through the API.
+func TestRenterBubble(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(testDir)
+	renterParams.RenterDeps = &dependencies.DependencyDisableRepairAndHealthLoopsMulti{}
+	r, err := siatest.NewCleanNode(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Declare DirectoryInfo check function
+	checkDirInfo := func(found, expected modules.DirectoryInfo) error {
+		var dirInfoErrs error
+		// Check time fields for initialization as the actual values will vary based
+		// on when bubble was executed
+		//
+		// AggregateLastHealthCheckTime
+		fTime := found.AggregateLastHealthCheckTime
+		eTime := expected.AggregateLastHealthCheckTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("AggregateLastHealthCheckTimes mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.AggregateLastHealthCheckTime = expected.AggregateLastHealthCheckTime
+		// AggregateMostRecentModTime
+		fTime = found.AggregateMostRecentModTime
+		eTime = expected.AggregateMostRecentModTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("AggregateMostRecentModTime mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.AggregateMostRecentModTime = expected.AggregateMostRecentModTime
+		// LastHealthCheckTime
+		fTime = found.LastHealthCheckTime
+		eTime = expected.LastHealthCheckTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("LastHealthCheckTime mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.LastHealthCheckTime = expected.LastHealthCheckTime
+		// MostRecentModTime
+		fTime = found.MostRecentModTime
+		eTime = expected.MostRecentModTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("MostRecentModTime mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.MostRecentModTime = expected.MostRecentModTime
+
+		// Match up the UID and SiaPath
+		expected.UID = found.UID
+		expected.SiaPath = found.SiaPath
+
+		// Check the remaining fields
+		if !reflect.DeepEqual(found, expected) {
+			err := fmt.Errorf("Non Time fields mismatch\nfound\n%v\nexpected\n%v", siatest.PrintJSON(found), siatest.PrintJSON(expected))
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+
+		return dirInfoErrs
+	}
+
+	// Renter filesystem should have metadata that isn't updated
+	initDirInfo := modules.DirectoryInfo{
+		AggregateHealth:              siadir.DefaultDirHealth,
+		AggregateMaxHealth:           siadir.DefaultDirHealth,
+		AggregateMaxHealthPercentage: 100,
+		AggregateMinRedundancy:       siadir.DefaultDirRedundancy,
+		// The exact time is not important, just needs to be initialized
+		AggregateMostRecentModTime: time.Now(),
+		AggregateStuckHealth:       siadir.DefaultDirHealth,
+
+		Health:              siadir.DefaultDirHealth,
+		MaxHealth:           siadir.DefaultDirHealth,
+		MaxHealthPercentage: 100,
+		MinRedundancy:       siadir.DefaultDirRedundancy,
+		DirMode:             modules.DefaultDirPerm,
+		// The exact time is not important, just needs to be initialized
+		MostRecentModTime: time.Now(),
+		StuckHealth:       siadir.DefaultDirHealth,
+	}
+	// Check the filesystem
+	var tests = []struct {
+		siaPath  modules.SiaPath
+		expected modules.DirectoryInfo
+	}{
+		{modules.RootSiaPath(), initDirInfo},
+		{modules.HomeFolder, initDirInfo},
+		{modules.UserFolder, initDirInfo},
+		{modules.BackupFolder, initDirInfo},
+		{modules.VarFolder, initDirInfo},
+		{modules.SkynetFolder, initDirInfo},
+	}
+	// Initial checks are not pending any bubbles so should not need a build retry
+	// loop
+	for _, test := range tests {
+		rd, err := r.RenterDirRootGet(test.siaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = checkDirInfo(rd.Directories[0], test.expected)
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
+	}
+
+	// Call bubble on root
+	var force, recursive bool
+	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define expected rootDirInfo
+	rootDirInfo := initDirInfo
+	rootDirInfo.AggregateLastHealthCheckTime = time.Now()
+	rootDirInfo.LastHealthCheckTime = time.Now()
+	rootDirInfo.AggregateNumSubDirs = 3
+	rootDirInfo.NumSubDirs = 3
+
+	// Check the filesystem
+	tests = []struct {
+		siaPath  modules.SiaPath
+		expected modules.DirectoryInfo
+	}{
+		{modules.RootSiaPath(), rootDirInfo},
+		{modules.HomeFolder, initDirInfo},
+		{modules.UserFolder, initDirInfo},
+		{modules.BackupFolder, initDirInfo},
+		{modules.VarFolder, initDirInfo},
+		{modules.SkynetFolder, initDirInfo},
+	}
+	for _, test := range tests {
+		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			rd, err := r.RenterDirRootGet(test.siaPath)
+			if err != nil {
+				return err
+			}
+			return checkDirInfo(rd.Directories[0], test.expected)
+		})
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
+	}
+
+	// Call bubble on root recursively
+	force = true
+	recursive = true
+	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define expected directory Infos
+	//
+	// Root will now see all sub directories
+	rootDirInfo.AggregateNumSubDirs = 5
+	// LastHealthCheckTimes will all be set
+	initDirInfo.AggregateLastHealthCheckTime = time.Now()
+	initDirInfo.LastHealthCheckTime = time.Now()
+	// Home has 1 sub directory
+	homeDirInfo := initDirInfo
+	homeDirInfo.AggregateNumSubDirs = 1
+	homeDirInfo.NumSubDirs = 1
+	// Backups has no sub directory
+	backupDirInfo := initDirInfo
+	// Var has 1 sub directory
+	varDirInfo := initDirInfo
+	varDirInfo.AggregateNumSubDirs = 1
+	varDirInfo.NumSubDirs = 1
+	// User has no sub directory
+	userDirInfo := initDirInfo
+	// Skynet has no sub directory
+	skynetDirInfo := initDirInfo
+
+	// Check the filesystem
+	tests = []struct {
+		siaPath  modules.SiaPath
+		expected modules.DirectoryInfo
+	}{
+		{modules.RootSiaPath(), rootDirInfo},
+		{modules.HomeFolder, homeDirInfo},
+		{modules.UserFolder, userDirInfo},
+		{modules.BackupFolder, backupDirInfo},
+		{modules.VarFolder, varDirInfo},
+		{modules.SkynetFolder, skynetDirInfo},
+	}
+	for _, test := range tests {
+		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			rd, err := r.RenterDirRootGet(test.siaPath)
+			if err != nil {
+				return err
+			}
+			return checkDirInfo(rd.Directories[0], test.expected)
+		})
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
+	}
+
+	// Call bubble on root recursively without force, this should result in only
+	// the root directory being updated.
+	checkTime := time.Now()
+	force = false
+	recursive = true
+	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range tests {
+		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			rd, err := r.RenterDirRootGet(test.siaPath)
+			if err != nil {
+				return err
+			}
+			dir := rd.Directories[0]
+
+			// Check LastHealthCheckTimes
+			var badALHCT, badLHCT bool
+			if test.siaPath.IsRoot() {
+				// Root should have a lastHealthCheckTime after checkTime but an
+				// AggregateLastHealthCheckTime after checkTime
+				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
+				badLHCT = dir.LastHealthCheckTime.Before(checkTime)
+			} else {
+				// All other directories should have both lastHealthCheckTimes before checkTime
+				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
+				badLHCT = dir.LastHealthCheckTime.After(checkTime)
+			}
+			if badALHCT || badLHCT {
+				return fmt.Errorf("badALHCT %v badLHCT %v", badALHCT, badLHCT)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
 	}
 }

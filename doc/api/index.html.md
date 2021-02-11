@@ -3208,6 +3208,49 @@ Cancel the Renter's allowance.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /renter/bubble [POST]
+> curl example  
+
+```go
+// Call recursive bubble for non root directory
+curl -A "Sia-Agent" -u "":<apipassword> --data "siapath=home/user/folder&recursive=true"  "localhost:9980/renter/bubble"
+
+// Call force bubble on the root directory
+curl -A "Sia-Agent" -u "":<apipassword> --data "rootsiapath=true&force=true"  "localhost:9980/renter/bubble"
+```
+
+Manually trigger a bubble update for a directory. This will update the
+directory metadata for the directory as well as all parent directories.
+Updates to sub directories are dependent on the parameters.
+
+### Query String Parameters
+### REQUIRED
+One of the following is required. Both **CANNOT** be used at the same time.
+
+**siapath** | string\
+The path to the directory that is to be bubbled. All paths should be relative
+to the renter's root filesystem directory.
+
+**rootsiapath** | boolean\
+Indicates if the bubble is intended for the root directory, ie `/renter/fs/`.
+If provided, no `siapath` should be provided.
+
+### OPTIONAL
+**force** | boolean\
+Indicates if the bubble should only update out of date directories. If `force`
+is true, all directories will be updated even if they have a recent
+`LastHealthCheckTime`.
+
+**recursive** | boolean\
+Indicates if the bubble should also be called on all subdirectories of the
+provided directory. **NOTE** it is not recommend to manually the bubble entire
+filesystem, i.e. calling this endpoint recursively from the root directory.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /renter/clean [POST]
 > curl example  
 

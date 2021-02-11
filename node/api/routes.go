@@ -118,6 +118,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter", api.renterHandlerGET)
 		router.POST("/renter", RequirePassword(api.renterHandlerPOST, requiredPassword))
 		router.POST("/renter/allowance/cancel", RequirePassword(api.renterAllowanceCancelHandlerPOST, requiredPassword))
+		router.POST("/renter/bubble", api.renterBubbleHandlerPOST)
 		router.GET("/renter/backups", RequirePassword(api.renterBackupsHandlerGET, requiredPassword))
 		router.POST("/renter/backups/create", RequirePassword(api.renterBackupsCreateHandlerPOST, requiredPassword))
 		router.POST("/renter/backups/restore", RequirePassword(api.renterBackupsRestoreHandlerGET, requiredPassword))
@@ -125,7 +126,6 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
 		router.GET("/renter/contractorchurnstatus", api.renterContractorChurnStatus)
-
 		router.GET("/renter/downloadinfo/*uid", api.renterDownloadByUIDHandlerGET)
 		router.GET("/renter/downloads", api.renterDownloadsHandler)
 		router.POST("/renter/downloads/clear", RequirePassword(api.renterClearDownloadsHandler, requiredPassword))
