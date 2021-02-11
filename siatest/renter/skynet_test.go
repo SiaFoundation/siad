@@ -1731,8 +1731,20 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 		t.Fatal(err)
 	}
 
+	// Calculate the expected pieces per chunk, and keep track of the original
+	// pieper chunk. If there's no encryption and there's only one data piece,
+	// fanout bytes will only contain a single piece (as the data is all
+	// identical). We need to take this into account when feeding the pieces to
+	// the erasure coder to recover because it expects the original amount of
+	// pieces.
+	expectedPPC := layout.FanoutDataPieces + layout.FanoutParityPieces
+	originalPPC := expectedPPC
+	if layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain {
+		expectedPPC = 1
+	}
+
 	// Verify fanout information
-	if piecesPerChunk != 1 {
+	if piecesPerChunk != uint64(expectedPPC) {
 		t.Fatal("piecesPerChunk incorrect", piecesPerChunk)
 	}
 	if chunkRootsSize != crypto.HashSize*piecesPerChunk {
@@ -1755,7 +1767,6 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	chunkSize := (modules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
-
 	// Create list of chunk roots
 	chunkRoots := make([][]crypto.Hash, 0, numChunks)
 	for i := uint64(0); i < numChunks; i++ {
@@ -1808,6 +1819,14 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 		var chunkBytes []byte
 		if ec != nil {
 			buf := bytes.NewBuffer(nil)
+			if len(pieces) == 1 && originalPPC > 1 {
+				deduped := make([][]byte, originalPPC)
+				for i := range deduped {
+					deduped[i] = make([]byte, len(pieces[0]))
+					copy(deduped[i], pieces[0])
+				}
+				pieces = deduped
+			}
 			err = ec.Recover(pieces, chunkSize, buf)
 			if err != nil {
 				t.Fatal(err)
