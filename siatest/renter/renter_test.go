@@ -5100,9 +5100,32 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	}
 	renter = added[0]
 
+	// Allow the renter some time to form contracts with all of our hosts.
+	// This should prevent an NDF from occurring where the base sector could not
+	// be downloaded due to shortage of hosts.
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		wps, err := renter.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wps.NumWorkers != len(tg.Hosts()) {
+			return errors.New("workerpool not ready yet")
+		}
+		for _, ws := range wps.Workers {
+			if ws.AccountStatus.AvailableBalance.IsZero() || !ws.PriceTableStatus.Active {
+				return errors.New("worker not ready yet")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Download again
+	possibleErrs := "all workers failed;download timed out"
 	_, _, err = renter.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "all workers failed") {
+	if err == nil || strings.Contains(possibleErrs, err.Error()) {
 		t.Fatal(err)
 	}
 
