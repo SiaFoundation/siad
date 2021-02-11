@@ -1,6 +1,7 @@
 package accounting
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 
@@ -44,7 +45,7 @@ func newTestAccounting(testDir string) (*Accounting, error) {
 
 // randomCurrency is a helper that returns a random currency value
 func randomCurrency() types.Currency {
-	return types.NewCurrency64(fastrand.Uint64n(100))
+	return types.NewCurrency64(fastrand.Uint64n(math.MaxUint64))
 }
 
 // testingParams returns the minimum required parameters for creating an
@@ -86,6 +87,5 @@ type mockWallet struct {
 func (mw *mockWallet) ConfirmedBalance() (types.Currency, types.Currency, types.Currency, error) {
 	sc := randomCurrency()
 	sf := randomCurrency()
-	scb := randomCurrency()
-	return sc, sf, scb, nil
+	return sc, sf, types.ZeroCurrency, nil
 }

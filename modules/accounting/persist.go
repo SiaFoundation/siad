@@ -1,6 +1,7 @@
 package accounting
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,14 +19,22 @@ const (
 	// logFile is the name of the log file for the Accounting module.
 	logFile string = modules.AccountingDir + ".log"
 
+	// maxPersistSize is the size of the marshaled persistence
+	//
+	// 16 bytes for Currency fields
+	// 8 bytes for Timestamp field
+	// 40 bytes for overhead
+	//
+	// (4 x 16) + 8 + 40 = 112
+	maxPersistSize int = 112
+
+	// persistEntrySize is the size of the encoded persist entry
+	//
+	// maxPersistSize + 8 for the size
+	persistEntrySize int = 120
+
 	// persistFile is the name of the persist file
 	persistFile string = "accounting.dat"
-
-	// persistSize is the size of the marshaled persistence
-	//
-	// NOTE: If more fields are added to the persistence the version will need to
-	// be bumped and the persistSize updated.
-	persistSize uint64 = 44
 )
 
 var (
@@ -53,8 +62,7 @@ var (
 )
 
 type (
-
-	// Persistence contains the accounting information that is persisted on disk
+	// persistence contains the accounting information that is persisted on disk
 	persistence struct {
 		// Not implemented yet
 		//
@@ -65,7 +73,15 @@ type (
 		Renter modules.RenterAccounting `json:"renter"`
 		Wallet modules.WalletAccounting `json:"wallet"`
 
+		// Unix Timestamp
 		Timestamp int64 `json:"timestamp"`
+	}
+
+	// persistEntry is the struct that is persisted on disk
+	persistEntry struct {
+		// Size is the actual size for the persisted data
+		Size        int
+		Persistence [maxPersistSize]byte
 	}
 )
 
@@ -151,14 +167,6 @@ func (a *Accounting) initPersist() error {
 	return nil
 }
 
-// managedMarshalPersistence marshals the current persistence of the Accounting
-// module.
-func (a *Accounting) managedMarshalPersistence() []byte {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return encoding.Marshal(a.persistence)
-}
-
 // managedUpdateAndPersistAccounting will update the accounting information and write the
 // information to disk.
 func (a *Accounting) managedUpdateAndPersistAccounting() error {
@@ -172,10 +180,18 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	}
 
 	// Marshall the persistence
-	data := a.managedMarshalPersistence()
+	a.mu.Lock()
+	p := a.persistence
+	a.mu.Unlock()
+	data, err := marshalPersistence(p)
+	if err != nil {
+		err = errors.AddContext(err, "unable to marshal persistence")
+		a.staticLog.Printf("WARN: %v:%v", logStr, err)
+		return err
+	}
 
 	// Persist
-	_, err = a.staticAOP.Write(data)
+	_, err = a.staticAOP.Write(data[:])
 	if err != nil {
 		err = errors.AddContext(err, "unable to write persistence to disk")
 		a.staticLog.Printf("WARN: %v:%v", logStr, err)
@@ -185,25 +201,74 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 	return nil
 }
 
+// marshalPersistence marshals the persistence.
+func marshalPersistence(p persistence) (rpe [persistEntrySize]byte, err error) {
+	// Marshal the persistence and ensure is is less that then max size
+	data := encoding.Marshal(p)
+	if len(data) > maxPersistSize {
+		err = fmt.Errorf("Marshaled persistence is too big: persistence %v, max %v", len(data), maxPersistSize)
+		build.Critical(err)
+		return
+	}
+
+	// Create the persistEntry
+	entry := persistEntry{
+		Size: len(data),
+	}
+	copy(entry.Persistence[:], data)
+
+	// Marshal the persistEntry and check the size
+	encodedEntry := encoding.Marshal(entry)
+	if len(encodedEntry) != persistEntrySize {
+		err = fmt.Errorf("Marshaled persist entry incorrect size: entry %v, max %v", len(encodedEntry), persistEntrySize)
+		build.Critical(err)
+		return
+	}
+
+	// Copy the encodedEntry into the returned value
+	copy(rpe[:], encodedEntry)
+	return
+}
+
 // unmarshalLastPersistence will read through the reader until the last
 // persist entry is found and will unmarshal and return that persistence.
 func unmarshalLastPersistence(r io.Reader) (persistence, error) {
 	var p persistence
 	// Read through the reader until the last element
 	for {
-		buf := make([]byte, persistSize)
+		buf := make([]byte, persistEntrySize)
 		_, err := io.ReadFull(r, buf)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return persistence{}, err
+			return persistence{}, errors.AddContext(err, "unable to read from reader")
 		}
 		// New entry found, unmarshal and overwrite any previous persistence
-		err = encoding.Unmarshal(buf, &p)
+		p, err = unmarshalPersistence(buf)
 		if err != nil {
-			return persistence{}, err
+			return persistence{}, errors.AddContext(err, "unable to unmarshal persistence")
 		}
 	}
+	return p, nil
+}
+
+// unmarshalPersistence unmarshals the persist entry and then unmarshals the
+// encoded persistence.
+func unmarshalPersistence(entry []byte) (persistence, error) {
+	// Unmarshal persistEntry
+	var pe persistEntry
+	err := encoding.Unmarshal(entry, &pe)
+	if err != nil {
+		return persistence{}, errors.AddContext(err, "unable to unmarshal persistEntry")
+	}
+
+	// Unmarshal persistence
+	var p persistence
+	err = encoding.Unmarshal(pe.Persistence[:], &p)
+	if err != nil {
+		return persistence{}, errors.AddContext(err, "unable to unmarshal persistence")
+	}
+
 	return p, nil
 }
