@@ -381,9 +381,8 @@ func RenterContractsStable(renter *TestNode, tg *TestGroup) error {
 		return err
 	}
 	renewWindow := int(rg.Settings.Allowance.RenewWindow)
-	isPortal := !rg.Settings.Allowance.PaymentContractInitialFunding.IsZero()
 	numContracts := int(rg.Settings.Allowance.Hosts)
-	if isPortal || len(tg.Hosts()) < numContracts {
+	if len(tg.Hosts()) < numContracts {
 		numContracts = len(tg.Hosts())
 	}
 	miner := tg.Miners()[0]
