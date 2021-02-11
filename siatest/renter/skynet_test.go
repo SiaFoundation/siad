@@ -1732,11 +1732,11 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Calculate the expected pieces per chunk, and keep track of the original
-	// pieper chunk. If there's no encryption and there's only one data piece,
-	// fanout bytes will only contain a single piece (as the data is all
-	// identical). We need to take this into account when feeding the pieces to
-	// the erasure coder to recover because it expects the original amount of
-	// pieces.
+	// pieces per chunk. If there's no encryption and there's only 1 data piece,
+	// the fanout bytes will only contain a single piece (as the other pieces
+	// will be identical, so that would be wasting space). We need to take this
+	// into account when recovering the data as the EC will expect the original
+	// amount of pieces.
 	expectedPPC := layout.FanoutDataPieces + layout.FanoutParityPieces
 	originalPPC := expectedPPC
 	if layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain {
