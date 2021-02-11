@@ -18,16 +18,32 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-// TODO: track spending in account
+// TODO: testing for account deposits and withdrawals
+// TODO: testing for updating price table
 
 var (
-	initialSubscriptionBudget = modules.DefaultMaxEphemeralAccountBalance.Div64(10)
+	// initialSubscriptionBudget is the initial budget withdrawn for a
+	// subscription. After using up 50% of it, the worker refills the budget
+	// again to match the initial budget.
+	initialSubscriptionBudget = modules.DefaultMaxEphemeralAccountBalance.Div64(10) // 10% of the max
 
-	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2
+	// subscriptionExtensionWindow is the time before the subscription period
+	// ends when the workers starts trying to extend the subscription.
+	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2 // 50% of period
 
+	// priceTableRetryInterval is the interval the subscription loop waits for
+	// the maintenance to update the price table before checking again.
 	priceTableRetryInterval = time.Second
 
+	// subscriptionLoopInterval is the interval after which the subscription
+	// loop checks for work when it's idle. Idle means the staticWakeChan isn't
+	// signaling new work.
 	subscriptionLoopInterval = time.Second
+
+	// subscriptionLoopCooldown is the time the loop will sleep after
+	// encountering an error.
+	// TODO: f/u more sophisticate cooldown
+	subscriptionLoopCooldown = 10 * time.Second
 )
 
 type (
@@ -45,6 +61,9 @@ type (
 		// staticWakeChan is a channel to tell the subscription loop that more
 		// work is available.
 		staticWakeChan chan struct{}
+
+		// stats
+		atomicExtensions uint64
 
 		// utility fields
 		mu sync.Mutex
@@ -73,6 +92,17 @@ type (
 		// the initial value should be set before closing 'subscribed'.
 		latestRV *modules.SignedRegistryValue
 	}
+
+	// notificationHandler is a helper type that contains some information
+	// relevant to notification pricing and updating price tables.
+	notificationHandler struct {
+		staticWorker       *worker
+		staticPTUpdateChan chan modules.RPCPriceTable
+
+		ptUpdateDone     chan struct{}
+		notificationCost types.Currency
+		mu               sync.Mutex
+	}
 )
 
 // active returns 'true' if the subscription is currently active. That means the
@@ -88,7 +118,8 @@ func (sub *subscription) active() bool {
 
 // managedHandleNotification handles incoming notifications from the host. It
 // verifies notifications and updates the worker's internal state accordingly.
-func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *modules.RPCPriceTable, budget *modules.RPCBudget, limit *modules.BudgetLimit) {
+func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit) {
+	w := nh.staticWorker
 	// Close the stream when done.
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -97,27 +128,8 @@ func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *mod
 	}()
 	subInfo := w.staticSubscriptionInfo
 
-	// Since the price table is updated by the subscription loop, we need a lock
-	// to access the value.
-	subInfo.mu.Lock()
-	pt := *priceTable
-	subInfo.mu.Unlock()
-
-	// Add a limit to the stream.
-	err := stream.SetLimit(limit)
-	if err != nil {
-		w.renter.log.Print("managedHandleNotification: failed to set limit on notification stream: ", err)
-		return
-	}
-
-	// Withdraw notification cost.
-	if !budget.Withdraw(pt.SubscriptionNotificationCost) {
-		w.renter.log.Print("managedHandleNotification: failed to withdraw notification cost")
-		return
-	}
-
 	// The stream should have a sane deadline.
-	err = stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
+	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
 	if err != nil {
 		w.renter.log.Print("managedHandleNotification: failed to set deadlien on stream: ", err)
 		return
@@ -134,13 +146,57 @@ func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *mod
 	// Handle the notification.
 	switch snt.Type {
 	case modules.SubscriptionResponseSubscriptionSuccess:
-		// TODO: same race as mentioned in the other comment. Once we receive
-		// the this notification, we know that future notifications will
-		// potentially use a different pricetable.
+		// This indicates, that the subscription was extended. We expect a new
+		// price table and have to update the notification cost.
+		nh.mu.Lock()
+		defer nh.mu.Unlock()
+
+		// Update the ptUpdateDone channel after closing the old one.
+		defer func() {
+			close(nh.ptUpdateDone)
+			nh.ptUpdateDone = make(chan struct{})
+		}()
+
+		var pt modules.RPCPriceTable
+		select {
+		case pt = <-nh.staticPTUpdateChan:
+		default:
+			if build.Release == "testing" {
+				build.Critical("no pt on pt update chan")
+			}
+			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but no new price table is available")
+			return
+		}
+		// Update limit and notification cost.
+		limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+		nh.notificationCost = pt.SubscriptionNotificationCost
+		// Since this stream uses the new costs we set the limit last.
+		err = stream.SetLimit(limit)
+		if err != nil {
+			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but failed to update limit on stream")
+			return
+		}
+		return
 	default:
 		w.renter.log.Print("managedHandleNotification: unknown notification type")
 		return
 	case modules.SubscriptionResponseRegistryValue:
+	}
+
+	// Add a limit to the stream.
+	err = stream.SetLimit(limit)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to set limit on notification stream: ", err)
+		return
+	}
+
+	// Withdraw notification cost.
+	nh.mu.Lock()
+	ok := budget.Withdraw(nh.notificationCost)
+	nh.mu.Unlock()
+	if !ok {
+		w.renter.log.Print("managedHandleNotification: failed to withdraw notification cost")
+		return
 	}
 
 	// Read the update.
@@ -150,9 +206,6 @@ func (w *worker) managedHandleNotification(stream siamux.Stream, priceTable *mod
 		w.renter.log.Print("managedHandleNotification: failed to read entry update: ", err)
 		return
 	}
-
-	// Verify the update. Start with the checks that don't require locking the
-	// subsription.
 
 	// Check if the host was trying to cheat us with an outdated entry.
 	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
@@ -236,7 +289,8 @@ func (w *worker) threadedSubscriptionLoop() {
 			}
 		}
 
-		// If the worker is on a cooldown, block until it is over.
+		// If the worker is on a cooldown, block until it is over before trying
+		// to establish a new subscriptoin session.
 		if w.managedOnMaintenanceCooldown() {
 			cooldownTime := w.callStatus().MaintenanceCoolDownTime
 			w.tg.Sleep(cooldownTime)
@@ -269,7 +323,7 @@ func (w *worker) threadedSubscriptionLoop() {
 
 			// Log error and wait for some time before trying again.
 			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
-			w.tg.Sleep(time.Second * 10)
+			w.tg.Sleep(subscriptionLoopCooldown)
 			continue
 		}
 
@@ -291,7 +345,8 @@ func (w *worker) threadedSubscriptionLoop() {
 		}
 		if err != nil {
 			w.renter.log.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
-			w.tg.Sleep(time.Second * 10)
+			w.tg.Sleep(subscriptionLoopCooldown)
+			continue
 		}
 	}
 }
@@ -328,8 +383,14 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 	// Register the handler. This can happen after beginning the subscription
 	// since we are not expecting any notifications yet.
+	nh := &notificationHandler{
+		staticWorker:       w,
+		staticPTUpdateChan: make(chan modules.RPCPriceTable, 1),
+		ptUpdateDone:       make(chan struct{}),
+		notificationCost:   pt.SubscriptionNotificationCost,
+	}
 	err = w.renter.staticMux.NewListener(subscriber, func(stream siamux.Stream) {
-		w.managedHandleNotification(stream, pt, budget, limit)
+		nh.managedHandleNotification(stream, budget, limit)
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to register listener")
@@ -370,20 +431,29 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
 			// Get a pricetable that is valid until the new deadline.
 			deadline = deadline.Add(modules.SubscriptionPeriod)
-			newPT := w.managedPriceTableForSubscription(time.Until(deadline))
+			pt = w.managedPriceTableForSubscription(time.Until(deadline))
 
-			// Update the value of the price table pointer. The same value is
-			// used by the notification handler.
-			subInfo.mu.Lock()
-			*pt = *newPT
-			subInfo.mu.Unlock()
+			// Tell the notification handler about the new pt. The channel is
+			// buffered so this doesn't block. Also fetch the handler't
+			// notification channel.
+			nh.mu.Lock()
+			updateDone := nh.ptUpdateDone
+			nh.mu.Unlock()
+			nh.staticPTUpdateChan <- *pt
 
 			// Try extending the subscription.
-			// TODO: (req) there is a race here with incoming notifications.
-			// Need some special handling.
 			err = modules.RPCExtendSubscription(stream, pt)
 			if err != nil {
 				return errors.AddContext(err, "failed to extend subscription")
+			}
+
+			// Wait for "ok".
+			select {
+			case <-w.tg.StopChan():
+				return threadgroup.ErrStopped
+			case <-time.After(time.Until(deadline)):
+				return errors.New("never received the 'ok' response for extending the subscription")
+			case <-updateDone:
 			}
 
 			// Count the number of active subscriptions.
@@ -393,15 +463,17 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 					nSubs++
 				}
 			}
-			// TODO: Withdraw from budget.
-			//	if !budget.Withdraw(modules.MDMSubscriptionMemoryCost(pt, nSubs)) {
-			//		return errors.New("failed to withdraw subscription extension cost from budget")
-			//	}
+			// Withdraw from budget.
+			if !budget.Withdraw(modules.MDMSubscriptionMemoryCost(pt, nSubs)) {
+				return errors.New("failed to withdraw subscription extension cost from budget")
+			}
 			// Set the stream deadline to the new subscription deadline.
 			err = stream.SetDeadline(deadline)
 			if err != nil {
 				return errors.AddContext(err, "failed to set stream deadlien to subscription deadline")
 			}
+			// Increment stats for extending the subscription.
+			atomic.AddUint64(&subInfo.atomicExtensions, 1)
 		}
 
 		// Create a diff between the active subscriptions and the desired
@@ -559,7 +631,8 @@ func (w *worker) managedFundSubscription(stream siamux.Stream, fundAmt types.Cur
 	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, w.staticCache().staticBlockHeight, fundAmt)
 }
 
-// Unsubscribe marks the provided entries as not subscribed to and notifies the worker of the change. It will then handle
+// Unsubscribe marks the provided entries as not subscribed to and notifies the
+// worker of the change. It will then handle
 func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest) {
 	subInfo := w.staticSubscriptionInfo
 
@@ -582,6 +655,9 @@ func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest)
 	}
 }
 
+// Subscribe marks the provided entries as subscribed and waits for the
+// subscription to be done, returning potential initial values returend by the
+// host.
 func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistrySubscriptionRequest) ([]modules.RPCRegistrySubscriptionNotificationEntryUpdate, error) {
 	subInfo := w.staticSubscriptionInfo
 

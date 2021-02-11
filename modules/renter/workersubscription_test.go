@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -308,6 +309,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	}()
 
 	// Make sure the budget is funded.
+	var fundAmt types.Currency
 	err = build.Retry(10, time.Second, func() error {
 		// Fetch latest limit. managedSubscriptionLoop changes it.
 		limit := stream.Limit()
@@ -318,7 +320,7 @@ func TestSubscriptionLoop(t *testing.T) {
 		bandwidthBeforeCost := downloadBeforeCost.Add(uploadBeforeCost)
 
 		balanceBeforeFund := initialBudget.Sub(bandwidthBeforeCost)
-		fundAmt := expectedBudget.Sub(balanceBeforeFund)
+		fundAmt = expectedBudget.Sub(balanceBeforeFund)
 
 		// Compute the total bandwidth cost.
 		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
@@ -355,10 +357,6 @@ func TestSubscriptionLoop(t *testing.T) {
 			wt.staticUpdatePriceTable()
 		}
 	}()
-
-	// Sleep for a subscription period. This makes sure that the subscription is
-	// automatically extended.
-	time.Sleep(modules.SubscriptionPeriod)
 
 	// The subscription maps should be empty.
 	subInfo := wt.staticSubscriptionInfo
@@ -399,7 +397,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	nActive := 0
 	for _, sub := range subInfo.subscriptions {
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Fatal("timeout")
 		case <-sub.subscribed:
 		}
@@ -419,6 +417,20 @@ func TestSubscriptionLoop(t *testing.T) {
 	// There should be 2 active subscriptions.
 	if nActive != 2 {
 		t.Fatalf("wrong number of active subscriptions: %v", nActive)
+	}
+
+	// Wait for period to be extended while having active subscriptions. This
+	// time it will be extended with active subscriptions.
+	nExtensions := atomic.LoadUint64(&subInfo.atomicExtensions)
+	err = build.Retry(10, 10*time.Second, func() error {
+		n := atomic.LoadUint64(&subInfo.atomicExtensions)
+		if n <= nExtensions {
+			return fmt.Errorf("still waiting %v <= %v", n, nExtensions)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Remove the second subscription.
@@ -489,6 +501,40 @@ func TestSubscriptionLoop(t *testing.T) {
 		t.Fatal("sub3 channel not closed")
 	}
 	subInfo.mu.Unlock()
+
+	// Check that the budget was withdrawn from correctly.
+	err = build.Retry(10, time.Second, func() error {
+		limit := stream.Limit()
+
+		// Compute bandwidth cost.
+		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
+		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
+		bandwidthCost := downloadCost.Add(uploadCost)
+
+		// Compute subscription cost. Subscribed to 2 entries of which 0
+		// existed.
+		subscriptionCost := modules.MDMSubscribeCost(pt, 0, 2)
+
+		// Compute notification cost. There should not have been any.
+		notificationCost := types.ZeroCurrency
+
+		// Compute extension cost. We extended twice with 2 active subscriptions.
+		nExtensions := atomic.LoadUint64(&subInfo.atomicExtensions)
+		extensionCost := modules.MDMSubscriptionMemoryCost(pt, 2).Mul64(nExtensions)
+
+		// Compute the total cost.
+		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost).Add(extensionCost)
+
+		// Compute the remaining budget. Consider the fundAmt from before.
+		remainingBudget := initialBudget.Sub(totalCost).Add(fundAmt)
+		if !remainingBudget.Equals(budget.Remaining()) {
+			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestSubscriptionLoop is a unit test for managedSubscriptionLoop that is
@@ -727,10 +773,11 @@ func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
 		// Compute notification cost.
 		notificationCost := pt.SubscriptionNotificationCost
 
-		// TODO: Compute extension cost.
+		// Compute extension cost. Should be zero since this test never extends.
+		extensionCost := types.ZeroCurrency
 
 		// Compute the total cost.
-		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost)
+		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost).Add(extensionCost)
 
 		// Compute the remaining budget
 		remainingBudget := initialBudget.Sub(totalCost)
