@@ -5233,9 +5233,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 					gfuContracts++
 				}
 			}
-			if gfuContracts != hosts && !portalMode {
-				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
-			} else if gfuContracts != uint64(len(tg.Hosts())) && portalMode {
+			if gfuContracts != hosts {
 				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
 			}
 			return nil
@@ -5245,7 +5243,12 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	// Run for default allowance and then one less every time until we reach 0
 	// hosts.
 	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
+		// Run for regular node.
 		if err := test(hosts, false); err != nil {
+			t.Fatal(err)
+		}
+		// Run for portal.
+		if err := test(hosts, true); err != nil {
 			t.Fatal(err)
 		}
 	}
