@@ -5249,11 +5249,6 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-
-	// Run for portal.
-	if err := test(1, true); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // TestRenterClean tests the /renter/clean endpoint functionality.

@@ -383,6 +383,7 @@ func RenterContractsStable(renter *TestNode, tg *TestGroup) error {
 	renewWindow := int(rg.Settings.Allowance.RenewWindow)
 	isPortal := !rg.Settings.Allowance.PaymentContractInitialFunding.IsZero()
 	numContracts := int(rg.Settings.Allowance.Hosts)
+	numHosts := int(rg.Settings.Allowance.Hosts)
 	if isPortal || len(tg.Hosts()) < numContracts {
 		numContracts = len(tg.Hosts())
 	}
@@ -408,8 +409,12 @@ func RenterContractsStable(renter *TestNode, tg *TestGroup) error {
 		}
 
 		// Check for active contracts
-		if len(rc.ActiveContracts) != numContracts {
+		if len(rc.ActiveContracts) != numHosts {
 			return errors.New("Not enough Active Contracts")
+		}
+		totalContracts := len(rc.ActiveContracts) + len(rc.PassiveContracts) + len(rc.DisabledContracts)
+		if totalContracts != numContracts {
+			return errors.New("Not enough contracts total")
 		}
 
 		// Check if any of the active contracts are in the renew window
