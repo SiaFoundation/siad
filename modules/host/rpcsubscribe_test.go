@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 // randomRegistryValue is a helper to create a signed registry value for
@@ -788,10 +789,10 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	fastrand.Read(sub[:])
 
 	// Register a listener for notifications.
-	var notificationUploaded, notificationDownloaded uint64
 	var notificationMu sync.Mutex
 	numNotifications := 0
 	var wg sync.WaitGroup
+	var limits []mux.BandwidthLimit
 	err := rhp.staticRenterMux.NewListener(hex.EncodeToString(sub[:]), func(stream siamux.Stream) {
 		wg.Add(1)
 		defer wg.Done()
@@ -837,8 +838,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 		}
 
 		// Collect stats.
-		notificationDownloaded += stream.Limit().Downloaded()
-		notificationUploaded += stream.Limit().Uploaded()
+		limits = append(limits, stream.Limit())
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -916,7 +916,46 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
-	// Close listener to prevent new incoming notifications.
+	// When checking the prices we give the host a grace period after stopping
+	// the subscription before closing the listener. That way we don't miss any
+	// streams which were send at the same time as the subscription was stopped.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Compute used bandwidth from limits.
+		var nu, nd uint64
+		notificationMu.Lock()
+		for _, limit := range limits {
+			nu += limit.Uploaded()
+			nd += limit.Downloaded()
+		}
+		nn := numNotifications
+		notificationMu.Unlock()
+
+		// Check balance afterwards.
+		l := stream.Limit()
+		lu, ld := l.Uploaded(), l.Downloaded()
+		upCost := pt.UploadBandwidthCost.Mul64(lu + nu)
+		downCost := pt.DownloadBandwidthCost.Mul64(ld + nd)
+		bandwidthCost := upCost.Add(downCost)
+		cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
+		cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
+		cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(nn)))
+
+		currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+		expected := expectedBalance.Sub(cost)
+		if !currentBalance.Equals(expected) {
+			return fmt.Errorf("wrong balance %v != %v", currentBalance, expected)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop the ticker and wait for the goroutine to finish.
+	close(cancelTicker)
+	updateWG.Wait()
+
+	// Close listener.
 	err = rhp.staticRenterMux.CloseListener(hex.EncodeToString(sub[:]))
 	if err != nil {
 		t.Fatal(err)
@@ -925,19 +964,27 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	// Wait for last notification to finish.
 	wg.Wait()
 
-	// Stop the ticker and wait for the goroutine to finish.
-	close(cancelTicker)
-	updateWG.Wait()
+	// Check total subscriptions.
+	err = assertNumSubscriptions(host, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute used bandwidth from limits. Nothing should have changed.
+	var nu, nd uint64
+	notificationMu.Lock()
+	for _, limit := range limits {
+		nu += limit.Uploaded()
+		nd += limit.Downloaded()
+	}
+	nn := numNotifications
+	notificationMu.Unlock()
 
 	// Check balance afterwards.
 	l := stream.Limit()
-	notificationMu.Lock()
-	nu := notificationUploaded
-	nd := notificationDownloaded
-	nn := numNotifications
-	notificationMu.Unlock()
-	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + nu)
-	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + nd)
+	lu, ld := l.Uploaded(), l.Downloaded()
+	upCost := pt.UploadBandwidthCost.Mul64(lu + nu)
+	downCost := pt.DownloadBandwidthCost.Mul64(ld + nd)
 	bandwidthCost := upCost.Add(downCost)
 	cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
 	cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
@@ -947,11 +994,5 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	expected := expectedBalance.Sub(cost)
 	if !currentBalance.Equals(expected) {
 		t.Fatalf("wrong balance %v != %v", currentBalance, expected)
-	}
-
-	// Check total subscriptions.
-	err = assertNumSubscriptions(host, 0)
-	if err != nil {
-		t.Fatal(err)
 	}
 }
