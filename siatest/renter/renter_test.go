@@ -25,6 +25,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -1248,40 +1249,13 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// We should be able to download
-	start := time.Now()
 	_, _, err = r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Error("Failed to download file", err)
 	}
 
-	// Check that the worker is not on cooldown.
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		rwg, err := r.RenterWorkersGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if rwg.TotalDownloadCoolDown == 0 {
-			// Do the download again to reset any cooldowns. Especially on CI,
-			// the amount of time between DownloadByStream and RenterWorkersGet
-			// can be longer than the base cooldown, but the cooldown eventually
-			// reaches 24 seconds, which should be enough time.
-			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
-			_, _, err = r.DownloadByStream(remoteFile)
-			if err != nil {
-				t.Fatal("Failed to download file", err)
-			}
-			t.Log(rwg.NumWorkers, time.Since(start))
-			return errors.New("there should be workers on download cooldown because we took their hosts offline")
-		}
-		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
-			return errors.New("there should be hosts that are not on cooldown")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Error(err)
-	}
-	// The workers should eventually come off of cooldown.
+	// The worker shouldn't be on a cooldown since the last download was successful
+	// and cleared the consecutive failures.
 	err = build.Retry(500, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
@@ -5260,9 +5234,7 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 					gfuContracts++
 				}
 			}
-			if gfuContracts != hosts && !portalMode {
-				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
-			} else if gfuContracts != uint64(len(tg.Hosts())) && portalMode {
+			if gfuContracts != hosts {
 				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
 			}
 			return nil
@@ -5272,14 +5244,14 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	// Run for default allowance and then one less every time until we reach 0
 	// hosts.
 	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
+		// Run for regular node.
 		if err := test(hosts, false); err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	// Run for portal.
-	if err := test(1, true); err != nil {
-		t.Fatal(err)
+		// Run for portal.
+		if err := test(hosts, true); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -5406,9 +5378,8 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   4,
-		Miners:  1,
-		Renters: 1,
+		Hosts:  6,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -5421,12 +5392,20 @@ func TestRenterRepairSize(t *testing.T) {
 		}
 	}()
 
+	// Add renter with dependency
+	renterParams := node.RenterTemplate
+	renterParams.RenterDeps = &dependencies.DependencyIgnoreFailedRepairs{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal("Failed to add renter", err)
+	}
+
 	// Grab renter
 	r := tg.Renters()[0]
 
 	// Define helper
 	m := tg.Miners()[0]
-	checkRepairSize := func(aggregateExpected, expected uint64) error {
+	checkRepairSize := func(dirSiaPath modules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
@@ -5437,21 +5416,55 @@ func TestRenterRepairSize(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			// Check repair totals
-			var err1, err2 error
+			// Check repair totals for root. Since there is no file in root the
+			// directory values should always be zero and the aggregate values should
+			// match the input.
 			dir := dis.Directories[0]
-			if dir.AggregateRepairSize != aggregateExpected {
-				err1 = fmt.Errorf("AggregateRepairSize should be %v but was %v", aggregateExpected, dir.AggregateRepairSize)
+			var rootErrs error
+			if dir.AggregateRepairSize != repairExpected {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: AggregateRepairSize should be %v but was %v", repairExpected, dir.AggregateRepairSize))
 			}
-			if dir.RepairSize != expected {
-				err2 = fmt.Errorf("RepairSize should be %v but was %v", expected, dir.RepairSize)
+			if dir.AggregateStuckSize != stuckExpected {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: AggregateStuckSize should be %v but was %v", stuckExpected, dir.AggregateStuckSize))
 			}
-			return errors.Compose(err1, err2)
+			if dir.RepairSize != 0 {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: RepairSize should be %v but was %v", 0, dir.RepairSize))
+			}
+			if dir.StuckSize != 0 {
+				rootErrs = errors.Compose(rootErrs, fmt.Errorf("Root: StuckSize should be %v but was %v", 0, dir.StuckSize))
+			}
+			// If the passed in dirSiaPath is also root then return
+			if dirSiaPath.IsRoot() {
+				return rootErrs
+			}
+
+			// Grab renter's siafile's directory
+			dis, err = r.RenterDirRootGet(dirSiaPath)
+			if err != nil {
+				return errors.Compose(err, rootErrs)
+			}
+			// Check repair totals. The Aggregate and Directory values should be the
+			// same.
+			dir = dis.Directories[0]
+			var dirErrs error
+			if dir.AggregateRepairSize != repairExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: AggregateRepairSize should be %v but was %v", dirSiaPath, repairExpected, dir.AggregateRepairSize))
+			}
+			if dir.AggregateStuckSize != stuckExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: AggregateStuckSize should be %v but was %v", dirSiaPath, stuckExpected, dir.AggregateStuckSize))
+			}
+			if dir.RepairSize != repairExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: RepairSize should be %v but was %v", dirSiaPath, repairExpected, dir.RepairSize))
+			}
+			if dir.StuckSize != stuckExpected {
+				dirErrs = errors.Compose(dirErrs, fmt.Errorf("%v: StuckSize should be %v but was %v", dirSiaPath, stuckExpected, dir.StuckSize))
+			}
+			return errors.Compose(rootErrs, dirErrs)
 		})
 	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkRepairSize(0, 0); err != nil {
+	if err := checkRepairSize(modules.RootSiaPath(), 0, 0); err != nil {
 		t.Log("Initial Check Failed")
 		t.Error(err)
 	}
@@ -5459,30 +5472,78 @@ func TestRenterRepairSize(t *testing.T) {
 	// Upload a file
 	dp := 1
 	pp := len(tg.Hosts()) - dp
-	_, _, err = r.UploadNewFileBlocking(100, uint64(dp), uint64(pp), false)
+	_, rf, err := r.UploadNewFileBlocking(100, uint64(dp), uint64(pp), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirSiaPath, err := rf.SiaPath().Dir()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkRepairSize(0, 0); err != nil {
+	if err := checkRepairSize(dirSiaPath, 0, 0); err != nil {
 		t.Log("After Upload Check Failed")
 		t.Error(err)
 	}
 
-	// Take down hosts one by one and verify the repair values are dropping.
+	// Take down one host
 	hosts := tg.Hosts()
+	host := hosts[0]
+	if err := tg.StopNode(host); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark as stuck
+	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the file is marked as stuck it should register that stuck repair
+	expected := modules.SectorSize
+	if err := checkRepairSize(dirSiaPath, 0, expected); err != nil {
+		t.Log("First host stuck check failed")
+		t.Error(err)
+	}
+
+	// Mark as not stuck
+	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// With only one host taken down there should be no repair needed since the
+	// file won't be seen as needing repair
+	if err := checkRepairSize(dirSiaPath, 0, 0); err != nil {
+		t.Log("First host check failed")
+		t.Error(err)
+	}
+
+	// Take down the rest of the hosts one by one and verify the repair values are dropping.
+	hosts = hosts[1:]
 	for i, host := range hosts {
 		// Stop the host
 		if err := tg.StopNode(host); err != nil {
 			t.Fatal(err)
 		}
-		// Check that the aggregate repair size increases
-		expected := uint64(i+1) * modules.SectorSize
-		if err := checkRepairSize(expected, 0); err != nil {
+
+		// Check that the aggregate repair size increases.
+		expected += modules.SectorSize
+		if err := checkRepairSize(dirSiaPath, expected, 0); err != nil {
 			t.Log("Host loop failed", i)
 			t.Error(err)
 		}
+	}
+
+	// Mark as stuck again
+	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRepairSize(dirSiaPath, 0, expected); err != nil {
+		t.Log("Final stuck check failed")
+		t.Error(err)
 	}
 }
 
@@ -5537,14 +5598,14 @@ func TestMemoryStatus(t *testing.T) {
 		PriorityReserve:   0,
 	}
 	sys := modules.MemoryManagerStatus{
-		Available: 1 << 16, // 64 KiB
-		Base:      1 << 16, // 64 KiB
+		Available: 3 << 15, // 96 KiB
+		Base:      3 << 15, // 96 KiB
 		Requested: 0,
 
 		PriorityAvailable: 1 << 17, // 128 KiB
 		PriorityBase:      1 << 17, // 128 KiB
 		PriorityRequested: 0,
-		PriorityReserve:   1 << 16, // 64 KiB
+		PriorityReserve:   1 << 15, // 32 KiB
 	}
 	total := ud.Add(uu).Add(reg).Add(sys)
 
@@ -5578,5 +5639,259 @@ func TestMemoryStatus(t *testing.T) {
 		siatest.PrintJSON(ms.MemoryManagerStatus)
 		siatest.PrintJSON(total)
 		t.Fatal("total")
+	}
+}
+
+// TestRenterBubble probes manually triggering a bubble through the API.
+func TestRenterBubble(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(testDir)
+	renterParams.RenterDeps = &dependencies.DependencyDisableRepairAndHealthLoopsMulti{}
+	r, err := siatest.NewCleanNode(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Declare DirectoryInfo check function
+	checkDirInfo := func(found, expected modules.DirectoryInfo) error {
+		var dirInfoErrs error
+		// Check time fields for initialization as the actual values will vary based
+		// on when bubble was executed
+		//
+		// AggregateLastHealthCheckTime
+		fTime := found.AggregateLastHealthCheckTime
+		eTime := expected.AggregateLastHealthCheckTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("AggregateLastHealthCheckTimes mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.AggregateLastHealthCheckTime = expected.AggregateLastHealthCheckTime
+		// AggregateMostRecentModTime
+		fTime = found.AggregateMostRecentModTime
+		eTime = expected.AggregateMostRecentModTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("AggregateMostRecentModTime mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.AggregateMostRecentModTime = expected.AggregateMostRecentModTime
+		// LastHealthCheckTime
+		fTime = found.LastHealthCheckTime
+		eTime = expected.LastHealthCheckTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("LastHealthCheckTime mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.LastHealthCheckTime = expected.LastHealthCheckTime
+		// MostRecentModTime
+		fTime = found.MostRecentModTime
+		eTime = expected.MostRecentModTime
+		if fTime.IsZero() != eTime.IsZero() {
+			err := fmt.Errorf("MostRecentModTime mismatch; found %v, expected %v", fTime, eTime)
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+		found.MostRecentModTime = expected.MostRecentModTime
+
+		// Match up the UID and SiaPath
+		expected.UID = found.UID
+		expected.SiaPath = found.SiaPath
+
+		// Check the remaining fields
+		if !reflect.DeepEqual(found, expected) {
+			err := fmt.Errorf("Non Time fields mismatch\nfound\n%v\nexpected\n%v", siatest.PrintJSON(found), siatest.PrintJSON(expected))
+			dirInfoErrs = errors.Compose(dirInfoErrs, err)
+		}
+
+		return dirInfoErrs
+	}
+
+	// Renter filesystem should have metadata that isn't updated
+	initDirInfo := modules.DirectoryInfo{
+		AggregateHealth:              siadir.DefaultDirHealth,
+		AggregateMaxHealth:           siadir.DefaultDirHealth,
+		AggregateMaxHealthPercentage: 100,
+		AggregateMinRedundancy:       siadir.DefaultDirRedundancy,
+		// The exact time is not important, just needs to be initialized
+		AggregateMostRecentModTime: time.Now(),
+		AggregateStuckHealth:       siadir.DefaultDirHealth,
+
+		Health:              siadir.DefaultDirHealth,
+		MaxHealth:           siadir.DefaultDirHealth,
+		MaxHealthPercentage: 100,
+		MinRedundancy:       siadir.DefaultDirRedundancy,
+		DirMode:             modules.DefaultDirPerm,
+		// The exact time is not important, just needs to be initialized
+		MostRecentModTime: time.Now(),
+		StuckHealth:       siadir.DefaultDirHealth,
+	}
+	// Check the filesystem
+	var tests = []struct {
+		siaPath  modules.SiaPath
+		expected modules.DirectoryInfo
+	}{
+		{modules.RootSiaPath(), initDirInfo},
+		{modules.HomeFolder, initDirInfo},
+		{modules.UserFolder, initDirInfo},
+		{modules.BackupFolder, initDirInfo},
+		{modules.VarFolder, initDirInfo},
+		{modules.SkynetFolder, initDirInfo},
+	}
+	// Initial checks are not pending any bubbles so should not need a build retry
+	// loop
+	for _, test := range tests {
+		rd, err := r.RenterDirRootGet(test.siaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = checkDirInfo(rd.Directories[0], test.expected)
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
+	}
+
+	// Call bubble on root
+	var force, recursive bool
+	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define expected rootDirInfo
+	rootDirInfo := initDirInfo
+	rootDirInfo.AggregateLastHealthCheckTime = time.Now()
+	rootDirInfo.LastHealthCheckTime = time.Now()
+	rootDirInfo.AggregateNumSubDirs = 3
+	rootDirInfo.NumSubDirs = 3
+
+	// Check the filesystem
+	tests = []struct {
+		siaPath  modules.SiaPath
+		expected modules.DirectoryInfo
+	}{
+		{modules.RootSiaPath(), rootDirInfo},
+		{modules.HomeFolder, initDirInfo},
+		{modules.UserFolder, initDirInfo},
+		{modules.BackupFolder, initDirInfo},
+		{modules.VarFolder, initDirInfo},
+		{modules.SkynetFolder, initDirInfo},
+	}
+	for _, test := range tests {
+		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			rd, err := r.RenterDirRootGet(test.siaPath)
+			if err != nil {
+				return err
+			}
+			return checkDirInfo(rd.Directories[0], test.expected)
+		})
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
+	}
+
+	// Call bubble on root recursively
+	force = true
+	recursive = true
+	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define expected directory Infos
+	//
+	// Root will now see all sub directories
+	rootDirInfo.AggregateNumSubDirs = 5
+	// LastHealthCheckTimes will all be set
+	initDirInfo.AggregateLastHealthCheckTime = time.Now()
+	initDirInfo.LastHealthCheckTime = time.Now()
+	// Home has 1 sub directory
+	homeDirInfo := initDirInfo
+	homeDirInfo.AggregateNumSubDirs = 1
+	homeDirInfo.NumSubDirs = 1
+	// Backups has no sub directory
+	backupDirInfo := initDirInfo
+	// Var has 1 sub directory
+	varDirInfo := initDirInfo
+	varDirInfo.AggregateNumSubDirs = 1
+	varDirInfo.NumSubDirs = 1
+	// User has no sub directory
+	userDirInfo := initDirInfo
+	// Skynet has no sub directory
+	skynetDirInfo := initDirInfo
+
+	// Check the filesystem
+	tests = []struct {
+		siaPath  modules.SiaPath
+		expected modules.DirectoryInfo
+	}{
+		{modules.RootSiaPath(), rootDirInfo},
+		{modules.HomeFolder, homeDirInfo},
+		{modules.UserFolder, userDirInfo},
+		{modules.BackupFolder, backupDirInfo},
+		{modules.VarFolder, varDirInfo},
+		{modules.SkynetFolder, skynetDirInfo},
+	}
+	for _, test := range tests {
+		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			rd, err := r.RenterDirRootGet(test.siaPath)
+			if err != nil {
+				return err
+			}
+			return checkDirInfo(rd.Directories[0], test.expected)
+		})
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
+	}
+
+	// Call bubble on root recursively without force, this should result in only
+	// the root directory being updated.
+	checkTime := time.Now()
+	force = false
+	recursive = true
+	err = r.RenterBubblePost(modules.RootSiaPath(), force, recursive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range tests {
+		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			rd, err := r.RenterDirRootGet(test.siaPath)
+			if err != nil {
+				return err
+			}
+			dir := rd.Directories[0]
+
+			// Check LastHealthCheckTimes
+			var badALHCT, badLHCT bool
+			if test.siaPath.IsRoot() {
+				// Root should have a lastHealthCheckTime after checkTime but an
+				// AggregateLastHealthCheckTime after checkTime
+				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
+				badLHCT = dir.LastHealthCheckTime.Before(checkTime)
+			} else {
+				// All other directories should have both lastHealthCheckTimes before checkTime
+				badALHCT = dir.AggregateLastHealthCheckTime.After(checkTime)
+				badLHCT = dir.LastHealthCheckTime.After(checkTime)
+			}
+			if badALHCT || badLHCT {
+				return fmt.Errorf("badALHCT %v badLHCT %v", badALHCT, badLHCT)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
+		}
 	}
 }

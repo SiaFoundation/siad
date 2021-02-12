@@ -50,6 +50,32 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 	// Create a map of directories to be refreshed
 	dirsToRefresh := rt.renter.newUniqueRefreshPaths()
 
+	// Test adding a single child and making sure all the parents are added
+	child := paths[len(paths)-1]
+	parents := []modules.SiaPath{
+		{Path: ""},
+		{Path: "root"},
+		{Path: "root/SubDir2"},
+		{Path: "root/SubDir2/SubDir2"},
+	}
+	err = dirsToRefresh.callAdd(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirsToRefresh.mu.Lock()
+	if _, ok := dirsToRefresh.childDirs[child]; !ok {
+		t.Fatal("Did not find path in map", child)
+	}
+	for _, parent := range parents {
+		if _, ok := dirsToRefresh.parentDirs[parent]; !ok {
+			t.Fatal("Did not find path in map", parent)
+		}
+	}
+	dirsToRefresh.mu.Unlock()
+
+	// Reset
+	dirsToRefresh = rt.renter.newUniqueRefreshPaths()
+
 	// Add all paths to map
 	for _, path := range paths {
 		err = dirsToRefresh.callAdd(path)

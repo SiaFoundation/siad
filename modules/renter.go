@@ -379,6 +379,7 @@ type DirectoryInfo struct {
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+	AggregateStuckSize           uint64    `json:"aggregatestucksize"`
 
 	// Skynet Fields
 	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
@@ -400,6 +401,7 @@ type DirectoryInfo struct {
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
+	StuckSize           uint64      `json:"stucksize"`
 	UID                 uint64      `json:"uid"`
 
 	// Skynet Fields
@@ -1252,6 +1254,17 @@ type Renter interface {
 
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
+
+	// BubbleMetadata calculates the updated values of a directory's metadata and
+	// updates the siadir metadata on disk then calls callThreadedBubbleMetadata
+	// on the parent directory so that it is only blocking for the current
+	// directory
+	//
+	// If the recursive boolean is supplied, all sub directories will be bubbled.
+	//
+	// If the force boolean is supplied, the LastHealthCheckTime of the directories
+	// will be ignored so all directories will be considered.
+	BubbleMetadata(siaPath SiaPath, force, recursive bool) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -1289,6 +1302,23 @@ func HealthPercentage(health float64) float64 {
 		healthPercent = 0
 	}
 	return healthPercent
+}
+
+var (
+	// RepairThreshold defines the threshold at which the renter decides to
+	// repair a file. The renter will start repairing the file when the health
+	// is equal to or greater than this value.
+	RepairThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
+)
+
+// NeedsRepair is a helper to ensure consistent comparison with the
+// RepairThreshold
+func NeedsRepair(health float64) bool {
+	return health >= RepairThreshold
 }
 
 // A HostDB is a database of hosts that the renter can use for figuring out who

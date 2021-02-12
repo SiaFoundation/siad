@@ -2,7 +2,6 @@ package siatest
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -25,10 +24,10 @@ func ChunkSize(minPieces uint64, ct crypto.CipherType) uint64 {
 }
 
 // PrintJSON is a helper function that wraps the jsonMarshalIndent function
-func PrintJSON(a interface{}) {
+func PrintJSON(a interface{}) string {
 	json, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(json))
+	return string(json)
 }

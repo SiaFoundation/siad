@@ -287,6 +287,7 @@ func (wal *writeAheadLog) load() error {
 		wal.cm.log.Println("WARN: WAL file detected, performing recovery after unclean shutdown.")
 		err = wal.recoverWAL(walFile)
 		if err != nil {
+			err = errors.Compose(err, walFile.Close())
 			return build.ExtendErr("failed to recover WAL", err)
 		}
 		err = walFile.Close()

@@ -705,6 +705,11 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
 // closes the fileEntry.
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
+	// Check for ignore failed repairs dependency
+	if r.deps.Disrupt("IgnoreFailedRepairs") {
+		stuck = false
+	}
+
 	// Update chunk stuck status and close file.
 	errStuck := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
 	errClose := uc.fileEntry.Close()
@@ -735,7 +740,8 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	uc.mu.Unlock()
 
 	// Determine if repair was successful.
-	successfulRepair := float64(piecesNeeded-piecesCompleted)/float64(piecesNeeded-minimumPieces) < RepairThreshold
+	health := siafile.CalculateHealth(piecesCompleted, minimumPieces, piecesNeeded)
+	successfulRepair := !modules.NeedsRepair(health)
 
 	// Check if renter is shutting down
 	var renterError bool
@@ -761,8 +767,10 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		r.log.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status
-	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
-		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
+	if !r.deps.Disrupt("IgnoreFailedRepairs") || successfulRepair {
+		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
+			r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
+		}
 	}
 
 	// Check to see if the chunk was stuck and now is successfully repaired by

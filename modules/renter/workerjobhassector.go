@@ -33,8 +33,7 @@ type (
 	jobHasSectorQueue struct {
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
-		weightedJobTime       float64
-		weightedJobsCompleted float64
+		weightedJobTime float64
 
 		*jobGenericQueue
 	}
@@ -114,12 +113,7 @@ func (j *jobHasSector) callExecute() {
 
 	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
-	jq.mu.Lock()
-	jq.weightedJobTime *= jobHasSectorPerformanceDecay
-	jq.weightedJobsCompleted *= jobHasSectorPerformanceDecay
-	jq.weightedJobTime += float64(jobTime)
-	jq.weightedJobsCompleted++
-	jq.mu.Unlock()
+	jq.callUpdateJobTimeMetrics(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
@@ -183,7 +177,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
-	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
+	return time.Duration(jq.weightedJobTime)
 }
 
 // callExpectedJobTime returns the expected amount of time that this job will
@@ -192,6 +186,14 @@ func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duratio
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime(numSectors)
+}
+
+// callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
+// it to update the job performance metrics on the queue.
+func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
@@ -211,20 +213,29 @@ func (w *worker) initJobHasSectorQueue() {
 // bandwidth consumption of a has sector job. This helper function enables
 // getting at the expected bandwidth without having to instantiate a job.
 func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
-	// Roughly 40 roots can fit into a single frame. To be conservative, we use
-	// a value of 30.
-	//
-	// Roughly 150 responses can fit into a single frame. To be conservative, we
-	// use a value of 100.
-	uploadMult := numRoots / 30
-	downloadMult := numRoots / 100
+	// closestMultipleOf is a small helper function that essentially rounds up
+	// 'num' to the closest multiple of 'multipleOf'.
+	closestMultipleOf := func(num, multipleOf int) int {
+		mod := num % multipleOf
+		if mod != 0 {
+			num += (multipleOf - mod)
+		}
+		return num
+	}
+
+	// A HS job consumes more than one packet on download as soon as it contains
+	// 13 roots or more. In terms of upload bandwidth that threshold is at 17.
+	// To be conservative we use 10 and 15 as cutoff points.
+	downloadMultiplier := closestMultipleOf(numRoots, 10) / 10
+	uploadMultiplier := closestMultipleOf(numRoots, 15) / 15
+
 	// A base of 1500 is used for the packet size. On ipv4, it is technically
 	// smaller, but siamux is general and the packet size is the Ethernet MTU
 	// (1500 bytes) minus any protocol overheads. It's possible if the renter is
 	// connected directly over an interface to a host that there is no overhead,
 	// which means siamux could use the full 1500 bytes. So we use the most
 	// conservative value here as well.
-	ul = uint64(1500 * (1 + uploadMult))
-	dl = uint64(1500 * (1 + downloadMult))
+	ul = uint64(1500 * uploadMultiplier)
+	dl = uint64(1500 * downloadMultiplier)
 	return
 }

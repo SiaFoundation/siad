@@ -80,6 +80,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -140,19 +142,45 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // this piece. It will include all of the unresolved workers, and it will
 // attempt to exclude any workers that are known to be non-viable - for example
 // workers with no pieces that can be resolved or workers that are currently on
-// cooldown for the read job.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+// cooldown for the read job. The worker heap optimizes for speed, not cost.
+// Cost is taken into account at a later point where the initial worker set is
+// built.
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, unresolvedWorkerTimePenalty time.Duration) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
+		// Ignore workers that are on a maintenance cooldown. Good performing
+		// workers are generally never on maintenance cooldown, so by skipping
+		// them here we avoid ever waiting for them to resolve.
+		if uw.staticWorker.managedOnMaintenanceCooldown() {
+			continue
+		}
+
+		// Verify whether the read queue is on a cooldown, if so skip this
+		// worker.
+		jrq := uw.staticWorker.staticJobReadQueue
+		if jrq.callOnCooldown() {
+			continue
+		}
+
+		// Fetch the resolveTime, which is the time until the HS job is expected
+		// to resolve. If that time is in the past, set it to a time in the
+		// future, equal to the amount that it's late.
+		resolveTime := uw.staticExpectedResolvedTime
+		if resolveTime.Before(time.Now()) {
+			resolveTime = time.Now().Add(time.Since(resolveTime))
+		}
+
 		// Determine the expected readDuration and cost for this worker. Add the
-		// readDuration to the staticExpectedResolvedTime to get the full
-		// complete time for the download - staticExpectedResolvedTime in the
-		// unresolved worker here refers to the expected complete time of the
-		// HasSector job.
-		cost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-		readDuration := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-		completeTime := uw.staticExpectedResolvedTime.Add(readDuration)
+		// readDuration to the hasSectorTime to get the full
+		// complete time for the download
+		cost := jrq.callExpectedJobCost(pdc.pieceLength)
+		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+		if readDuration == 0 {
+			continue
+		}
+
+		completeTime := resolveTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -182,10 +210,19 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	for i, piece := range pdc.availablePieces {
 		for _, pieceDownload := range piece {
 			w := pieceDownload.worker
+			pt := w.staticPriceTable().staticPriceTable
+			allowance := w.staticCache().staticRenterAllowance
+
+			// Ignore this worker if its host is considered to be price gouging.
+			err := checkProjectDownloadGouging(pt, allowance)
+			if err != nil {
+				continue
+			}
 
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
-			if !w.managedAsyncReady() || w.staticJobReadQueue.cooldownUntil.After(time.Now()) {
+			jrq := w.staticJobReadQueue
+			if !w.managedAsyncReady() || w.staticJobReadQueue.callOnCooldown() {
 				continue
 			}
 
@@ -197,11 +234,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				// Elem is a pointer, so the map does not need to be updated.
 				elem.pieces = append(elem.pieces, uint64(i))
 			} else {
-				cost := w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-				readDuration := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-				completeTime := pieceDownload.expectedCompleteTime.Add(readDuration)
+				cost := jrq.callExpectedJobCost(pdc.pieceLength)
+				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: completeTime,
+					completeTime: time.Now().Add(readDuration),
 					cost:         cost,
 					readDuration: readDuration,
 
@@ -421,6 +457,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	start := time.Now()
+
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -428,8 +466,13 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
 		// Create a list of usable workers, sorted by the amount of time they
-		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+		// are expected to take to return. We pass in the time since we've
+		// initially tried to launch the initial set of workers, this time is
+		// being used as a time penalty which we'll attribute to unresolved
+		// workers. Ensuring resolved workers are being selected if we're
+		// waiting too long for unresolved workers to resolve.
+		unresolvedWorkerPenalty := time.Since(start)
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkerPenalty)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
@@ -455,4 +498,71 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			return errors.New("timed out while trying to build initial set of workers")
 		}
 	}
+}
+
+// checkProjectDownloadGouging verifies the cost of executing the jobs performed
+// by the project download are reasonable in relation to the user's allowance
+// and the amount of data they intend to download
+func checkProjectDownloadGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+	// Check whether the download bandwidth price is too high.
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+	}
+
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+	}
+
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// In order to decide whether or not the cost of performing a PDBR is too
+	// expensive, we make some assumptions with regards to lookup vs download
+	// job ratio and avg download size. The total cost is then compared in
+	// relation to the allowance, where we verify that a fraction of the cost
+	// (which we'll call reduced cost) to download the amount of data the user
+	// intends to download does not exceed its allowance.
+
+	// Calculate the cost of a has sector job
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	programCost, _, _ := pb.Cost(true)
+
+	ulbw, dlbw := hasSectorJobExpectedBandwidth(1)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costHasSectorJob := programCost.Add(bandwidthCost)
+
+	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
+	// average download size here which is 64 KiB.
+	pb = modules.NewProgramBuilder(&pt, 0)
+	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, crypto.Hash{}, true)
+	programCost, _, _ = pb.Cost(true)
+
+	ulbw, dlbw = readSectorJobExpectedBandwidth(modules.StreamDownloadSize)
+	bandwidthCost = modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costReadSectorJob := programCost.Add(bandwidthCost)
+
+	// Calculate the cost of a project
+	costProject := costReadSectorJob.Add(costHasSectorJob.Mul64(uint64(sectorLookupToDownloadRatio)))
+
+	// Now that we have the cost of each job, and we estimate a sector lookup to
+	// download ratio of 16, all we need to do is calculate the number of
+	// projects necessary to download the expected download amount.
+	numProjects := allowance.ExpectedDownload / modules.StreamDownloadSize
+
+	// The cost of downloading is considered too expensive if the allowance is
+	// insufficient to cover a fraction of the expense to download the amount of
+	// data the user intends to download
+	totalCost := costProject.Mul64(numProjects)
+	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		return fmt.Errorf("combined PDBR pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+	}
+
+	return nil
 }

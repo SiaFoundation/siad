@@ -38,6 +38,7 @@ var (
 	dataPieces                string // the number of data pieces a file should be uploaded with
 	parityPieces              string // the number of parity pieces a file should be uploaded with
 	renterAllContracts        bool   // Show all active and expired contracts
+	renterBubbleAll           bool   // Bubble the entire directory tree
 	renterDeleteRoot          bool   // Delete path start from root instead of the UserFolder.
 	renterDownloadAsync       bool   // Downloads files asynchronously
 	renterDownloadRecursive   bool   // Downloads folders recursively.
@@ -330,7 +331,7 @@ func initCmds() *cobra.Command {
 	minerCmd.AddCommand(minerStartCmd, minerStopCmd)
 
 	root.AddCommand(renterCmd)
-	renterCmd.AddCommand(renterAllowanceCmd, renterBackupCreateCmd, renterBackupListCmd, renterBackupLoadCmd,
+	renterCmd.AddCommand(renterAllowanceCmd, renterBubbleCmd, renterBackupCreateCmd, renterBackupListCmd, renterBackupLoadCmd,
 		renterCleanCmd, renterContractsCmd, renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd,
 		renterDownloadsCmd, renterExportCmd, renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
@@ -340,6 +341,7 @@ func initCmds() *cobra.Command {
 	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd, renterWorkersReadRegistryCmd, renterWorkersUpdateRegistryCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
+	renterBubbleCmd.Flags().BoolVarP(&renterBubbleAll, "all", "A", false, "Bubble the entire directory tree")
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterFilesUploadCmd.AddCommand(renterFilesUploadPauseCmd, renterFilesUploadResumeCmd)
 

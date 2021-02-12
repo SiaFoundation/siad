@@ -32,6 +32,10 @@ var (
 		Dev:      1 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
+
+	// minInitialEstimate is the minimum job time estimate that's set on the HS
+	// and RJ queue in case we fail to update the price table successfully
+	minInitialEstimate = time.Second
 )
 
 type (
@@ -145,12 +149,32 @@ func (w *worker) staticUpdatePriceTable() {
 		})
 	}()
 
+	var err error
+
+	// If this is the first time we are fetching a price table update from the
+	// host, we use the time it took for a single round trip as an initial
+	// estimate for both the HS and RJ queue job time estimates.
+	var elapsed time.Duration
+	defer func() {
+		// As a safety precaution, set the elapsed duration to the minimum
+		// estimate in case we did not manage to update the price table
+		// successfully.
+		if err != nil && elapsed < minInitialEstimate {
+			elapsed = minInitialEstimate
+		}
+		w.staticSetInitialEstimates.Do(func() {
+			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
+		})
+	}()
+
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
 	// the existing price table, which will allow the renter to continue
 	// performing tasks even though it's having trouble getting a new price
 	// table.
-	var err error
 	currentPT := w.staticPriceTable()
 	defer func() {
 		// Track the result of the pricetable update, in case of failure this
@@ -200,6 +224,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}()
 
 	// write the specifier
+	start := time.Now()
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write price table specifier")
@@ -213,6 +238,7 @@ func (w *worker) staticUpdatePriceTable() {
 		err = errors.AddContext(err, "unable to read price table response")
 		return
 	}
+	elapsed = time.Since(start)
 
 	// decode the JSON
 	var pt modules.RPCPriceTable
