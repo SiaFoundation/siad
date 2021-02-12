@@ -4972,7 +4972,7 @@ If the 'price per millisecond' is set, the renter will use it as a budget to
 spend on faster, and thus potentially more expensive, hosts. If no unit is
 provided, the given value will be treated as hastings. Valid units are: "pS",
 "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS". If no value is provided the API
-uses 1nS as a sane default.
+uses 100nS as a sane default.
 
 ### Response Body
 
@@ -5337,7 +5337,7 @@ If the 'price per millisecond' is set, the renter will use it as a budget to
 spend on faster, and thus potentially more expensive, hosts. If no unit is
 provided, the given value will be treated as hastings. Valid units are: "pS",
 "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS". If no value is provided the API
-uses 1nS as a sane default.
+uses 100nS as a sane default.
 
 ### Response Header
 

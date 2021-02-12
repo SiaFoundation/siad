@@ -101,10 +101,10 @@ func fileUploadParams(siaPath modules.SiaPath, dataPieces, parityPieces int, for
 	}, nil
 }
 
-// fileUploadParamsFromSUP will derive the FileUploadParams to use when
+// baseSectorUploadParamsFromSUP will derive the FileUploadParams to use when
 // uploading the base chunk siafile of a skyfile using the skyfile's upload
 // parameters.
-func fileUploadParamsFromSUP(sup modules.SkyfileUploadParameters) (modules.FileUploadParams, error) {
+func baseSectorUploadParamsFromSUP(sup modules.SkyfileUploadParameters) (modules.FileUploadParams, error) {
 	// Establish defaults
 	skyfileEstablishDefaults(&sup)
 
@@ -378,17 +378,17 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
 // returning the resulting merkle root, and the fileNode of the siafile that is
 // tracking the base sector.
-func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
-	fileUploadParams, err := fileUploadParamsFromSUP(lup)
+func (r *Renter) managedUploadBaseSector(sup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
+	uploadParams, err := baseSectorUploadParamsFromSUP(sup)
 	if err != nil {
 		return errors.AddContext(err, "failed to create siafile upload parameters")
 	}
-	fileUploadParams.CipherType = crypto.TypePlain // the baseSector should be encrypted by the caller.
 
-	// Perform the actual upload. This will require turning the base sector into
-	// a reader.
-	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
+	// Turn the base sector into a reader
+	reader := bytes.NewReader(baseSector)
+
+	// Perform the actual upload.
+	fileNode, err := r.callUploadStreamFromReader(uploadParams, reader)
 	if err != nil {
 		return errors.AddContext(err, "failed to stream upload small skyfile")
 	}
