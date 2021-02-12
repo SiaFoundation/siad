@@ -341,6 +341,8 @@ func (md Metadata) backup() (b Metadata) {
 	b.ChangeTime = md.ChangeTime
 	b.AccessTime = md.AccessTime
 	b.CreateTime = md.CreateTime
+	b.CachedRepairBytes = md.CachedRepairBytes
+	b.CachedStuckBytes = md.CachedStuckBytes
 	b.CachedRedundancy = md.CachedRedundancy
 	b.CachedUserRedundancy = md.CachedUserRedundancy
 	b.CachedHealth = md.CachedHealth
@@ -351,6 +353,8 @@ func (md Metadata) backup() (b Metadata) {
 	b.Health = md.Health
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
+	b.RepairBytes = md.RepairBytes
+	b.StuckBytes = md.StuckBytes
 	b.Redundancy = md.Redundancy
 	b.StuckHealth = md.StuckHealth
 	b.Mode = md.Mode
@@ -395,6 +399,8 @@ func (md *Metadata) restore(b Metadata) {
 	md.ChangeTime = b.ChangeTime
 	md.AccessTime = b.AccessTime
 	md.CreateTime = b.CreateTime
+	md.CachedRepairBytes = b.CachedRepairBytes
+	md.CachedStuckBytes = b.CachedStuckBytes
 	md.CachedRedundancy = b.CachedRedundancy
 	md.CachedUserRedundancy = b.CachedUserRedundancy
 	md.CachedHealth = b.CachedHealth
@@ -405,6 +411,8 @@ func (md *Metadata) restore(b Metadata) {
 	md.Health = b.Health
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks
+	md.RepairBytes = b.RepairBytes
+	md.StuckBytes = b.StuckBytes
 	md.Redundancy = b.Redundancy
 	md.StuckHealth = b.StuckHealth
 	md.Mode = b.Mode
