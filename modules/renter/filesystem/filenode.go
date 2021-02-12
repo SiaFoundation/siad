@@ -107,7 +107,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		_, err := os.Stat(localPath)
 		onDisk = err == nil
 	}
-	_, _, health, stuckHealth, numStuckChunks, _, _ := n.Health(offline, goodForRenew)
+	_, _, health, stuckHealth, numStuckChunks, repairBytes, stuckBytes := n.Health(offline, goodForRenew)
 	_, redundancy, err := n.Redundancy(offline, goodForRenew)
 	if err != nil {
 		return modules.FileInfo{}, errors.AddContext(err, "failed to get n redundancy")
@@ -135,10 +135,12 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
+		RepairBytes:      repairBytes,
 		Skylinks:         n.Metadata().Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
+		StuckBytes:       stuckBytes,
 		UID:              n.staticUID,
 		UploadedBytes:    uploadedBytes,
 		UploadProgress:   uploadProgress,
@@ -218,9 +220,11 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		Recoverable:      onDisk || md.CachedUserRedundancy >= 1,
 		Redundancy:       md.CachedUserRedundancy,
 		Renewing:         true,
+		RepairBytes:      md.CachedRepairBytes,
 		Skylinks:         md.Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
+		StuckBytes:       md.CachedStuckBytes,
 		StuckHealth:      md.CachedStuckHealth,
 		UID:              n.staticUID,
 		UploadedBytes:    md.CachedUploadedBytes,
