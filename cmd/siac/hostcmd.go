@@ -373,14 +373,14 @@ func hostconfigcmd(param, value string) {
 	switch param {
 	// currency (convert to hastings)
 	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice", "maxephemeralaccountbalance", "maxephemeralaccountrisk":
-		value, err = parseCurrency(value)
+		value, err = types.ParseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)
 		}
 
 	// currency/TB (convert to hastings/byte)
 	case "mindownloadbandwidthprice", "minuploadbandwidthprice":
-		hastings, err := parseCurrency(value)
+		hastings, err := types.ParseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)
 		}
@@ -390,7 +390,7 @@ func hostconfigcmd(param, value string) {
 
 	// currency/TB/month (convert to hastings/byte/block)
 	case "collateral", "minstorageprice":
-		hastings, err := parseCurrency(value)
+		hastings, err := types.ParseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)
 		}

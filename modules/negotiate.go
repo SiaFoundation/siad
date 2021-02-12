@@ -3,14 +3,15 @@ package modules
 import (
 	"bytes"
 	"crypto/cipher"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
 	"golang.org/x/crypto/chacha20poly1305"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -1039,4 +1040,149 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	// Calculate hostPayout.
 	hostPayout = hostCollateral.Add(host.ContractPrice).Add(basePrice)
 	return
+}
+
+// RPCBeginSubscription begins a subscription on a new stream and returns
+// it.
+func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.SiaPublicKey, pt *RPCPriceTable, initialBudget types.Currency, fundAcc AccountID, bh types.BlockHeight, subscriber types.Specifier) (_ siamux.Stream, err error) {
+	// initiate the RPC
+	err = RPCWrite(stream, RPCRegistrySubscription)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write the pricetable uid.
+	err = RPCWrite(stream, pt.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Provide payment
+	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the subscriber.
+	return stream, RPCWrite(stream, subscriber)
+}
+
+// RPCStopSubscription gracefully stops a subscription session.
+func RPCStopSubscription(stream siamux.Stream) error {
+	err := RPCWrite(stream, SubscriptionRequestStop)
+	if err != nil {
+		err = errors.Compose(err, stream.Close())
+		return errors.AddContext(err, "StopSubscription failed to send specifier")
+	}
+	_, err = stream.Read(make([]byte, 1))
+	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		err = errors.Compose(err, stream.Close())
+		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
+	}
+	return stream.Close()
+}
+
+// RPCSubscribeToRVs subscribes to the given publickey/tweak pairs.
+func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionRequest) ([]RPCRegistrySubscriptionNotificationEntryUpdate, error) {
+	// Send the type of the request.
+	err := RPCWrite(stream, SubscriptionRequestSubscribe)
+	if err != nil {
+		return nil, err
+	}
+	// Send the request.
+	err = RPCWrite(stream, requests)
+	if err != nil {
+		return nil, err
+	}
+	// Read response.
+	var rvs []SignedRegistryValue
+	err = RPCRead(stream, &rvs)
+	if err != nil {
+		return nil, err
+	}
+	// Check the length of the response.
+	if len(rvs) > len(requests) {
+		return nil, fmt.Errorf("host returned more rvs than we subscribed to %v > %v", len(rvs), len(requests))
+	}
+	// Verify response. The rvs should be returned in the same order as
+	// requested so we start by verifying against the first request and work our
+	// way through to the last one. If not all rvs are verified successfully
+	// after running out of requests, something is wrong.
+	left := rvs
+	var initialNotifications []RPCRegistrySubscriptionNotificationEntryUpdate
+	for _, req := range requests {
+		if len(left) == 0 {
+			return initialNotifications, nil // all returned notifications were verified
+		}
+		rv := left[0]
+		err = rv.Verify(req.PubKey.ToPublicKey())
+		if err != nil {
+			continue // try next request
+		}
+		left = left[1:]
+		initialNotifications = append(initialNotifications, RPCRegistrySubscriptionNotificationEntryUpdate{
+			Entry:  rv,
+			PubKey: req.PubKey,
+		})
+	}
+	if len(left) > 0 {
+		return nil, fmt.Errorf("failed to verify %v of %v rvs", len(left), len(rvs))
+	}
+	return initialNotifications, nil
+}
+
+// RPCUnsubscribeFromRVs unsubscribes from the given publickey/tweak pairs.
+func RPCUnsubscribeFromRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionRequest) error {
+	// Send the type of the request.
+	err := RPCWrite(stream, SubscriptionRequestUnsubscribe)
+	if err != nil {
+		return err
+	}
+	// Send the request.
+	err = RPCWrite(stream, requests)
+	if err != nil {
+		return err
+	}
+	// Read the "OK" response.
+	var resp RPCRegistrySubscriptionNotificationType
+	err = RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+	if resp.Type != SubscriptionResponseUnsubscribeSuccess {
+		return fmt.Errorf("wrong type was returned: %v", resp.Type)
+	}
+	return nil
+}
+
+// RPCFundSubscription pays the host to increase the subscription budget.
+func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, pp PaymentProvider, aid AccountID, bh types.BlockHeight, fundAmt types.Currency) error {
+	// Send the type of the request.
+	err := RPCWrite(stream, SubscriptionRequestPrepay)
+	if err != nil {
+		return err
+	}
+
+	// Provide payment
+	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, fundAmt, aid, bh)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// RPCExtendSubscription extends the subscription with the given price table.
+func RPCExtendSubscription(stream siamux.Stream, pt *RPCPriceTable) error {
+	// Send the type of the request.
+	err := RPCWrite(stream, SubscriptionRequestExtend)
+	if err != nil {
+		return err
+	}
+
+	// Write the pricetable uid.
+	err = RPCWrite(stream, pt.UID)
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -3,10 +3,13 @@ package renter
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -434,5 +437,104 @@ func testGouging(t *testing.T) {
 	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+// TestProjectChunkWorsetSet_managedLaunchWorker probes the
+// 'managedLaunchWorker' function on the PCWS.
+func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
+	t.Parallel()
+
+	// create EC + key
+	ec := modules.NewPassthroughErasureCoder()
+	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create renter
+	renter := new(Renter)
+	renter.staticWorkerPool = new(workerPool)
+
+	// create PCWS
+	pcws := &projectChunkWorkerSet{
+		staticChunkIndex:   0,
+		staticErasureCoder: ec,
+		staticMasterKey:    ck,
+		staticPieceRoots:   []crypto.Hash{},
+
+		staticCtx:    context.Background(),
+		staticRenter: renter,
+	}
+
+	// create PCWS worker state
+	ws := &pcwsWorkerState{
+		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+		staticRenter:      pcws.staticRenter,
+	}
+
+	// mock the worker
+	w := new(worker)
+	w.newCache()
+	w.newPriceTable()
+	w.newMaintenanceState()
+	w.initJobHasSectorQueue()
+
+	// give it a name and set an initial estimate on the HS queue
+	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
+	w.staticJobHasSectorQueue.weightedJobsCompleted = 1
+	w.staticHostPubKeyStr = "myworker"
+
+	// ensure PT is valid and host is considered RHP3 ready
+	w.staticPriceTable().staticExpiryTime = time.Now().Add(time.Hour)
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
+		staticHostVersion: minRHP3Version,
+	}))
+
+	// launch the worker
+	responseChan := make(chan *jobHasSectorResponse, 0)
+	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the worker launched successfully
+	uw, exists := ws.unresolvedWorkers["myworker"]
+	if !exists {
+		t.Log(ws.unresolvedWorkers)
+		t.Fatal("unexpected")
+	}
+
+	// verify the expected dur matches the initial queue estimate
+	expectedDur := time.Until(uw.staticExpectedResolvedTime)
+	expectedDurInS := math.Round(expectedDur.Seconds())
+	if expectedDurInS != 123 {
+		t.Log(expectedDurInS)
+		t.Fatal("unexpected")
+	}
+
+	// tweak the maintenancestate, putting it on a cooldown
+	minuteFromNow := time.Now().Add(time.Minute)
+	w.staticMaintenanceState.cooldownUntil = minuteFromNow
+	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the cooldown is being reflected in the estimate
+	uw = ws.unresolvedWorkers["myworker"]
+	expectedDur = time.Until(uw.staticExpectedResolvedTime)
+	expectedDurInS = math.Round(expectedDur.Seconds())
+	if expectedDurInS != 123+60 {
+		t.Log(expectedDurInS)
+		t.Fatal("unexpected")
+	}
+
+	// tweak the version to make it non async ready
+	cache := &workerCache{staticHostVersion: "1.4.8"} // pre-dates RHP3
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(cache))
+	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws)
+	if err == nil || !strings.Contains(err.Error(), "worker is not RHP3 ready") {
+		t.Fatal(err)
 	}
 }

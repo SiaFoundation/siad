@@ -61,7 +61,7 @@ type (
 // host prices.
 func (w *worker) managedNeedsToUpdatePriceTable() bool {
 	// No need to update the prices if the worker's host does not support RHP3.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+	if !w.staticSupportsRHP3() {
 		return false
 	}
 	// No need to update the price table if the worker's RHP3 is on cooldown.
@@ -101,6 +101,13 @@ func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
 	return time.Now().Before(wpt.staticExpiryTime)
+}
+
+// staticValidFor is a helper that returns true if the price table is valid
+// for the provided duration.
+func (wpt *workerPriceTable) staticValidFor(duration time.Duration) bool {
+	minExpiry := time.Now().Add(duration)
+	return minExpiry.Before(wpt.staticExpiryTime)
 }
 
 // staticNeedsToUpdate returns whether or not the price table needs to be

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -188,7 +189,17 @@ type (
 	MDMInstructionRevisionResponse struct {
 		RevisionTxn types.Transaction
 	}
+
+	// SubscriptionID is a hash derived from the public key and tweak that a
+	// renter would like to subscribe to.
+	SubscriptionID crypto.Hash
 )
+
+// RegistrySubscriptionID is a helper to derive a subscription id for a registry
+// key value pair.
+func RegistrySubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) SubscriptionID {
+	return SubscriptionID(crypto.HashAll(pubKey, tweak))
+}
 
 // RPCHasSectorInstruction creates an Instruction from arguments.
 func RPCHasSectorInstruction(merkleRootOffset uint64) Instruction {

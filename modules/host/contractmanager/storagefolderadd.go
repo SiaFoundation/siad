@@ -247,7 +247,7 @@ func (wal *writeAheadLog) managedAddStorageFolder(sf *storageFolder) error {
 
 	// Sync the files.
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		err := sf.metadataFile.Sync()
@@ -260,6 +260,13 @@ func (wal *writeAheadLog) managedAddStorageFolder(sf *storageFolder) error {
 		err := sf.sectorFile.Sync()
 		if err != nil {
 			wal.cm.log.Println("could not synchronize allocated sector data file:", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		err = wal.cm.sectorLocationsCountOverflow.Sync()
+		if err != nil {
+			wal.cm.log.Println("could not synchronize sector overflow file:", err)
 		}
 	}()
 	wg.Wait()

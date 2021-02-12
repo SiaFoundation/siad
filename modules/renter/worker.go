@@ -19,14 +19,16 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// minAsyncVersion defines the minimum version that supports RHP3.
-	minAsyncVersion = "1.4.10"
+	// minRHP3Version defines the minimum version that supports RHP3.
+	minRHP3Version = "1.4.10"
 
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
@@ -122,7 +124,7 @@ type (
 		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
-		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
+		tg       threadgroup.ThreadGroup
 		mu       sync.Mutex
 		renter   *Renter
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
@@ -176,11 +178,9 @@ func (w *worker) managedKill() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	select {
-	case <-w.killChan:
-		return
-	default:
-		close(w.killChan)
+	err := w.tg.Stop()
+	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+		w.renter.log.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
 }
 
@@ -188,7 +188,7 @@ func (w *worker) managedKill() {
 // killed or not.
 func (w *worker) staticKilled() bool {
 	select {
-	case <-w.killChan:
+	case <-w.tg.StopChan():
 		return true
 	default:
 		return false
@@ -202,6 +202,13 @@ func (w *worker) staticWake() {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
+}
+
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
@@ -248,7 +255,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 
 		downloadChunks:    newDownloadChunks(),
 		unprocessedChunks: newUploadChunks(),
-		killChan:          make(chan struct{}),
 		wakeChan:          make(chan struct{}, 1),
 		renter:            r,
 	}
@@ -261,6 +267,15 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+
+	// Close the worker when the renter is stopped.
+	err = r.tg.OnStop(func() error {
+		w.managedKill()
+		return nil
+	})
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to register OnStop for worker threadgroup")
+	}
 
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.

@@ -204,18 +204,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.
 	//
-	// TODO: This is not safe at all. Basically allows the host to completely
-	// lie to us about storing our files if they are running malicious code. But
-	// it's also a necessary stopgap to get repairs happy on the portals until
-	// hosts can handle large virtual sectors. We will remove this hack when
-	// that gets deployed broadly enough. We are ignoring the virtual sector
-	// error here because we know the host has the sector, and when we request
-	// the sector the host will be able to look it up. But that's only true if
-	// the error is honest. If the error is not honest, we accept the host's
-	// sector as real even though the host didn't store anything. Note, this
-	// also means we didn't pay for storage, but still bad.
+	// Ignore the error if it's a ErrMaxVirtualSectors coming from a pre-1.5.5
+	// host.
 	root, err := e.Upload(uc.physicalChunkData[pieceIndex])
-	if err != nil && !strings.Contains(err.Error(), modules.ErrMaxVirtualSectors.Error()) {
+	ignoreErr := build.VersionCmp(hostSettings.Version, "1.5.5") < 0 && err != nil && strings.Contains(err.Error(), modules.ErrMaxVirtualSectors.Error())
+	if err != nil && !ignoreErr {
 		failureErr := fmt.Errorf("Worker failed to upload root %v via the editor: %v", root, err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return

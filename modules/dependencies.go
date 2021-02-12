@@ -123,6 +123,7 @@ type (
 		Name() string
 		ReadAt([]byte, int64) (int, error)
 		Seek(int64, int) (int64, error)
+		Stat() (os.FileInfo, error)
 		Sync() error
 		Truncate(int64) error
 		WriteAt([]byte, int64) (int, error)

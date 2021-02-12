@@ -132,7 +132,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.Writer, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -453,7 +453,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 // are likely to prevent the refill from being successful.
 func (w *worker) managedNeedsToRefillAccount() bool {
 	// No need to refill the account if the worker's host does not support RHP3.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+	if !w.staticSupportsRHP3() {
 		return false
 	}
 	// No need to refill the account if the worker is on maintenance cooldown.
@@ -473,7 +473,7 @@ func (w *worker) managedNeedsToRefillAccount() bool {
 // sync the renter's account balance with the host's version of the account.
 func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 	// No need to sync the account if the worker's host does not support RHP3.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+	if !w.staticSupportsRHP3() {
 		return false
 	}
 	// No need to sync the account if the worker's RHP3 is on cooldown.

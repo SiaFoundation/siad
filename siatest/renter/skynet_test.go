@@ -71,6 +71,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
+		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -2026,6 +2027,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Remember the siaPaths of the blocked files
+	var blockedSiaPaths []modules.SiaPath
+
 	// Confirm that the skyfile and its extended info are registered with the
 	// renter
 	sp, err := modules.SkynetFolder.Join(sup.SiaPath.String())
@@ -2044,6 +2048,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	blockedSiaPaths = append(blockedSiaPaths, sp, spExtended)
 
 	// Download the data
 	data, _, err := r.SkynetSkylinkGet(skylink)
@@ -2229,6 +2234,13 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatal(err)
 	}
 
+	// Make sure all blockedSiaPaths are root paths
+	sp, err = modules.UserFolder.Join(rf.SiaPath().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedSiaPaths = append(blockedSiaPaths, sp, skyfilePath)
+
 	// Blocklist the skylink
 	remove = []string{}
 	convertHash := crypto.HashObject(convertSSHP.MerkleRoot)
@@ -2309,6 +2321,68 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Adding links to the block list does not immediately delete the files, but
+	// the health/bubble loops should eventually delete the files.
+	//
+	// First verify the test assumptions and confirm that the files still exist
+	// in the renter.
+	for _, siaPath := range blockedSiaPaths {
+		_, err = r.RenterFileRootGet(siaPath)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	// Add both skylinks back to the blocklist
+	remove = []string{}
+	if isHash {
+		add = []string{hash.String(), convertHash.String()}
+	} else {
+		add = []string{skylink, convertSkylink}
+	}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 2 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 2, len(sbg.Blocklist))
+	}
+
+	// Wait until all the files have been deleted
+	//
+	// Using 15 checks at 1 second intervals because the health loop check
+	// interval in testing is 5s and there are potential error sleeps of 3s.
+	if err := build.Retry(15, time.Second, func() error {
+		for _, siaPath := range blockedSiaPaths {
+			_, err = r.RenterFileRootGet(siaPath)
+			if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+				return fmt.Errorf("File %v, not deleted; error: %v", siaPath, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Error(err)
+	}
+
+	// Reset the blocklist for other tests
+	remove = add
+	add = []string{}
+	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 0 {
+		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 0, len(sbg.Blocklist))
 	}
 }
 
@@ -2660,6 +2734,61 @@ func testSkynetNoMetadata(t *testing.T, tg *siatest.TestGroup) {
 
 	strSkynetFileMetadata := header.Get("Skynet-File-Metadata")
 	if strSkynetFileMetadata != "" {
+		t.Fatal("unexpected")
+	}
+}
+
+// testSkynetIncludeLayout verifies the functionality of sending
+// a 'include-layout' query string parameter to the skylink GET route.
+func testSkynetIncludeLayout(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GET without specifying the 'include-layout' query string parameter
+	_, layout, err := r.SkynetSkylinkGetWithLayout(skylink, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(layout, modules.SkyfileLayout{}) {
+		t.Fatal("unexpected")
+	}
+
+	// GET with specifying the 'include-layout' query string parameter
+	_, layout, err = r.SkynetSkylinkGetWithLayout(skylink, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(layout, modules.SkyfileLayout{}) {
+		t.Fatal("unexpected")
+	}
+
+	// Perform a HEAD call to verify the same thing in the headers directly
+	params := url.Values{}
+	params.Set("include-layout", fmt.Sprintf("%t", true))
+	status, header, err := r.SkynetSkylinkHeadWithParameters(skylink, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
+	}
+
+	strSkynetFileLayout := header.Get("Skynet-File-Layout")
+	if strSkynetFileLayout == "" {
+		t.Fatal("unexpected")
+	}
+	var layout2 modules.SkyfileLayout
+	layoutBytes, err := hex.DecodeString(strSkynetFileLayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout2.Decode(layoutBytes)
+	if !reflect.DeepEqual(layout, layout2) {
 		t.Fatal("unexpected")
 	}
 }
