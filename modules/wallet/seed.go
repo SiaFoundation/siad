@@ -120,6 +120,13 @@ func (w *Wallet) nextPrimarySeedAddresses(tx *bolt.Tx, n uint64) ([]types.Unlock
 		return []types.UnlockConditions{}, modules.ErrLockedWallet
 	}
 
+	// Check how many unused addresses we have available.
+	neededUnused := uint64(len(w.unusedKeys))
+	if neededUnused > n {
+		neededUnused = n
+	}
+	n -= neededUnused
+
 	// Fetch and increment the seed progress.
 	progress, err := dbGetPrimarySeedProgress(tx)
 	if err != nil {
@@ -139,6 +146,23 @@ func (w *Wallet) nextPrimarySeedAddresses(tx *bolt.Tx, n uint64) ([]types.Unlock
 		ucs = append(ucs, spendableKey.UnlockConditions)
 	}
 	w.regenerateLookahead(progress + n)
+
+	// Add as many unused UCs as necessary.
+	unusedUCs := make([]types.UnlockConditions, 0, int(neededUnused))
+	for uh, uc := range w.unusedKeys {
+		if neededUnused == 0 {
+			break
+		}
+		unusedUCs = append(unusedUCs, uc)
+		delete(w.unusedKeys, uh)
+		neededUnused--
+	}
+	ucs = append(unusedUCs, ucs...)
+
+	// Reset map if empty for GC to pick it up.
+	if len(w.unusedKeys) == 0 {
+		w.unusedKeys = make(map[types.UnlockHash]types.UnlockConditions)
+	}
 
 	return ucs, nil
 }
@@ -238,36 +262,14 @@ func (w *Wallet) NextAddresses(n uint64) ([]types.UnlockConditions, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Check how many unused addresses we have available.
-	neededUnused := uint64(len(w.unusedKeys))
-	if neededUnused > n {
-		neededUnused = n
-	}
-
 	// Generate some keys and sync the db.
-	ucs, err := w.nextPrimarySeedAddresses(w.dbTx, n-neededUnused)
+	ucs, err := w.nextPrimarySeedAddresses(w.dbTx, n)
 	err = errors.Compose(err, w.syncDB())
 	if err != nil {
 		return nil, err
 	}
 
-	// Add as many unused UCs as necessary.
-	unusedUCs := make([]types.UnlockConditions, 0, int(neededUnused))
-	for uh, uc := range w.unusedKeys {
-		if neededUnused == 0 {
-			break
-		}
-		unusedUCs = append(unusedUCs, uc)
-		delete(w.unusedKeys, uh)
-		neededUnused--
-	}
-
-	// Reset map if empty for GC to pick it up.
-	if len(w.unusedKeys) == 0 {
-		w.unusedKeys = make(map[types.UnlockHash]types.UnlockConditions)
-	}
-
-	return append(unusedUCs, ucs...), nil
+	return ucs, nil
 }
 
 // NextAddress returns an unlock hash that is ready to receive siacoins or
