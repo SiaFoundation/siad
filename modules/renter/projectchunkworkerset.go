@@ -558,6 +558,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
+	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero,
+	// or multiplication by zero, possibly resulting in unwanted side-effects in
+	// the worker selection and/or any other algorithms.
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1)
+	}
+
 	// Create the workerResponseChan.
 	//
 	// The worker response chan is allocated to be quite large. This is because

@@ -307,11 +307,6 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 		return jobTime
 	}
 
-	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero
-	if pricePerMS.IsZero() {
-		pricePerMS = types.NewCurrency64(1)
-	}
-
 	// Otherwise, add a penalty
 	var adjusted time.Duration
 	penalty, err := jobCost.Div(pricePerMS).Uint64()
