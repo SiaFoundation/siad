@@ -341,12 +341,14 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func (r *Renter) managedUntarDir(tr *tar.Reader) error {
+func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 	// dirsToUpdate are all the directories that will need bubble to be called
 	// on them so that the renter's directory metadata from the back up is
 	// updated
 	dirsToUpdate := r.newUniqueRefreshPaths()
-	defer dirsToUpdate.callRefreshAll()
+	defer func() {
+		errors.Compose(err, dirsToUpdate.callRefreshAll())
+	}()
 
 	// Copy the files from the tarball to the new location.
 	for {

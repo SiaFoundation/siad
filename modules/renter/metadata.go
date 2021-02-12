@@ -68,8 +68,7 @@ func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) 
 		return errors.AddContext(err, "unable to prepare subtree for bubble")
 	}
 	// Call bubble in a non blocking manner
-	urp.callRefreshAll()
-	return nil
+	return urp.callRefreshAll()
 }
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
