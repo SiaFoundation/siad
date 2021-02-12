@@ -1164,8 +1164,8 @@ type Renter interface {
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
-	// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
-	// upload the data to the Sia network.
+	// UploadStreamFromReader reads from the provided reader until io.EOF is
+	// reached and upload the data to the Sia network.
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
@@ -1183,8 +1183,8 @@ type Renter interface {
 	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
 	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
-	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's skykey
-	// manager if it exists.
+	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's
+	// skykey manager if it exists.
 	DeleteSkykeyByID(skykey.SkykeyID) error
 
 	// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
@@ -1212,16 +1212,27 @@ type Renter interface {
 	// separately as well.
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
-	// DownloadByRoot will fetch data using the merkle root of that data. This
-	// uses all of the async worker primitives to improve speed and throughput.
-	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
+	// DownloadByRoot will fetch data using the merkle root of that data. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration, pricePerMS types.Currency) ([]byte, error)
 
-	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, time.Duration) (SkyfileLayout, SkyfileMetadata, Streamer, error)
+	// DownloadSkylink will fetch a file from the Sia network using the given
+	// skylink. The given timeout will make sure this call won't block for a
+	// time that exceeds the given timeout value. Passing a timeout of 0 is
+	// considered as no timeout. The pricePerMS acts as a budget to spend on
+	// faster, and thus potentially more expensive, hosts.
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
 
-	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
-	// without any decoding of the metadata, fanout, or decryption.
-	DownloadSkylinkBaseSector(Skylink, time.Duration) (Streamer, error)
+	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
+	// download without any decoding of the metadata, fanout, or decryption. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1236,18 +1247,22 @@ type Renter interface {
 	// Blocklist returns the merkleroots that are blocked
 	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
-	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
-
 	// PinSkylink re-uploads the data stored at the file under that skylink with
-	// the given parameters.
-	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
+	// the given parameters. Alongside the parameters we can pass a timeout and
+	// a price per millisecond. The timeout ensures fetching the base sector
+	// does not surpass it, the price per millisecond is the budget we are
+	// allowed to spend on faster hosts.
+	PinSkylink(link Skylink, sup SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
 
 	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
 	RestoreSkyfile(reader io.Reader) (Skylink, error)
+
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
+	// blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error

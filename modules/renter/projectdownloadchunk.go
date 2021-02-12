@@ -238,12 +238,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	}
 
 	// Decrypt the piece that has come back.
-	//
-	// TODO: The input to DecryptBytesInPlace needs to accept a block index, if
-	// we aren't decrypting from the beginning of the chunk this will probably
-	// fail.
 	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))
-	_, err := key.DecryptBytesInPlace(jrr.staticData, 0)
+	_, err := key.DecryptBytesInPlace(jrr.staticData, pdc.pieceOffset/crypto.SegmentSize)
 	if err != nil {
 		pdc.workerSet.staticRenter.log.Println("decryption of a piece failed")
 		return
@@ -371,9 +367,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	}
 
 	// Create the read sector job for the worker.
-	//
-	// TODO: Ideally we pass the context here so the job is cancellable
-	// in-flight.
 	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
 	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
 	jrs := &jobReadSector{
@@ -456,7 +449,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// Determine when the next overdrive check needs to run.
 		select {
 		case <-pdc.ctx.Done():
-			pdc.fail(errors.New("download interrupted while waiting for responses"))
+			pdc.fail(errors.New("download timed out"))
 			return
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)

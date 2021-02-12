@@ -5010,6 +5010,17 @@ a timeout value of 0 will be ignored. If no timeout is given, the default will
 be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
 minutes).
 
+**priceperms** | string  
+'price per millisecond' is a value that helps the downloader determine whether
+to download from cheaper hosts or faster hosts. For a ppms of '0', the
+downloader will always select the cheapest hosts that it is able to download
+from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
+by choosing more expensive hosts to download from, it will choose those hosts if
+and only if the total cost of the download increases by less than 10 SC,
+otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
+"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
+value will be treated as hastings. The default ppms is 100nS.
+
 ### Response Body
 
 The response body is the raw data for the basesector.
@@ -5367,6 +5378,17 @@ before it expires. Note that this timeout does not cover the actual download
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
 value of 0 will be ignored. If no timeout is given, the default will be used,
 which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
+
+**priceperms** | string  
+'price per millisecond' is a value that helps the downloader determine whether
+to download from cheaper hosts or faster hosts. For a ppms of '0', the
+downloader will always select the cheapest hosts that it is able to download
+from. If the ppms is 1 SC and the downloader knows it can save 10 milliseconds
+by choosing more expensive hosts to download from, it will choose those hosts if
+and only if the total cost of the download increases by less than 10 SC,
+otherwise it will continue using the cheaper hosts. Valid units are: "pS", "nS",
+"uS", "mS", "SC", "KS", "MS", "GS", "TS". If no unit is provided, the given
+value will be treated as hastings. The default ppms is 100nS.
 
 ### Response Header
 

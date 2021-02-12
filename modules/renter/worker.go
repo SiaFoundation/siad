@@ -193,6 +193,13 @@ func (w *worker) staticKilled() bool {
 	}
 }
 
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
+}
+
 // staticWake will wake the worker from sleeping. This should be called any time
 // that a job is queued or a job completes.
 func (w *worker) staticWake() {
@@ -200,13 +207,6 @@ func (w *worker) staticWake() {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
-}
-
-// staticSupportsRHP3 is a convenience function to determine whether the host is
-// on a version that supports the RHP3 protocol.
-func (w *worker) staticSupportsRHP3() bool {
-	cache := w.staticCache()
-	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.

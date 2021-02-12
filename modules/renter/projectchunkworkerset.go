@@ -16,6 +16,13 @@ import (
 )
 
 var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+
 	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
@@ -34,6 +41,10 @@ var (
 		Standard: time.Minute * 3,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
+
+	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
+	// amount of lookups vs downloads. It is used in price gouging checks.
+	sectorLookupToDownloadRatio = 16
 )
 
 const (
@@ -264,13 +275,16 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
+	// Defer closing the update chans to signal we've received and processed an
+	// HS response.
+	defer ws.closeUpdateChans()
+
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	if w == nil {
 		ws.staticRenter.log.Critical("nil worker provided in resp")
 	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
-	ws.closeUpdateChans()
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
@@ -340,8 +354,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
-		staticWorker: w,
-
+		staticWorker:               w,
 		staticExpectedResolvedTime: expectedResolveTime,
 	}
 
@@ -544,6 +557,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// pieces. This is non-trivial because both the network itself and also the
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+
+	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero,
+	// or multiplication by zero, possibly resulting in unwanted side-effects in
+	// the worker selection and/or any other algorithms.
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1)
+	}
 
 	// Create the workerResponseChan.
 	//
