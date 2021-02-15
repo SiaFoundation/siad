@@ -1071,7 +1071,7 @@ func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.S
 	}
 
 	// Send subscriber.
-	err = RPCWrite(buf, subscriber)
+	err = RPCWrite(stream, subscriber)
 	if err != nil {
 		return err
 	}
