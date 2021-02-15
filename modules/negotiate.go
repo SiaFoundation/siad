@@ -1044,50 +1044,54 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 
 // RPCBeginSubscription begins a subscription on a new stream and returns
 // it.
-func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.SiaPublicKey, pt *RPCPriceTable, initialBudget types.Currency, fundAcc AccountID, bh types.BlockHeight, subscriber types.Specifier) (_ siamux.Stream, err error) {
+func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.SiaPublicKey, pt *RPCPriceTable, initialBudget types.Currency, fundAcc AccountID, bh types.BlockHeight, subscriber types.Specifier) error {
 	// initiate the RPC
 	buf := bytes.NewBuffer(nil)
-	err = RPCWrite(buf, RPCRegistrySubscription)
+	err := RPCWrite(buf, RPCRegistrySubscription)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Write the pricetable uid.
 	err = RPCWrite(buf, pt.UID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Provide payment
 	err = pp.ProvidePayment(buf, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Send subscriber.
 	err = RPCWrite(buf, subscriber)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Write buffer to stream.
 	_, err = buf.WriteTo(stream)
-	return stream, err
+	return err
 }
 
 // RPCStopSubscription gracefully stops a subscription session.
-func RPCStopSubscription(stream siamux.Stream) error {
-	err := RPCWrite(stream, SubscriptionRequestStop)
-	if err != nil {
+func RPCStopSubscription(stream siamux.Stream) (err error) {
+	// Close the stream at the end.
+	defer func() {
 		err = errors.Compose(err, stream.Close())
+	}()
+	// Write the stop signal.
+	err = RPCWrite(stream, SubscriptionRequestStop)
+	if err != nil {
 		return errors.AddContext(err, "StopSubscription failed to send specifier")
 	}
+	// Read a byte to block until the host closed the connection.
 	_, err = stream.Read(make([]byte, 1))
 	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
-		err = errors.Compose(err, stream.Close())
 		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
 	}
-	return stream.Close()
+	return nil
 }
 
 // RPCSubscribeToRVs subscribes to the given publickey/tweak pairs.

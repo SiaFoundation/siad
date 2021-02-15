@@ -121,7 +121,7 @@ type (
 		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
 
-		tg       threadgroup.ThreadGroup
+		staticTG threadgroup.ThreadGroup
 		mu       sync.Mutex
 		renter   *Renter
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
@@ -175,7 +175,7 @@ func (w *worker) managedKill() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	err := w.tg.Stop()
+	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 		w.renter.log.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
@@ -185,7 +185,7 @@ func (w *worker) managedKill() {
 // killed or not.
 func (w *worker) staticKilled() bool {
 	select {
-	case <-w.tg.StopChan():
+	case <-w.staticTG.StopChan():
 		return true
 	default:
 		return false

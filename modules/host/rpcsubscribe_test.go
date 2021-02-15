@@ -317,7 +317,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Extend the subscription.
-	err = rhp.ExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Extend the subscription.
-	err = rhp.ExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +731,7 @@ func testRPCSubscribeExtendTimeout(t *testing.T, rhp *renterHostPair) {
 	n := 3
 	for i := 0; i < n; i++ {
 		time.Sleep(modules.SubscriptionPeriod / 2)
-		err = rhp.ExtendSubscription(stream, pt)
+		err = modules.RPCExtendSubscription(stream, pt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -905,7 +905,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	n := 3
 	for i := 0; i < n; i++ {
 		time.Sleep(modules.SubscriptionPeriod / 2)
-		err = rhp.ExtendSubscription(stream, pt)
+		err = modules.RPCExtendSubscription(stream, pt)
 		if err != nil {
 			t.Fatal(err)
 		}

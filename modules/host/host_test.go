@@ -873,7 +873,7 @@ func (p *renterHostPair) managedBeginSubscription(fundAmt types.Currency, fundAc
 		return nil, err
 	}
 
-	return modules.RPCBeginSubscription(stream, p, p.staticHT.host.publicKey, pt, fundAmt, fundAcc, pt.HostBlockHeight, subscriber)
+	return stream, modules.RPCBeginSubscription(stream, p, p.staticHT.host.publicKey, pt, fundAmt, fundAcc, pt.HostBlockHeight, subscriber)
 }
 
 // managedLatestRevision performs a RPCLatestRevision to get the latest revision
@@ -991,11 +991,6 @@ func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCP
 // FundSubscription pays the host to increase the subscription budget.
 func (p *renterHostPair) FundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
 	return modules.RPCFundSubscription(stream, p.staticHT.host.publicKey, p, p.staticAccountID, p.staticHT.host.BlockHeight()+6, fundAmt)
-}
-
-// ExtendSubscription extends the subscription with the given price table.
-func (p *renterHostPair) ExtendSubscription(stream siamux.Stream, pt *modules.RPCPriceTable) error {
-	return modules.RPCExtendSubscription(stream, pt)
 }
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
