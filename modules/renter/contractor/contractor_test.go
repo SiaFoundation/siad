@@ -576,7 +576,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	// provide payment
-	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, c.blockHeight)
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +633,7 @@ func TestPayment(t *testing.T) {
 		funding = h.InternalSettings().MaxEphemeralAccountBalance
 	}
 
-	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, c.blockHeight)
+	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -848,7 +848,7 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	}
 
 	// provide payment
-	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, c.blockHeight)
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
 	if err == nil || !strings.Contains(err.Error(), "storage obligation not found") {
 		t.Fatal("expected storage obligation not found but got", err)
 	}

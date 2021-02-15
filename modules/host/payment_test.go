@@ -325,7 +325,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	hostFunc := func() error {
 		// process payment request
-		payment, err = host.ProcessPayment(hStream)
+		payment, err = host.ProcessPayment(hStream, host.BlockHeight())
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}
@@ -453,7 +453,7 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	}
 	hostFunc := func() error {
 		// process payment request
-		payment, err = host.ProcessPayment(hStream)
+		payment, err = host.ProcessPayment(hStream, host.BlockHeight())
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}
@@ -506,7 +506,7 @@ func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 		return modules.RPCRead(rStream, struct{}{})
 	}, func() error {
 		// process payment request
-		_, err := pair.staticHT.host.ProcessPayment(hStream)
+		_, err := pair.staticHT.host.ProcessPayment(hStream, pair.pt.HostBlockHeight)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}
