@@ -291,7 +291,6 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 
 // managedNeedsToRefill returns whether or not the account needs to be refilled.
 func (a *account) managedNeedsToRefill(target types.Currency) bool {
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.availableBalance().Cmp(target) < 0
