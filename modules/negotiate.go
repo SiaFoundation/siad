@@ -1058,8 +1058,14 @@ func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.S
 		return err
 	}
 
+	// Write buffer to stream.
+	_, err = buf.WriteTo(stream)
+	if err != nil {
+		return err
+	}
+
 	// Provide payment
-	err = pp.ProvidePayment(buf, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
+	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
 	if err != nil {
 		return err
 	}
@@ -1069,10 +1075,7 @@ func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.S
 	if err != nil {
 		return err
 	}
-
-	// Write buffer to stream.
-	_, err = buf.WriteTo(stream)
-	return err
+	return nil
 }
 
 // RPCStopSubscription gracefully stops a subscription session.

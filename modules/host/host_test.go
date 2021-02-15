@@ -434,7 +434,7 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	}
 
 	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, p.staticHT.host.BlockHeight()+6, budget, p.staticAccountKey)
+	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, pt.HostBlockHeight, budget, p.staticAccountKey)
 	err = modules.RPCWrite(buffer, pbear)
 	if err != nil {
 		return nil, nil, err
@@ -636,7 +636,7 @@ func (p *renterHostPair) managedPayByContract(stream siamux.Stream, amount types
 // managedPayByEphemeralAccount is a helper that makes payment using the pair's
 // EA.
 func (p *renterHostPair) managedPayByEphemeralAccount(stream siamux.Stream, amount types.Currency) error {
-	return p.ProvidePayment(stream, p.staticHT.host.publicKey, types.Specifier{}, amount, p.staticAccountID, p.staticHT.host.BlockHeight()+6)
+	return p.ProvidePayment(stream, p.staticHT.host.publicKey, types.Specifier{}, amount, p.staticAccountID, p.pt.HostBlockHeight)
 }
 
 // ProvidePayment implements the PaymentProvider interface.
@@ -990,7 +990,7 @@ func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCP
 
 // FundSubscription pays the host to increase the subscription budget.
 func (p *renterHostPair) FundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
-	return modules.RPCFundSubscription(stream, p.staticHT.host.publicKey, p, p.staticAccountID, p.staticHT.host.BlockHeight()+6, fundAmt)
+	return modules.RPCFundSubscription(stream, p.staticHT.host.publicKey, p, p.staticAccountID, p.pt.HostBlockHeight, fundAmt)
 }
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
