@@ -241,18 +241,15 @@ func (w *worker) managedRenew(fcid types.FileContractID, params modules.Contract
 	// price table gouging check. The cost for renewing the price table is
 	// currently hardcoded in the host. So we simply check for that value.
 	if pt.RenewContractCost.Cmp(modules.DefaultBaseRPCPrice) > 0 {
-		fmt.Println("1")
 		return modules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table renew contract cost gouging %v > %v", pt.RenewContractCost, modules.DefaultBaseRPCPrice)
 	}
 	// For the txn fee estimate take we use a constant multiple of our own
 	// expectation.
 	min, max := w.renter.tpool.FeeEstimation()
 	if pt.TxnFeeMinRecommended.Cmp(min.Mul(renewGougingFeeMultiplier)) > 0 {
-		fmt.Println("2")
 		return modules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table txn fee min gouging %v > %v", pt.TxnFeeMinRecommended, min.Mul(renewGougingFeeMultiplier))
 	}
 	if pt.TxnFeeMaxRecommended.Cmp(max.Mul(renewGougingFeeMultiplier)) > 0 {
-		fmt.Println("3")
 		return modules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table txn fee max gouging %v > %v", pt.TxnFeeMaxRecommended, max.Mul(renewGougingFeeMultiplier))
 	}
 	// For the blockheight we accept a difference of 6 hours.
@@ -263,7 +260,6 @@ func (w *worker) managedRenew(fcid types.FileContractID, params modules.Contract
 		minHeight = workerHeight - renewGougingBlockHeightDiff
 	}
 	if pt.HostBlockHeight > maxHeight || pt.HostBlockHeight < minHeight {
-		fmt.Println("4", pt.HostBlockHeight, maxHeight, pt.HostBlockHeight, minHeight)
 		return modules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table host height gouging %v != %v +- %v", pt.HostBlockHeight, workerHeight, renewGougingBlockHeightDiff)
 	}
 

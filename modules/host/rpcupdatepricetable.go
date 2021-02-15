@@ -23,9 +23,9 @@ var (
 	// expired
 	ErrPriceTableExpired = errors.New("Price table requested is expired")
 
-	// errEmptyPriceTable is returned if a user provides a zero UID for the
+	// errEmptyPriceTableUID is returned if a user provides a zero UID for the
 	// price table to use.
-	errEmptyPriceTable = errors.New("empty price table UID was provided")
+	errEmptyPriceTableUID = errors.New("empty price table UID was provided")
 )
 
 type (
@@ -97,6 +97,8 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 	return pt
 }
 
+// managedPriceTableForRenter returns a copy of the host's current rpc price
+// table ready for handing it to a renter but without tracking it yet.
 func (h *Host) managedPriceTableForRenter() *modules.RPCPriceTable {
 	// update the price table to make sure it has the most recent information.
 	h.managedUpdatePriceTable()
@@ -178,7 +180,7 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 
 	// if an empty price table was provided, we are not going to find a table.
 	if uid == (modules.UniqueID{}) {
-		return nil, errEmptyPriceTable
+		return nil, errEmptyPriceTableUID
 	}
 
 	// check if we know the uid, if we do return it

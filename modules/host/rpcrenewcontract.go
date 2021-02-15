@@ -29,7 +29,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 
 	// fetch the price table
 	pt, err := h.staticReadPriceTableID(stream)
-	if errors.Contains(err, errEmptyPriceTable) {
+	if errors.Contains(err, errEmptyPriceTableUID) {
 		// send a temporary price table.
 		pt = h.managedPriceTableForRenter()
 
