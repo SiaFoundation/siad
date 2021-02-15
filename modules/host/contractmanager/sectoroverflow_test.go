@@ -223,7 +223,8 @@ func TestSetOverflow(t *testing.T) {
 	// Create a bunch of new entries in a loop and for every added entry, update
 	// each entry again.
 	var entries []sectorID
-	for i := 0; i < 10; i++ {
+	nEntries := 10
+	for i := 0; i < nEntries; i++ {
 		// Add a random entry.
 		sid, overflow, rawEntry := randomEntry()
 		err = f.SetOverflow(sid, overflow)
@@ -255,5 +256,22 @@ func TestSetOverflow(t *testing.T) {
 			// Assert it.
 			assertEntry(sid, overflow, overflowMapMetadataSize+int64((idx)*overflowMapEntrySize), rawEntry, nElements)
 		}
+	}
+
+	// Close overflow file.
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reopen it.
+	f, err = newOverflowMap(filePath, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.fileSize != int64(overflowMapMetadataSize+nEntries*overflowMapEntrySize) {
+		t.Fatal("wrong size after restart")
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -190,7 +190,7 @@ func loadOverflowMap(f modules.File) (map[sectorID]overflowEntry, error) {
 
 // Close closes the overflowMap's underlying file handle.
 func (of *overflowMap) Close() error {
-	return of.f.Close()
+	return errors.Compose(of.Sync(), of.f.Close())
 }
 
 // Get checks the overflowMap for a specific sectorID and returns its overflow.
