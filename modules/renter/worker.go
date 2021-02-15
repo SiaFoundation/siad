@@ -7,26 +7,35 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See workerfetchbackups.go for a clean
-// example.
+// exists and complete that piece of work.
 //
 // The worker has an ephemeral account on the host. It can use this account to
 // pay for downloads and uploads. In order to ensure the account's balance does
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
+	"container/list"
 	"sync"
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// minAsyncVersion defines the minimum version that is supported
-	minAsyncVersion = "1.4.10"
+	// minRHP3Version defines the minimum version that supports RHP3.
+	minRHP3Version = "1.4.10"
+
+	// minRegistryVersion defines the minimum version that is required for a
+	// host to support the registry.
+	minRegistryVersion = "1.5.1"
+
+	// registryCacheSize is the cache size used by a single worker for the
+	// registry cache.
+	registryCacheSize = 1 << 20 // 1 MiB
 )
 
 const (
@@ -64,31 +73,25 @@ type (
 
 		// The host pub key also serves as an id for the worker, as there is
 		// only one worker per host.
-		staticHostPubKey     types.SiaPublicKey
-		staticHostPubKeyStr  string
-		staticHostMuxAddress string
-
-		// Download variables related to queuing work. They have a separate
-		// mutex to minimize lock contention.
-		downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
-		downloadMu                  sync.Mutex
-		downloadTerminated          bool      // Has downloading been terminated for this worker?
-		downloadConsecutiveFailures int       // How many failures in a row?
-		downloadRecentFailure       time.Time // How recent was the last failure?
+		staticHostPubKey    types.SiaPublicKey
+		staticHostPubKeyStr string
 
 		// Job queues for the worker.
-		staticFetchBackupsJobQueue   fetchBackupsJobQueue
-		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-		staticJobHasSectorQueue      *jobHasSectorQueue
-		staticJobReadQueue           *jobReadQueue
-		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
+		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
+		staticJobHasSectorQueue        *jobHasSectorQueue
+		staticJobReadQueue             *jobReadQueue
+		staticJobLowPrioReadQueue      *jobReadQueue
+		staticJobReadRegistryQueue     *jobReadRegistryQueue
+		staticJobRenewQueue            *jobRenewQueue
+		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
+		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
-		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
-		uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
-		uploadRecentFailure       time.Time                // How recent was the last failure?
-		uploadRecentFailureErr    error                    // What was the reason for the last failure?
-		uploadTerminated          bool                     // Have we stopped uploading?
+		unprocessedChunks         *uploadChunks // Yet unprocessed work items.
+		uploadConsecutiveFailures int           // How many times in a row uploading has failed.
+		uploadRecentFailure       time.Time     // How recent was the last failure?
+		uploadRecentFailureErr    error         // What was the reason for the last failure?
+		uploadTerminated          bool          // Have we stopped uploading?
 
 		// The staticAccount represent the renter's ephemeral account on the
 		// host. It keeps track of the available balance in the account, the
@@ -102,13 +105,69 @@ type (
 		// launching of async jobs.
 		staticLoopState *workerLoopState
 
+		// The maintenance state contains information about the worker's RHP3
+		// related state. It is used to determine whether or not the worker's
+		// maintenance cooldown can be reset.
+		staticMaintenanceState *workerMaintenanceState
+
+		// staticRegistryCache caches information about the worker's host's
+		// registry entries.
+		staticRegistryCache *registryRevisionCache
+
 		// Utilities.
+
+		// staticSetInitialEstimates is an object that ensures the initial queue
+		// estimates of the HS and RJ queues are only set once.
+		staticSetInitialEstimates sync.Once
+
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
 		renter   *Renter
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
+
+// downloadChunks is a queue of download chunks.
+type downloadChunks struct {
+	*list.List
+}
+
+// newDownloadChunks initializes a new queue.
+func newDownloadChunks() *downloadChunks {
+	return &downloadChunks{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *downloadChunks) Pop() *unfinishedDownloadChunk {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*unfinishedDownloadChunk)
+}
+
+// uploadChunks is a queue of upload chunks.
+type uploadChunks struct {
+	*list.List
+}
+
+// newUploadChunks initializes a new queue.
+func newUploadChunks() *uploadChunks {
+	return &uploadChunks{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *uploadChunks) Pop() *unfinishedUploadChunk {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*unfinishedUploadChunk)
+}
 
 // managedKill will kill the worker.
 func (w *worker) managedKill() {
@@ -134,6 +193,13 @@ func (w *worker) staticKilled() bool {
 	}
 }
 
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
+}
+
 // staticWake will wake the worker from sleeping. This should be called any time
 // that a job is queued or a job completes.
 func (w *worker) staticWake() {
@@ -145,7 +211,7 @@ func (w *worker) staticWake() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	host, ok, err := r.hostDB.Host(hostPubKey)
+	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -169,12 +235,13 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 
 	w := &worker{
-		staticHostPubKey:     hostPubKey,
-		staticHostPubKeyStr:  hostPubKey.String(),
-		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
+		staticHostPubKey:    hostPubKey,
+		staticHostPubKeyStr: hostPubKey.String(),
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
+
+		staticRegistryCache: newRegistryCache(registryCacheSize),
 
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics
@@ -184,14 +251,22 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		killChan: make(chan struct{}),
-		wakeChan: make(chan struct{}, 1),
-		renter:   r,
+		unprocessedChunks: newUploadChunks(),
+		killChan:          make(chan struct{}),
+		wakeChan:          make(chan struct{}, 1),
+		renter:            r,
 	}
 	w.newPriceTable()
+	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobLowPrioReadQueue()
+	w.initJobRenewQueue()
+	w.initJobDownloadSnapshotQueue()
+	w.initJobReadRegistryQueue()
+	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	w.managedUpdateCache()

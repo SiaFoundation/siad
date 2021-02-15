@@ -3,13 +3,11 @@ package modules
 import (
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 type (
@@ -32,6 +30,10 @@ type (
 )
 
 const (
+	// MDMMaxBatchBufferSize is the maximum number of bytes the ExecuteProgram
+	// RPC will buffer in favor of batching fast instructions.
+	MDMMaxBatchBufferSize = 1 << 16 // 64 kib
+
 	// MDMCancellationTokenLen is the length of a program's cancellation token
 	// in bytes.
 	MDMCancellationTokenLen = 16
@@ -69,8 +71,22 @@ const (
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
 
+	// MDMTimeRevision is the time for executing a 'Revision' instruction.
+	MDMTimeRevision = 1
+
+	// MDMTimeSwapSector is the time for executing an 'SwapSector' instruction.
+	MDMTimeSwapSector = 1
+
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
+
+	// MDMTimeUpdateRegistry is the time for executing an 'UpdateRegistry'
+	// instruction.
+	MDMTimeUpdateRegistry = 10000
+
+	// MDMTimeReadRegistry is the time for executing an 'ReadRegistry'
+	// instruction.
+	MDMTimeReadRegistry = 1000
 
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
 	// instructon.
@@ -91,6 +107,25 @@ const (
 	// RPCIReadOffsetLen is the expected length of the 'Args' of a ReadOffset
 	// instruction.
 	RPCIReadOffsetLen = 17
+
+	// RPCIRevisionLen is the expected length of the 'Args' of a Revision
+	// instruction.
+	RPCIRevisionLen = 0
+
+	// RPCISwapSectorLen is the expected length of the 'Args' of an SwapSector
+	// instructon.
+	RPCISwapSectorLen = 17 // 2 uint64 offsets + merkle proof flag
+
+	// RPCIUpdateRegistryLen is the expected length of the 'Args' of an
+	// UpdateRegistry instruction.
+	// tweakOffset + revisionOffset + signatureOffset + pubKeyOffset +
+	// pubKeyLength + dataOffset + dataLength = 7 * 8 bytes = 56 byte
+	RPCIUpdateRegistryLen = 56
+
+	// RPCIReadRegistryLen is the expected length of the 'Args' of an
+	// ReadRegistry instruction.
+	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
+	RPCIReadRegistryLen = 24
 )
 
 var (
@@ -119,6 +154,20 @@ var (
 	// SpecifierReadSector is the specifier for the ReadSector instruction.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
 
+	// SpecifierRevision is the specifier for the Revision instruction.
+	SpecifierRevision = InstructionSpecifier{'R', 'e', 'v', 'i', 's', 'i', 'o', 'n'}
+
+	// SpecifierSwapSector is the specifier for the SwapSector instruction.
+	SpecifierSwapSector = InstructionSpecifier{'S', 'w', 'a', 'p', 'S', 'e', 'c', 't', 'o', 'r'}
+
+	// SpecifierUpdateRegistry is the specifier for the UpdateRegistry
+	// instruction.
+	SpecifierUpdateRegistry = InstructionSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
+
+	// SpecifierReadRegistry is the specifier for the ReadRegistry
+	// instruction.
+	SpecifierReadRegistry = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
+
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
 	ErrInsufficientBandwidthBudget = errors.New("insufficient budget for bandwidth")
@@ -131,6 +180,14 @@ var (
 	// collateral budget of an MDM program is not sufficient to execute the next
 	// instruction.
 	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
+)
+
+type (
+	// MDMInstructionRevisionResponse is the format of the MDM's revision
+	// instruction's output.
+	MDMInstructionRevisionResponse struct {
+		RevisionTxn types.Transaction
+	}
 )
 
 // RPCHasSectorInstruction creates an Instruction from arguments.
@@ -198,8 +255,57 @@ func MDMReadCost(pt *RPCPriceTable, readLength uint64) types.Currency {
 	return cost
 }
 
+// MDMRevisionCost is the cost of executing a 'Revision' instruction.
+func MDMRevisionCost(pt *RPCPriceTable) types.Currency {
+	cost := pt.RevisionBaseCost
+	return cost
+}
+
+// MDMSwapSectorCost is the cost of executing a 'SwapSector' instruction.
+func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
+	return pt.SwapSectorCost
+}
+
+// V154MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
+// instruction in host versions 1.5.4 and below.
+func V154MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 10 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
+}
+
+// MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
+// instruction.
+func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 5 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(5 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
+}
+
+// V154MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction
+// on pre 155 hosts.
+func V154MDMReadRegistryCost(pt *RPCPriceTable) (_ types.Currency) {
+	// Cost is the same as downloading a sector.
+	return MDMReadCost(pt, SectorSize)
+}
+
+// MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
+func MDMReadRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 10 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
+}
+
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
 func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
+	// Atomic write size for modern disks is 4kib so we round up.
+	atomicWriteSize := uint64(1 << 12)
+	if mod := writeLength % atomicWriteSize; mod != 0 {
+		writeLength += (atomicWriteSize - mod)
+	}
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
 	return writeCost
 }
@@ -212,6 +318,31 @@ func MDMSwapCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 // MDMTruncateCost is the cost of executing a 'Truncate' instruction.
 func MDMTruncateCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
+}
+
+// MDMSubscribeCost returns the cost of subscribing to nEntries registry
+// entries and retrieving nFound of them.
+// Subscribing involves paying for 10 years of storage + the memory cost.
+func MDMSubscribeCost(pt *RPCPriceTable, nFound, nEntries uint64) types.Currency {
+	if nFound > nEntries {
+		build.Critical("nFound has to be <= nEntries")
+	}
+	// Cost of retrieving single entry.
+	cost, _ := MDMReadRegistryCost(pt)
+	// Total cost for all enries.
+	cost = cost.Mul64(nFound)
+	// Add memory cost.
+	cost = cost.Add(MDMSubscriptionMemoryCost(pt, nEntries))
+	return cost
+}
+
+// MDMSubscriptionMemoryCost computes the memory cost of subscribing to an
+// entry.
+func MDMSubscriptionMemoryCost(pt *RPCPriceTable, nEntries uint64) types.Currency {
+	// Single entry memory cost.
+	memoryCost := pt.SubscriptionMemoryCost.Mul64(SubscriptionEntrySize)
+	// Cost for all entries.
+	return memoryCost.Mul64(nEntries)
 }
 
 // MDMAppendMemory returns the additional memory consumption of a 'Append'
@@ -241,6 +372,30 @@ func MDMHasSectorMemory() uint64 {
 // MDMReadMemory returns the additional memory consumption of a 'Read' instruction.
 func MDMReadMemory() uint64 {
 	return 0 // 'Read' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMRevisionMemory returns the additional memory consumption of a 'Revision'
+// instruction.
+func MDMRevisionMemory() uint64 {
+	return 0 // 'Revision' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMSwapSectorMemory returns the additional memory consumption of a
+// 'SwapSector' instruction.
+func MDMSwapSectorMemory() uint64 {
+	return 0 // 'SwapSector' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMUpdateRegistryMemory returns the additional memory consumption of a
+// 'UpdateRegistry' instruction.
+func MDMUpdateRegistryMemory() uint64 {
+	return 0 // 'UpdateRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMReadRegistryMemory returns the additional memory consumption of a
+// 'ReadRegistry' instruction.
+func MDMReadRegistryMemory() uint64 {
+	return 0 // 'ReadRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
@@ -286,6 +441,30 @@ func MDMReadCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
+// MDMRevisionCollateral returns the additional collateral a 'Revision'
+// instruction requires the host to put up.
+func MDMRevisionCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMSwapSectorCollateral returns the additional collateral a 'SwapSector'
+// instruction requires the host to put up.
+func MDMSwapSectorCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMUpdateRegistryCollateral returns the additional collateral a
+// 'UpdateRegistry' instruction requires the host to put up.
+func MDMUpdateRegistryCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMReadRegistryCollateral returns the additional collateral a
+// 'ReadRegistry' instruction requires the host to put up.
+func MDMReadRegistryCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
 // ReadOnly returns true if the program consists of no write instructions.
 func (p Program) ReadOnly() bool {
 	for _, instruction := range p {
@@ -297,6 +476,12 @@ func (p Program) ReadOnly() bool {
 		case SpecifierHasSector:
 		case SpecifierReadOffset:
 		case SpecifierReadSector:
+		case SpecifierRevision:
+		case SpecifierSwapSector:
+			return false
+		case SpecifierUpdateRegistry:
+			// considered read-only cause it doesn't update a contract
+		case SpecifierReadRegistry:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -319,6 +504,12 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierReadOffset:
 			return true
 		case SpecifierReadSector:
+		case SpecifierRevision:
+			return true
+		case SpecifierSwapSector:
+			return true
+		case SpecifierUpdateRegistry:
+		case SpecifierReadRegistry:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}
@@ -337,6 +528,13 @@ func NewBudget(budget types.Currency) *RPCBudget {
 	return &RPCBudget{
 		budget: budget,
 	}
+}
+
+// Deposit deposits to a budget.
+func (b *RPCBudget) Deposit(c types.Currency) {
+	b.mu.Lock()
+	b.budget = b.budget.Add(c)
+	b.mu.Unlock()
 }
 
 // Remaining returns the remaining value in the budget.
@@ -362,49 +560,70 @@ func (b *RPCBudget) Withdraw(c types.Currency) bool {
 // an RPCBudget to determine whether to allow for more bandwidth consumption or
 // not.
 type BudgetLimit struct {
-	budget          *RPCBudget
-	staticReadCost  types.Currency
-	staticWriteCost types.Currency
+	budget *RPCBudget
 
-	atomicDownloaded uint64
-	atomicUploaded   uint64
+	readCost  types.Currency
+	writeCost types.Currency
+
+	downloaded uint64
+	uploaded   uint64
+
+	mu sync.Mutex
 }
 
 // NewBudgetLimit creates a new limit from a budget and priceTable.
-func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) mux.BandwidthLimit {
+func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) *BudgetLimit {
 	return &BudgetLimit{
-		budget:          budget,
-		staticReadCost:  readCost,
-		staticWriteCost: writeCost,
+		budget:    budget,
+		readCost:  readCost,
+		writeCost: writeCost,
 	}
 }
 
 // Downloaded implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) Downloaded() uint64 {
-	return atomic.LoadUint64(&bl.atomicDownloaded)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	return bl.downloaded
 }
 
 // Uploaded implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) Uploaded() uint64 {
-	return atomic.LoadUint64(&bl.atomicUploaded)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	return bl.uploaded
 }
 
 // RecordDownload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordDownload(bytes uint64) error {
-	cost := bl.staticReadCost.Mul64(bytes)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	cost := bl.readCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
 		return ErrInsufficientBandwidthBudget
 	}
-	atomic.AddUint64(&bl.atomicDownloaded, bytes)
+	bl.downloaded += bytes
 	return nil
 }
 
 // RecordUpload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordUpload(bytes uint64) error {
-	cost := bl.staticWriteCost.Mul64(bytes)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	cost := bl.writeCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
 		return ErrInsufficientBandwidthBudget
 	}
-	atomic.AddUint64(&bl.atomicUploaded, bytes)
+	bl.uploaded += bytes
 	return nil
+}
+
+// UpdateCosts updates the limit's underlying readCost and writeCost.
+func (bl *BudgetLimit) UpdateCosts(readCost, writeCost types.Currency) {
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	bl.readCost = readCost
+	bl.writeCost = writeCost
 }

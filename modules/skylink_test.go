@@ -1,9 +1,11 @@
 package modules
 
 import (
+	"encoding/base32"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -127,7 +129,7 @@ func TestSkylink(t *testing.T) {
 	// without problems.
 	var slMin Skylink
 	str := slMin.String()
-	if len(str) != encodedSkylinkSize {
+	if len(str) != base64EncodedSkylinkSize {
 		t.Error("skylink is not the right size")
 	}
 	var slMinDecoded Skylink
@@ -145,12 +147,12 @@ func TestSkylink(t *testing.T) {
 	slMax := Skylink{
 		bitfield: 65535,
 	}
-	slMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zer oto make this a valid skylink.
+	slMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zero to make this a valid skylink.
 	for i := 0; i < len(slMax.merkleRoot); i++ {
 		slMax.merkleRoot[i] = 255
 	}
 	str = slMax.String()
-	if len(str) != encodedSkylinkSize {
+	if len(str) != base64EncodedSkylinkSize {
 		t.Error("str is not the right size")
 	}
 	var slMaxDecoded Skylink
@@ -162,15 +164,62 @@ func TestSkylink(t *testing.T) {
 		t.Error("encoding and decoding is not symmetric")
 	}
 
+	// Verify the base32 encoded representation of the Skylink
+	b32 := slMax.Base32EncodedString()
+	if len(b32) != base32EncodedSkylinkSize {
+		t.Error("encoded base32 string is not the right size")
+	}
+	var slMaxB32Decoded Skylink
+	err = slMaxB32Decoded.LoadString(b32)
+	if err != nil {
+		t.Error("should be no issues loading a base32 encoded skylink")
+	}
+	if slMaxB32Decoded != slMax {
+		t.Error("base32 encoding and decoding is not symmetric")
+	}
+	if slMaxB32Decoded.String() != slMax.String() {
+		t.Error("base32 encoding and decoding is not symmetric")
+	}
+
+	// Try loading a base32 encoded string that has an incorrect size
+	b32OffByOne := b32[1:]
+	err = slMaxB32Decoded.LoadString(b32OffByOne)
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too small")
+	}
+
+	// Try loading a base32 encoded string that has an incorrect size
+	b32OffByOne = b32 + "a"
+	err = slMaxB32Decoded.LoadString(b32OffByOne)
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too large")
+	}
+
+	// Try loading a base32 encoded string that has an illegal character
+	b32IllegalChar := "_" + b32[1:]
+	err = slMaxB32Decoded.LoadString(b32IllegalChar)
+	if err == nil {
+		t.Error("expecting error when loading a string containing an illegal character")
+	}
+
+	// Try loading a base32 encoded string with invalid bitfield
+	var slInvalidBitfield Skylink
+	slInvalidBitfield.bitfield = 1
+	b32BadBitfield := slInvalidBitfield.Base32EncodedString()
+	err = slMaxB32Decoded.LoadString(b32BadBitfield)
+	if err == nil {
+		t.Error("expecting error when loading a string representing a skylink with an illegal bitfield")
+	}
+
 	// Try loading an arbitrary string that is too small.
 	var sl Skylink
 	var arb string
-	for i := 0; i < encodedSkylinkSize-1; i++ {
+	for i := 0; i < base64EncodedSkylinkSize-1; i++ {
 		arb = arb + "a"
 	}
 	err = sl.LoadString(arb)
-	if err == nil {
-		t.Error("expecting error when loading string that is too small")
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too small")
 	}
 	// Try loading a siafile that's just arbitrary/meaningless data.
 	arb = arb + "a"
@@ -187,8 +236,8 @@ func TestSkylink(t *testing.T) {
 	// Try loading a blank siafile.
 	blank := ""
 	err = sl.LoadString(blank)
-	if err == nil {
-		t.Error("expecting an error when loading a blank skylink")
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading a blank string")
 	}
 
 	// Try giving a skylink extra params and loading that.
@@ -327,4 +376,10 @@ func TestSkylinkAutoExamples(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Base32EncodedString converts Skylink to a base32 encoded string.
+func (sl Skylink) Base32EncodedString() string {
+	// Encode the raw bytes to base32
+	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(sl.Bytes())
 }

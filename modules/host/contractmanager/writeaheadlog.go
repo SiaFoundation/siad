@@ -2,7 +2,6 @@ package contractmanager
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,12 +10,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
 	// sectorUpdate is an idempotent update to the sector metadata.
 	sectorUpdate struct {
-		Count  uint16
+		Count  uint64
 		Folder uint16
 		ID     sectorID
 		Index  uint32
@@ -239,7 +239,7 @@ func (wal *writeAheadLog) recoverWAL(walFile modules.File) error {
 			scs = append(scs, sc)
 		}
 	}
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		wal.cm.log.Println("ERROR: could not load WAL json:", err)
 		return build.ExtendErr("error loading WAL json", err)
 	}
@@ -287,6 +287,7 @@ func (wal *writeAheadLog) load() error {
 		wal.cm.log.Println("WARN: WAL file detected, performing recovery after unclean shutdown.")
 		err = wal.recoverWAL(walFile)
 		if err != nil {
+			err = errors.Compose(err, walFile.Close())
 			return build.ExtendErr("failed to recover WAL", err)
 		}
 		err = walFile.Close()
@@ -296,8 +297,8 @@ func (wal *writeAheadLog) load() error {
 	} else if !os.IsNotExist(err) {
 		return build.ExtendErr("walFile was not opened successfully", err)
 	}
-	// err == os.IsNotExist, suggesting a successful, clean shutdown. No action
-	// is taken.
+	// If the file doesn't exist it indicates a clean shutdown. No action is
+	// taken.
 
 	// Create the tmp settings file and initialize the first write to it. This
 	// is necessary before kicking off the sync loop.

@@ -1,11 +1,11 @@
 package wallet
 
 import (
-	"errors"
 	"sort"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -168,7 +168,7 @@ func (w *Wallet) threadedDefragWallet() {
 			}
 		}
 	}()
-	if err == errDefragNotNeeded {
+	if errors.Contains(err, errDefragNotNeeded) {
 		// begin
 		return
 	} else if err != nil {

@@ -39,14 +39,18 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 
 	// Fetch the list of workers from the worker pool.
 
-	var totalDownloadCoolDown, totalUploadCoolDown int
+	var totalDownloadCoolDown, totalMaintenanceCoolDown, totalUploadCoolDown int
 	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
 	workers := wp.callWorkers()
+
+	// Loop all workers and collect their status objects.
 	for _, w := range workers {
-		// Get the status of the worker.
 		status := w.callStatus()
 		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
+		}
+		if status.MaintenanceOnCooldown {
+			totalMaintenanceCoolDown++
 		}
 		if status.UploadOnCoolDown {
 			totalUploadCoolDown++
@@ -54,10 +58,11 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 		statuss = append(statuss, status)
 	}
 	return modules.WorkerPoolStatus{
-		NumWorkers:            len(wp.workers),
-		TotalDownloadCoolDown: totalDownloadCoolDown,
-		TotalUploadCoolDown:   totalUploadCoolDown,
-		Workers:               statuss,
+		NumWorkers:               len(wp.workers),
+		TotalDownloadCoolDown:    totalDownloadCoolDown,
+		TotalMaintenanceCoolDown: totalMaintenanceCoolDown,
+		TotalUploadCoolDown:      totalUploadCoolDown,
+		Workers:                  statuss,
 	}
 }
 
@@ -120,6 +125,12 @@ func (wp *workerPool) callUpdate() {
 	}
 }
 
+// Worker will return the worker associated with the provided public key.
+// If no worker is found, an error will be returned.
+func (wp *workerPool) Worker(hostPubKey types.SiaPublicKey) (modules.Worker, error) {
+	return wp.callWorker(hostPubKey)
+}
+
 // callWorker will return the worker associated with the provided public key.
 // If no worker is found, an error will be returned.
 func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
@@ -154,6 +165,14 @@ func (wp *workerPool) callWorkers() []*worker {
 	}
 	wp.mu.RUnlock()
 	return workers
+}
+
+// callNumWorkers returns the number of workers in the worker pool.
+func (wp *workerPool) callNumWorkers() int {
+	wp.mu.Lock()
+	l := len(wp.workers)
+	wp.mu.Unlock()
+	return l
 }
 
 // newWorkerPool will initialize and return a worker pool.

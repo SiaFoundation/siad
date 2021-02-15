@@ -89,6 +89,10 @@ var (
 	// length.
 	ErrIllegalOffsetAndLength = ErrorCommunication("renter is trying to do a modify with an illegal offset and length")
 
+	// ErrInvalidPayoutSums is returned if a revision doesn't sum up to the same
+	// total payout as the previous revision or contract.
+	ErrInvalidPayoutSums = ErrorCommunication("renter provided a revision with an invalid total payout")
+
 	// ErrLargeSector is returned if the renter sends a RevisionAction that has
 	// data which creates a sector that is larger than what the host uses.
 	ErrLargeSector = ErrorCommunication("renter has sent a sector that exceeds the host's sector size")
@@ -124,6 +128,10 @@ var (
 	// host valid and missed payouts to different values during contract
 	// formation.
 	ErrMismatchedHostPayouts = ErrorCommunication("rejected because host valid and missed payouts are not the same value")
+
+	// ErrNotAcceptingContracts is returned if the host is currently not
+	// accepting new contracts.
+	ErrNotAcceptingContracts = ErrorCommunication("host is not accepting new contracts")
 
 	// ErrSmallWindow is returned if the renter suggests a storage proof window
 	// that is too small.
@@ -164,7 +172,7 @@ var (
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.
 type finalizeContractArgs struct {
 	builder                 modules.TransactionBuilder
-	renewal                 bool
+	renewedSO               *storageObligation
 	renterPK                crypto.PublicKey
 	renterSignatures        []types.TransactionSignature
 	renterRevisionSignature types.TransactionSignature
@@ -172,7 +180,7 @@ type finalizeContractArgs struct {
 	hostCollateral          types.Currency
 	hostInitialRevenue      types.Currency
 	hostInitialRisk         types.Currency
-	settings                modules.HostExternalSettings
+	contractPrice           types.Currency
 }
 
 // createRevisionSignature creates a signature for a file contract revision
@@ -207,9 +215,9 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 // to the caller.
 func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
 	// Extract args
-	builder, renewal, renterPK, renterSignatures := args.builder, args.renewal, args.renterPK, args.renterSignatures
+	builder, renterPK, renterSignatures := args.builder, args.renterPK, args.renterSignatures
 	renterRevisionSignature, initialSectorRoots, hostCollateral := args.renterRevisionSignature, args.initialSectorRoots, args.hostCollateral
-	hostInitialRevenue, hostInitialRisk, settings := args.hostInitialRevenue, args.hostInitialRisk, args.settings
+	hostInitialRevenue, hostInitialRisk, contractPrice := args.hostInitialRevenue, args.hostInitialRisk, args.contractPrice
 
 	for _, sig := range renterSignatures {
 		builder.AddTransactionSignature(sig)
@@ -259,7 +267,7 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 	so := storageObligation{
 		SectorRoots: initialSectorRoots,
 
-		ContractCost:            settings.ContractPrice,
+		ContractCost:            contractPrice,
 		LockedCollateral:        hostCollateral,
 		PotentialStorageRevenue: hostInitialRevenue,
 		RiskedCollateral:        hostInitialRisk,
@@ -299,7 +307,11 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 		// just when the actual modification is happening.
 		i := 0
 		for {
-			err = h.managedAddStorageObligation(so, renewal)
+			if args.renewedSO == nil {
+				err = h.managedAddStorageObligation(so)
+			} else {
+				err = h.managedAddRenewedStorageObligation(*args.renewedSO, so)
+			}
 			if err == nil {
 				return nil
 			}

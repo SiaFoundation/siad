@@ -158,10 +158,6 @@ func TestHostPoorConnectivity(t *testing.T) {
 		if !success {
 			t.Fatal("nodes do not seem to be synchronizing")
 		}
-		err := allTesters[i].cs.Flush()
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		// Mine a block for this node. The next iteration will wait for
 		// synchronization before mining the block for the next node.

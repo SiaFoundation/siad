@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -138,7 +139,7 @@ func TestNewContractManagerErroredStartup(t *testing.T) {
 	testdir := build.TempDir(modules.ContractManagerDir, "TestNewContractManagerErroredStartup")
 	cmd := filepath.Join(testdir, modules.ContractManagerDir)
 	_, err := newContractManager(d, cmd)
-	if err == nil || err.Error() != "startup disrupted" {
+	if err == nil || !strings.Contains(err.Error(), "startup disrupted") {
 		t.Fatal("expecting contract manager startup to be disrupted:", err)
 	}
 

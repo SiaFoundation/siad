@@ -10,15 +10,19 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// StatusModuleNotLoaded is a custom http code to indicate that a module wasn't
-// loaded by the Daemon and can therefore not be reached. It is used instead of
-// the previous status code 404 to make a clear distinction between a module not
-// being loaded and a resource which would usually be provided a module not
-// being found.
-const StatusModuleNotLoaded = 490
+const (
+	// StatusModuleNotLoaded is a custom http code to indicate that a module
+	// wasn't yet loaded by the Daemon and can therefore not be reached.
+	StatusModuleNotLoaded = 490
+
+	// StatusModuleDisabled is a custom http code to indicate that a module was
+	// disabled by the Daemon and can therefore not be reached.
+	StatusModuleDisabled = 491
+)
 
 // ErrAPICallNotRecognized is returned by API client calls made to modules that
 // are not yet loaded.
@@ -114,6 +118,7 @@ type (
 		tpool               modules.TransactionPool
 		wallet              modules.Wallet
 		staticConfigModules configModules
+		modulesSet          bool
 
 		downloadMu sync.Mutex
 		downloads  map[modules.DownloadID]func()
@@ -126,6 +131,8 @@ type (
 		siadConfig        *modules.SiadConfig
 
 		staticStartTime time.Time
+
+		staticDeps modules.Dependencies
 	}
 
 	// configModules contains booleans that indicate if a module was part of the
@@ -152,6 +159,9 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // SetModules allows for replacing the modules in the API at runtime.
 func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) {
+	if api.modulesSet {
+		build.Critical("can't call SetModules more than once")
+	}
 	api.cs = cs
 	api.explorer = e
 	api.feemanager = fm
@@ -172,6 +182,7 @@ func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modul
 		TransactionPool: api.tpool != nil,
 		Wallet:          api.wallet != nil,
 	}
+	api.modulesSet = true
 	api.buildHTTPRoutes()
 }
 
@@ -180,10 +191,19 @@ func (api *API) StartTime() time.Time {
 	return api.staticStartTime
 }
 
-// New creates a new Sia API from the provided modules.  The API will require
+// New creates a new Sia API from the provided modules. The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
 func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
+	return NewCustom(cfg, requiredUserAgent, requiredPassword, cs, e, fm, g, h, m, r, tp, w, modules.ProdDependencies)
+}
+
+// NewCustom creates a new Sia API from the provided modules. The API will
+// require authentication using HTTP basic auth for certain endpoints of the
+// supplied password is not the empty string. Usernames are ignored for
+// authentication. It is custom because it allows to inject custom dependencies
+// into the API.
+func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet, a modules.Dependencies) *API {
 	api := &API{
 		cs:                cs,
 		explorer:          e,
@@ -199,6 +219,7 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,
 
+		staticDeps:      a,
 		staticStartTime: time.Now(),
 	}
 
@@ -208,14 +229,26 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 	return api
 }
 
-// UnrecognizedCallHandler handles calls to unknown pages (404).
-func UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
-	errStr := fmt.Sprintf("%d - Refer to API.md", StatusModuleNotLoaded)
-	WriteError(w, Error{errStr}, StatusModuleNotLoaded)
+// UnrecognizedCallHandler handles calls to disabled/not-loaded modules.
+func (api *API) UnrecognizedCallHandler(w http.ResponseWriter, _ *http.Request) {
+	var errStr string
+	if api.modulesSet {
+		errStr = fmt.Sprintf("%d Module disabled - Refer to API.md", StatusModuleDisabled)
+		WriteError(w, Error{errStr}, StatusModuleDisabled)
+	} else {
+		errStr = fmt.Sprintf("%d Module not loaded - Refer to API.md", StatusModuleNotLoaded)
+		WriteError(w, Error{errStr}, StatusModuleNotLoaded)
+	}
 }
 
 // WriteError an error to the API caller.
 func WriteError(w http.ResponseWriter, err Error, code int) {
+	// Sanity check specific errors for which we expect certain http status
+	// codes to be returned.
+	if strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) && code != http.StatusUnavailableForLegalReasons {
+		build.Critical("ErrSkynetBlocked should always be returned with http.StatusUnavailableForLegalReasons")
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
 	encodingErr := json.NewEncoder(w).Encode(err)

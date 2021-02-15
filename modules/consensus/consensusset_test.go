@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -176,7 +177,7 @@ func TestNilInputs(t *testing.T) {
 	t.Parallel()
 	testdir := build.TempDir(modules.ConsensusDir, t.Name())
 	_, errChan := New(nil, false, testdir)
-	if err := <-errChan; err != errNilGateway {
+	if err := <-errChan; !errors.Contains(err, errNilGateway) {
 		t.Fatal(err)
 	}
 }

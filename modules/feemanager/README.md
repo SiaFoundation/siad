@@ -45,13 +45,15 @@ the common dependencies.
 
 **Outbound Complexities**
   - The persist subsystem's `callInitPersist` method is called from
-    `NewCustomeFeeManager` to initialize the persistence files and/or load the
+    `NewCustomFeeManager` to initialize the persistence files and/or load the
     persistence from disk
   - The persist subsystem's `callPersistFeeCancelation` method is called from
     `CancelFee` to remove the fee from the FeeManager and persist the change on
     disk
   - The persist subsystem's `callPersistNewFee` method is called from `AddFee`
     to add the fee to the FeeManager and persist the change on disk
+  - The watchdog subsystem's `callFeeTracked` method is called from `CancelFee`
+    as a check to see if a fee can be canceled
 
 ### Persistence Subsystem
 **Key Files**
@@ -83,6 +85,24 @@ file and update the persist file header.
   - The process fees subsystem's `createdAndPersistTransaction` method calls
     `callPersistTxnCreated` to persist the link between feeUIDs and the
     transaction ID
+  - The watchdog subsystem's `managedConfirmTransaction` method calls
+    `callPersistTxnConfirmed` to persist that the transaction was confirmed
+  - The watchdog subsystem's `managedDropTransaction` method calls
+    `callPersistTxnDropped` to persist that the transaction was dropped
+
+**Outbound Complexities**
+ - The watchdog subsystems's `callTransactionTracked` is called from
+   `applyEntryTransaction` to check if a transaction is already in the watchdog
+ - The watchdog subsystems's `callMonitorTransaction` is called from
+   `applyEntryTransaction` to add a transaction to the watchdog
+ - The watchdog subsystems's `callClearTransaction` is called from
+   `applyEntryTxnConfirmed` to clear a transaction from the watchdog
+ - The watchdog subsystems's `callAddFeesToTransaction` is called from
+   `applyEntryTxnCreated` to add fees to a transaction being monitored by the
+   watchdog
+ - The watchdog subsystems's `callDropTransaction` is called from
+   `applyEntryTxnDropped` to remove a transaction from the watchdog
+
 
 ### Process Fees Subsystem
 **Key Files**
@@ -97,6 +117,40 @@ transaction and then submitting the transaction to the watchdog.
    `threadedProcessFees` to update the PayoutHeight for a fee
  - The persist subsystem's `callPersistTxnCreated`method is call from
    `createdAndPersistTransaction` to link FeeUIDs and a TxnID
+ - The watchdog subsystem's `callMonitorTransaction` method is called by
+    `createdAndPersistTransaction` to add a transaction for the watchdog to
+   monitor
 
 ### Watchdog Subsystem
-TODO
+**Key Files**
+- [watchdog.go](./watchdog.go)
+- [watchdogpersist.go](./watchdogpersist.go)
+
+The watchdog subsystem handles tracking the transactions created for Fees and
+marking them as paid once the transactions are confirmed. The watchdog will
+continue to rebroadcast the transaction until the transaction is confirmed.
+Once a transaction is confirmed the watchdog updates the fees' `PaymentComplete`
+flag.
+
+**Inbound Complexities**
+ - The process fees subsystem's `createdAndPersistTransaction` calls
+   `callMonitorTransaction` to add a transaction for the watchdog to monitor
+ - The persistence subsystem's `applyEntryTransaction` calls
+   `callTransactionTracked` to check if a transaction is already in the watchdog
+ - The persistence subsystem's `applyEntryTransaction` calls
+   `callMonitorTransaction` to add a transaction to the watchdog
+ - The persistence subsystem's `applyEntryTxnConfirmed` calls
+   `callClearTransaction` to clear a transaction from the watchdog
+ - The persistence subsystem's `applyEntryTxnCreated` calls
+   `callAddFeesToTransaction` to add fees to a transaction being monitored by
+   the watchdog 
+ - The persistence subsystem's `applyEntryTxnDropped` calls
+   `callDropTransaction` to remove a transaction from the watchdog 
+ - The feemanager subsystem's `CancelFee` method calls `callFeeTracked` as
+   a check to see if a fee can be canceled
+
+**Outbound Complexities**
+  - The persist subsystem's `callPersistTxnConfirmed` method is called by
+    `managedConfirmTransaction` to persist that the transaction was confirmed
+  - The persist subsystem's `callPersistTxnDropped` method is called by
+    `managedDropTransaction` to persist that the transaction was dropped

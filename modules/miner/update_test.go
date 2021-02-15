@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestIntegrationBlockHeightReorg checks that the miner has the correct block
@@ -46,7 +47,7 @@ func TestIntegrationBlockHeightReorg(t *testing.T) {
 	}
 	for _, block := range mt2.minedBlocks {
 		err = mt1.cs.AcceptBlock(block)
-		if err != nil && err != modules.ErrNonExtendingBlock {
+		if err != nil && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 			t.Fatal(err)
 		}
 	}
@@ -69,7 +70,7 @@ func TestIntegrationBlockHeightReorg(t *testing.T) {
 	}
 	for _, block := range mt2.minedBlocks {
 		err = mt1.cs.AcceptBlock(block)
-		if err != nil && err != modules.ErrNonExtendingBlock && err != modules.ErrBlockKnown {
+		if err != nil && !errors.Contains(err, modules.ErrNonExtendingBlock) && !errors.Contains(err, modules.ErrBlockKnown) {
 			t.Fatal(err)
 		}
 	}
@@ -85,7 +86,7 @@ func TestIntegrationBlockHeightReorg(t *testing.T) {
 	}
 	for _, block := range mt3.minedBlocks {
 		err = mt1.cs.AcceptBlock(block)
-		if err != nil && err != modules.ErrNonExtendingBlock {
+		if err != nil && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 			t.Fatal(err)
 		}
 	}

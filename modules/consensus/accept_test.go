@@ -2,13 +2,15 @@ package consensus
 
 import (
 	"bytes"
-	"errors"
 	"testing"
 	"time"
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -298,7 +300,7 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 		// Reset the stored parameters to ValidateBlock.
 		validateBlockParamsGot = validateBlockParams{}
 		_, err := cs.validateHeaderAndBlock(tx, tt.block, tt.block.ID())
-		if err != tt.errWant {
+		if err != tt.errWant && !errors.Contains(err, tt.errWant) {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
 		}
 		if err == nil || validateBlockParamsGot.called {
@@ -501,7 +503,11 @@ func TestIntegrationDoSBlockHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a block that is valid except for containing a buried invalid
 	// transaction. The transaction has more siacoin inputs than outputs.
@@ -527,14 +533,14 @@ func TestIntegrationDoSBlockHandling(t *testing.T) {
 	block.Transactions = append(block.Transactions, txnSet...)
 	dosBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(dosBlock)
-	if err != errSiacoinInputOutputMismatch {
+	if !errors.Contains(err, errSiacoinInputOutputMismatch) {
 		t.Fatalf("expected %v, got %v", errSiacoinInputOutputMismatch, err)
 	}
 
 	// Submit the same block a second time. The complaint should be that the
 	// block is already known to be invalid.
 	err = cst.cs.AcceptBlock(dosBlock)
-	if err != errDoSBlock {
+	if !errors.Contains(err, errDoSBlock) {
 		t.Fatalf("expected %v, got %v", errDoSBlock, err)
 	}
 }
@@ -549,7 +555,11 @@ func TestBlockKnownHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get a block destined to be stale.
 	block, target, err := cst.miner.BlockForWork()
@@ -570,7 +580,7 @@ func TestBlockKnownHandling(t *testing.T) {
 
 	// Submit the stale block.
 	err = cst.cs.AcceptBlock(staleBlock)
-	if err != nil && err != modules.ErrNonExtendingBlock {
+	if err != nil && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 
@@ -613,18 +623,22 @@ func TestOrphanHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Try submitting an orphan block to the consensus set. The empty block can
 	// be used, because looking for a parent is one of the first checks the
 	// consensus set performs.
 	orphan := types.Block{}
 	err = cst.cs.AcceptBlock(orphan)
-	if err != errOrphan {
+	if !errors.Contains(err, errOrphan) {
 		t.Fatalf("expected %v, got %v", errOrphan, err)
 	}
 	err = cst.cs.AcceptBlock(orphan)
-	if err != errOrphan {
+	if !errors.Contains(err, errOrphan) {
 		t.Fatalf("expected %v, got %v", errOrphan, err)
 	}
 }
@@ -639,7 +653,11 @@ func TestMissedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a block that doesn't meet the target.
 	block, target, err := cst.miner.BlockForWork()
@@ -653,7 +671,7 @@ func TestMissedTarget(t *testing.T) {
 		t.Fatal("unable to find a failing target")
 	}
 	err = cst.cs.AcceptBlock(block)
-	if err != modules.ErrBlockUnsolved {
+	if !errors.Contains(err, modules.ErrBlockUnsolved) {
 		t.Fatalf("expected %v, got %v", modules.ErrBlockUnsolved, err)
 	}
 }
@@ -669,7 +687,11 @@ func TestMinerPayoutHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block with the wrong miner payout structure - testing can be
 	// light here because there is heavier testing in the 'types' package,
@@ -681,7 +703,7 @@ func TestMinerPayoutHandling(t *testing.T) {
 	block.MinerPayouts = append(block.MinerPayouts, types.SiacoinOutput{Value: types.NewCurrency64(1)})
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrBadMinerPayouts {
+	if !errors.Contains(err, ErrBadMinerPayouts) {
 		t.Fatalf("expected %v, got %v", ErrBadMinerPayouts, err)
 	}
 }
@@ -697,7 +719,11 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	minTimestamp := types.CurrentTimestamp()
 	cst.cs.blockRuleHelper = mockBlockRuleHelper{
 		minTimestamp: minTimestamp,
@@ -711,7 +737,7 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	block.Timestamp = minTimestamp - 1
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrEarlyTimestamp {
+	if !errors.Contains(err, ErrEarlyTimestamp) {
 		t.Fatalf("expected %v, got %v", ErrEarlyTimestamp, err)
 	}
 }
@@ -727,7 +753,11 @@ func TestFutureTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a block with a timestamp in the future, but not the extreme
 	// future.
@@ -738,7 +768,7 @@ func TestFutureTimestampHandling(t *testing.T) {
 	block.Timestamp = types.CurrentTimestamp() + 2 + types.FutureThreshold
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrFutureTimestamp {
+	if !errors.Contains(err, ErrFutureTimestamp) {
 		t.Fatalf("expected %v, got %v", ErrFutureTimestamp, err)
 	}
 
@@ -767,7 +797,11 @@ func TestExtremeFutureTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a block with a timestamp in the extreme future.
 	block, target, err := cst.miner.BlockForWork()
@@ -777,7 +811,7 @@ func TestExtremeFutureTimestampHandling(t *testing.T) {
 	block.Timestamp = types.CurrentTimestamp() + 2 + types.ExtremeFutureThreshold
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrExtremeFutureTimestamp {
+	if !errors.Contains(err, ErrExtremeFutureTimestamp) {
 		t.Fatalf("expected %v, got %v", ErrFutureTimestamp, err)
 	}
 }
@@ -793,7 +827,11 @@ func TestBuriedBadTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Create a good transaction using the wallet.
@@ -881,7 +919,11 @@ func TestTaxHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a file contract with a payout that is put into the blockchain
 	// before the hardfork block but expires after the hardfork block.
@@ -1006,7 +1048,11 @@ func TestAcceptBlockBroadcasts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := &mockGatewayDoesBroadcast{
 		Gateway:         cst.cs.gateway,
 		broadcastCalled: make(chan struct{}),
@@ -1080,12 +1126,20 @@ func TestChainedAcceptBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Subscribe a blockCountingSubscriber to cst2.
 	var bcs blockCountingSubscriber
 	cst2.cs.ConsensusSetSubscribe(&bcs, modules.ConsensusChangeBeginning, cst2.cs.tg.StopChan())
@@ -1119,7 +1173,7 @@ func TestChainedAcceptBlock(t *testing.T) {
 	// Try to submit the blocks out-of-order, which would violate one of the
 	// assumptions in managedAcceptBlocks.
 	_, err = cst2.cs.managedAcceptBlocks(jumble)
-	if err != errNonLinearChain {
+	if !errors.Contains(err, errNonLinearChain) {
 		t.Fatal(err)
 	}
 	if cst2.cs.Height() != 0 {
@@ -1179,5 +1233,269 @@ func TestChainedAcceptBlock(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestFoundationUpdateBlocks tests various scenarios involving blocks that
+// contain a FoundationUnlockHashUpdate.
+func TestFoundationUpdateBlocks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Mine until the initial subsidy has matured.
+	for cst.cs.Height() < types.FoundationHardforkHeight+types.MaturityDelay {
+		if _, err := cst.miner.AddBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	foundationOutput := func(height types.BlockHeight) (id types.SiacoinOutputID, sco types.SiacoinOutput, exists bool) {
+		err := cst.cs.db.View(func(tx *bolt.Tx) error {
+			bid, err := getPath(tx, height)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id = bid.FoundationSubsidyID()
+			sco, err = getSiacoinOutput(tx, id)
+			exists = err == nil
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	mineTxn := func(txn types.Transaction) error {
+		block, target, err := cst.miner.BlockForWork()
+		if err != nil {
+			t.Fatal(err)
+		}
+		block.Transactions = append(block.Transactions, txn)
+		block, _ = cst.miner.SolveBlock(block, target)
+		return cst.cs.AcceptBlock(block)
+	}
+
+	// Sign and submit a transaction that sends the initial subsidy output to the void
+	outputHeight := types.FoundationHardforkHeight
+	scoid, sco, ok := foundationOutput(outputHeight)
+	if !ok {
+		t.Fatal("initial subsidy should exist")
+	}
+	primaryUC, primaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSalt)
+	txn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         scoid,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      sco.Value,
+			UnlockHash: types.UnlockHash{},
+		}},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(scoid)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine until the next subsidy matures.
+	outputHeight += types.FoundationSubsidyFrequency
+	for cst.cs.Height() < outputHeight+types.MaturityDelay {
+		if _, err := cst.miner.AddBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Sign and submit a transaction that changes the primary address to the void.
+	// Also send 1 SC to the primary and failsafe addresses for later use.
+	scoid, sco, ok = foundationOutput(outputHeight)
+	if !ok {
+		t.Fatal("first subsidy should exist")
+	}
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         scoid,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: sco.Value.Sub(types.SiacoinPrecision.Mul64(2)), UnlockHash: types.UnlockHash{}},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationUnlockHash},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationFailsafeUnlockHash},
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{'v', 'o', 'i', 'd'},
+			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(scoid)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+	primarySCOID := txn.SiacoinOutputID(1)
+	failsafeSCOID := txn.SiacoinOutputID(2)
+
+	// Attempt to change the primary address back.
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         primarySCOID,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      types.SiacoinPrecision,
+			UnlockHash: types.UnlockHash{},
+		}},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.InitialFoundationUnlockHash,
+			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(primarySCOID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	// In the next transaction, we will successfully change the primary back
+	// using the failsafe. Before we do that, mine a few subsidies. These
+	// subsidies will all be sent to the void, but once the primary is updated,
+	// they will be transferred back to the primary.
+	outputHeight += 3 * types.FoundationSubsidyFrequency
+	for cst.cs.Height() < outputHeight+types.MaturityDelay {
+		if _, err := cst.miner.AddBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Change the primary back using the failsafe. Note that, rather than
+	// recreate the entire transaction, we simply replace the input and the
+	// signatures.
+	failsafeUC, failsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSalt)
+	txn.SiacoinInputs[0] = types.SiacoinInput{
+		ParentID:         failsafeSCOID,
+		UnlockConditions: failsafeUC,
+	}
+	txn.TransactionSignatures = make([]types.TransactionSignature, failsafeUC.SignaturesRequired)
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(failsafeSCOID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), failsafeKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that the update was applied.
+	if p, f := cst.cs.FoundationUnlockHashes(); p != types.InitialFoundationUnlockHash || f != types.InitialFoundationFailsafeUnlockHash {
+		t.Fatal("transaction did not reset foundation unlock hashes")
+	}
+
+	// The previous subsidies should have been transferred to the primary.
+	scoid, sco, ok = foundationOutput(outputHeight)
+	if !ok {
+		t.Fatal("output should exist")
+	} else if sco.UnlockHash != types.InitialFoundationUnlockHash {
+		t.Fatal("output should have been transferred")
+	}
+
+	// Confirm that we can actually spend a transferred subsidy.
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         scoid,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      sco.Value,
+			UnlockHash: types.UnlockHash{},
+		}},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(scoid)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sign and submit a transaction that contains multiple updates. Only the
+	// first should be applied.
+	scoid, sco, ok = foundationOutput(outputHeight - types.FoundationSubsidyFrequency)
+	if !ok {
+		t.Fatal("subsidy should exist")
+	}
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         scoid,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: sco.Value.Sub(types.SiacoinPrecision.Mul64(2)), UnlockHash: types.UnlockHash{}},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationUnlockHash},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationFailsafeUnlockHash},
+		},
+		ArbitraryData: [][]byte{
+			encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+				NewPrimary:  types.UnlockHash{'v', 'o', 'i', 'd'},
+				NewFailsafe: types.UnlockHash{'v', 'o', 'i', 'd'},
+			}),
+			encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+				NewPrimary:  types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+				NewFailsafe: types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+			}),
+			encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+				NewPrimary:  types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+				NewFailsafe: types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+			}),
+		},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(scoid)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that the update was applied.
+	if p, f := cst.cs.FoundationUnlockHashes(); p != (types.UnlockHash{'v', 'o', 'i', 'd'}) || f != (types.UnlockHash{'v', 'o', 'i', 'd'}) {
+		t.Fatal("transaction did not correctly update foundation unlock hashes")
 	}
 }

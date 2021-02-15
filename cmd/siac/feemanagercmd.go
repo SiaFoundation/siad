@@ -84,7 +84,7 @@ func feemanagercmd() {
 	}
 
 	// Check if verbose output was requested
-	if !feeManagerVerbose {
+	if !verbose {
 		return
 	}
 

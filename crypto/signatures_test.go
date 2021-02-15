@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/encoding"
@@ -79,7 +80,7 @@ func TestUnitSigning(t *testing.T) {
 		// Attempt to verify after the data has been altered.
 		randData[0]++
 		err = VerifyHash(randData, pk, sig)
-		if err != ErrInvalidSignature {
+		if !errors.Contains(err, ErrInvalidSignature) {
 			t.Fatal(err)
 		}
 
@@ -93,7 +94,7 @@ func TestUnitSigning(t *testing.T) {
 		// Attempt to verify after the signature has been altered.
 		sig[0]++
 		err = VerifyHash(randData, pk, sig)
-		if err != ErrInvalidSignature {
+		if !errors.Contains(err, ErrInvalidSignature) {
 			t.Fatal(err)
 		}
 	}
@@ -179,7 +180,7 @@ func TestReadWriteSignedObject(t *testing.T) {
 	buf[0]++                 // alter the first byte of the signature, invalidating it.
 	b = bytes.NewBuffer(buf) // reset b
 	err = ReadSignedObject(b, &read, 11, pk)
-	if err != ErrInvalidSignature {
+	if !errors.Contains(err, ErrInvalidSignature) {
 		t.Fatal(err)
 	}
 }

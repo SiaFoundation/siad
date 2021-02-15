@@ -20,7 +20,11 @@ func TestScanLargeIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	masterKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = wt.wallet.Encrypt(masterKey)
 	if err != nil {
@@ -92,7 +96,11 @@ func TestScanLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// send money to ourselves at four specific indices. This should cause the
 	// scanner to loop exactly three times.

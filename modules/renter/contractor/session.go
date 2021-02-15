@@ -170,7 +170,9 @@ func (hs *hostSession) Upload(data []byte) (crypto.Hash, error) {
 	// Perform the upload.
 	_, sectorRoot, err := hs.session.Append(data)
 	if err != nil {
-		return crypto.Hash{}, err
+		// Return the sector root so that it can be logged and used for
+		// debugging in the event of an error.
+		return sectorRoot, err
 	}
 	return sectorRoot, nil
 }
@@ -214,7 +216,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	}
 	if renewing {
 		// Cannot use the session if the contract is being renewed.
-		return nil, errors.New("currently renewing that contract")
+		return nil, ErrContractRenewing
 	} else if haveSession {
 		// This session already exists. Mark that there are now two routines
 		// using the session, and then return the session that already exists.

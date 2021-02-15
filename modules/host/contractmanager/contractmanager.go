@@ -84,9 +84,10 @@ type ContractManager struct {
 	// including metadata about which sector slots are currently populated vs.
 	// which sector slots are available. For performance information, see
 	// BenchmarkStorageFolders.
-	sectorSalt      crypto.Hash
-	sectorLocations map[sectorID]sectorLocation
-	storageFolders  map[uint16]*storageFolder
+	sectorSalt                   crypto.Hash
+	sectorLocations              map[sectorID]sectorLocation
+	sectorLocationsCountOverflow *overflowMap
+	storageFolders               map[uint16]*storageFolder
 
 	// lockedSectors contains a list of sectors that are currently being read
 	// or modified.
@@ -108,7 +109,7 @@ func (cm *ContractManager) Close() error {
 
 // newContractManager returns a contract manager that is ready to be used with
 // the provided dependencies.
-func newContractManager(dependencies modules.Dependencies, persistDir string) (*ContractManager, error) {
+func newContractManager(dependencies modules.Dependencies, persistDir string) (_ *ContractManager, err error) {
 	cm := &ContractManager{
 		storageFolders:  make(map[uint16]*storageFolder),
 		sectorLocations: make(map[sectorID]sectorLocation),
@@ -126,7 +127,6 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	})
 
 	// Perform clean shutdown of already-initialized features if startup fails.
-	var err error
 	defer func() {
 		if err != nil {
 			err1 := errors.Extend(err, errors.New("error during contract manager startup"))
@@ -135,7 +135,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 		}
 	}()
 
-	// Create the perist directory if it does not yet exist.
+	// Create the persist directory if it does not yet exist.
 	err = dependencies.MkdirAll(cm.persistDir, 0700)
 	if err != nil {
 		return nil, errors.AddContext(err, "error while creating the persist directory for the contract manager")
@@ -149,6 +149,16 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	// Set up the clean shutdown of the logger.
 	cm.tg.AfterStop(func() {
 		err = errors.Compose(cm.log.Close(), err)
+	})
+
+	// Load the overflow file.
+	cm.sectorLocationsCountOverflow, err = newOverflowMap(filepath.Join(persistDir, sectorOverflowFile), dependencies)
+	if err != nil {
+		return nil, errors.AddContext(err, "error while creating the overflow file for the contract manager")
+	}
+	// Set up the clean shutdown of the overflow file.
+	cm.tg.AfterStop(func() {
+		err = errors.Compose(cm.sectorLocationsCountOverflow.Close(), err)
 	})
 
 	// Load the atomic state of the contract manager. Unclean shutdown may have

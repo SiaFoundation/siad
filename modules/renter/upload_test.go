@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestRenterUploadDirectory verifies that the renter returns an error if a
@@ -19,28 +19,32 @@ func TestRenterUploadDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	testUploadPath, err := ioutil.TempDir("", t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(testUploadPath)
+	defer func() {
+		if err := os.RemoveAll(testUploadPath); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
-	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
 	params := modules.FileUploadParams{
 		Source:      testUploadPath,
 		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: ec,
+		ErasureCode: modules.NewRSCodeDefault(),
 	}
 	err = rt.renter.Upload(params)
 	if err == nil {
 		t.Fatal("expected Upload to fail with empty directory as source")
 	}
-	if err != ErrUploadDirectory {
+	if !errors.Contains(err, ErrUploadDirectory) {
 		t.Fatal("expected ErrUploadDirectory, got", err)
 	}
 }

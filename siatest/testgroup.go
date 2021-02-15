@@ -24,6 +24,7 @@ type (
 	GroupParams struct {
 		Hosts   int // number of hosts to create
 		Renters int // number of renters to create
+		Portals int // number of portals to create
 		Miners  int // number of miners to create
 	}
 
@@ -33,6 +34,7 @@ type (
 		nodes   map[*TestNode]struct{}
 		hosts   map[*TestNode]struct{}
 		renters map[*TestNode]struct{}
+		portals map[*TestNode]struct{}
 		miners  map[*TestNode]struct{}
 
 		stopped map[*TestNode]struct{}
@@ -59,6 +61,10 @@ var (
 		ExpectedRedundancy: 5.0,
 		MaxPeriodChurn:     modules.SectorSize * 500,
 	}
+
+	// DefaultPaymentContractInitialFunding is the value used for turning renter
+	// TestNodes into portal TestNode
+	DefaultPaymentContractInitialFunding = types.SiacoinPrecision.Mul64(10)
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups
 	// and nodes created at once
@@ -129,6 +135,7 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 	tg := &TestGroup{
 		nodes:   make(map[*TestNode]struct{}),
 		hosts:   make(map[*TestNode]struct{}),
+		portals: make(map[*TestNode]struct{}),
 		renters: make(map[*TestNode]struct{}),
 		miners:  make(map[*TestNode]struct{}),
 
@@ -150,6 +157,10 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 		// Add node to hosts
 		if np.Host != nil || np.CreateHost {
 			tg.hosts[node] = struct{}{}
+		}
+		// Add node to portals
+		if np.CreatePortal {
+			tg.portals[node] = struct{}{}
 		}
 		// Add node to renters
 		if np.Renter != nil || np.CreateRenter {
@@ -194,6 +205,14 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 		params = append(params, node.HostTemplate)
 		randomNodeDir(groupDir, &params[len(params)-1])
 	}
+	// Create portal params
+	for i := 0; i < groupParams.Portals; i++ {
+		// Portals are renters so just use RenterTemplate
+		portalTemplate := node.RenterTemplate
+		portalTemplate.CreatePortal = true
+		params = append(params, portalTemplate)
+		randomNodeDir(groupDir, &params[len(params)-1])
+	}
 	// Create renter params
 	for i := 0; i < groupParams.Renters; i++ {
 		params = append(params, node.RenterTemplate)
@@ -230,7 +249,8 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	return errors.Compose(errs...)
 }
 
-// announceHosts adds storage to each host and announces them to the group
+// announceHosts adds storage and a registry to each host and announces them to
+// the group
 func announceHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		if host.params.SkipHostAnnouncement {
@@ -238,6 +258,9 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 		}
 		if err := host.HostModifySettingPost(client.HostParamAcceptingContracts, true); err != nil {
 			return errors.AddContext(err, "failed to set host to accepting contracts")
+		}
+		if err := host.HostModifySettingPost(client.HostParamRegistrySize, 1<<18); err != nil {
+			return errors.AddContext(err, "failed to set host's default registry size")
 		}
 		if err := host.HostAnnouncePost(); err != nil {
 			return errors.AddContext(err, "failed to announce host")
@@ -249,7 +272,7 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 // connectNodes connects two nodes
 func connectNodes(nodeA, nodeB *TestNode) error {
 	err := build.Retry(100, 100*time.Millisecond, func() error {
-		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && err != client.ErrPeerExists {
+		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && !errors.Contains(err, client.ErrPeerExists) {
 			return errors.AddContext(err, "failed to connect to peer")
 		}
 		isPeer1, err1 := nodeA.hasPeer(nodeB)
@@ -368,6 +391,9 @@ func setRenterAllowances(renters map[*TestNode]struct{}) error {
 		if !reflect.DeepEqual(renter.params.Allowance, modules.Allowance{}) {
 			allowance = renter.params.Allowance
 		}
+		if renter.params.CreatePortal {
+			allowance.PaymentContractInitialFunding = DefaultPaymentContractInitialFunding
+		}
 		if err := renter.RenterPostAllowance(allowance); err != nil {
 			return err
 		}
@@ -457,6 +483,13 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 		// our expectations.
 		expectedContracts := rg.Settings.Allowance.Hosts
 		if uint64(len(hosts)) < expectedContracts {
+			// Protect tests that have a large allowance hosts than number of hosts in
+			// the test group. This is not a bug, some tests are intentionally set up
+			// this way.
+			expectedContracts = uint64(len(hosts))
+		}
+		if renter.params.CreatePortal {
+			// If the renter is a portal then it should form contracts with all hosts
 			expectedContracts = uint64(len(hosts))
 		}
 		// Subtract hosts which the renter doesn't know yet because they
@@ -466,7 +499,6 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				expectedContracts--
 			}
 		}
-
 		// Check if number of contracts is sufficient.
 		err = Retry(1000, 100*time.Millisecond, func() error {
 			numRetries++
@@ -523,7 +555,8 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 	newHosts := make(map[*TestNode]struct{})
 	newRenters := make(map[*TestNode]struct{})
 	newMiners := make(map[*TestNode]struct{})
-	for _, np := range nps {
+	for i := range nps {
+		np := nps[i]
 		// Create the nodes and add them to the group.
 		randomNodeDir(tg.dir, &np)
 		node, err := NewCleanNode(np)
@@ -542,7 +575,13 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 		if np.Renter != nil || np.CreateRenter {
 			tg.renters[node] = struct{}{}
 			newRenters[node] = struct{}{}
+			// Add node to portals. No need to create a newPortals as the node is
+			// a renter and the set up will be handled by newRenters
+			if np.CreatePortal {
+				tg.portals[node] = struct{}{}
+			}
 		}
+
 		// Add node to miners
 		if np.Miner != nil || np.CreateMiner {
 			tg.miners[node] = struct{}{}
@@ -597,16 +636,40 @@ func (tg *TestGroup) Nodes() []*TestNode {
 	return mapToSlice(tg.nodes)
 }
 
+// Portals returns all the portals of the group. Note that the ordering of nodes
+// in the slice returned is not the same across multiple calls this function.
+func (tg *TestGroup) Portals() []*TestNode {
+	return mapToSlice(tg.portals)
+}
+
 // RemoveNode removes a node from the group and shuts it down.
 func (tg *TestGroup) RemoveNode(tn *TestNode) error {
-	// Remote node from all data structures.
-	delete(tg.nodes, tn)
-	delete(tg.hosts, tn)
-	delete(tg.renters, tn)
-	delete(tg.miners, tn)
+	return tg.RemoveNodeN(tn)
+}
+
+// RemoveNodeN removes multiple nodes from the group and shuts them down.
+func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(tns))
+	for i, tn := range tns {
+		// Remote node from all data structures.
+		delete(tg.nodes, tn)
+		delete(tg.hosts, tn)
+		delete(tg.portals, tn)
+		delete(tg.renters, tn)
+		delete(tg.miners, tn)
+
+		// Actual shutdown happens in another goroutine.
+		wg.Add(1)
+		go func(i int, tn *TestNode) {
+			errs[i] = tn.StopNode()
+			wg.Done()
+		}(i, tn)
+	}
+	wg.Wait()
 
 	// Close node.
-	return tn.StopNode()
+	return errors.Compose(errs...)
 }
 
 // Renters returns all the renters of the group. Note that the ordering of nodes in
@@ -704,7 +767,7 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 	for m := range tg.miners {
 		wg, err := m.WalletGet()
 		if err != nil {
-			return errors.New("failed to find richest miner")
+			return errors.AddContext(err, "failed to find richest miner")
 		}
 		if wg.ConfirmedSiacoinBalance.Cmp(balance) > 0 {
 			miner = m

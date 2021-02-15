@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -39,7 +40,8 @@ func TestContractSet(t *testing.T) {
 	t.Parallel()
 	// create contract set
 	testDir := build.TempDir(t.Name())
-	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +206,8 @@ func TestCompatV146SplitContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	// load contract set
-	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +270,8 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	invalidUpdate.Name = "invalidname"
 	// create contract set and close it.
 	testDir := build.TempDir(t.Name())
-	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +289,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Load the set again. This should ignore the invalid update and succeed.
-	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +314,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Load the set again. This should apply the invalid update and fail at
 	// startup.
-	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +339,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Load the set again. This should apply the valid update and not return an
 	// error.
-	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,5 +347,69 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	_, ok = cs.Acquire(header.ID())
 	if !ok {
 		t.Fatal("failed to acquire contract after applying valid update")
+	}
+}
+
+// TestInsertContractTotalCost tests that InsertContrct sets a good estimate for
+// TotalCost and TxnFee on recovered contracts.
+func TestInsertContractTotalCost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	renterPayout := types.SiacoinPrecision
+	txnFee := types.SiacoinPrecision.Mul64(2)
+	fc := types.FileContract{
+		ValidProofOutputs: []types.SiacoinOutput{
+			{}, {},
+		},
+		MissedProofOutputs: []types.SiacoinOutput{
+			{}, {},
+		},
+	}
+	fc.SetValidRenterPayout(renterPayout)
+
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{
+			{
+				NewValidProofOutputs:  fc.ValidProofOutputs,
+				NewMissedProofOutputs: fc.MissedProofOutputs,
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{
+						{}, {},
+					},
+				},
+			},
+		},
+	}
+
+	rc := modules.RecoverableContract{
+		FileContract: fc,
+		TxnFee:       txnFee,
+	}
+
+	// get the dir of the contractset.
+	testDir := build.TempDir(t.Name())
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal(err)
+	}
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert the contract and check its total cost and fee.
+	contract, err := cs.InsertContract(rc, txn, []crypto.Hash{}, crypto.SecretKey{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contract.TxnFee.Equals(txnFee) {
+		t.Fatal("wrong fee", contract.TxnFee, txnFee)
+	}
+	expectedTotalCost := renterPayout.Add(txnFee)
+	if !contract.TotalCost.Equals(expectedTotalCost) {
+		t.Fatal("wrong TotalCost", contract.TotalCost, expectedTotalCost)
 	}
 }

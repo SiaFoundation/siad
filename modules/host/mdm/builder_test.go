@@ -37,7 +37,7 @@ func newTestProgramBuilder(pt *modules.RPCPriceTable, duration types.BlockHeight
 // complete programs.
 func assertCosts(finalized bool, values TestValues, pb *modules.ProgramBuilder) {
 	cost1, refund1, collateral1 := pb.Cost(finalized)
-	_, refund2, collateral2 := values.Cost()
+	_, refund2, collateral2, _ := values.Cost()
 	cost2 := values.Budget(finalized).Remaining()
 	if !cost1.Equals(cost2) {
 		panic(fmt.Sprintf("cost: %v != %v", cost1.HumanString(), cost2.HumanString()))
@@ -62,7 +62,10 @@ func (tb *testProgramBuilder) Cost() TestValues {
 // AddAppendInstruction adds an append instruction to the builder, keeping
 // track of running values.
 func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
-	tb.staticPB.AddAppendInstruction(data, merkleProof)
+	err := tb.staticPB.AddAppendInstruction(data, merkleProof)
+	if err != nil {
+		panic(err)
+	}
 	tb.staticValues.AddAppendInstruction(data)
 }
 
@@ -91,6 +94,41 @@ func (tb *testProgramBuilder) AddReadOffsetInstruction(length, offset uint64, me
 func (tb *testProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
 	tb.staticPB.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
 	tb.staticValues.AddReadSectorInstruction(length)
+}
+
+// AddRevisionInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (tb *testProgramBuilder) AddRevisionInstruction() {
+	tb.staticPB.AddRevisionInstruction()
+	tb.staticValues.AddRevisionInstruction()
+}
+
+// AddSwapSectorInstruction adds a SwapSector instruction to the builder,
+// keeping track of running values.
+func (tb *testProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx uint64, merkleProof bool) {
+	tb.staticPB.AddSwapSectorInstruction(sector1Idx, sector2Idx, merkleProof)
+	tb.staticValues.AddSwapSectorInstruction()
+}
+
+// AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
+// builder, keeping track of running values.
+func (tb *testProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+	err := tb.staticPB.AddUpdateRegistryInstruction(spk, rv)
+	if err != nil {
+		panic(err)
+	}
+	tb.staticValues.AddUpdateRegistryInstruction(spk, rv)
+}
+
+// AddReadRegistryInstruction adds an ReadRegistry instruction to the
+// builder, keeping track of running values.
+func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash, refunded bool) types.Currency {
+	refund, err := tb.staticPB.AddReadRegistryInstruction(spk, tweak)
+	if err != nil {
+		panic(err)
+	}
+	tb.staticValues.AddReadRegistryInstruction(spk, refunded)
+	return refund
 }
 
 // Program returns the built program.

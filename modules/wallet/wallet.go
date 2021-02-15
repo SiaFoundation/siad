@@ -55,8 +55,13 @@ type Wallet struct {
 	// wallet.
 	encrypted   bool
 	unlocked    bool
-	subscribed  bool
 	primarySeed modules.Seed
+
+	// Fields that handle the subscriptions to the cs and tpool. subscribedMu
+	// needs to be locked when subscribed is accessed and while calling the
+	// subscribing methods on the tpool and consensusset.
+	subscribedMu sync.Mutex
+	subscribed   bool
 
 	// The wallet's dependencies.
 	cs    modules.ConsensusSet
@@ -121,10 +126,13 @@ func (w *Wallet) Height() (types.BlockHeight, error) {
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.syncDB()
+	err := w.syncDB()
+	if err != nil {
+		return types.BlockHeight(0), err
+	}
 
 	var height uint64
-	err := w.db.View(func(tx *bolt.Tx) error {
+	err = w.db.View(func(tx *bolt.Tx) error {
 		return encoding.Unmarshal(tx.Bucket(bucketWallet).Get(keyConsensusHeight), &height)
 	})
 	if err != nil {

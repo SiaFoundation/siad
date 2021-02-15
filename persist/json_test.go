@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSaveLoadJSON creates a simple object and then tries saving and loading
@@ -67,7 +68,7 @@ func TestSaveLoadJSON(t *testing.T) {
 
 	// Try loading the object using the temp file.
 	err = LoadJSON(testMeta, &obj2, obj1Filename+tempSuffix)
-	if err != ErrBadFilenameSuffix {
+	if !errors.Contains(err, ErrBadFilenameSuffix) {
 		t.Error("did not get bad filename suffix")
 	}
 

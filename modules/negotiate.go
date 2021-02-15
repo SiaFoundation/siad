@@ -164,6 +164,10 @@ var (
 	// announcement is not a type of signature that is recognized.
 	ErrAnnUnrecognizedSignature = errors.New("the signature provided in the host announcement is not recognized")
 
+	// ErrMaxVirtualSectors is returned when a sector cannot be added because
+	// the maximum number of virtual sectors for that sector id already exist.
+	ErrMaxVirtualSectors = errors.New("sector collides with a physical sector that already has the maximum allowed number of virtual sectors")
+
 	// ErrRevisionCoveredFields is returned if there is a covered fields object
 	// in a transaction signature which has the 'WholeTransaction' field set to
 	// true, meaning that miner fees cannot be added to the transaction without
@@ -189,20 +193,20 @@ var (
 	PrefixFileContractIdentifier = types.NewSpecifier("FCIdentifier")
 
 	// RPCDownload is the specifier for downloading a file from a host.
-	RPCDownload = types.NewSpecifier("Download" + string(2))
+	RPCDownload = types.NewSpecifier("Download" + types.RuneToString(2))
 
 	// RPCFormContract is the specifier for forming a contract with a host.
-	RPCFormContract = types.NewSpecifier("FormContract" + string(2))
+	RPCFormContract = types.NewSpecifier("FormContract" + types.RuneToString(2))
 
-	// RPCRenewContract is the specifier to renewing an existing contract.
-	RPCRenewContract = types.NewSpecifier("RenewContract" + string(2))
+	// RPCRenewContractRHP2 is the specifier to renewing an existing contract.
+	RPCRenewContractRHP2 = types.NewSpecifier("RenewContract" + types.RuneToString(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
-	RPCReviseContract = types.NewSpecifier("ReviseContract" + string(2))
+	RPCReviseContract = types.NewSpecifier("ReviseContract" + types.RuneToString(2))
 
 	// RPCSettings is the specifier for requesting settings from the host.
-	RPCSettings = types.NewSpecifier("Settings" + string(2))
+	RPCSettings = types.NewSpecifier("Settings" + types.RuneToString(2))
 
 	// SectorSize defines how large a sector should be in bytes. The sector
 	// size needs to be a power of two to be compatible with package
@@ -962,6 +966,32 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 		}
 	}
 	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{fcr},
+		TransactionSignatures: tsigs,
+	}
+	// Check that the signatures verify. This will also check that the covered
+	// fields object is not over-aggressive, because if the object is pointing
+	// to elements that haven't been added to the transaction, verification
+	// will fail.
+	return txn.StandaloneValid(height)
+}
+
+// VerifyRenewalTransactionSignatures checks that the signatures on a file
+// contract and revision are valid and cover the right fields.
+func VerifyRenewalTransactionSignatures(fcr types.FileContractRevision, fc types.FileContract, tsigs []types.TransactionSignature, height types.BlockHeight) error {
+	if len(tsigs) != 2 {
+		return ErrRevisionSigCount
+	}
+	for _, tsig := range tsigs {
+		// The transaction needs to be malleable so that miner fees can be
+		// added. If the whole transaction is covered, it is doomed to have no
+		// fees.
+		if tsig.CoveredFields.WholeTransaction {
+			return ErrRevisionCoveredFields
+		}
+	}
+	txn := types.Transaction{
+		FileContracts:         []types.FileContract{fc},
 		FileContractRevisions: []types.FileContractRevision{fcr},
 		TransactionSignatures: tsigs,
 	}

@@ -7,7 +7,6 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -29,30 +28,18 @@ func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// wait until we have a valid pricetable
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticPriceTable().staticValid() {
-			return errors.New("price table not updated yet")
-		}
-		if w.staticPriceTable().staticRecentErr != nil {
-			return errors.New("Expected recent err to be nil")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// get the host's blockheight
 	hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
 
 	// corrupt the synced property on the worker's cache
 	wc := w.staticCache()
 	ptr := unsafe.Pointer(&workerCache{
-		staticBlockHeight:     hbh + priceTableHostBlockHeightLeeWay + 1,
+		staticBlockHeight:     hbh + 2*priceTableHostBlockHeightLeeWay,
 		staticContractID:      wc.staticContractID,
 		staticContractUtility: wc.staticContractUtility,
+		staticHostMuxAddress:  wc.staticHostMuxAddress,
 		staticHostVersion:     wc.staticHostVersion,
+		staticRenterAllowance: wc.staticRenterAllowance,
 		staticSynced:          wc.staticSynced,
 		staticLastUpdate:      wc.staticLastUpdate,
 	})
@@ -61,7 +48,6 @@ func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
 	// corrupt the price table's update time so we are allowed to update
 	wpt := w.staticPriceTable()
 	wptc := new(workerPriceTable)
-	wptc.staticConsecutiveFailures = wpt.staticConsecutiveFailures
 	wptc.staticExpiryTime = wpt.staticExpiryTime
 	wptc.staticUpdateTime = time.Now().Add(-time.Second)
 	wptc.staticPriceTable = wpt.staticPriceTable
@@ -170,6 +156,7 @@ func newDefaultPriceTable() modules.RPCPriceTable {
 		MemoryTimeCost:    oneCurrency,
 		ReadBaseCost:      oneCurrency,
 		ReadLengthCost:    oneCurrency,
+		SwapSectorCost:    oneCurrency,
 
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,

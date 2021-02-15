@@ -45,6 +45,10 @@ var (
 		Dev:      1 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
+
+	// minInitialEstimate is the minimum job time estimate that's set on the HS
+	// and RJ queue in case we fail to update the price table successfully
+	minInitialEstimate = time.Second
 )
 
 type (
@@ -60,12 +64,6 @@ type (
 		// The next time that the worker should try to update the price table.
 		staticUpdateTime time.Time
 
-		// The number of consecutive failures that the worker has experienced in
-		// trying to fetch the price table. This number is used to inform
-		// staticUpdateTime, a larger number of consecutive failures will result in
-		// greater backoff on fetching the price table.
-		staticConsecutiveFailures uint64
-
 		// staticRecentErr specifies the most recent error that the worker's
 		// price table update has failed with.
 		staticRecentErr error
@@ -76,14 +74,19 @@ type (
 	}
 )
 
-// staticNeedsPriceTableUpdate is a helper function that determines whether the
-// price table should be updated.
-func (w *worker) staticNeedsPriceTableUpdate() bool {
-	// Check the version.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+// managedNeedsToUpdatePriceTable returns true if the renter needs to update its
+// host prices.
+func (w *worker) managedNeedsToUpdatePriceTable() bool {
+	// No need to update the prices if the worker's host does not support RHP3.
+	if !w.staticSupportsRHP3() {
 		return false
 	}
-	return time.Now().After(w.staticPriceTable().staticUpdateTime)
+	// No need to update the price table if the worker's RHP3 is on cooldown.
+	if w.managedOnMaintenanceCooldown() {
+		return false
+	}
+
+	return w.staticPriceTable().staticNeedsToUpdate()
 }
 
 // newPriceTable will initialize a price table for the worker.
@@ -117,6 +120,12 @@ func (wpt *workerPriceTable) staticValid() bool {
 	return time.Now().Before(wpt.staticExpiryTime)
 }
 
+// staticNeedsToUpdate returns whether or not the price table needs to be
+// updated.
+func (wpt *workerPriceTable) staticNeedsToUpdate() bool {
+	return time.Now().After(wpt.staticUpdateTime)
+}
+
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) staticUpdatePriceTable() {
 	// Sanity check - This function runs on a fairly strict schedule, the
@@ -146,33 +155,61 @@ func (w *worker) staticUpdatePriceTable() {
 		})
 	}()
 
+	var err error
+
+	// If this is the first time we are fetching a price table update from the
+	// host, we use the time it took for a single round trip as an initial
+	// estimate for both the HS and RJ queue job time estimates.
+	var elapsed time.Duration
+	defer func() {
+		// As a safety precaution, set the elapsed duration to the minimum
+		// estimate in case we did not manage to update the price table
+		// successfully.
+		if err != nil && elapsed < minInitialEstimate {
+			elapsed = minInitialEstimate
+		}
+		w.staticSetInitialEstimates.Do(func() {
+			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
+		})
+	}()
+
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
 	// the existing price table, which will allow the renter to continue
 	// performing tasks even though it's having trouble getting a new price
 	// table.
-	var err error
 	currentPT := w.staticPriceTable()
 	defer func() {
-		if err != nil {
-			// Because of race conditions, can't modify the existing price
-			// table, need to make a new one.
-			pt := &workerPriceTable{
-				staticPriceTable:          currentPT.staticPriceTable,
-				staticExpiryTime:          currentPT.staticExpiryTime,
-				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
-				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
-				staticRecentErr:           err,
-				staticRecentErrTime:       time.Now(),
-			}
-			w.staticSetPriceTable(pt)
+		// Track the result of the pricetable update, in case of failure this
+		// will increment the cooldown, in case of success this will try and
+		// reset the cooldown, depending on whether the other maintenance tasks
+		// were completed successfully.
+		cd := w.managedTrackPriceTableUpdateErr(err)
 
-			// If the error could be caused by a revision number mismatch,
-			// signal it by setting the flag.
-			if errCausedByRevisionMismatch(err) {
-				w.staticSetSuspectRevisionMismatch()
-				w.staticWake()
-			}
+		// If there was no error, return.
+		if err == nil {
+			return
+		}
+
+		// Because of race conditions, can't modify the existing price
+		// table, need to make a new one.
+		pt := &workerPriceTable{
+			staticPriceTable:    currentPT.staticPriceTable,
+			staticExpiryTime:    currentPT.staticExpiryTime,
+			staticUpdateTime:    cd,
+			staticRecentErr:     err,
+			staticRecentErrTime: time.Now(),
+		}
+		w.staticSetPriceTable(pt)
+
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
 		}
 	}()
 
@@ -193,6 +230,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}()
 
 	// write the specifier
+	start := time.Now()
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write price table specifier")
@@ -206,6 +244,7 @@ func (w *worker) staticUpdatePriceTable() {
 		err = errors.AddContext(err, "unable to read price table response")
 		return
 	}
+	elapsed = time.Since(start)
 
 	// decode the JSON
 	var pt modules.RPCPriceTable
@@ -261,12 +300,11 @@ func (w *worker) staticUpdatePriceTable() {
 	// has not been an error for debugging purposes, if there has been an error
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
-		staticPriceTable:          pt,
-		staticExpiryTime:          expiryTime,
-		staticUpdateTime:          newUpdateTime,
-		staticConsecutiveFailures: 0,
-		staticRecentErr:           currentPT.staticRecentErr,
-		staticRecentErrTime:       currentPT.staticRecentErrTime,
+		staticPriceTable:    pt,
+		staticExpiryTime:    expiryTime,
+		staticUpdateTime:    newUpdateTime,
+		staticRecentErr:     currentPT.staticRecentErr,
+		staticRecentErrTime: currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
 }

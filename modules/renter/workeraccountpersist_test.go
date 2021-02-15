@@ -10,7 +10,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // newRandomAccountPersistence is a helper function that returns an
@@ -52,7 +54,10 @@ func TestAccountSave(t *testing.T) {
 	}
 
 	// create a number of test accounts and reload the renter
-	accounts := openRandomTestAccountsOnRenter(r)
+	accounts, err := openRandomTestAccountsOnRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, err = rt.reloadRenter(r)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +104,10 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := openRandomTestAccountsOnRenter(r)
+	accounts, err := openRandomTestAccountsOnRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// close the renter and reload it with a dependency that interrupts the
 	// accounts save on shutdown
@@ -169,7 +177,10 @@ func TestAccountCorrupted(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := openRandomTestAccountsOnRenter(r)
+	accounts, err := openRandomTestAccountsOnRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// select a random account of which we'll corrupt data on disk
 	var corrupted *account
@@ -200,7 +211,8 @@ func TestAccountCorrupted(t *testing.T) {
 
 	// reopen the renter
 	persistDir := filepath.Join(rt.dir, modules.RenterDir)
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, persistDir)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, persistDir)
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +269,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	corruptedBytes := accountBytes
 	corruptedBytes[fastrand.Intn(crypto.HashSize)] += 1
 	err = uMar.loadBytes(corruptedBytes)
-	if err != errInvalidChecksum {
+	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
 
@@ -265,7 +277,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	corruptedBytes2 := accountBytes
 	corruptedBytes2[fastrand.Intn(accountSize-crypto.HashSize)+crypto.HashSize] += 1
 	err = uMar.loadBytes(corruptedBytes2)
-	if err != errInvalidChecksum {
+	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
 }

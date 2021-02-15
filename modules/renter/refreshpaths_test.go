@@ -8,9 +8,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -26,11 +26,16 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create some directory tree paths
 	paths := []modules.SiaPath{
 		modules.RootSiaPath(),
+		{Path: ""},
 		{Path: "root"},
 		{Path: "root/SubDir1"},
 		{Path: "root/SubDir1/SubDir1"},
@@ -44,6 +49,32 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 
 	// Create a map of directories to be refreshed
 	dirsToRefresh := rt.renter.newUniqueRefreshPaths()
+
+	// Test adding a single child and making sure all the parents are added
+	child := paths[len(paths)-1]
+	parents := []modules.SiaPath{
+		{Path: ""},
+		{Path: "root"},
+		{Path: "root/SubDir2"},
+		{Path: "root/SubDir2/SubDir2"},
+	}
+	err = dirsToRefresh.callAdd(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirsToRefresh.mu.Lock()
+	if _, ok := dirsToRefresh.childDirs[child]; !ok {
+		t.Fatal("Did not find path in map", child)
+	}
+	for _, parent := range parents {
+		if _, ok := dirsToRefresh.parentDirs[parent]; !ok {
+			t.Fatal("Did not find path in map", parent)
+		}
+	}
+	dirsToRefresh.mu.Unlock()
+
+	// Reset
+	dirsToRefresh = rt.renter.newUniqueRefreshPaths()
 
 	// Add all paths to map
 	for _, path := range paths {
@@ -61,24 +92,46 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 		}
 	}
 
-	// There should only be the following paths in the map
+	// Verify the child and parent dir maps
 	uniquePaths := []modules.SiaPath{
 		{Path: "root/SubDir1/SubDir1/SubDir1"},
 		{Path: "root/SubDir1/SubDir2"},
 		{Path: "root/SubDir2/SubDir1"},
 		{Path: "root/SubDir2/SubDir2/SubDir2"},
 	}
-	if len(dirsToRefresh.childDirs) != len(uniquePaths) {
-		t.Fatalf("Expected %v paths in map but got %v", len(uniquePaths), len(dirsToRefresh.childDirs))
+	childDirs := dirsToRefresh.callNumChildDirs()
+	if childDirs != len(uniquePaths) {
+		t.Fatalf("Expected %v paths in child dir map but got %v", len(uniquePaths), childDirs)
 	}
+	dirsToRefresh.mu.Lock()
 	for _, path := range uniquePaths {
 		if _, ok := dirsToRefresh.childDirs[path]; !ok {
 			t.Fatal("Did not find path in map", path)
 		}
 	}
+	dirsToRefresh.mu.Unlock()
+	parentPaths := []modules.SiaPath{
+		{Path: ""},
+		{Path: "root"},
+		{Path: "root/SubDir1"},
+		{Path: "root/SubDir1/SubDir1"},
+		{Path: "root/SubDir2"},
+		{Path: "root/SubDir2/SubDir2"},
+	}
+	parentDir := dirsToRefresh.callNumParentDirs()
+	if parentDir != len(parentPaths) {
+		t.Fatalf("Expected %v paths in parent dir map but got %v", len(parentPaths), parentDir)
+	}
+	dirsToRefresh.mu.Lock()
+	for _, path := range parentPaths {
+		if _, ok := dirsToRefresh.parentDirs[path]; !ok {
+			t.Fatal("Did not find path in map", path)
+		}
+	}
+	dirsToRefresh.mu.Unlock()
 
 	// Make child directories and add a file to each
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		ErasureCode: rsc,
@@ -112,30 +165,40 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 		t.Fatal("Expected AggregateNumSubDirs to be 0 but got", di[0].AggregateNumSubDirs)
 	}
 
+	// Add the default folders to the uniqueRefreshPaths to have their information
+	// bubbled as well
+	err1 := dirsToRefresh.callAdd(modules.HomeFolder)
+	err2 := dirsToRefresh.callAdd(modules.UserFolder)
+	err3 := dirsToRefresh.callAdd(modules.VarFolder)
+	err4 := dirsToRefresh.callAdd(modules.SkynetFolder)
+	err5 := dirsToRefresh.callAdd(modules.BackupFolder)
+	err = errors.Compose(err1, err2, err3, err4, err5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Have uniqueBubblePaths call bubble
-	dirsToRefresh.callRefreshAll()
+	err = dirsToRefresh.callRefreshAllBlocking()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Wait for root directory to show proper number of files and subdirs.
+	numSubDirs := len(dirsToRefresh.parentDirs) + len(dirsToRefresh.childDirs) - 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		di, err = rt.renter.DirList(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
-		if int(di[0].AggregateNumFiles) != len(dirsToRefresh.childDirs) {
-			return fmt.Errorf("Expected AggregateNumFiles to be %v but got %v", len(dirsToRefresh.childDirs), di[0].AggregateNumFiles)
+		if int(di[0].AggregateNumFiles) != len(uniquePaths) {
+			return fmt.Errorf("Expected AggregateNumFiles to be %v but got %v", len(uniquePaths), di[0].AggregateNumFiles)
 		}
-		// Check that AggregateNumSubDirs equals the length of `paths`, minus
-		// the root directory, plus the standard directories `home`,
-		// `snapshots`, and `var`.
-		numSubDirs := len(paths) - 1 + 3
 		if int(di[0].AggregateNumSubDirs) != numSubDirs {
 			return fmt.Errorf("Expected AggregateNumSubDirs to be %v but got %v", numSubDirs, di[0].AggregateNumSubDirs)
 		}
 		return nil
 	})
 	if err != nil {
-		t.Log("Num dirs", len(di))
-		t.Log("Directory Infos", di)
 		t.Fatal(err)
 	}
 }

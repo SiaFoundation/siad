@@ -14,11 +14,27 @@ import (
 )
 
 var (
+	// errBothNameAndIDUsed is returned if both the Skykey name and ID are
+	// supplied for an operation that requires one or the other
+	errBothNameAndIDUsed = errors.New("Can only use one flag: --name or --id flag")
+
+	// errNeitherNameNorIDUsed is returned if neither the Skykey name or ID are
+	// supplied for an operation that requires one or the other
+	errNeitherNameNorIDUsed = errors.New("Must use either the --name or --id flag")
+)
+var (
 	skykeyCmd = &cobra.Command{
 		Use:   "skykey",
 		Short: "Perform actions related to Skykeys",
 		Long:  `Perform actions related to Skykeys, the encryption keys used for Skyfiles.`,
 		Run:   skykeycmd,
+	}
+
+	skykeyAddCmd = &cobra.Command{
+		Use:   "add [skykey base64-encoded skykey]",
+		Short: "Add a base64-encoded skykey to the key manager.",
+		Long:  `Add a base64-encoded skykey to the key manager.`,
+		Run:   wrap(skykeyaddcmd),
 	}
 
 	skykeyCreateCmd = &cobra.Command{
@@ -29,11 +45,24 @@ var (
 		Run: wrap(skykeycreatecmd),
 	}
 
-	skykeyAddCmd = &cobra.Command{
-		Use:   "add [skykey base64-encoded skykey]",
-		Short: "Add a base64-encoded skykey to the key manager.",
-		Long:  `Add a base64-encoded skykey to the key manager.`,
-		Run:   wrap(skykeyaddcmd),
+	skykeyDeleteCmd = &cobra.Command{
+		Use:   "delete",
+		Short: "Delete the skykey by name or id",
+		Long:  `Delete the base64-encoded skykey using its name or id`,
+	}
+
+	skykeyDeleteNameCmd = &cobra.Command{
+		Use:   "name [name]",
+		Short: "Delete the skykey by name",
+		Long:  `Delete the base64-encoded skykey using its name`,
+		Run:   wrap(skykeydeletenamecmd),
+	}
+
+	skykeyDeleteIDCmd = &cobra.Command{
+		Use:   "id [id]",
+		Short: "Delete the skykey by id",
+		Long:  `Delete the base64-encoded skykey using its id`,
+		Run:   wrap(skykeydeleteidcmd),
 	}
 
 	skykeyGetCmd = &cobra.Command{
@@ -60,7 +89,7 @@ var (
 
 // skykeycmd displays the usage info for the command.
 func skykeycmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 
@@ -76,11 +105,15 @@ func skykeycreatecmd(name string) {
 // skykeyCreate creates a new Skykey with the given name and cipher type
 func skykeyCreate(c client.Client, name, skykeyTypeString string) (string, error) {
 	var st skykey.SkykeyType
-	err := st.FromString(skykeyTypeString)
-	if err != nil {
-		return "", errors.AddContext(err, "Unable to decode skykey type")
+	if skykeyTypeString == "" {
+		// If no type is provided, default to Private
+		st = skykey.TypePrivateID
+	} else {
+		err := st.FromString(skykeyTypeString)
+		if err != nil {
+			return "", errors.AddContext(err, "Unable to decode skykey type")
+		}
 	}
-
 	sk, err := c.SkykeyCreateKeyPost(name, st)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
@@ -122,6 +155,33 @@ func skykeyAdd(c client.Client, skykeyString string) error {
 	return nil
 }
 
+// skykeydeleteidcmd is a wrapper for skykeyDeleteID that handles skykey
+// delete commands.
+func skykeydeleteidcmd(id string) {
+	var skykeyID skykey.SkykeyID
+	err := skykeyID.FromString(id)
+	if err != nil {
+		die(errors.AddContext(err, "could not decode skykey ID"))
+	}
+	err = httpClient.SkykeyDeleteByIDPost(skykeyID)
+	if err != nil {
+		die(err)
+	}
+
+	fmt.Println("Skykey Deleted!")
+}
+
+// skykeydeletenamecmd is a wrapper for skykeyDeleteName that handles skykey
+// delete commands.
+func skykeydeletenamecmd(name string) {
+	err := httpClient.SkykeyDeleteByNamePost(name)
+	if err != nil {
+		die(err)
+	}
+
+	fmt.Println("Skykey Deleted!")
+}
+
 // skykeygetcmd is a wrapper for skykeyGet that handles skykey get commands.
 func skykeygetcmd() {
 	skykeyStr, err := skykeyGet(httpClient, skykeyName, skykeyID)
@@ -134,15 +194,12 @@ func skykeygetcmd() {
 
 // skykeyGet retrieves the skykey using a name or id flag.
 func skykeyGet(c client.Client, name, id string) (string, error) {
-	if name == "" && id == "" {
-		return "", errors.New("Cannot get skykey without using --name or --id flag")
-	}
-	if name != "" && id != "" {
-		return "", errors.New("Use only one flag to get the skykey: --name or --id flag")
+	err := validateSkyKeyNameAndIDUsage(name, id)
+	if err != nil {
+		return "", errors.AddContext(err, "cannot validate skykey name and ID usage to get skykey")
 	}
 
 	var sk skykey.Skykey
-	var err error
 	if name != "" {
 		sk, err = c.SkykeyGetByName(name)
 	} else {

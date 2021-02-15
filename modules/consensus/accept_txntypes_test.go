@@ -3,6 +3,7 @@ package consensus
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -96,7 +97,11 @@ func TestIntegrationSimpleBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testSimpleBlock()
 }
 
@@ -157,7 +162,11 @@ func TestIntegrationSpendSiacoinsBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testSpendSiacoinsBlock()
 }
 
@@ -268,7 +277,7 @@ func (cst *consensusSetTester) testValidStorageProofBlocks() {
 
 	// Check that the file contract has been removed.
 	_, err = cst.cs.dbGetFileContract(fcid)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		panic("file contract should not exist in the database")
 	}
 
@@ -303,7 +312,11 @@ func TestIntegrationValidStorageProofBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testValidStorageProofBlocks()
 }
 
@@ -376,7 +389,7 @@ func (cst *consensusSetTester) testMissedStorageProofBlocks() {
 
 	// Check that the file contract has been removed.
 	_, err = cst.cs.dbGetFileContract(fcid)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		panic("file contract should not exist in the database")
 	}
 
@@ -411,7 +424,11 @@ func TestIntegrationMissedStorageProofBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testMissedStorageProofBlocks()
 }
 
@@ -554,7 +571,7 @@ func (cst *consensusSetTester) testFileContractRevision() {
 
 	// Check that the file contract has been removed.
 	_, err = cst.cs.dbGetFileContract(fcid)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		panic("file contract should not exist in the database")
 	}
 }
@@ -570,7 +587,11 @@ func TestIntegrationFileContractRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testFileContractRevision()
 }
 
@@ -667,7 +688,11 @@ func (cst *consensusSetTester) TestIntegrationSpendSiafunds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testSpendSiafunds()
 }
 
@@ -878,7 +903,7 @@ func (cst *consensusSetTester) testPaymentChannelBlocks() error {
 
 	// Try to submit the refund transaction before the timelock has expired.
 	err = cst.tpool.AcceptTransactionSet([]types.Transaction{refundTxn})
-	if err != types.ErrPrematureSignature {
+	if !errors.Contains(err, types.ErrPrematureSignature){
 		return err
 	}
 
@@ -1216,7 +1241,11 @@ func TestPaymentChannelBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  	if err := cst.Close(); err != nil {
+    	t.Fatal(err)
+  	}
+}()
 	err = cst.testPaymentChannelBlocks()
 	if err != nil {
 		t.Fatal(err)

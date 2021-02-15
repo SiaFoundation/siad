@@ -89,7 +89,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errChan <-chan error
-	hdbt.hdb, errChan = NewCustomHostDB(hdbt.gateway, hdbt.cs, hdbt.tpool, filepath.Join(hdbt.persistDir, modules.RenterDir), &quitAfterLoadDeps{})
+	hdbt.hdb, errChan = NewCustomHostDB(hdbt.gateway, hdbt.cs, hdbt.tpool, hdbt.mux, filepath.Join(hdbt.persistDir, modules.RenterDir), &quitAfterLoadDeps{})
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}

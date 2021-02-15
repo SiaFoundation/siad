@@ -123,6 +123,7 @@ type (
 		Name() string
 		ReadAt([]byte, int64) (int, error)
 		Seek(int64, int) (int64, error)
+		Stat() (os.FileInfo, error)
 		Sync() error
 		Truncate(int64) error
 		WriteAt([]byte, int64) (int, error)
@@ -258,7 +259,7 @@ func (*ProductionDependencies) LoadFile(meta persist.Metadata, data interface{},
 // LookupIP resolves a hostname to a number of IP addresses. If an IP address
 // is provided as an argument it will just return that IP.
 func (*ProductionDependencies) LookupIP(host string) ([]net.IP, error) {
-	return net.LookupIP(host)
+	return (ProductionResolver{}).LookupIP(host)
 }
 
 // SaveFileSync writes JSON encoded data to a file and syncs the file to disk

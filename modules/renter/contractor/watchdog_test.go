@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -195,7 +196,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, cf, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,9 +17,17 @@ func TestIpRPC(t *testing.T) {
 
 	// Create gateways for testing.
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Connect gateways.
 	err := g1.Connect(g2.Address())
@@ -53,11 +61,23 @@ func TestIPFromPeers(t *testing.T) {
 
 	// Create gateways for testing.
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g3 := newNamedTestingGateway(t, "3")
-	defer g2.Close()
+	defer func() {
+		if err := g3.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Connect gateways.
 	err := g1.Connect(g2.Address())

@@ -1,12 +1,12 @@
 package gateway
 
 import (
-	"errors"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -24,14 +24,18 @@ func TestAddNode(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if err := g.addNode(dummyNode); err != nil {
 		t.Fatal("addNode failed:", err)
 	}
-	if err := g.addNode(dummyNode); err != errNodeExists {
+	if err := g.addNode(dummyNode); !errors.Contains(err, errNodeExists) {
 		t.Error("addNode added duplicate node")
 	}
 	if err := g.addNode("foo"); err == nil {
@@ -43,7 +47,7 @@ func TestAddNode(t *testing.T) {
 	if err := g.addNode("[::]:9981"); err == nil {
 		t.Error("addNode added unspecified address")
 	}
-	if err := g.addNode(g.myAddr); err != errOurAddress {
+	if err := g.addNode(g.myAddr); !errors.Contains(err, errOurAddress) {
 		t.Error("addNode added our own address")
 	}
 }
@@ -54,7 +58,11 @@ func TestRemoveNode(t *testing.T) {
 		t.SkipNow()
 	}
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	t.Parallel()
 
 	g.mu.Lock()
@@ -78,13 +86,17 @@ func TestRandomNode(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Test with 0 nodes.
 	g.mu.RLock()
 	_, err := g.randomNode()
 	g.mu.RUnlock()
-	if err != errNoPeers {
+	if !errors.Contains(err, errNoPeers) {
 		t.Fatal("randomNode should fail when the gateway has 0 nodes")
 	}
 
@@ -113,7 +125,7 @@ func TestRandomNode(t *testing.T) {
 	g.mu.RLock()
 	_, err = g.randomNode()
 	g.mu.RUnlock()
-	if err != errNoPeers {
+	if !errors.Contains(err, errNoPeers) {
 		t.Fatalf("randomNode returned wrong error: expected %v, got %v", errNoPeers, err)
 	}
 
@@ -156,9 +168,17 @@ func TestShareNodes(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a node to g2
 	g2.mu.Lock()
@@ -245,11 +265,23 @@ func TestNodesAreSharedOnConnect(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g3 := newNamedTestingGateway(t, "3")
-	defer g3.Close()
+	defer func() {
+		if err := g3.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// connect g2 to g1
 	err := g2.Connect(g1.Address())

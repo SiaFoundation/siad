@@ -72,8 +72,8 @@ func TestGatewayRatelimit(t *testing.T) {
 	}
 }
 
-// TestGatewayBlacklist probes the gateway blacklist endpoints
-func TestGatewayBlacklist(t *testing.T) {
+// TestGatewayBlocklist probes the gateway blocklist endpoints
+func TestGatewayBlocklist(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -91,105 +91,105 @@ func TestGatewayBlacklist(t *testing.T) {
 		}
 	}()
 
-	// Get current blacklist, should be empty
-	blacklist, err := gateway.GatewayBlacklistGet()
+	// Get current blocklist, should be empty
+	blocklist, err := gateway.GatewayBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blacklist.Blacklist) != 0 {
-		t.Fatalf("Expected blacklist to be empty, got %v", blacklist)
+	if len(blocklist.Blocklist) != 0 {
+		t.Fatalf("Expected blocklist to be empty, got %v", blocklist)
 	}
 
-	// Set the Gateways's blacklist
+	// Set the Gateways's blocklist
 	addr1 := "123.123.123.123"
 	addr2 := "456.456.456.456"
 	addresses := []string{addr1, addr2}
-	err = gateway.GatewaySetBlacklistPost(addresses)
+	err = gateway.GatewaySetBlocklistPost(addresses)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm they are on the blacklist
-	blacklist, err = gateway.GatewayBlacklistGet()
+	// Confirm they are on the blocklist
+	blocklist, err = gateway.GatewayBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blacklist.Blacklist) != len(addresses) {
-		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses), blacklist)
+	if len(blocklist.Blocklist) != len(addresses) {
+		t.Fatalf("Expected blocklist to be %v, got %v", len(addresses), blocklist)
 	}
-	blacklistMap := make(map[string]struct{})
-	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
-	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
+	blocklistMap := make(map[string]struct{})
+	blocklistMap[blocklist.Blocklist[0]] = struct{}{}
+	blocklistMap[blocklist.Blocklist[1]] = struct{}{}
 	for _, addr := range addresses {
-		if _, ok := blacklistMap[addr]; !ok {
-			t.Fatalf("Did not find %v in the blacklist", addr)
+		if _, ok := blocklistMap[addr]; !ok {
+			t.Fatalf("Did not find %v in the blocklist", addr)
 		}
 	}
 
 	// Append an address to the gateway
 	addr3 := "789.789.789.789"
-	err = gateway.GatewayAppendBlacklistPost([]string{})
+	err = gateway.GatewayAppendBlocklistPost([]string{})
 	if err == nil {
 		t.Fatal("Should return an error if trying to append no addresses")
 	}
-	err = gateway.GatewayAppendBlacklistPost([]string{addr3})
+	err = gateway.GatewayAppendBlocklistPost([]string{addr3})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm they are on the blacklist
-	blacklist, err = gateway.GatewayBlacklistGet()
+	// Confirm they are on the blocklist
+	blocklist, err = gateway.GatewayBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blacklist.Blacklist) != len(addresses)+1 {
-		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses)+1, blacklist)
+	if len(blocklist.Blocklist) != len(addresses)+1 {
+		t.Fatalf("Expected blocklist to be %v, got %v", len(addresses)+1, blocklist)
 	}
-	blacklistMap = make(map[string]struct{})
-	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
-	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
-	blacklistMap[blacklist.Blacklist[2]] = struct{}{}
-	if _, ok := blacklistMap[addr3]; !ok {
-		t.Fatalf("Address %v not found in blacklist %v", addr3, blacklist)
+	blocklistMap = make(map[string]struct{})
+	blocklistMap[blocklist.Blocklist[0]] = struct{}{}
+	blocklistMap[blocklist.Blocklist[1]] = struct{}{}
+	blocklistMap[blocklist.Blocklist[2]] = struct{}{}
+	if _, ok := blocklistMap[addr3]; !ok {
+		t.Fatalf("Address %v not found in blocklist %v", addr3, blocklist)
 	}
 
-	// Remove some from the blacklist
-	err = gateway.GatewayRemoveBlacklistPost([]string{})
+	// Remove some from the blocklist
+	err = gateway.GatewayRemoveBlocklistPost([]string{})
 	if err == nil {
 		t.Fatal("Should be an error if submitting remove without a list of addresses")
 	}
-	err = gateway.GatewayRemoveBlacklistPost([]string{addr1})
+	err = gateway.GatewayRemoveBlocklistPost([]string{addr1})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm they were removed
-	blacklist, err = gateway.GatewayBlacklistGet()
+	blocklist, err = gateway.GatewayBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blacklist.Blacklist) != len(addresses) {
-		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses), blacklist)
+	if len(blocklist.Blocklist) != len(addresses) {
+		t.Fatalf("Expected blocklist to be %v, got %v", len(addresses), blocklist)
 	}
-	for _, addr := range blacklist.Blacklist {
+	for _, addr := range blocklist.Blocklist {
 		if addr == addr1 {
-			t.Fatalf("Found %v in the blacklist even though it should have been removed", addr1)
+			t.Fatalf("Found %v in the blocklist even though it should have been removed", addr1)
 		}
 	}
 
-	// Reset the blacklist
-	err = gateway.GatewaySetBlacklistPost([]string{})
+	// Reset the blocklist
+	err = gateway.GatewaySetBlocklistPost([]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm the blacklist is empty
-	blacklist, err = gateway.GatewayBlacklistGet()
+	// Confirm the blocklist is empty
+	blocklist, err = gateway.GatewayBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blacklist.Blacklist) != 0 {
-		t.Fatalf("Expected blacklist to be empty, got %v", blacklist)
+	if len(blocklist.Blocklist) != 0 {
+		t.Fatalf("Expected blocklist to be empty, got %v", blocklist)
 	}
 }
 

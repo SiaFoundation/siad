@@ -55,19 +55,15 @@ func TestTranslateOffsetToRoot(t *testing.T) {
 	sectorRoots := randomSectorRoots(numSectorRoots)
 	s := newSectors(sectorRoots)
 
-	// Friendly names.
-	root0 := sectorRoots[0]
-	root1 := sectorRoots[1]
-
 	// Helper method for assertion.
-	assert := func(offset, expectedRelOffset uint64, expectedHash crypto.Hash) {
-		relOff, hash, err := s.translateOffset(offset)
+	assert := func(offset, expectedRelOffset uint64, expectedSecIdx uint64) {
+		relOff, secIdx, err := s.translateOffset(offset)
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		if hash != expectedHash {
-			t.Errorf("hash doesn't match expected hash")
+		if secIdx != expectedSecIdx {
+			t.Errorf("secIdx doesn't match expected secIdx")
 			return
 		}
 		if relOff != expectedRelOffset {
@@ -77,12 +73,12 @@ func TestTranslateOffsetToRoot(t *testing.T) {
 	}
 
 	// Test valid cases.
-	assert(0, 0, root0)
-	assert(1, 1, root0)
-	assert(modules.SectorSize-1, modules.SectorSize-1, root0)
-	assert(modules.SectorSize, 0, root1)
-	assert(modules.SectorSize+1, 1, root1)
-	assert(2*modules.SectorSize-1, modules.SectorSize-1, root1)
+	assert(0, 0, 0)
+	assert(1, 1, 0)
+	assert(modules.SectorSize-1, modules.SectorSize-1, 0)
+	assert(modules.SectorSize, 0, 1)
+	assert(modules.SectorSize+1, 1, 1)
+	assert(2*modules.SectorSize-1, modules.SectorSize-1, 1)
 
 	// Test out-of-bounds
 	_, _, err := s.translateOffset(2 * modules.SectorSize)

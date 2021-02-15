@@ -42,12 +42,18 @@ func (p *program) staticDecodeAppendInstruction(instruction modules.Instruction)
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionAppend) Batch() bool {
+	return false
+}
+
 // Execute executes the 'Append' instruction.
-func (i *instructionAppend) Execute(prevOutput output) output {
+func (i *instructionAppend) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the data.
 	sectorData, err := i.staticData.Bytes(i.dataOffset, modules.SectorSize)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	newFileSize := prevOutput.NewSize + modules.SectorSize
 
@@ -60,7 +66,7 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 	oldSectors := ps.sectors.merkleRoots
 	newMerkleRoot, err := ps.sectors.appendSector(sectorData)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// Construct proof if necessary.
@@ -73,7 +79,7 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 		NewSize:       newFileSize,
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
-	}
+	}, types.ZeroCurrency
 }
 
 // Collateral returns the collateral cost of adding one full sector.

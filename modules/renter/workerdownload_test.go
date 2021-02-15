@@ -1,20 +1,21 @@
 package renter
 
 import (
+	"context"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestSegmentsForRecovery tests the segmentsForRecovery helper function.
 func TestSegmentsForRecovery(t *testing.T) {
 	// Test the legacy erasure coder first.
-	rscOld, err := siafile.NewRSCode(10, 20)
+	rscOld, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +27,7 @@ func TestSegmentsForRecovery(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestSegmentsForRecovery(t *testing.T) {
 // TestSectorOffsetAndLength tests the sectorOffsetAndLength helper function.
 func TestSectorOffsetAndLength(t *testing.T) {
 	// Test the legacy erasure coder first.
-	rscOld, err := siafile.NewRSCode(10, 20)
+	rscOld, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestSectorOffsetAndLength(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,33 +147,33 @@ func TestCheckDownloadGouging(t *testing.T) {
 	//
 	// The cost is set to be exactly equal to the price gouging limit, such that
 	// slightly decreasing any of the values evades the price gouging detector.
-	minHostSettings := modules.HostExternalSettings{
-		BaseRPCPrice:           types.SiacoinPrecision,
-		DownloadBandwidthPrice: types.SiacoinPrecision.Div64(modules.StreamDownloadSize),
-		SectorAccessPrice:      types.SiacoinPrecision,
+	minPriceTable := &modules.RPCPriceTable{
+		ReadBaseCost:          types.SiacoinPrecision,
+		ReadLengthCost:        types.SiacoinPrecision.Div64(modules.StreamDownloadSize),
+		DownloadBandwidthCost: types.SiacoinPrecision.Div64(modules.StreamDownloadSize),
 	}
 
-	err := checkDownloadGouging(minAllowance, minHostSettings)
+	err := checkDownloadGouging(minAllowance, minPriceTable)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail:", err)
 	}
 
 	// Drop the host prices one field at a time.
-	newHostSettings := minHostSettings
-	newHostSettings.BaseRPCPrice = minHostSettings.BaseRPCPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	newPriceTable := minPriceTable
+	newPriceTable.ReadBaseCost = minPriceTable.ReadBaseCost.Mul64(100).Div64(101)
+	err = checkDownloadGouging(minAllowance, newPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newHostSettings = minHostSettings
-	newHostSettings.DownloadBandwidthPrice = minHostSettings.DownloadBandwidthPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	newPriceTable = minPriceTable
+	newPriceTable.DownloadBandwidthCost = minPriceTable.DownloadBandwidthCost.Mul64(100).Div64(101)
+	err = checkDownloadGouging(minAllowance, newPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newHostSettings = minHostSettings
-	newHostSettings.SectorAccessPrice = minHostSettings.SectorAccessPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	newPriceTable = minPriceTable
+	newPriceTable.ReadLengthCost = minPriceTable.ReadLengthCost.Mul64(100).Div64(101)
+	err = checkDownloadGouging(minAllowance, newPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,15 +182,14 @@ func TestCheckDownloadGouging(t *testing.T) {
 	// acceptable.
 	maxAllowance := minAllowance
 	maxAllowance.Funds = maxAllowance.Funds.Add(oneCurrency)
-	maxAllowance.MaxRPCPrice = types.SiacoinPrecision.Add(oneCurrency)
+	maxAllowance.MaxRPCPrice = modules.MDMReadCost(minPriceTable, modules.StreamDownloadSize).Add(oneCurrency)
 	maxAllowance.MaxContractPrice = oneCurrency
-	maxAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamDownloadSize).Add(oneCurrency)
-	maxAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Add(oneCurrency)
+	maxAllowance.MaxDownloadBandwidthPrice = minPriceTable.DownloadBandwidthCost.Add(oneCurrency)
 	maxAllowance.MaxStoragePrice = oneCurrency
 	maxAllowance.MaxUploadBandwidthPrice = oneCurrency
 
 	// The max allowance should have no issues with price gouging.
-	err = checkDownloadGouging(maxAllowance, minHostSettings)
+	err = checkDownloadGouging(maxAllowance, minPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,24 +197,263 @@ func TestCheckDownloadGouging(t *testing.T) {
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
 	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
+	err = checkDownloadGouging(failAllowance, minPriceTable)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
 
 	// Should fail if the MaxDownloadBandwidthPrice is dropped.
 	failAllowance = maxAllowance
-	failAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamDownloadSize).Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
+	failAllowance.MaxDownloadBandwidthPrice = minPriceTable.DownloadBandwidthCost.Sub(oneCurrency)
+	err = checkDownloadGouging(failAllowance, minPriceTable)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
+}
 
-	// Should fail if the MaxSectorAccessPrice is dropped.
-	failAllowance = maxAllowance
-	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
-	if err == nil {
-		t.Fatal("expecting price gouging check to fail")
+// TestProcessDownloadChunk is a unit test for managedProcessDownloadChunk.
+func TestProcessDownloadChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare a method to create a minimal valid chunk.
+	rc, err := modules.NewRSSubCode(1, 1, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := func() *unfinishedDownloadChunk {
+		return &unfinishedDownloadChunk{
+			erasureCode:      rc,
+			piecesCompleted:  0,                            // no pieces completed
+			failed:           false,                        // hasn't failed
+			workersRemaining: rc.MinPieces(),               // one worker for each data piece remains
+			completedPieces:  make([]bool, rc.NumPieces()), // no piece is completed
+			pieceUsage:       make([]bool, rc.NumPieces()), // no piece in use
+			staticChunkMap: map[string]downloadPieceInfo{ // worker has a piece
+				wt.staticHostPubKey.String(): {},
+			},
+			download: &download{
+				completeChan: make(chan struct{}),
+			},
+			staticMemoryManager: wt.renter.repairMemoryManager,
+		}
+	}
+
+	// Valid and needed chunk.
+	udc := chunk()
+	c := wt.managedProcessDownloadChunk(udc)
+	if c == nil {
+		t.Fatal("c shouldn't be nil")
+	}
+
+	// Valid chunk but not needed.
+	//
+	// pieceTaken
+	udc = chunk()
+	pieceIndex := udc.staticChunkMap[wt.staticHostPubKey.String()].index
+	udc.pieceUsage[pieceIndex] = true
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if len(udc.workersStandby) != 1 {
+		t.Fatalf("expected 1 standby worker but got %v", len(udc.workersStandby))
+	}
+	// enough pieces in progress
+	udc = chunk()
+	udc.piecesRegistered = rc.MinPieces()
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if len(udc.workersStandby) != 1 {
+		t.Fatalf("expected 1 standby worker but got %v", len(udc.workersStandby))
+	}
+
+	// helper to add jobs to the queue.
+	addBlankJobs := func(n int) {
+		for i := 0; i < n; i++ {
+			j := wt.newJobReadSector(context.Background(), wt.staticJobLowPrioReadQueue, make(chan *jobReadResponse), crypto.Hash{}, 0, 0)
+			wt.staticJobLowPrioReadQueue.mu.Lock()
+			wt.staticJobLowPrioReadQueue.jobs.PushBack(j)
+			wt.staticJobLowPrioReadQueue.mu.Unlock()
+		}
+	}
+
+	// Invalid chunk, not on cooldown.
+	//
+	// download complete
+	queue := wt.staticJobLowPrioReadQueue
+	udc = chunk()
+	addBlankJobs(3)
+	close(udc.download.completeChan)
+	udc.download.err = errors.New("test error to prevent critical")
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 3 {
+		t.Fatalf("expected 3 download chunks but got %v", queue.callLen())
+	}
+	// min pieces completed
+	udc = chunk()
+	udc.piecesCompleted = rc.MinPieces()
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.callLen())
+	}
+	// udc failed
+	udc = chunk()
+	udc.failed = true
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.callLen())
+	}
+	// insufficient number of workers remaining
+	udc = chunk()
+	udc.workersRemaining = udc.erasureCode.MinPieces() - 1
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != -1 {
+		t.Fatalf("expected %v remaining workers but got %v", -1, udc.workersRemaining)
+	}
+	if queue.callLen() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.callLen())
+	}
+	// worker has no piece
+	udc = chunk()
+	udc.staticChunkMap = make(map[string]downloadPieceInfo)
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.callLen())
+	}
+	// piece is completed
+	udc = chunk()
+	udc.completedPieces[pieceIndex] = true
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.callLen())
+	}
+	// Invalid chunk, on cooldown.
+	// download complete
+	addBlankJobs(3)
+	queue.mu.Lock()
+	queue.consecutiveFailures = 100
+	queue.cooldownUntil = cooldownUntil(queue.consecutiveFailures)
+	queue.mu.Unlock()
+	udc = chunk()
+	close(udc.download.completeChan)
+	udc.download.err = errors.New("test error to prevent critical")
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if queue.callLen() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.callLen())
+	}
+	// min pieces completed
+	addBlankJobs(3)
+	udc = chunk()
+	udc.piecesCompleted = rc.MinPieces()
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.callLen())
+	}
+	// udc failed
+	addBlankJobs(3)
+	udc = chunk()
+	udc.failed = true
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.callLen())
+	}
+	// insufficient number of workers remaining
+	addBlankJobs(3)
+	udc = chunk()
+	udc.workersRemaining = udc.erasureCode.MinPieces() - 1
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != -1 {
+		t.Fatalf("expected %v remaining workers but got %v", -1, udc.workersRemaining)
+	}
+	if queue.callLen() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.callLen())
+	}
+	// worker has no piece
+	addBlankJobs(3)
+	udc = chunk()
+	udc.staticChunkMap = make(map[string]downloadPieceInfo)
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.callLen())
+	}
+	// piece is completed
+	addBlankJobs(3)
+	udc = chunk()
+	udc.completedPieces[pieceIndex] = true
+	c = wt.managedProcessDownloadChunk(udc)
+	if c != nil {
+		t.Fatal("c should be nil")
+	}
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.callLen() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.callLen())
 	}
 }

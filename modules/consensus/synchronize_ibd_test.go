@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSimpleInitialBlockchainDownload tests that
@@ -32,7 +32,11 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer cst.Close()
+		defer func() {
+			if err := cst.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		remoteCSTs[i] = cst
 	}
 	// Create the "local" peer.
@@ -40,7 +44,11 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer localCST.Close()
+	defer func() {
+		if err := localCST.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	for _, cst := range remoteCSTs {
 		err = localCST.cs.gateway.Connect(cst.cs.gateway.Address())
 		if err != nil {
@@ -73,7 +81,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown && err != modules.ErrNonExtendingBlock {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 				t.Fatal(err)
 			}
 		}
@@ -99,7 +107,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) {
 				t.Fatal(err)
 			}
 		}
@@ -135,7 +143,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) {
 				t.Log(i)
 				t.Fatal(err)
 			}
@@ -172,7 +180,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) {
 				t.Log(i)
 				t.Fatal(err)
 			}
@@ -221,7 +229,11 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := mockGatewayRPCError{
 		Gateway: g,
 		rpcErrs: make(map[modules.NetAddress]error),
@@ -230,7 +242,11 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	defer localCS.Close()
+	defer func() {
+		if err := localCS.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	rpcErrs := []error{
 		// rpcErrs that should cause a a disconnect.
@@ -251,7 +267,11 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer g.Close()
+		defer func() {
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		err = localCS.gateway.Connect(g.Address())
 		if err != nil {
 			t.Fatal(err)
@@ -295,7 +315,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := mockGatewayRPCError{
 		Gateway: g,
 		rpcErrs: make(map[modules.NetAddress]error),
@@ -304,7 +328,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	defer cs.Close()
+	defer func() {
+		if err := cs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Verify that the consensus set will not signal IBD completion when it has
 	// zero peers.
@@ -334,7 +362,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer inboundCST.Close()
+			defer func() {
+				if err := inboundCST.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}()
 			inboundCST.cs.gateway.Connect(cs.gateway.Address())
 		}
 		<-doneChan
@@ -364,7 +396,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gatewayTimesout.Close()
+	defer func() {
+		if err := gatewayTimesout.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg.mu.Lock()
 	mg.rpcErrs[gatewayTimesout.Address()] = mockNetError{
 		error:   errors.New("Read timeout"),
@@ -388,7 +424,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gatewayNoTimeout.Close()
+	defer func() {
+		if err := gatewayNoTimeout.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg.mu.Lock()
 	mg.rpcErrs[gatewayNoTimeout.Address()] = nil
 	mg.mu.Unlock()
@@ -409,7 +449,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gatewayNoTimeout2.Close()
+	defer func() {
+		if err := gatewayNoTimeout2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg.mu.Lock()
 	mg.rpcErrs[gatewayNoTimeout2.Address()] = nil
 	mg.mu.Unlock()
@@ -430,7 +474,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer tmpG.Close()
+		defer func() {
+			if err := tmpG.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		mg.mu.Lock()
 		mg.rpcErrs[tmpG.Address()] = nil
 		mg.mu.Unlock()

@@ -7,9 +7,50 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+)
+
+const (
+	// SubscriptionEntrySize is the estimated size of a single subscribed to
+	// entry takes up in memory. This is a conservative estimation to prevent
+	// DoS attacks on the host.
+	SubscriptionEntrySize = 512
+
+	// RenewDecodeMaxLen is the maximum length for decoding received objects
+	// read during a contract renewal.
+	RenewDecodeMaxLen = 1 << 18 // 256 kib
+)
+
+// Subcription request related enum.
+const (
+	SubscriptionRequestInvalid = iota
+	SubscriptionRequestSubscribe
+	SubscriptionRequestUnsubscribe
+	SubscriptionRequestExtend
+	SubscriptionRequestPrepay
+	SubscriptionRequestStop
+)
+
+// Subcription response related enum.
+const (
+	SubscriptionResponseInvalid = iota
+	SubscriptionResponseRegistryValue
+
+	SubscriptionResponseSubscriptionSuccess
+	SubscriptionResponseUnsubscribeSuccess
+)
+
+var (
+	// SubscriptionPeriod is the duration by which a period gets extended after
+	// a payment.
+	SubscriptionPeriod = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 5 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
@@ -38,6 +79,19 @@ type RPCPriceTable struct {
 	// host.
 	FundAccountCost types.Currency `json:"fundaccountcost"`
 
+	// LatestRevisionCost refers to the cost of asking the host for the latest
+	// revision of a contract.
+	// TODO: should this be free?
+	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
+
+	// SubscriptionMemoryCost is the cost of storing a byte of data for
+	// SubscriptionPeriod time.
+	SubscriptionMemoryCost types.Currency `json:"subscriptionmemorycost"`
+
+	// SubscriptionNotificationCost is the cost of a single notification on top
+	// of what is charged for bandwidth.
+	SubscriptionNotificationCost types.Currency `json:"subscriptionnotificationcost"`
+
 	// MDM related costs
 	//
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
@@ -49,10 +103,6 @@ type RPCPriceTable struct {
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
-
-	// CollateralCost is the amount of money per byte the host is promising to
-	// lock away as collateral when adding new data to a contract.
-	CollateralCost types.Currency `json:"collateralcost"`
 
 	// Cost values specific to the bandwidth consumption.
 	DownloadBandwidthCost types.Currency `json:"downloadbandwidthcost"`
@@ -69,6 +119,15 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
+	// Cost values specific to the RenewContract instruction.
+	RenewContractCost types.Currency `json:"renewcontractcost"`
+
+	// Cost values specific to the Revision command.
+	RevisionBaseCost types.Currency `json:"revisionbasecost"`
+
+	// SwapSectorCost is the cost of swapping 2 full sectors by root.
+	SwapSectorCost types.Currency `json:"swapsectorcost"`
+
 	// Cost values specific to the Write instruction.
 	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
 	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
@@ -77,6 +136,32 @@ type RPCPriceTable struct {
 	// TxnFee estimations.
 	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
 	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
+
+	// ContractPrice is the additional fee a host charges when forming/renewing
+	// a contract to cover the miner fees when submitting the contract and
+	// revision to the blockchain.
+	ContractPrice types.Currency `json:"contractprice"`
+
+	// CollateralCost is the amount of money per byte the host is promising to
+	// lock away as collateral when adding new data to a contract. It's paid out
+	// to the host regardless of the outcome of the storage proof.
+	CollateralCost types.Currency `json:"collateralcost"`
+
+	// MaxCollateral is the maximum amount of collateral the host is willing to
+	// put into a single file contract.
+	MaxCollateral types.Currency `json:"maxcollateral"`
+
+	// MaxDuration is the max duration for which the host is willing to form a
+	// contract.
+	MaxDuration types.BlockHeight `json:"maxduration"`
+
+	// WindowSize is the minimum time in blocks the host requests the
+	// renewWindow of a new contract to be.
+	WindowSize types.BlockHeight `json:"windowsize"`
+
+	// Registry related fields.
+	RegistryEntriesLeft  uint64 `json:"registryentriesleft"`
+	RegistryEntriesTotal uint64 `json:"registryentriestotal"`
 }
 
 var (
@@ -91,6 +176,15 @@ var (
 
 	// RPCFundAccount specifier
 	RPCFundAccount = types.NewSpecifier("FundAccount")
+
+	// RPCLatestRevision specifier
+	RPCLatestRevision = types.NewSpecifier("LatestRevision")
+
+	// RPCRegistrySubscription specifier
+	RPCRegistrySubscription = types.NewSpecifier("Subscription")
+
+	// RPCRenewContract specifier
+	RPCRenewContract = types.NewSpecifier("RenewContract")
 )
 
 type (
@@ -141,7 +235,7 @@ type (
 		Proof                []crypto.Hash
 		Error                error
 		TotalCost            types.Currency
-		StorageCost          types.Currency
+		FailureRefund        types.Currency
 	}
 
 	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
@@ -159,6 +253,44 @@ type (
 		Signature []byte
 	}
 
+	// RPCLatestRevisionRequest contains the id of the contract for which to
+	// retrieve the latest revision.
+	RPCLatestRevisionRequest struct {
+		FileContractID types.FileContractID
+	}
+
+	// RPCLatestRevisionResponse contains the latest file contract revision
+	// signed by both host and renter.
+	// TODO: might need to update this to match MDMInstructionRevisionResponse?
+	RPCLatestRevisionResponse struct {
+		Revision types.FileContractRevision
+	}
+
+	// RPCRegistrySubscriptionRequest is a request to either add or remove a
+	// subscription.
+	RPCRegistrySubscriptionRequest struct {
+		PubKey types.SiaPublicKey
+		Tweak  crypto.Hash
+
+		// Ratelimit in milliseconds. This is not used yet but carved out to
+		// avoid a breaking protocol change later on. The idea is that for every
+		// subscribed entry, a ratelimit can be specified to avoid spam and
+		// reduce cost.
+		Ratelimit uint32
+	}
+
+	// RPCRegistrySubscriptionNotificationType contains the type of the
+	// following notification.
+	RPCRegistrySubscriptionNotificationType struct {
+		Type uint8
+	}
+
+	// RPCRegistrySubscriptionNotificationEntryUpdate contains an updated entry.
+	RPCRegistrySubscriptionNotificationEntryUpdate struct {
+		Entry  SignedRegistryValue
+		PubKey types.SiaPublicKey
+	}
+
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
@@ -168,6 +300,42 @@ type (
 	// signal it has received payment for the price table and has tracked it,
 	// thus considering it valid.
 	RPCTrackedPriceTableResponse struct{}
+
+	// RPCRenewContractRequest contains the transaction set with both the final
+	// revision of a contract to be renewed as well as the new contract and the
+	// renter's public key used within the unlock conditions of the new
+	// contract.
+	RPCRenewContractRequest struct {
+		TSet        []types.Transaction
+		RenterPK    types.SiaPublicKey
+		FinalRevSig crypto.Signature
+	}
+
+	// RPCRenewContractCollateralResponse is the response sent by the host after
+	// adding the collateral to the transaction. It contains any new parents,
+	// inputs and outputs that were added.
+	RPCRenewContractCollateralResponse struct {
+		NewParents  []types.Transaction
+		NewInputs   []types.SiacoinInput
+		NewOutputs  []types.SiacoinOutput
+		FinalRevSig crypto.Signature
+	}
+
+	// RPCRenewContractRenterSignatures contains the renter's signatures for the
+	// final revision of the old contract, the new contract and the initial
+	// revision of the new contract.
+	RPCRenewContractRenterSignatures struct {
+		RenterTxnSigs         []types.TransactionSignature
+		RenterNoOpRevisionSig types.TransactionSignature
+	}
+
+	// RPCRenewContractHostSignatures contains the host's revisions for the
+	// final revision of the old contract, the new contract and the initial
+	// revision of the new contract.
+	RPCRenewContractHostSignatures struct {
+		ContractSignatures    []types.TransactionSignature
+		NoOpRevisionSignature types.TransactionSignature
+	}
 
 	// rpcResponse is a helper type for encoding and decoding RPC response
 	// messages.
@@ -191,7 +359,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	_ = ec.Encode(epr.Proof)
 	_ = ec.Encode(errStr)
 	_ = ec.Encode(epr.TotalCost)
-	_ = ec.Encode(epr.StorageCost)
+	_ = ec.Encode(epr.FailureRefund)
 	return ec.Err()
 }
 
@@ -206,17 +374,18 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	_ = dc.Decode(&epr.Proof)
 	_ = dc.Decode(&errStr)
 	_ = dc.Decode(&epr.TotalCost)
-	_ = dc.Decode(&epr.StorageCost)
+	_ = dc.Decode(&epr.FailureRefund)
 	if errStr != "" {
 		epr.Error = errors.New(errStr)
 	}
 	return dc.Err()
 }
 
-// RPCRead tries to read the given object from the stream.
-func RPCRead(r io.Reader, obj interface{}) error {
+// RPCReadMaxLen tries to read the given object from the stream. It will
+// allocate at most maxLen bytes for the object.
+func RPCReadMaxLen(r io.Reader, obj interface{}, maxLen uint64) error {
 	resp := rpcResponse{nil, obj}
-	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	err := encoding.ReadObject(r, &resp, maxLen)
 	if err != nil {
 		return err
 	}
@@ -225,6 +394,11 @@ func RPCRead(r io.Reader, obj interface{}) error {
 		return errors.New(resp.err.Error())
 	}
 	return nil
+}
+
+// RPCRead tries to read the given object from the stream.
+func RPCRead(r io.Reader, obj interface{}) error {
+	return RPCReadMaxLen(r, obj, uint64(RPCMinLen))
 }
 
 // RPCWrite writes the given object to the stream.

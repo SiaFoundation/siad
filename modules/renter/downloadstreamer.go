@@ -76,7 +76,7 @@ func (s *streamer) managedFillCache() bool {
 	// the cache is actually in need of being filled. The cache will only fill
 	// if the current reader approaching the point of running out of data.
 	s.mu.Lock()
-	partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
+	_, partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
 	chunkSize := s.staticFile.ChunkSize()
 	cacheOffset := int64(s.cacheOffset)
 	streamOffset := s.offset
@@ -182,6 +182,8 @@ func (s *streamer) managedFillCache() bool {
 		offset:        uint64(fetchOffset),
 		overdrive:     5,    // TODO: high default until full overdrive support is added.
 		priority:      1000, // TODO: high default until full priority support is added.
+
+		staticMemoryManager: s.r.userDownloadMemoryManager, // user initiated download
 	})
 	if err != nil {
 		closeErr := ddw.Close()
@@ -469,7 +471,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (string, modules.Streamer, error) {
+func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (_ string, _ modules.Streamer, err error) {
 	if err := r.tg.Add(); err != nil {
 		return "", nil, err
 	}
@@ -480,7 +482,9 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 	if err != nil {
 		return "", nil, err
 	}
-	defer node.Close()
+	defer func() {
+		err = errors.Compose(err, node.Close())
+	}()
 
 	// Create the streamer
 	snap, err := node.Snapshot(siaPath)

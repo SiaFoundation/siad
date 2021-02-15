@@ -68,13 +68,15 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	fmt.Fprintf(w, "\t\tUptime:\t %.3f\n", info.ScoreBreakdown.UptimeAdjustment)
 	fmt.Fprintf(w, "\t\tVersion:\t %.3f\n", info.ScoreBreakdown.VersionAdjustment)
 	fmt.Fprintf(w, "\t\tConversion Rate:\t %.3f\n", info.ScoreBreakdown.ConversionRate)
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 }
 
 // hostdbcmd is the handler for the command `siac hostdb`.
 // Lists hosts known to the hostdb
 func hostdbcmd() {
-	if !hostdbVerbose {
+	if !verbose {
 		info, err := httpClient.HostDbActiveGet()
 		if errors.Contains(err, api.ErrAPICallNotRecognized) {
 			// Assume module is not loaded if status command is not recognized.
@@ -101,7 +103,9 @@ func hostdbcmd() {
 			price := host.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)
 			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\n", len(info.Hosts)-i, host.NetAddress, host.Version, currencyUnits(price))
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 	} else {
 		info, err := httpClient.HostDbAllGet()
 		if err != nil {
@@ -182,7 +186,9 @@ func hostdbcmd() {
 			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(offlineHosts)-i, host.PublicKeyString,
 				host.NetAddress, host.Version, modules.FilesizeUnits(host.RemainingStorage), currencyUnits(price), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 
 		fmt.Println()
 		fmt.Println(len(inactiveHosts), "Inactive Hosts:")
@@ -230,7 +236,9 @@ func hostdbcmd() {
 			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(inactiveHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, modules.FilesizeUnits(host.RemainingStorage), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
 		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tRemaining Storage\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/ TB)\tUptime\tRecent Scans")
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 
 		// Grab the host at the 3/5th point and use it as the reference. (it's
 		// like using the median, except at the 3/5th point instead of the 1/2
@@ -300,7 +308,9 @@ func hostdbcmd() {
 			fmt.Fprintf(w, "\t%v:\t%v\t%v\t%v\t%12.6g\t%v\t%v\t%v\t%v\t%v\t%.3f\t%s\n", len(activeHosts)-i, host.PublicKeyString, host.NetAddress, host.Version, score, modules.FilesizeUnits(host.RemainingStorage), currencyUnits(host.ContractPrice), currencyUnits(price), currencyUnits(collateral), currencyUnits(downloadBWPrice), uptimeRatio, scanHistStr)
 		}
 		fmt.Fprintln(w, "\t\tPubkey\tAddress\tVersion\tScore\tRemaining Storage\tContract Fee\tPrice (/ TB / Month)\tCollateral (/ TB / Month)\tDownload Price (/TB)\tUptime\tRecent Scans")
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 	}
 }
 
@@ -329,7 +339,7 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 	var hosts []types.SiaPublicKey
 	switch len(args) {
 	case 0:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	case 1:
 		filterModeStr = args[0]
@@ -400,7 +410,9 @@ func hostdbviewcmd(pubkey string) {
 	fmt.Fprintln(w, "\t\tUnlock Hash:\t", info.Entry.UnlockHash)
 	fmt.Fprintln(w, "\n\t\tVersion:\t", info.Entry.Version)
 	fmt.Fprintln(w, "\t\tRevision Number:\t", info.Entry.RevisionNumber)
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 
 	printScoreBreakdown(&info)
 

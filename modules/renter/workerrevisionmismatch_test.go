@@ -1,10 +1,12 @@
 package renter
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -17,8 +19,9 @@ func TestRevisionSync(t *testing.T) {
 		t.SkipNow()
 	}
 
+	// create a worker with a dependency that causes a revision number mismatch
 	deps := dependencies.NewDependencyDisableCommitPaymentIntent()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,10 +33,10 @@ func TestRevisionSync(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// wait until our dependency got triggered
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if deps.Occurrences() == 0 {
-			return errors.New("commit payment intent not interrupted")
+	// verify the host returned a revision mismatch error
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		if !errCausedByRevisionMismatch(w.managedMaintenanceRecentError()) {
+			return fmt.Errorf("Expected host to have returned an error caused by revision mismatch, instead err was '%v'", w.managedMaintenanceRecentError())
 		}
 		return nil
 	})
@@ -41,10 +44,14 @@ func TestRevisionSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// wait until we have a valid pricetable
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticPriceTable().staticValid() {
-			return errors.New("price table not updated yet")
+	// disable the dependency
+	deps.Disable()
+
+	// wait for the worker to come out of maintenance
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		if !w.managedMaintenanceSucceeded() {
+			w.staticWake()
+			return errors.New("Worker is still in maintenance")
 		}
 		return nil
 	})
@@ -52,33 +59,9 @@ func TestRevisionSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// now sleep until we have updated the price table
-	time.Sleep(time.Until(w.staticPriceTable().staticUpdateTime))
-
-	// verify the host returned an error caused by a revision mismatch
-	err = build.Retry(300, 100*time.Millisecond, func() error {
-		if !errCausedByRevisionMismatch(w.staticPriceTable().staticRecentErr) {
-			return errors.New("Expected host to have returned an error caused by revision mismatch")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// wait until we have a valid pricetable
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticPriceTable().staticValid() {
-			return errors.New("price table not updated yet")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// if we reach this point we have verified that the host returns a revision
-	// mismatch error and that we can successfully recover from it
+	// if we reach this point we know we successfully triggered a revision
+	// mismatch, and the worker was able to successfully recover from it, this
+	// can only mean the revision sync succeeded
 }
 
 // TestSuspectRevisionMismatchFlag is a small unit test that verifes the methods

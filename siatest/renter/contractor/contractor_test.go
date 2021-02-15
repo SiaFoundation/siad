@@ -695,18 +695,38 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The renter shouldn't have any contracts.
-	rcg, err := r.RenterContractsGet()
+	// Mine blocks until the renter has the same number of contracts as before.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(100, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		rcg, err := r.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rcg.Contracts) != len(oldContracts) {
+			return errors.New("renter doesn't have any contracts")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rcg.ActiveContracts)+len(rcg.InactiveContracts)+len(rcg.ExpiredContracts) > 0 {
-		t.Fatal("There shouldn't be any contracts after deleting them")
+
+	// Set the allowance to the default again to make the contracts show up as
+	// active.
+	err = r.RenterPostAllowance(siatest.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// The new renter should have the same active contracts as the old one.
-	miner := tg.Miners()[0]
-	numRetries := 0
+	numRetries = 0
 	err = build.Retry(60, time.Second, func() error {
 		if numRetries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
@@ -849,9 +869,38 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The new renter should have the same active contracts as the old one.
+	// Mine blocks until the renter has the same number of contracts as before.
 	miner := tg.Miners()[0]
 	numRetries := 0
+	err = build.Retry(100, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		rcg, err := r.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rcg.Contracts) != len(oldContracts) {
+			return errors.New("renter doesn't have any contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the allowance to the default again to make the contracts show up as
+	// active.
+	err = r.RenterPostAllowance(siatest.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The new renter should have the same active contracts as the old one.
+	numRetries = 0
 	err = build.Retry(60, time.Second, func() error {
 		if numRetries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
@@ -1144,7 +1193,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true)
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1402,6 +1451,27 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	goodMiner := miners[0]
 	reorgMiner := miners[1]
 
+	// Mine until we are above the foundation hardfork height to prevent
+	// transactions from becoming invalid as they cross the hardfork threshold.
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	height, err := goodMiner.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := height; i <= types.FoundationHardforkHeight; i++ {
+		err = reorgMiner.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Setup a renter with a toggle-able watchdog.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	toggleDep := &dependencies.DependencyToggleWatchdogBroadcast{}
@@ -1615,7 +1685,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 			return nil
 		}
 		if !status.ContractFound {
-			return errors.New("contract not marked as found)")
+			return errors.New("contract not marked as found")
 		}
 		return nil
 	})
@@ -2264,7 +2334,15 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 
 	// Wait for active contracts
+	numTries = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numTries++
 		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
@@ -2550,6 +2628,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 1, 0, 0)
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2562,7 +2641,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		numTries += 1
+		numTries++
 		rc, err := r.RenterContractsGet()
 		if err != nil {
 			return err
@@ -2616,10 +2695,11 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 		}
 	}()
 
-	// Add a renter with a  toggle-able dependency for using stale host settings
+	// Add a renter with a toggle-able dependency for using stale host settings
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	defaultSettingsDep := &dependencies.DependencyDefaultRenewSettings{}
 	renterParams.ContractorDeps = defaultSettingsDep
+	renterParams.ContractSetDeps = defaultSettingsDep
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -2679,7 +2759,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityError,
-		Cause:    "rejected for high paying renter valid output",
+		Cause:    "rejected for low paying host valid output",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}

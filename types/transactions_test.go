@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -65,5 +66,17 @@ func TestTransactionSiacoinOutputSum(t *testing.T) {
 	}
 	if txn.SiacoinOutputSum().Cmp(NewCurrency64(654321)) != 0 {
 		t.Error("wrong siacoin output sum was calculated, got:", txn.SiacoinOutputSum())
+	}
+}
+
+// TestRuneToString makes sure a correct specifier is created appending the
+// result of RuneToString to a string.
+func TestRuneToString(t *testing.T) {
+	t.Parallel()
+
+	specifier := NewSpecifier("Download" + RuneToString(2))
+	expectedSpecifier := Specifier{68, 111, 119, 110, 108, 111, 97, 100, 2, 0, 0, 0, 0, 0, 0, 0}
+	if !bytes.Equal(specifier[:], expectedSpecifier[:]) {
+		t.Fatal("failure")
 	}
 }

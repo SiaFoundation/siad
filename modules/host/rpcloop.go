@@ -2,10 +2,10 @@ package host
 
 import (
 	"crypto/cipher"
-	"errors"
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/chacha20poly1305"
 
@@ -136,7 +136,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		id, err := modules.ReadRPCID(conn, aead)
 		if err != nil {
 			h.log.Debugf("WARN: could not read RPC ID: %v", err)
-			s.writeError(err) // try to write, even though this is probably due to a faulty connection
+			err = errors.Compose(err, s.writeError(err)) // try to write, even though this is probably due to a faulty connection
 			return err
 		} else if id == modules.RPCLoopExit {
 			return nil

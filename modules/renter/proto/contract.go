@@ -258,6 +258,14 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 	}
 }
 
+// PublicKey returns the public key capable of verifying the renter's signature
+// on a contract.
+func (c *SafeContract) PublicKey() crypto.PublicKey {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.header.SecretKey.PublicKey()
+}
+
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
 func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*unappliedWalTxn, error) {
@@ -420,6 +428,10 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 		// read the existing header on disk, to make sure we aren't overwriting
 		// it with an older revision
 		var oldHeader contractHeader
+		_, err := c.staticHeaderFile.Seek(0, io.SeekStart)
+		if err != nil {
+			build.Critical(err)
+		}
 		headerBytes, err := ioutil.ReadAll(c.staticHeaderFile)
 		if err == nil {
 			if err := encoding.Unmarshal(headerBytes, &oldHeader); err == nil {
@@ -617,6 +629,9 @@ func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn 
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
+	newHeader.Utility.GoodForRenew = false
+	newHeader.Utility.GoodForUpload = false
+	newHeader.Utility.Locked = true
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
@@ -698,7 +713,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
-		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 		c.header.Transaction.TransactionSignatures = sigs
 		return nil
 	}
@@ -871,6 +886,9 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	// Compatv144 fix missing void output.
 	cs.mu.Lock()
+	if _, exists := cs.contracts[sc.header.ID()]; exists {
+		build.Critical("trying to overwrite existing contract")
+	}
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
 	cs.mu.Unlock()
@@ -985,6 +1003,9 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		if err := sc.managedCommitTxns(); err != nil {
 			return errors.AddContext(err, "unable to commit the wal transactions during contractset recovery")
 		}
+	}
+	if _, exists := cs.contracts[sc.header.ID()]; exists {
+		build.Critical("trying to overwrite existing contract")
 	}
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[header.HostPublicKey().String()] = sc.header.ID()

@@ -3,14 +3,11 @@ package renter
 import (
 	"strings"
 	"testing"
-	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -34,17 +31,6 @@ func TestUseHostBlockHeight(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// wait until the worker has a valid price table
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticPriceTable().staticValid() {
-			return errors.New("worker has no price table")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// manually corrupt the price table's host blockheight
 	wpt := w.staticPriceTable()
 	hbh := wpt.staticPriceTable.HostBlockHeight // save host blockheight
@@ -56,7 +42,6 @@ func TestUseHostBlockHeight(t *testing.T) {
 	pt.HostBlockHeight += 1e3
 
 	wptc := new(workerPriceTable)
-	wptc.staticConsecutiveFailures = wpt.staticConsecutiveFailures
 	wptc.staticExpiryTime = wpt.staticExpiryTime
 	wptc.staticUpdateTime = wpt.staticUpdateTime
 	wptc.staticPriceTable = pt
@@ -67,7 +52,9 @@ func TestUseHostBlockHeight(t *testing.T) {
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobHasSector).callExpectedBandwidth()
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
@@ -86,7 +73,6 @@ func TestUseHostBlockHeight(t *testing.T) {
 	pt.HostBlockHeight = hbh
 
 	wptc = new(workerPriceTable)
-	wptc.staticConsecutiveFailures = wpt.staticConsecutiveFailures
 	wptc.staticExpiryTime = wpt.staticExpiryTime
 	wptc.staticUpdateTime = wpt.staticUpdateTime
 	wptc.staticPriceTable = pt
@@ -119,17 +105,6 @@ func TestExecuteProgramUsedBandwidth(t *testing.T) {
 		}
 	}()
 
-	// wait until we have a valid pricetable
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !wt.worker.staticPriceTable().staticValid() {
-			return errors.New("price table not updated yet")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("HasSector", func(t *testing.T) {
 		testExecuteProgramUsedBandwidthHasSector(t, wt)
 	})
@@ -150,7 +125,11 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobHasSector).callExpectedBandwidth()
+
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
+
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
@@ -161,7 +140,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	}
 
 	// ensure bandwidth is as we expected
-	expectedDownload := uint64(2920)
+	expectedDownload := uint64(1460)
 	if limit.Downloaded() != expectedDownload {
 		t.Errorf("Expected HasSector program to consume %v download bandwidth, instead it consumed %v", expectedDownload, limit.Downloaded())
 	}
@@ -193,7 +172,10 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+
+	jrs := new(jobReadSector)
+	jrs.staticLength = modules.SectorSize
+	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
@@ -204,7 +186,7 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	}
 
 	// ensure bandwidth is as we expected
-	expectedDownload := uint64(5840)
+	expectedDownload := uint64(4380)
 	if limit.Downloaded() != expectedDownload {
 		t.Errorf("Expected ReadSector program to consume %v download bandwidth, instead it consumed %v", expectedDownload, limit.Downloaded())
 	}

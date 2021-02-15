@@ -31,7 +31,7 @@ func TestFeeManagerBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Re-open the fee manager.
-	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticTpool, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticTpool, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +114,9 @@ func TestFeeManagerBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 	pendingFees, err = fm.PendingFees()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(pendingFees) != 0 {
 		t.Fatal("fee not cancelled")
 	}
@@ -122,12 +125,15 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticTpool, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Check that the fee remains cancelled after startup.
 	pendingFees, err = fm.PendingFees()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(pendingFees) != 0 {
 		t.Fatal("fee not cancelled")
 	}
@@ -171,7 +177,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticTpool, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +332,7 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticTpool, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -18,8 +17,6 @@ var (
 		Long:  "Print the current state of consensus such as current block, block height, and target.",
 		Run:   wrap(consensuscmd),
 	}
-
-	consensusCmdVerbose bool
 )
 
 // consensuscmd is the handler for the command `siac consensus`.
@@ -55,20 +52,11 @@ Height: %v
 Progress (estimated): %.1f%%
 `, yesNo(cg.Synced), cg.Height, estimatedProgress)
 	}
-	if consensusCmdVerbose {
+	if verbose {
 		fmt.Println()
 		fmt.Println("Block Frequency:", cg.BlockFrequency)
 		fmt.Println("Block Size Limit:", cg.BlockSizeLimit)
 		fmt.Println("Maturity Delay:", cg.MaturityDelay)
 		fmt.Println("Genesis Timestamp:", time.Unix(int64(cg.GenesisTimestamp), 0))
 	}
-}
-
-// estimatedHeightAt returns the estimated block height for the given time.
-// Block height is estimated by calculating the minutes since a known block in
-// the past and dividing by 10 minutes (the block time).
-func estimatedHeightAt(t time.Time, cg api.ConsensusGET) types.BlockHeight {
-	gt := cg.GenesisTimestamp
-	bf := cg.BlockFrequency
-	return types.BlockHeight(types.Timestamp(t.Unix())-gt) / bf
 }

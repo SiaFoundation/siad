@@ -188,7 +188,7 @@ func (w *Wallet) createBackup(dst io.Writer) error {
 }
 
 // CreateBackup creates a backup file at the desired filepath.
-func (w *Wallet) CreateBackup(backupFilepath string) error {
+func (w *Wallet) CreateBackup(backupFilepath string) (err error) {
 	if err := w.tg.Add(); err != nil {
 		return err
 	}
@@ -199,7 +199,9 @@ func (w *Wallet) CreateBackup(backupFilepath string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	return w.createBackup(f)
 }
 

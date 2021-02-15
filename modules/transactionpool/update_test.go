@@ -142,7 +142,11 @@ func TestArbDataOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	txn := types.Transaction{
 		ArbitraryData: [][]byte{
 			append(modules.PrefixNonSia[:], []byte("arb-data")...),
@@ -174,7 +178,11 @@ func TestValidRevertedTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Mine a few extra blocks on tpt to get past the signature hardfork height.
 	for i := 0; i < 10; i++ {
 		_, err = tpt.miner.AddBlock()
@@ -186,7 +194,11 @@ func TestValidRevertedTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt2.Close()
+	defer func() {
+		if err := tpt2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// connect the testers and wait for them to have the same current block
 	err = tpt2.gateway.Connect(tpt.gateway.Address())
@@ -209,7 +221,10 @@ func TestValidRevertedTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpt.gateway.Disconnect(tpt2.gateway.Address())
+	err = tpt.gateway.Disconnect(tpt2.gateway.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// make some transactions on tpt
 	var txnSets [][]types.Transaction
@@ -282,12 +297,20 @@ func TestTransactionPoolPruning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	tpt2, err := blankTpoolTester(t.Name() + "-tpt2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt2.Close()
+	defer func() {
+		if err := tpt2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// connect the testers and wait for them to have the same current block
 	err = tpt2.gateway.Connect(tpt.gateway.Address())
@@ -312,7 +335,10 @@ func TestTransactionPoolPruning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpt2.gateway.Disconnect(tpt.gateway.Address())
+	err = tpt2.gateway.Disconnect(tpt.gateway.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 	txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)
@@ -371,7 +397,11 @@ func TestUpdateBlockHeight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	targetHeight := 20
 	for i := 0; i < targetHeight; i++ {
@@ -396,12 +426,20 @@ func TestDatabaseUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	tpt2, err := blankTpoolTester(t.Name() + "-tpt2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt2.Close()
+	defer func() {
+		if err := tpt2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// connect the testers and wait for them to have the same current block
 	err = tpt2.gateway.Connect(tpt.gateway.Address())
@@ -424,7 +462,10 @@ func TestDatabaseUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpt.gateway.Disconnect(tpt2.gateway.Address())
+	err = tpt.gateway.Disconnect(tpt2.gateway.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// make some transactions on tpt
 	var txnSets [][]types.Transaction

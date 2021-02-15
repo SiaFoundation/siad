@@ -12,6 +12,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+const diskPermissionsTest = 0750
+
 // TestCopyDir checks that CopyDir copies directories as expected.
 func TestCopyDir(t *testing.T) {
 	// Create some nested folders to copy.
@@ -25,15 +27,15 @@ func TestCopyDir(t *testing.T) {
 	}
 
 	// Create a file and a directory.
-	err := ioutil.WriteFile(filepath.Join(root, "f1"), data[0], 0700)
+	err := ioutil.WriteFile(filepath.Join(root, "f1"), data[0], diskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.MkdirAll(filepath.Join(root, "d1"), 0700)
+	err = os.MkdirAll(filepath.Join(root, "d1"), diskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = ioutil.WriteFile(filepath.Join(root, "d1", "d1f1"), data[1], 0700)
+	err = ioutil.WriteFile(filepath.Join(root, "d1", "d1f1"), data[1], diskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}

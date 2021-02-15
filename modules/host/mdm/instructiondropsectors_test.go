@@ -101,7 +101,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Execute the program.
-	so := newTestStorageObligation(true)
+	so := host.newTestStorageObligation(true)
 	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, true)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 	for i, output := range outputs {
 		expected := expectedOutputs[i]
-		if err := output.assert(expected.NewSize, expected.NewMerkleRoot, expected.Proof, expected.Output); err != nil {
+		if err := output.assert(expected.NewSize, expected.NewMerkleRoot, expected.Proof, expected.Output, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

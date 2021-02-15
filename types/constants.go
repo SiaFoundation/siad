@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 var (
@@ -37,6 +38,11 @@ var (
 	// SiacoinInputs and SiafundInputs when calculating SigHashes to protect
 	// against replay attacks.
 	ASICHardforkReplayProtectionPrefix = []byte{0}
+
+	// FoundationHardforkReplayProtectionPrefix is a byte that prefixes
+	// SiacoinInputs and SiafundInputs when calculating SigHashes to protect
+	// against replay attacks.
+	FoundationHardforkReplayProtectionPrefix = []byte{1}
 
 	// BlockFrequency is the desired number of seconds that
 	// should elapse, on average, between successive Blocks.
@@ -65,6 +71,21 @@ var (
 	// But if the Timestamp is further into the future than ExtremeFutureThreshold,
 	// the Block is immediately discarded.
 	ExtremeFutureThreshold Timestamp
+
+	// FoundationHardforkHeight is the height at which the Foundation subsidy
+	// hardfork was activated.
+	FoundationHardforkHeight BlockHeight
+
+	// FoundationSubsidyFrequency is the number of blocks between each
+	// Foundation subsidy payout. Although the subsidy is calculated on a
+	// per-block basis, it "pays out" much less frequently in order to reduce
+	// the number of SiacoinOutputs created.
+	FoundationSubsidyFrequency BlockHeight
+
+	// FoundationSubsidyPerBlock is the amount allocated to the Foundation
+	// subsidy per block.
+	FoundationSubsidyPerBlock = SiacoinPrecision.Mul64(30e3)
+
 	// FutureThreshold is a temporal limit beyond which Blocks are
 	// discarded by the consensus rules. When incoming Blocks are processed, their
 	// Timestamp is allowed to exceed the processor's current time by no more than
@@ -89,6 +110,29 @@ var (
 	GenesisTimestamp Timestamp
 	// InitialCoinbase is the coinbase reward of the Genesis block.
 	InitialCoinbase = uint64(300e3)
+
+	// InitialFoundationUnlockHash is the primary Foundation subsidy address. It
+	// receives the initial Foundation subsidy. The keys that this address was
+	// derived from can also be used to set a new primary and failsafe address.
+	InitialFoundationUnlockHash UnlockHash
+	// InitialFoundationTestingSalt is the salt used to generate the
+	// UnlockConditions and signing keys for the InitialFoundationUnlockHash.
+	InitialFoundationTestingSalt = "saltgenprimary"
+	// InitialFoundationFailsafeUnlockHash is the "backup" Foundation address.
+	// It does not receive the Foundation subsidy, but its keys can be used to
+	// set a new primary and failsafe address. These UnlockConditions should
+	// also be subject to a timelock that prevents the failsafe from being used
+	// immediately.
+	InitialFoundationFailsafeUnlockHash UnlockHash
+	// InitialFoundationFailsafeTestingSalt is the salt used to generate the
+	// UnlockConditions and signing keys for the
+	// InitialFoundationFailsafeUnlockHash.
+	InitialFoundationFailsafeTestingSalt = "saltgenfailsafe"
+	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
+	// address upon activation of the hardfork, representing one year's worth of
+	// block subsidies.
+	InitialFoundationSubsidy = SiacoinPrecision.Mul64(30e3).Mul64(uint64(BlocksPerYear))
+
 	// MaturityDelay specifies the number of blocks that a maturity-required output
 	// is required to be on hold before it can be spent on the blockchain.
 	// Outputs are maturity-required if they are highly likely to be altered or
@@ -189,6 +233,14 @@ func init() {
 		ASICHardforkTotalTarget = Target{0, 0, 0, 8}
 		ASICHardforkTotalTime = 800
 
+		FoundationHardforkHeight = 100
+		FoundationSubsidyFrequency = 10
+
+		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSalt)
+		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSalt)
+		InitialFoundationUnlockHash = initialFoundationUnlockConditions.UnlockHash()
+		InitialFoundationFailsafeUnlockHash = initialFoundationFailsafeUnlockConditions.UnlockHash()
+
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
 		GenesisTimestamp = Timestamp(1424139000) // Change as necessary.
@@ -238,6 +290,14 @@ func init() {
 		ASICHardforkHeight = 5
 		ASICHardforkTotalTarget = Target{255, 255}
 		ASICHardforkTotalTime = 10e3
+
+		FoundationHardforkHeight = 50
+		FoundationSubsidyFrequency = 5
+
+		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSalt)
+		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSalt)
+		InitialFoundationUnlockHash = initialFoundationUnlockConditions.UnlockHash()
+		InitialFoundationFailsafeUnlockHash = initialFoundationFailsafeUnlockConditions.UnlockHash()
 
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
@@ -301,6 +361,17 @@ func init() {
 		ASICHardforkHeight = 179000
 		ASICHardforkTotalTarget = Target{0, 0, 0, 0, 0, 0, 0, 0, 32}
 		ASICHardforkTotalTime = 120e3
+
+		// The Foundation subsidy hardfork activates at approximately 11pm EST
+		// on February 3, 2021.
+		FoundationHardforkHeight = 298000
+		// Subsidies are paid out approximately once per month. Since actual
+		// months vary in length, we instead divide the total number of blocks
+		// per year by 12.
+		FoundationSubsidyFrequency = BlocksPerYear / 12
+
+		InitialFoundationUnlockHash = MustParseAddress("053b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807")
+		InitialFoundationFailsafeUnlockHash = MustParseAddress("27c22a6c6e6645802a3b8fa0e5374657438ef12716d2205d3e866272de1b644dbabd53d6d560")
 
 		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
 		// example. The security lost by lowering the block time is not
@@ -601,4 +672,22 @@ func init() {
 	}
 	// Calculate the genesis ID.
 	GenesisID = GenesisBlock.ID()
+}
+
+// GenerateDeterministicMultisig is a helper function that generates a set of
+// multisig UnlockConditions along with their signing keys.
+func GenerateDeterministicMultisig(m, n int, salt string) (UnlockConditions, []crypto.SecretKey) {
+	uc := UnlockConditions{
+		PublicKeys:         make([]SiaPublicKey, n),
+		SignaturesRequired: uint64(m),
+	}
+	keys := make([]crypto.SecretKey, n)
+
+	entropy := crypto.HashObject(salt)
+	for i := range keys {
+		sk, pk := crypto.GenerateKeyPairDeterministic(entropy)
+		keys[i], uc.PublicKeys[i] = sk, Ed25519PublicKey(pk)
+		entropy = crypto.HashBytes(entropy[:])
+	}
+	return uc, keys
 }

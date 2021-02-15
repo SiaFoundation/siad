@@ -19,7 +19,10 @@ The modules package is the top-level package for all modules. It contains the in
 - [Negotiate](#negotiate)
 - [Network Addresses](#network-addresses)
 - [Siad Configuration](#siad-configuration)
+- [Skyfile Reader](#skyfile-reader)
 - [Skylink](#skylink)
+- [Skynet](#skynet)
+- [Skynetbackup](#skynet-backup)
 - [SiaPath](#siapath)
 - [Storage Manager](#storage-manager)
 
@@ -141,6 +144,14 @@ Batch uploads work much the same as uploads, except that a JSON manifest is prov
 *TODO* 
   - fill out subsystem explanation
 
+### Skyfile Reader
+
+**Key Files**
+-[skyfilereader.go](./skyfilereader.go)
+
+**TODO**
+  - fill out subsystem explanation
+
 ### Skylink
 
 **Key Files**
@@ -156,6 +167,23 @@ sector being linked, and 2 bytes encoding a link version, the offset, and the
 length of the sector being fetched.
 
 For more information, check out the documentation in the [skylink.go](./skylink.go) file.
+
+### Skynet
+
+**Key Files**
+-[skynet.go](./skynet.go)
+
+**TODO**
+  - fill out subsystem explanation
+
+### Skynet Backup
+
+**Key Files**
+-[skynetbackup.go](./skynetbackup.go)
+
+The Skynet Backup subsystem handles persistence for creating and reading skynet
+backup data. These backups contain all the information needed to restore
+a Skyfile with the original Skylink.
 
 ### SiaPath
 **Key Files**

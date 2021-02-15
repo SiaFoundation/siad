@@ -46,7 +46,7 @@ type (
 		mu sync.Mutex
 	}
 
-	// appendOnlyPersistMetadata contains metadata for the AppendOnly Persist
+	// appendOnlyPersistMetadata contains metadata for the AppendOnlyPersist
 	// file.
 	appendOnlyPersistMetadata struct {
 		Header  types.Specifier
@@ -152,7 +152,7 @@ func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) (io.Reader, error) {
 }
 
 // init initializes the persistence file.
-func (aop *AppendOnlyPersist) init() error {
+func (aop *AppendOnlyPersist) init() (err error) {
 	// Marshal the metadata.
 	aop.metadata.Length = MetadataPageSize
 	metadataBytes := encoding.Marshal(aop.metadata)
@@ -171,6 +171,13 @@ func (aop *AppendOnlyPersist) init() error {
 	}
 	aop.staticF = f
 
+	// Make sure to close the file if there is an error.
+	defer func() {
+		if err != nil {
+			err = errors.Compose(err, f.Close())
+		}
+	}()
+
 	// Write metadata to beginning of file. This is a small amount of data and
 	// so operation is ACID as a single write and sync.
 	_, err = aop.staticF.WriteAt(metadataBytes, 0)
@@ -186,7 +193,7 @@ func (aop *AppendOnlyPersist) init() error {
 }
 
 // load loads the persist file from disk, returning the non-metadata bytes.
-func (aop *AppendOnlyPersist) load() (io.Reader, error) {
+func (aop *AppendOnlyPersist) load() (_ io.Reader, err error) {
 	// Open File
 	filepath := aop.FilePath()
 	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
@@ -195,6 +202,13 @@ func (aop *AppendOnlyPersist) load() (io.Reader, error) {
 		return nil, err
 	}
 	aop.staticF = f
+
+	// Make sure to close the file if there is an error.
+	defer func() {
+		if err != nil {
+			err = errors.Compose(err, f.Close())
+		}
+	}()
 
 	// Check the Header and Version of the file
 	metadataSize := uint64(2*types.SpecifierLen) + lengthSize

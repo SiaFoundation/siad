@@ -64,7 +64,7 @@ func (srv *Server) Close() error {
 	err := srv.apiServer.Shutdown(context.Background())
 	// Wait for serve() to return and capture its error.
 	<-srv.serveChan
-	if srv.serveErr != http.ErrServerClosed {
+	if !errors.Contains(srv.serveErr, http.ErrServerClosed) {
 		err = errors.Compose(err, srv.serveErr)
 	}
 	// Shutdown modules.
@@ -188,7 +188,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 				// ReadTimeout defines the maximum amount of time allowed to fully read
 				// the request body. This timeout is applied to every handler in the
 				// server.
-				ReadTimeout: time.Minute * 60,
+				ReadTimeout: time.Minute * 360,
 
 				// ReadHeaderTimeout defines the amount of time allowed to fully read the
 				// request headers.

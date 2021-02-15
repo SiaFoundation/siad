@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,13 +16,40 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+type (
+	// ContractParams are supplied as an argument to FormContract.
+	ContractParams struct {
+		Allowance     Allowance
+		Host          HostDBEntry
+		Funding       types.Currency
+		StartHeight   types.BlockHeight
+		EndHeight     types.BlockHeight
+		RefundAddress types.UnlockHash
+		RenterSeed    EphemeralRenterSeed
+
+		// TODO: add optional keypair
+	}
+)
+
+// WorkerPool is an interface that describes a collection of workers. It's used
+// to be able to pass the renter's workers to the contractor.
+type WorkerPool interface {
+	Worker(types.SiaPublicKey) (Worker, error)
+}
+
+// Worker is a minimal interface for a single worker. It's used to be able to
+// use workers within the contractor.
+type Worker interface {
+	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) (RenterContract, []types.Transaction, error)
+}
+
 var (
 	// DefaultAllowance is the set of default allowance settings that will be
 	// used when allowances are not set or not fully set
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(2500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      3 * types.BlocksPerMonth,
+		Period:      2 * types.BlocksPerMonth,
 		RenewWindow: types.BlocksPerMonth,
 
 		ExpectedStorage:    1e12,                                         // 1 TB
@@ -37,6 +65,11 @@ var (
 	// manually by the user.
 	ErrDownloadCancelled = errors.New("download was cancelled")
 
+	// ErrNotEnoughWorkersInWorkerPool is an error that is returned whenever an
+	// operation expects a certain number of workers but there aren't that many
+	// available.
+	ErrNotEnoughWorkersInWorkerPool = errors.New("not enough workers in worker pool")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being
@@ -51,9 +84,67 @@ var (
 	BackupKeySpecifier = types.NewSpecifier("backupkey")
 )
 
+// DataSourceID is an identifier to uniquely identify a data source, such as for
+// loading a file. Adding data sources that have the same ID should return the
+// exact same data when queried. This is typically used inside of the renter to
+// build stream buffers.
+type DataSourceID crypto.Hash
+
 // FilterMode is the helper type for the enum constants for the HostDB filter
 // mode
 type FilterMode int
+
+// FileListFunc is a type that's passed in to functions related to iterating
+// over the filesystem.
+type FileListFunc func(FileInfo)
+
+// DirListFunc is a type that's passed in to functions related to iterating
+// over the filesystem.
+type DirListFunc func(DirectoryInfo)
+
+// SkynetStats contains statistical data about skynet
+type SkynetStats struct {
+	NumFiles  int    `json:"numfiles"`
+	TotalSize uint64 `json:"totalsize"`
+}
+
+// RenterStats is a struct which tracks key metrics in a single renter. This
+// struct is intended to give a large overview / large dump of data related to
+// the renter, which can then be aggregated across a fleet of renters by a
+// program which monitors for inconsistencies or other challenges.
+type RenterStats struct {
+	// A name for this renter.
+	Name string `json:"name"`
+
+	// Any alerts that are in place for this renter.
+	Alerts []Alert `json:"alerts"`
+
+	// Performance and throughput information related to the API.
+	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
+
+	// The total amount of contract data that hosts are maintaining on behalf of
+	// the renter is the sum of these fields.
+	ActiveContractData  uint64 `json:"activecontractdata"`
+	PassiveContractData uint64 `json:"passivecontractdata"`
+	WastedContractData  uint64 `json:"wastedcontractdata"`
+
+	TotalSiafiles uint64 `json:"totalsiafiles"`
+	TotalSiadirs  uint64 `json:"totalsiadirs"`
+	TotalSize     uint64 `json:"totalsize"`
+
+	TotalContractSpentFunds     types.Currency `json:"totalcontractspentfunds"` // Includes fees
+	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`
+	TotalContractRemainingFunds types.Currency `json:"totalcontractremainingfunds"`
+
+	AllowanceFunds              types.Currency `json:"allowancefunds"`
+	AllowanceUnspentUnallocated types.Currency `json:"allowanceunspentunallocated"`
+	WalletFunds                 types.Currency `json:"walletfunds"` // Includes unconfirmed
+
+	// Information about the status of the memory queue. If the memory is all
+	// used up, jobs will start blocking eachother.
+	HasRenterMemory         bool `json:"hasrentermemory"`
+	HasPriorityRenterMemory bool `json:"haspriorityrentermemory"`
+}
 
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
 // HostDBActiveWhitelist are the constants used to enable and disable the filter
@@ -167,56 +258,6 @@ type (
 	}
 )
 
-type (
-	// ErasureCoderType is an identifier for the individual types of erasure
-	// coders.
-	ErasureCoderType [4]byte
-
-	// ErasureCoderIdentifier is an identifier that only matches another
-	// ErasureCoder's identifier if they both are of the same type and settings.
-	ErasureCoderIdentifier string
-
-	// An ErasureCoder is an error-correcting encoder and decoder.
-	ErasureCoder interface {
-		// NumPieces is the number of pieces returned by Encode.
-		NumPieces() int
-
-		// MinPieces is the minimum number of pieces that must be present to
-		// recover the original data.
-		MinPieces() int
-
-		// Encode splits data into equal-length pieces, with some pieces
-		// containing parity data.
-		Encode(data []byte) ([][]byte, error)
-
-		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
-		Identifier() ErasureCoderIdentifier
-
-		// EncodeShards encodes the input data like Encode but accepts an already
-		// sharded input.
-		EncodeShards(data [][]byte) ([][]byte, error)
-
-		// Reconstruct recovers the full set of encoded shards from the provided
-		// pieces, of which at least MinPieces must be non-nil.
-		Reconstruct(pieces [][]byte) error
-
-		// Recover recovers the original data from pieces and writes it to w.
-		// pieces should be identical to the slice returned by Encode (length and
-		// order must be preserved), but with missing elements set to nil. n is
-		// the number of bytes to be written to w; this is necessary because
-		// pieces may have been padded with zeros during encoding.
-		Recover(pieces [][]byte, n uint64, w io.Writer) error
-
-		// SupportsPartialEncoding returns true if the ErasureCoder can be used
-		// to encode/decode any crypto.SegmentSize bytes of an encoded piece or
-		// false otherwise.
-		SupportsPartialEncoding() bool
-
-		// Type returns the type identifier of the ErasureCoder.
-		Type() ErasureCoderType
-	}
-)
-
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
 //
@@ -285,6 +326,11 @@ func (a Allowance) Active() bool {
 	return a.Period != 0
 }
 
+// PortalMode returns true if the renter is supposed to act as a portal.
+func (a Allowance) PortalMode() bool {
+	return !a.PaymentContractInitialFunding.IsZero()
+}
+
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {
@@ -330,8 +376,14 @@ type DirectoryInfo struct {
 	AggregateNumFiles            uint64    `json:"aggregatenumfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
+	AggregateStuckSize           uint64    `json:"aggregatestucksize"`
+
+	// Skynet Fields
+	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
+	AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
@@ -345,10 +397,16 @@ type DirectoryInfo struct {
 	NumFiles            uint64      `json:"numfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
+	RepairSize          uint64      `json:"repairsize"`
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
+	StuckSize           uint64      `json:"stucksize"`
 	UID                 uint64      `json:"uid"`
+
+	// Skynet Fields
+	SkynetFiles uint64 `json:"skynetfiles"`
+	SkynetSize  uint64 `json:"skynetsize"`
 }
 
 // Name implements os.FileInfo.
@@ -507,6 +565,7 @@ type HostScoreBreakdown struct {
 	Score          types.Currency `json:"score"`
 	ConversionRate float64        `json:"conversionrate"`
 
+	AcceptContractAdjustment   float64 `json:"acceptcontractadjustment"`
 	AgeAdjustment              float64 `json:"ageadjustment"`
 	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
@@ -517,6 +576,42 @@ type HostScoreBreakdown struct {
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`
+}
+
+// MemoryStatus contains information about the status of the memory managers in
+// the renter.
+type MemoryStatus struct {
+	MemoryManagerStatus
+
+	Registry     MemoryManagerStatus `json:"registry"`
+	UserUpload   MemoryManagerStatus `json:"userupload"`
+	UserDownload MemoryManagerStatus `json:"userdownload"`
+	System       MemoryManagerStatus `json:"system"`
+}
+
+// MemoryManagerStatus contains the memory status of a single memory manager.
+type MemoryManagerStatus struct {
+	Available uint64 `json:"available"`
+	Base      uint64 `json:"base"`
+	Requested uint64 `json:"requested"`
+
+	PriorityAvailable uint64 `json:"priorityavailable"`
+	PriorityBase      uint64 `json:"prioritybase"`
+	PriorityRequested uint64 `json:"priorityrequested"`
+	PriorityReserve   uint64 `json:"priorityreserve"`
+}
+
+// Add combines two MemoryManagerStatus objects into one.
+func (ms MemoryManagerStatus) Add(ms2 MemoryManagerStatus) MemoryManagerStatus {
+	return MemoryManagerStatus{
+		Available:         ms.Available + ms2.Available,
+		Base:              ms.Base + ms2.Base,
+		Requested:         ms.Requested + ms2.Requested,
+		PriorityAvailable: ms.PriorityAvailable + ms2.PriorityAvailable,
+		PriorityBase:      ms.PriorityBase + ms2.PriorityBase,
+		PriorityRequested: ms.PriorityRequested + ms2.PriorityRequested,
+		PriorityReserve:   ms.PriorityReserve + ms2.PriorityReserve,
+	}
 }
 
 // MountInfo contains information about a mounted FUSE filesystem.
@@ -674,6 +769,15 @@ type RenterContract struct {
 	SiafundFee  types.Currency
 }
 
+// Size returns the contract size
+func (rc *RenterContract) Size() uint64 {
+	var size uint64
+	if len(rc.Transaction.FileContractRevisions) != 0 {
+		size = rc.Transaction.FileContractRevisions[0].NewFileSize
+	}
+	return size
+}
+
 // ContractorSpending contains the metrics about how much the Contractor has
 // spent during the current billing period.
 type ContractorSpending struct {
@@ -710,7 +814,7 @@ type ContractorSpending struct {
 // ContractorChurnStatus contains the current churn budgets for the Contractor's
 // churnLimiter and the aggregate churn for the current period.
 type ContractorChurnStatus struct {
-	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// AggregateCurrentPeriodChurn is the total size of files from churned contracts in this
 	// period.
 	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
 	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
@@ -730,10 +834,11 @@ type (
 	// WorkerPoolStatus contains information about the status of the workerPool
 	// and the workers
 	WorkerPoolStatus struct {
-		NumWorkers            int            `json:"numworkers"`
-		TotalDownloadCoolDown int            `json:"totaldownloadcooldown"`
-		TotalUploadCoolDown   int            `json:"totaluploadcooldown"`
-		Workers               []WorkerStatus `json:"workers"`
+		NumWorkers               int            `json:"numworkers"`
+		TotalDownloadCoolDown    int            `json:"totaldownloadcooldown"`
+		TotalMaintenanceCoolDown int            `json:"totalmaintenancecooldown"`
+		TotalUploadCoolDown      int            `json:"totaluploadcooldown"`
+		Workers                  []WorkerStatus `json:"workers"`
 	}
 
 	// WorkerStatus contains information about the status of a worker
@@ -744,9 +849,11 @@ type (
 		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
 
 		// Download status information
-		DownloadOnCoolDown bool `json:"downloadoncooldown"`
-		DownloadQueueSize  int  `json:"downloadqueuesize"`
-		DownloadTerminated bool `json:"downloadterminated"`
+		DownloadCoolDownError string        `json:"downloadcooldownerror"`
+		DownloadCoolDownTime  time.Duration `json:"downloadcooldowntime"`
+		DownloadOnCoolDown    bool          `json:"downloadoncooldown"`
+		DownloadQueueSize     int           `json:"downloadqueuesize"`
+		DownloadTerminated    bool          `json:"downloadterminated"`
 
 		// Upload status information
 		UploadCoolDownError string        `json:"uploadcooldownerror"`
@@ -754,6 +861,11 @@ type (
 		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
 		UploadQueueSize     int           `json:"uploadqueuesize"`
 		UploadTerminated    bool          `json:"uploadterminated"`
+
+		// Maintenance Cooldown information
+		MaintenanceOnCooldown    bool          `json:"maintenanceoncooldown"`
+		MaintenanceCoolDownError string        `json:"maintenancecooldownerror"`
+		MaintenanceCoolDownTime  time.Duration `json:"maintenancecooldowntime"`
 
 		// Ephemeral Account information
 		AccountBalanceTarget types.Currency      `json:"accountbalancetarget"`
@@ -763,14 +875,30 @@ type (
 		PriceTableStatus WorkerPriceTableStatus `json:"pricetablestatus"`
 
 		// Job Queues
-		BackupJobQueueSize       int `json:"backupjobqueuesize"`
-		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
+		DownloadSnapshotJobQueueSize int `json:"downloadsnapshotjobqueuesize"`
+		UploadSnapshotJobQueueSize   int `json:"uploadsnapshotjobqueuesize"`
 
 		// Read Jobs Information
 		ReadJobsStatus WorkerReadJobsStatus `json:"readjobsstatus"`
 
 		// HasSector Job Information
 		HasSectorJobsStatus WorkerHasSectorJobsStatus `json:"hassectorjobsstatus"`
+
+		// ReadRegistry Job Information
+		ReadRegistryJobsStatus WorkerReadRegistryJobStatus `json:"readregistryjobsstatus"`
+
+		// UpdateRegistry Job information
+		UpdateRegistryJobsStatus WorkerUpdateRegistryJobStatus `json:"updateregistryjobsstatus"`
+	}
+
+	// WorkerGenericJobsStatus contains the common information for worker jobs.
+	WorkerGenericJobsStatus struct {
+		ConsecutiveFailures uint64    `json:"consecutivefailures"`
+		JobQueueSize        uint64    `json:"jobqueuesize"`
+		OnCooldown          bool      `json:"oncooldown"`
+		OnCooldownUntil     time.Time `json:"oncooldownuntil"`
+		RecentErr           string    `json:"recenterr"`
+		RecentErrTime       time.Time `json:"recenterrtime"`
 	}
 
 	// WorkerAccountStatus contains detailed information about the account
@@ -778,14 +906,9 @@ type (
 		AvailableBalance types.Currency `json:"availablebalance"`
 		NegativeBalance  types.Currency `json:"negativebalance"`
 
-		Funded bool `json:"funded"`
-
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
-
-		RecentErr     string    `json:"recenterr"`
-		RecentErrTime time.Time `json:"recenterrtime"`
+		RecentErr         string    `json:"recenterr"`
+		RecentErrTime     time.Time `json:"recenterrtime"`
+		RecentSuccessTime time.Time `json:"recentsuccesstime"`
 	}
 
 	// WorkerPriceTableStatus contains detailed information about the price
@@ -795,10 +918,6 @@ type (
 		UpdateTime time.Time `json:"updatetime"`
 
 		Active bool `json:"active"`
-
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
@@ -829,6 +948,18 @@ type (
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
+	}
+
+	// WorkerReadRegistryJobStatus contains detailed information about the read
+	// registry jobs.
+	WorkerReadRegistryJobStatus struct {
+		WorkerGenericJobsStatus
+	}
+
+	// WorkerUpdateRegistryJobStatus contains detailed information about the update
+	// registry jobs.
+	WorkerUpdateRegistryJobStatus struct {
+		WorkerGenericJobsStatus
 	}
 )
 
@@ -886,6 +1017,9 @@ type Renter interface {
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
+
+	// MemoryStatus returns the current status of the memory manager
+	MemoryStatus() (MemoryStatus, error)
 
 	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
 	// available via the local filesystem.
@@ -962,7 +1096,7 @@ type Renter interface {
 	// FileList returns information on all of the files stored by the renter at the
 	// specified folder. The 'cached' argument specifies whether cached values
 	// should be returned or not.
-	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
+	FileList(siaPath SiaPath, recursive, cached bool, flf FileListFunc) error
 
 	// Filter returns the renter's hostdb's filterMode and filteredHosts
 	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
@@ -991,6 +1125,12 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
+	// ReadRegistry starts a registry lookup on all available workers. The
+	// jobs have 'timeout' amount of time to finish their jobs and return a
+	// response. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (SignedRegistryValue, error)
+
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
 	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
@@ -1004,6 +1144,10 @@ type Renter interface {
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
+
+	// UpdateRegistry updates the registries on all workers with the given
+	// registry value.
+	UpdateRegistry(spk types.SiaPublicKey, srv SignedRegistryValue, timeout time.Duration) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration
@@ -1020,8 +1164,8 @@ type Renter interface {
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
-	// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
-	// upload the data to the Sia network.
+	// UploadStreamFromReader reads from the provided reader until io.EOF is
+	// reached and upload the data to the Sia network.
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
@@ -1038,6 +1182,14 @@ type Renter interface {
 
 	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
 	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
+
+	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's
+	// skykey manager if it exists.
+	DeleteSkykeyByID(skykey.SkykeyID) error
+
+	// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
+	// manager if it exists.
+	DeleteSkykeyByName(string) error
 
 	// SkykeyByName gets the Skykey with the given name from the renter's skykey
 	// manager if it exists.
@@ -1060,8 +1212,27 @@ type Renter interface {
 	// separately as well.
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
-	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
+	// DownloadByRoot will fetch data using the merkle root of that data. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration, pricePerMS types.Currency) ([]byte, error)
+
+	// DownloadSkylink will fetch a file from the Sia network using the given
+	// skylink. The given timeout will make sure this call won't block for a
+	// time that exceeds the given timeout value. Passing a timeout of 0 is
+	// considered as no timeout. The pricePerMS acts as a budget to spend on
+	// faster, and thus potentially more expensive, hosts.
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
+
+	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
+	// download without any decoding of the metadata, fanout, or decryption. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1071,26 +1242,44 @@ type Renter interface {
 	// skyfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
+	UploadSkyfile(SkyfileUploadParameters, SkyfileUploadReader) (Skylink, error)
 
-	// Blacklist returns the merkleroots that are blacklisted
-	Blacklist() ([]crypto.Hash, error)
-
-	// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-	UpdateSkynetBlacklist(additions, removals []Skylink) error
+	// Blocklist returns the merkleroots that are blocked
+	Blocklist() ([]crypto.Hash, error)
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
-	// the given parameters.
-	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
+	// the given parameters. Alongside the parameters we can pass a timeout and
+	// a price per millisecond. The timeout ensures fetching the base sector
+	// does not surpass it, the price per millisecond is the budget we are
+	// allowed to spend on faster hosts.
+	PinSkylink(link Skylink, sup SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
+
+	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
+	RestoreSkyfile(reader io.Reader) (Skylink, error)
+
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
+	// blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
 
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
+
+	// BubbleMetadata calculates the updated values of a directory's metadata and
+	// updates the siadir metadata on disk then calls callThreadedBubbleMetadata
+	// on the parent directory so that it is only blocking for the current
+	// directory
+	//
+	// If the recursive boolean is supplied, all sub directories will be bubbled.
+	//
+	// If the force boolean is supplied, the LastHealthCheckTime of the directories
+	// will be ignored so all directories will be considered.
+	BubbleMetadata(siaPath SiaPath, force, recursive bool) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -1128,6 +1317,23 @@ func HealthPercentage(health float64) float64 {
 		healthPercent = 0
 	}
 	return healthPercent
+}
+
+var (
+	// RepairThreshold defines the threshold at which the renter decides to
+	// repair a file. The renter will start repairing the file when the health
+	// is equal to or greater than this value.
+	RepairThreshold = build.Select(build.Var{
+		Dev:      0.25,
+		Standard: 0.25,
+		Testing:  0.25,
+	}).(float64)
+)
+
+// NeedsRepair is a helper to ensure consistent comparison with the
+// RepairThreshold
+func NeedsRepair(health float64) bool {
+	return health >= RepairThreshold
 }
 
 // A HostDB is a database of hosts that the renter can use for figuring out who

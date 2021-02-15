@@ -13,7 +13,7 @@ import (
 // appropriately.
 //
 // Note that the limitStreamer is not thread safe, if you call Seek and Read on
-// it from different threads, you are going to have unexpected behvarior.
+// it from different threads, you are going to have unexpected behavior.
 // Further more, it is advised to only wrap a modules.Streamer once, wrapping it
 // multiple times might lead to unexpected behavior and was not tested.
 type limitStreamer struct {

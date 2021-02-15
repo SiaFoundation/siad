@@ -107,7 +107,7 @@ func TestV120HostUpgrade(t *testing.T) {
 	}
 
 	// sanity check the metadata version
-	err = persist.LoadJSON(modules.Hostv143PersistMetadata, struct{}{}, filepath.Join(hostPersistDir, modules.HostSettingsFile))
+	err = persist.LoadJSON(modules.Hostv151PersistMetadata, struct{}{}, filepath.Join(hostPersistDir, modules.HostSettingsFile))
 	if err != nil {
 		t.Fatal(err)
 	}

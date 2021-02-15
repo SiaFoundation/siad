@@ -497,10 +497,12 @@ func TestRefCounterLoadInvalidHeader(t *testing.T) {
 
 	// The version number is 8 bytes. We'll only write 4.
 	if _, err = f.Write(fastrand.Bytes(4)); err != nil {
-		f.Close()
+		err = errors.Compose(err, f.Close())
 		t.Fatal("Failed to write to test file:", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
@@ -532,7 +534,11 @@ func TestRefCounterLoadInvalidVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create test file:", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// The first 8 bytes are the version number. Write down an invalid one
 	// followed 4 counters (another 8 bytes).
@@ -852,7 +858,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// make sure we cannot start an update session on a deleted counter
-	if err = rc.callStartUpdate(); err != ErrUpdateAfterDelete {
+	if err = rc.callStartUpdate(); !errors.Contains(err, ErrUpdateAfterDelete) {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 }
@@ -988,12 +994,14 @@ func testPrepareRefCounter(numSec uint64, t *testing.T) *refCounter {
 // writeVal is a helper method that writes a certain counter value to disk. This
 // method does not do any validations or checks, the caller must make certain
 // that the input parameters are valid.
-func writeVal(path string, secIdx uint64, val uint16) error {
+func writeVal(path string, secIdx uint64, val uint16) (err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	var b u16
 	binary.LittleEndian.PutUint16(b[:], val)
 	if _, err = f.WriteAt(b[:], int64(offset(secIdx))); err != nil {

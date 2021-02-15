@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/bits"
 	"net"
@@ -20,6 +21,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// sessionDialTimeout determines how long a Session will try to dial a host
+// before aborting.
+var sessionDialTimeout = build.Select(build.Var{
+	Testing:  5 * time.Second,
+	Dev:      20 * time.Second,
+	Standard: 45 * time.Second,
+}).(time.Duration)
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.
 //
@@ -847,7 +856,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		err = errors.Compose(err, s.Close())
 		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
-	logger.Printf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
+	logger.Debugf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
 
 	return s, nil
 }
@@ -869,9 +878,16 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		}
 	}()
 
+	// If we are using a custom resolver we need to replace the domain name
+	// with 127.0.0.1 to be able to dial the host.
+	if cs.staticDeps.Disrupt("customResolver") {
+		port := host.NetAddress.Port()
+		host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+	}
+
 	c, err := (&net.Dialer{
 		Cancel:  cancel,
-		Timeout: 45 * time.Second, // TODO: Constant
+		Timeout: sessionDialTimeout,
 	}).Dial("tcp", string(host.NetAddress))
 	if err != nil {
 		return nil, errors.AddContext(err, "unsuccessful dial when creating a new session")

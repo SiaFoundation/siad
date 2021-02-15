@@ -314,6 +314,11 @@ func (fc FileContract) MissedRenterOutput() SiacoinOutput {
 	return fc.MissedProofOutputs[0]
 }
 
+// MissedRenterPayout gets the value of the renter's missed proof output.
+func (fc FileContract) MissedRenterPayout() Currency {
+	return fc.MissedRenterOutput().Value
+}
+
 // MissedHostOutput gets the host's missed proof output.
 func (fc FileContract) MissedHostOutput() SiacoinOutput {
 	return fc.MissedProofOutputs[1]
@@ -325,6 +330,18 @@ func (fc FileContract) MissedVoidOutput() (SiacoinOutput, error) {
 		return SiacoinOutput{}, ErrMissingVoidOutput
 	}
 	return fc.MissedProofOutputs[2], nil
+}
+
+// TotalPayout returns the sum of each the valid and missed payouts plus the
+// payout field of the contract.
+func (fc FileContract) TotalPayout() (total, valid, missed Currency) {
+	for _, output := range fc.ValidProofOutputs {
+		valid = valid.Add(output.Value)
+	}
+	for _, output := range fc.MissedProofOutputs {
+		missed = missed.Add(output.Value)
+	}
+	return fc.Payout, valid, missed
 }
 
 // SetValidRenterPayout sets the renter's valid proof output.
@@ -411,6 +428,17 @@ func (fcr FileContractRevision) MissedVoidPayout() (Currency, error) {
 		return Currency{}, err
 	}
 	return sco.Value, nil
+}
+
+// TotalPayout returns the sum of each the valid and missed payouts.
+func (fcr FileContractRevision) TotalPayout() (valid, missed Currency) {
+	for _, output := range fcr.NewValidProofOutputs {
+		valid = valid.Add(output.Value)
+	}
+	for _, output := range fcr.NewMissedProofOutputs {
+		missed = missed.Add(output.Value)
+	}
+	return
 }
 
 // StorageProofOutputID returns the ID of an output created by a file

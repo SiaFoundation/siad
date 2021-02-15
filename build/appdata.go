@@ -40,6 +40,12 @@ func APIPassword() (string, error) {
 	return pw, nil
 }
 
+// ProfileDir returns the directory where any profiles for the running siad
+// instance will be stored
+func ProfileDir() string {
+	return filepath.Join(SiadDataDir(), "profile")
+}
+
 // SiadDataDir returns the siad consensus data directory from the
 // environment variable. If there is no environment variable it returns an empty
 // string, instructing siad to store the consensus in the current directory.
@@ -65,6 +71,11 @@ func SkynetDir() string {
 // WalletPassword returns the SiaWalletPassword environment variable.
 func WalletPassword() string {
 	return os.Getenv(siaWalletPassword)
+}
+
+// ExchangeRate returns the siaExchangeRate environment variable.
+func ExchangeRate() string {
+	return os.Getenv(siaExchangeRate)
 }
 
 // apiPasswordFilePath returns the path to the API's password file. The password

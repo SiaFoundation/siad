@@ -20,7 +20,11 @@ func TestCommitDelayedSiacoinOutputDiffBadMaturity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Trigger an inconsistency check.
 	defer func() {
@@ -56,7 +60,11 @@ func TestCommitNodeDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+  	if err := cst.Close(); err != nil {
+  		t.Fatal(err)
+ 	}
+}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 	_ = cst.cs.db.Update(func(tx *bolt.Tx) error {
 		commitDiffSet(tx, pb, modules.DiffRevert) // pull the block node out of the consensus set.
@@ -170,7 +178,11 @@ func TestCommitSiacoinOutputDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+  	if err := cst.Close(); err != nil {
+  		t.Fatal(err)
+ 	}
+}()
 
 	// Commit a siacoin output diff.
 	initialScosLen := cst.cs.db.lenSiacoinOutputs()

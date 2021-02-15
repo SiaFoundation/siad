@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
@@ -18,9 +19,10 @@ import (
 type (
 	// A Currency represents a number of siacoins or siafunds. Internally, a
 	// Currency value is unbounded; however, Currency values sent over the wire
-	// protocol are subject to a maximum size of 255 bytes (approximately 10^614).
-	// Unlike the math/big library, whose methods modify their receiver, all
-	// arithmetic Currency methods return a new value. Currency cannot be negative.
+	// protocol are subject to a maximum size of 255 bytes (approximately
+	// 10^614). Unlike the math/big library, whose methods modify their
+	// receiver, all arithmetic Currency methods return a new value. Currency
+	// cannot be negative.
 	Currency struct {
 		i big.Int
 	}
@@ -30,6 +32,16 @@ var (
 	// ErrNegativeCurrency is the error that is returned if performing an
 	// operation results in a negative currency.
 	ErrNegativeCurrency = errors.New("negative currency not allowed")
+	// ErrParseCurrencyAmount is returned when the input is unable to be parsed
+	// into a currency unit due to a malformed amount.
+	ErrParseCurrencyAmount = errors.New("malformed amount")
+	// ErrParseCurrencyInteger is returned when the input is unable to be parsed
+	// into a currency unit due to a non-integer value.
+	ErrParseCurrencyInteger = errors.New("non-integer number of hastings")
+
+	// ErrParseCurrencyUnits is returned when the input is unable to be parsed
+	// into a currency unit due to missing units.
+	ErrParseCurrencyUnits = errors.New("amount is missing currency units; run 'wallet --help' for a list of units. Currency units are case sensitive")
 
 	// ErrUint64Overflow is the error that is returned if converting to a
 	// unit64 would cause an overflow.
@@ -216,4 +228,37 @@ func (x Currency) Uint64() (u uint64, err error) {
 		return 0, ErrUint64Overflow
 	}
 	return x.Big().Uint64(), nil
+}
+
+// ParseCurrency converts a siacoin amount to base units.
+func ParseCurrency(amount string) (string, error) {
+	units := []string{"pS", "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS"}
+	amount = strings.TrimSpace(amount)
+	for i, unit := range units {
+		if strings.HasSuffix(amount, unit) {
+			// Trim spaces after removing the suffix to allow spaces between the
+			// value and the unit.
+			value := strings.TrimSpace(strings.TrimSuffix(amount, unit))
+			// scan into big.Rat
+			r, ok := new(big.Rat).SetString(value)
+			if !ok {
+				return "", ErrParseCurrencyAmount
+			}
+			// convert units
+			exp := 24 + 3*(int64(i)-4)
+			mag := new(big.Int).Exp(big.NewInt(10), big.NewInt(exp), nil)
+			r.Mul(r, new(big.Rat).SetInt(mag))
+			// r must be an integer at this point
+			if !r.IsInt() {
+				return "", ErrParseCurrencyInteger
+			}
+			return r.RatString(), nil
+		}
+	}
+	// check for hastings separately
+	if strings.HasSuffix(amount, "H") {
+		return strings.TrimSuffix(amount, "H"), nil
+	}
+
+	return "", ErrParseCurrencyUnits
 }

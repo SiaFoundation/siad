@@ -1,0 +1,44 @@
+{
+	"Header": "Sia Contract Manager WAL",
+	"Version": "1.2.0"
+}{
+	"ErroredStorageFolderAdditions": null,
+	"ErroredStorageFolderExtensions": null,
+	"StorageFolderAdditions": null,
+	"StorageFolderExtensions": null,
+	"StorageFolderRemovals": null,
+	"StorageFolderReductions": null,
+	"UnfinishedStorageFolderAdditions": null,
+	"UnfinishedStorageFolderExtensions": [],
+	"SectorUpdates": null
+}{
+	"ErroredStorageFolderAdditions": null,
+	"ErroredStorageFolderExtensions": null,
+	"StorageFolderAdditions": null,
+	"StorageFolderExtensions": null,
+	"StorageFolderRemovals": null,
+	"StorageFolderReductions": null,
+	"UnfinishedStorageFolderAdditions": null,
+	"UnfinishedStorageFolderExtensions": null,
+	"SectorUpdates": [
+		{
+			"Count": 1,
+			"Folder": 1738,
+			"ID": [
+				89,
+				161,
+				200,
+				93,
+				202,
+				69,
+				22,
+				213,
+				246,
+				9,
+				75,
+				106
+			],
+			"Index": 29820
+		}
+	]
+}

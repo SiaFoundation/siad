@@ -29,7 +29,11 @@ func TestRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a valid transaction set using the wallet.
 	txns, err := tpt.wallet.SendSiacoins(types.NewCurrency64(100), types.UnlockHash{})
@@ -79,7 +83,7 @@ func TestRescan(t *testing.T) {
 
 	// 1st send should be a duplicate transaction set.
 	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal("expecting modules.ErrDuplicateTransactionSet, got: ", err)
 	}
 
@@ -155,7 +159,7 @@ func TestRescan(t *testing.T) {
 
 	// This send should still be a duplicate transaction set.
 	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal("expecting modules.ErrDuplicateTransactionSet, got:", err)
 	}
 }

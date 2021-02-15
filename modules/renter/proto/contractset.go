@@ -72,7 +72,10 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	// delete contract file
 	headerPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractHeaderExtension)
 	rootsPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractRootsExtension)
-	err := errors.Compose(c.staticHeaderFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
+	// close header and root files.
+	err := errors.Compose(c.staticHeaderFile.Close(), c.merkleRoots.rootsFile.Close())
+	// remove the files.
+	err = errors.Compose(err, os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
@@ -92,6 +95,13 @@ func (cs *ContractSet) IDs() []types.FileContractID {
 
 // InsertContract inserts an existing contract into the set.
 func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn types.Transaction, roots []crypto.Hash, sk crypto.SecretKey) (modules.RenterContract, error) {
+	// Estimate the totalCost.
+	// NOTE: The actual totalCost is the funding amount. Which means
+	// renterPayout + txnFee + basePrice + contractPrice.
+	// Since we don't know the basePrice and contractPrice, we don't add them.
+	var totalCost types.Currency
+	totalCost = totalCost.Add(rc.FileContract.ValidRenterPayout())
+	totalCost = totalCost.Add(rc.TxnFee)
 	return cs.managedInsertContract(contractHeader{
 		Transaction:      revTxn,
 		SecretKey:        sk,
@@ -99,7 +109,7 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 		DownloadSpending: types.NewCurrency64(1), // TODO set this
 		StorageSpending:  types.NewCurrency64(1), // TODO set this
 		UploadSpending:   types.NewCurrency64(1), // TODO set this
-		TotalCost:        types.NewCurrency64(1), // TODO set this
+		TotalCost:        totalCost,
 		ContractFee:      types.NewCurrency64(1), // TODO set this
 		TxnFee:           rc.TxnFee,
 		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout),
@@ -127,22 +137,10 @@ func (cs *ContractSet) Return(c *SafeContract) {
 	c.revisionMu.Unlock()
 }
 
-// RateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (cs *ContractSet) RateLimits() (readBPS int64, writeBPS int64, packetSize uint64) {
-	return cs.staticRL.Limits()
-}
-
-// SetRateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	cs.staticRL.SetLimits(readBPS, writeBPS, packetSize)
-}
-
-// View returns a copy of the contract with the specified host key. The
-// contracts is not locked. Certain fields, including the MerkleRoots, are set
-// to nil for safety reasons. If the contract is not present in the set, View
-// returns false and a zero-valued RenterContract.
+// View returns a copy of the contract with the specified host key. The contract
+// is not locked. Certain fields, including the MerkleRoots, are set to nil for
+// safety reasons. If the contract is not present in the set, View returns false
+// and a zero-valued RenterContract.
 func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bool) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -151,6 +149,18 @@ func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bo
 		return modules.RenterContract{}, false
 	}
 	return safeContract.Metadata(), true
+}
+
+// PublicKey returns the public key capable of verifying the renter's signature
+// on a contract.
+func (cs *ContractSet) PublicKey(id types.FileContractID) (crypto.PublicKey, bool) {
+	cs.mu.Lock()
+	safeContract, ok := cs.contracts[id]
+	cs.mu.Unlock()
+	if !ok {
+		return crypto.PublicKey{}, false
+	}
+	return safeContract.PublicKey(), true
 }
 
 // ViewAll returns the metadata of each contract in the set. The contracts are
@@ -169,16 +179,18 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 func (cs *ContractSet) Close() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	var err error
 	for _, c := range cs.contracts {
-		c.staticHeaderFile.Close()
+		err = errors.Compose(err, c.staticHeaderFile.Close())
+		err = errors.Compose(err, c.merkleRoots.rootsFile.Close())
 	}
-	_, err := cs.staticWal.CloseIncomplete()
-	return err
+	_, errWal := cs.staticWal.CloseIncomplete()
+	return errors.Compose(err, errWal)
 }
 
 // NewContractSet returns a ContractSet storing its contracts in the specified
 // dir.
-func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error) {
+func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*ContractSet, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -213,6 +225,7 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 
 		staticDeps: deps,
 		staticDir:  dir,
+		staticRL:   rl,
 		staticWal:  wal,
 	}
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
@@ -339,5 +352,11 @@ func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error 
 			return err
 		}
 	}
+	// Delete the contract from memory again. We only needed to split them up on
+	// disk. They will be correctly loaded with the non-legacy contracts during
+	// the regular startup.
+	cs.mu.Lock()
+	cs.contracts = make(map[types.FileContractID]*SafeContract)
+	cs.mu.Unlock()
 	return nil
 }

@@ -146,8 +146,7 @@ func NewSiaKey(ct CipherType, entropy []byte) (CipherKey, error) {
 	}
 }
 
-// GenerateSiaKey creates a new SiaKey from the provided type and
-// entropy.
+// GenerateSiaKey creates a new SiaKey from the provided type.
 func GenerateSiaKey(ct CipherType) CipherKey {
 	switch ct {
 	case TypePlain:
@@ -178,7 +177,7 @@ func IsValidCipherType(ct CipherType) bool {
 // crypto package to centralize all the types within one file to make future
 // changes to them easy.
 func RandomCipherType() CipherType {
-	types := []CipherType{TypePlain, TypeTwofish}
+	types := []CipherType{TypePlain, TypeTwofish, TypeThreefish, TypeXChaCha20}
 	return types[fastrand.Intn(len(types))]
 }
 

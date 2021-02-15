@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -22,7 +23,7 @@ func TestIntegrationAutoRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, cf, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, cf, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +204,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 
 	// editor should have been invalidated
 	_, err = editor.Upload(make([]byte, modules.SectorSize))
-	if err != errInvalidEditor && err != errInvalidSession {
+	if !errors.Contains(err, errInvalidEditor) && !errors.Contains(err, errInvalidSession) {
 		t.Error("expected invalid editor error; got", err)
 	}
 	editor.Close()
@@ -228,7 +229,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 		c.maintenanceLock.Lock()
 		c.maintenanceLock.Unlock()
 		_, err2 := downloader.Download(crypto.Hash{}, 0, 0)
-		if err2 != errInvalidDownloader && err2 != errInvalidSession {
+		if !errors.Contains(err2, errInvalidDownloader) && !errors.Contains(err2, errInvalidSession) {
 			return errors.AddContext(err, "expected invalid downloader error")
 		}
 		return downloader.Close()

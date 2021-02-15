@@ -1,12 +1,12 @@
 package contractmanager
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -200,7 +200,7 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 				select {
 				case id := <-workChan:
 					err := wal.managedMoveSector(id)
-					if err == errDiskTrouble {
+					if errors.Contains(err, errDiskTrouble) {
 						wal.cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
 					}
 					if err != nil {

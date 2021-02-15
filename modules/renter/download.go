@@ -71,12 +71,13 @@ type (
 		disableLocalFetch bool                // Whether or not the file can be fetched from disk if available.
 		file              *siafile.Snapshot   // The file to download.
 
-		latencyTarget time.Duration // Workers above this latency will be automatically put on standby initially.
-		length        uint64        // Length of download. Cannot be 0.
-		needsMemory   bool          // Whether new memory needs to be allocated to perform the download.
-		offset        uint64        // Offset within the file to start the download. Must be less than the total filesize.
-		overdrive     int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
-		priority      uint64        // Files with a higher priority will be downloaded first.
+		latencyTarget       time.Duration // Workers above this latency will be automatically put on standby initially.
+		length              uint64        // Length of download. Cannot be 0.
+		needsMemory         bool          // Whether new memory needs to be allocated to perform the download.
+		offset              uint64        // Offset within the file to start the download. Must be less than the total filesize.
+		overdrive           int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
+		priority            uint64        // Files with a higher priority will be downloaded first.
+		staticMemoryManager *memoryManager
 	}
 )
 
@@ -239,14 +240,16 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 // managedDownload performs a file download using the passed parameters and
 // returns the download object and an error that indicates if the download
 // setup was successful.
-func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
+func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *download, err error) {
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSystem.OpenSiaFile(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close()
-	defer entry.UpdateAccessTime()
+	defer func() {
+		err = errors.Compose(err, entry.UpdateAccessTime())
+		err = errors.Compose(err, entry.Close())
+	}()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil
@@ -306,7 +309,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	}
 
 	// Prepare snapshot.
-	snap, err := entry.Snapshot(p.SiaPath)
+	snap, err := entry.SnapshotRange(p.SiaPath, p.Offset, p.Length)
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +327,8 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		offset:        p.Offset,
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
+
+		staticMemoryManager: r.userDownloadMemoryManager, // user initiated download
 	})
 	if closer, ok := dw.(io.Closer); err != nil && ok {
 		// If the destination can be closed we do so.
@@ -400,6 +405,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	d.onComplete(func(_ error) error {
 		d.endTime = time.Now()
 		d.destination = nil
+		d.staticParams.file = nil
 		return nil
 	})
 
@@ -410,7 +416,9 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 func (d *download) Start() error {
 	// Nothing more to do for 0-byte files or 0-length downloads.
 	if d.staticLength == 0 {
+		d.mu.Lock()
 		d.markComplete()
+		d.mu.Unlock()
 		return nil
 	}
 
@@ -438,7 +446,7 @@ func (d *download) Start() error {
 		// Create the map.
 		chunkMaps[chunkIndex-minChunk] = make(map[string]downloadPieceInfo)
 		// Get the pieces for the chunk.
-		pieces := params.file.Pieces(uint64(chunkIndex))
+		pieces := params.file.Pieces(chunkIndex)
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Sanity check - the same worker should not have two pieces for
@@ -488,8 +496,9 @@ func (d *download) Start() error {
 			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),
 			pieceUsage:        make([]bool, params.file.ErasureCode().NumPieces()),
 
-			download:   d,
-			renterFile: params.file,
+			download:            d,
+			staticMemoryManager: params.staticMemoryManager,
+			renterFile:          params.file,
 		}
 
 		// Set the fetchOffset - the offset within the chunk that we start
@@ -530,11 +539,13 @@ func (d *download) Start() error {
 // DownloadByUID returns a single download from the history by it's UID.
 func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bool) {
 	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
 	d, exists := r.downloadHistory[uid]
+	r.downloadHistoryMu.Unlock()
 	if !exists {
 		return modules.DownloadInfo{}, false
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return modules.DownloadInfo{
 		Destination:     d.destinationString,
 		DestinationType: d.staticDestinationType,

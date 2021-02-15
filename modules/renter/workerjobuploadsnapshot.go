@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sort"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/encoding"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -27,7 +27,6 @@ type (
 	// jobUploadSnapshot is a job for the worker to upload a snapshot to its
 	// respective host.
 	jobUploadSnapshot struct {
-		staticMetadata    modules.UploadedBackup
 		staticSiaFileData []byte
 
 		staticResponseChan chan *jobUploadSnapshotResponse
@@ -101,13 +100,16 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	errLaunch := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if errLaunch != nil {
+		w.renter.log.Print("callDiscard: launch failed", err)
+	}
 }
 
 // callExecute will perform an upload snapshot job for the worker.
@@ -121,13 +123,16 @@ func (j *jobUploadSnapshot) callExecute() {
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
-		w.renter.tg.Launch(func() {
+		errLaunch := w.renter.tg.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
-			case <-j.staticCancelChan:
+			case <-j.staticCtx.Done():
 			case <-w.renter.tg.StopChan():
 			}
 		})
+		if errLaunch != nil {
+			w.renter.log.Print("callExecute: launch failed", err)
+		}
 
 		// Report a failure to the queue if this job had an error.
 		if err != nil {
@@ -167,9 +172,15 @@ func (j *jobUploadSnapshot) callExecute() {
 		return
 	}
 
-	// Upload the snapshot to the host. The session is created by passing in a
-	// thread group, so this call should be responsive to fast shutdown.
-	err = w.renter.managedUploadSnapshotHost(j.staticMetadata, j.staticSiaFileData, sess)
+	// Safe cast the metadata to the expected type
+	meta, ok := j.staticMetadata.(modules.UploadedBackup)
+	if !ok {
+		build.Critical("unable to cast job metadata") // sanity check
+		return
+	}
+
+	// Upload the snapshot to the host.
+	err = w.renter.managedUploadSnapshotHost(meta, j.staticSiaFileData, sess, w)
 	if err != nil {
 		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
@@ -199,14 +210,14 @@ func (w *worker) initJobUploadSnapshotQueue() {
 }
 
 // managedUploadSnapshotHost uploads a snapshot to a single host.
-func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
+func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session, w *worker) error {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {
 		return errors.AddContext(err, "failed to get wallet's primary seed")
 	}
 	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
+	rs := modules.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
@@ -221,6 +232,19 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	}
 	if len(sectors) > 4 {
 		return errors.New("snapshot is too large")
+	}
+
+	// download the snapshot table
+	entryTable, err := r.managedDownloadSnapshotTable(w)
+	if err != nil && !errors.Contains(err, errEmptyContract) {
+		return errors.AddContext(err, "could not download the snapshot table")
+	}
+
+	// check if the table already contains the entry.
+	for _, existingEntry := range entryTable {
+		if existingEntry.UID == meta.UID {
+			return nil // host already contains entry
+		}
 	}
 
 	// upload the siafile, creating a snapshotEntry
@@ -240,11 +264,6 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		entry.DataSectors[j] = root
 	}
 
-	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
-	if err != nil {
-		return errors.AddContext(err, "could not download the snapshot table")
-	}
 	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
 	entryTable = append(entryTable, entry)
 
@@ -282,8 +301,10 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
 	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
 	jus := &jobUploadSnapshot{
-		staticMetadata:    meta,
-		staticSiaFileData: dotSia,
+		staticSiaFileData:  dotSia,
+		staticResponseChan: uploadSnapshotRespChan,
+
+		jobGeneric: newJobGeneric(ctx, w.staticJobUploadSnapshotQueue, meta),
 	}
 
 	// Add the job to the queue.

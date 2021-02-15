@@ -18,7 +18,11 @@ func TestIntegrationTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Creating the wallet tester results in blocks being mined until the miner
 	// has money, which means types.MaturityDelay+1 blocks are created, and
@@ -92,7 +96,11 @@ func TestTransactionsSingleTxn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Creating the wallet tester results in blocks being mined until the miner
 	// has money, which means types.MaturityDelay+1 blocks are created, and
@@ -147,7 +155,11 @@ func TestIntegrationTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	_, exists, err := wt.wallet.Transaction(types.TransactionID{})
 	if err != nil {
@@ -227,7 +239,11 @@ func TestProcessedTxnIndexCompatCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine blocks to get lots of processed transactions
 	for i := 0; i < 100; i++ {
@@ -239,7 +255,9 @@ func TestProcessedTxnIndexCompatCode(t *testing.T) {
 	// The wallet tester mined blocks. Therefore the bucket shouldn't be
 	// empty.
 	wt.wallet.mu.Lock()
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		t.Fatal(err)
+	}
 	expectedTxns := wt.wallet.dbTx.Bucket(bucketProcessedTxnIndex).Stats().KeyN
 	if expectedTxns == 0 {
 		t.Fatal("bucketProcessedTxnIndex shouldn't be empty")
@@ -276,7 +294,9 @@ func TestProcessedTxnIndexCompatCode(t *testing.T) {
 	}
 
 	// Check if bucket has expected size
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		t.Fatal(err)
+	}
 	numTxns := wt.wallet.dbTx.Bucket(bucketProcessedTxnIndex).Stats().KeyN
 	if expectedTxns != numTxns {
 		t.Errorf("Bucket should have %v entries but had %v", expectedTxns, numTxns)
@@ -293,7 +313,11 @@ func TestIntegrationAddressTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Grab an address and send it money.
 	uc, err := wt.wallet.NextAddress()
@@ -352,7 +376,11 @@ func TestAddressTransactionRevertedBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Grab an address and send it money.
 	uc, err := wt.wallet.NextAddress()
@@ -419,7 +447,11 @@ func TestTransactionInputOutputIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// mine a few blocks to create miner payouts
 	for i := 0; i < 5; i++ {
@@ -506,7 +538,9 @@ func BenchmarkAddressTransactions(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		b.Fatal(err)
+	}
 	wt.wallet.mu.Unlock()
 
 	b.ResetTimer()
@@ -537,7 +571,9 @@ func BenchmarkAddressTransactions(b *testing.B) {
 	b.Run("unindexed", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			wt.wallet.mu.Lock()
-			wt.wallet.syncDB()
+			if err := wt.wallet.syncDB(); err != nil {
+				b.Fatal(err)
+			}
 			var pts []modules.ProcessedTransaction
 			it := dbProcessedTransactionsIterator(wt.wallet.dbTx)
 			for it.next() {

@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // Explorer tester struct is the helper object for explorer
@@ -97,7 +98,7 @@ func createExplorerTester(name string) (*explorerTester, error) {
 // dependencies, checks that the correct error is returned.
 func TestNilExplorerDependencies(t *testing.T) {
 	_, err := New(nil, "expdir")
-	if err != errNilCS {
+	if !errors.Contains(err, errNilCS) {
 		t.Fatal("Expecting errNilCS")
 	}
 }

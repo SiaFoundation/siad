@@ -54,6 +54,7 @@ type unfinishedDownloadChunk struct {
 	staticDisableDiskFetch bool
 	staticLatencyTarget    time.Duration
 	staticNeedsMemory      bool // Set to true if memory was not pre-allocated for this chunk.
+	staticMemoryManager    *memoryManager
 	staticOverdrive        int
 	staticPriority         uint64
 
@@ -100,7 +101,8 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	// Check if the chunk is newly failed.
 	udc.mu.Lock()
 	if udc.workersRemaining+udc.piecesCompleted < udc.erasureCode.MinPieces() && !udc.failed {
-		udc.fail(errors.New("not enough workers to continue download"))
+		str := fmt.Sprintf("workers remaining %v, pieces completed %v, min pieces %v", udc.workersRemaining, udc.piecesCompleted, udc.erasureCode.MinPieces())
+		udc.fail(errors.AddContext(errNotEnoughWorkers, str))
 	}
 	// Return any excess memory.
 	udc.returnMemory()
@@ -131,7 +133,7 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	udc.workersStandby = udc.workersStandby[:0] // Workers have been taken off of standby.
 	udc.mu.Unlock()
 	for i := 0; i < len(standbyWorkers); i++ {
-		standbyWorkers[i].callQueueDownloadChunk(udc)
+		go standbyWorkers[i].threadedPerformDownloadChunkJob(udc)
 	}
 }
 
@@ -207,7 +209,7 @@ func (udc *unfinishedDownloadChunk) returnMemory() {
 	}
 	// Return any memory we don't need.
 	if uint64(udc.memoryAllocated) > maxMemory {
-		udc.download.r.memoryManager.Return(udc.memoryAllocated - maxMemory)
+		udc.staticMemoryManager.Return(udc.memoryAllocated - maxMemory)
 		udc.memoryAllocated = maxMemory
 	}
 }
@@ -243,11 +245,12 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 func bytesToRecover(chunkFetchOffset, chunkFetchLength, chunkSize uint64, rs modules.ErasureCoder) uint64 {
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk.
-	if !rs.SupportsPartialEncoding() {
+	segmentSize, supportsPartial := rs.SupportsPartialEncoding()
+	if !supportsPartial {
 		return chunkSize
 	}
 	// Else we need to calculate how much data we need to recover.
-	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	recoveredSegmentSize := uint64(rs.MinPieces()) * segmentSize
 	_, numSegments := segmentsForRecovery(chunkFetchOffset, chunkFetchLength, rs)
 	return numSegments * recoveredSegmentSize
 }
@@ -258,10 +261,11 @@ func recoveredDataOffset(chunkFetchOffset uint64, rs modules.ErasureCoder) uint6
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk which means the offset and length are actually
 	// equal to the chunkFetchOffset and chunkFetchLength.
-	if !rs.SupportsPartialEncoding() {
+	segmentSize, supportsPartial := rs.SupportsPartialEncoding()
+	if !supportsPartial {
 		return chunkFetchOffset
 	}
 	// Else we need to adjust the offset a bit.
-	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	recoveredSegmentSize := uint64(rs.MinPieces()) * segmentSize
 	return chunkFetchOffset % recoveredSegmentSize
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -14,7 +15,11 @@ import (
 func TestNewProgramData(t *testing.T) {
 	buf := bytes.NewReader(fastrand.Bytes(10))
 	pd := openProgramData(buf, uint64(buf.Len()))
-	pd.Close()
+	defer func() {
+		if err := pd.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestHash will test a number of random calls to Hash which should be
@@ -33,7 +38,11 @@ func TestHash(t *testing.T) {
 			t.Fatalf("hash should be %v but was %v", data[offset:][:crypto.HashSize], h[:])
 		}
 	}
-	pd.Close()
+	defer func() {
+		if err := pd.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestUint64 will test a number of random calls to Uint64 which should be
@@ -52,7 +61,11 @@ func TestUint64(t *testing.T) {
 			t.Fatalf("uint64 should be %v but was %v", expected, n)
 		}
 	}
-	pd.Close()
+	defer func() {
+		if err := pd.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestOutOfBounds tests the out-of-bounds check.
@@ -63,7 +76,11 @@ func TestOutOfBounds(t *testing.T) {
 	if err == nil {
 		t.Fatal("managedBytes should fail")
 	}
-	pd.Close()
+	defer func() {
+		if err := pd.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestEOFWhileReading tests that an error returned by the reader is correctly
@@ -74,10 +91,14 @@ func TestEOFWhileReading(t *testing.T) {
 	cont := make(chan struct{})
 	go func() {
 		<-cont
-		pd.Close()
+		defer func() {
+			if err := pd.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 	}()
 	_, err := pd.Uint64(0)
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Errorf("error was supposed to be %v but was %v", io.EOF, err)
 	}
 	close(cont)

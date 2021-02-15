@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -21,7 +22,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read price table")
+		return errors.AddContext(err, "failed to read price table")
 	}
 
 	// Process payment.
@@ -83,7 +84,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if program.RequiresSnapshot() {
 		sos, err = h.managedGetStorageObligationSnapshot(fcid)
 		if err != nil {
-			return errors.AddContext(err, fmt.Sprintf("Failed to get storage obligation snapshot for contract %v", fcid))
+			return errors.AddContext(err, fmt.Sprintf("failed to get storage obligation snapshot for contract %v", fcid))
 		}
 	}
 
@@ -115,9 +116,24 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
+	// Create a buffer
+	buffer := bytes.NewBuffer(nil)
+
+	// Flush the buffer. Upon success this should be a no-op. If we return early
+	// this will make sure that the cancellation token and anything else in the
+	// buffer are written to the stream.
+	defer func() {
+		if buffer.Len() > 0 {
+			_, err = buffer.WriteTo(stream)
+			if err != nil {
+				h.log.Print("failed to flush buffer", err)
+			}
+		}
+	}()
+
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
 	var ct modules.MDMCancellationToken
-	err = modules.RPCWrite(stream, ct)
+	err = modules.RPCWrite(buffer, ct)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}
@@ -149,29 +165,34 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
 			OutputLength:         uint64(len(output.Output)),
-			StorageCost:          output.AdditionalStorageCost,
+			FailureRefund:        output.FailureRefund,
 			Proof:                output.Proof,
 			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
-		if output.ExecutionCost.Cmp(output.AdditionalStorageCost) < 0 {
+		if output.ExecutionCost.Cmp(output.FailureRefund) < 0 {
 			err = errors.New("executionCost can never be smaller than the storage cost")
 			build.Critical(err)
 			return err
 		}
 		// The additional storage cost is refunded if the program is not
 		// committed.
-		programRefund = resp.StorageCost
+		programRefund = resp.FailureRefund
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
-
-		// Create a buffer
-		buffer := bytes.NewBuffer(nil)
 
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		instructionSpecifier := program[numOutputs-1].Specifier
+		readInstruction := instructionSpecifier == modules.SpecifierReadOffset || instructionSpecifier == modules.SpecifierReadSector
+		updateRegistryInstruction := instructionSpecifier == modules.SpecifierUpdateRegistry
+		if (readInstruction || updateRegistryInstruction) && h.dependencies.Disrupt("CorruptMDMOutput") {
+			// Replace output with same amount of random data.
+			fastrand.Read(output.Output)
 		}
 
 		// Write output.
@@ -192,12 +213,19 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			time.Sleep(modules.MDMProgramWriteResponseTime * 2)
 		}
 
-		// Write contents of the buffer
+		// Don't write contents of the buffer if the MDM recommends batching the
+		// output as long as the buffer stays under a threshold.
+		if output.Batch && buffer.Len() < modules.MDMMaxBatchBufferSize {
+			continue
+		}
+
+		// Write contents of the buffer.
 		_, err = buffer.WriteTo(stream)
 		if err != nil {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
 	}
+
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {
 		err := errors.New("program returned 0 outputs - should never happen")
@@ -261,7 +289,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 	if err != nil {
 		return errors.AddContext(err, "failed to get current revision")
 	}
-	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.FailureRefund)
 	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
 	if err != nil {
 		return errors.AddContext(err, "failed to construct execute program revision")
@@ -269,7 +297,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 
 	// The host is expected to move the additional storage cost and collateral
 	// from the missed output to the missed void output.
-	maxTransfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+	maxTransfer := lastOutput.AdditionalCollateral.Add(lastOutput.FailureRefund)
 
 	// Verify the revision.
 	err = verifyExecuteProgramRevision(currentRevision, newRevision, bh, maxTransfer, lastOutput.NewSize, lastOutput.NewMerkleRoot)

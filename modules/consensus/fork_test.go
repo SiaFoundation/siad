@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBacktrackToCurrentPath probes the backtrackToCurrentPath method of the
@@ -17,7 +18,11 @@ func TestBacktrackToCurrentPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Backtrack from the current node to the blockchain.
@@ -37,7 +42,7 @@ func TestBacktrackToCurrentPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = cst.cs.AcceptBlock(child1)
-	if err != modules.ErrNonExtendingBlock {
+	if !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 	pb, err = cst.cs.dbGetBlockMap(child1.ID())
@@ -70,7 +75,11 @@ func TestRevertToNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Revert to a grandparent and verify the returned array is correct.

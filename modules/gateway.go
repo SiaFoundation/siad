@@ -159,18 +159,18 @@ type (
 		// disconnect
 		DisconnectManual(NetAddress) error
 
-		// AddToBlacklist adds addresses to the blacklist of the gateway
-		AddToBlacklist(addresses []string) error
+		// AddToBlocklist adds addresses to the blocklist of the gateway
+		AddToBlocklist(addresses []string) error
 
-		// Blacklist returns the current blacklist of the Gateway
-		Blacklist() ([]string, error)
+		// Blocklist returns the current blocklist of the Gateway
+		Blocklist() ([]string, error)
 
-		// RemoveFromBlacklist removes addresses from the blacklist of the
+		// RemoveFromBlocklist removes addresses from the blocklist of the
 		// gateway
-		RemoveFromBlacklist(addresses []string) error
+		RemoveFromBlocklist(addresses []string) error
 
-		// SetBlacklist sets the blacklist of the gateway
-		SetBlacklist(addresses []string) error
+		// SetBlocklist sets the blocklist of the gateway
+		SetBlocklist(addresses []string) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress

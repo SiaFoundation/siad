@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // findSets takes a bunch of transactions (presumably from a block) and finds
@@ -185,7 +186,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// being provided to us correctly.
 	resetSanityCheck := false
 	recentID, err := tp.getRecentBlockID(tp.dbTx)
-	if err == errNilRecentBlock {
+	if errors.Contains(err, errNilRecentBlock) {
 		// This almost certainly means that the database hasn't been initialized
 		// yet with a recent block, meaning the user was previously running
 		// v1.3.1 or earlier.

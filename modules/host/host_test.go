@@ -3,10 +3,13 @@ package host
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 
@@ -322,7 +326,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		return nil, errors.AddContext(err, "unable to add noop revision")
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to add the storage obligation")
 	}
@@ -390,7 +394,7 @@ type executeProgramResponse struct {
 // and returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) (_ []executeProgramResponse, _ mux.BandwidthLimit, err error) {
 	// Only allow a single write program or multiple read programs to run in
 	// parallel. A production worker will have better locking than this but
 	// since we just mock the renter this is used for unit testing the host.
@@ -401,7 +405,6 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		p.mdmMu.Lock()
 		defer p.mdmMu.Unlock()
 	}
-	var err error
 
 	pt := p.managedPriceTable()
 	if updatePriceTable {
@@ -453,7 +456,9 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 
 	// create stream
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Get the limit to track bandwidth.
 	limit := stream.Limit()
@@ -536,9 +541,7 @@ func (p *renterHostPair) managedFetchPriceTable() (*modules.RPCPriceTable, error
 // managedFundEphemeralAccount will deposit the given amount in the pair's
 // ephemeral account using the pair's file contract to provide payment and the
 // given price table.
-func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, updatePriceTable bool) (modules.FundAccountResponse, error) {
-	var err error
-
+func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, updatePriceTable bool) (_ modules.FundAccountResponse, err error) {
 	pt := p.managedPriceTable()
 	if updatePriceTable {
 		pt, err = p.managedFetchPriceTable()
@@ -549,7 +552,9 @@ func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, upda
 
 	// create stream
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Write RPC ID.
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
@@ -662,7 +667,7 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 	}
 
 	// Construct the new revision.
-	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.StorageCost)
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.FailureRefund)
 	newRevision, err := recent.ExecuteProgramRevision(recent.NewRevisionNumber+1, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
 	if err != nil {
 		return err
@@ -788,9 +793,11 @@ func (p *renterHostPair) managedSign(rev types.FileContractRevision) crypto.Sign
 }
 
 // AccountBalance returns the account balance of the specified account.
-func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Currency, fundAcc, balanceAcc modules.AccountID) (types.Currency, error) {
+func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Currency, fundAcc, balanceAcc modules.AccountID) (_ types.Currency, err error) {
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Fetch the price table.
 	pt, err := p.managedFetchPriceTable()
@@ -847,19 +854,243 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 	return abr.Balance, nil
 }
 
+// managedBeginSubscription begins a subscription on a new stream and returns
+// it.
+func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, subscriber types.Specifier) (_ siamux.Stream, err error) {
+	stream := p.managedNewStream()
+	defer func() {
+		if err != nil {
+			err = errors.Compose(err, stream.Close())
+		}
+	}()
+
+	// Fetch the price table.
+	pt, err := p.managedFetchPriceTable()
+	if err != nil {
+		return nil, err
+	}
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCRegistrySubscription)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Provide payment
+	if payByFC {
+		err = p.managedPayByContract(stream, fundAmt, fundAcc)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err = p.managedPayByEphemeralAccount(stream, fundAmt)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Send the subscriber.
+	return stream, modules.RPCWrite(stream, subscriber)
+}
+
+// managedLatestRevision performs a RPCLatestRevision to get the latest revision
+// for the contract with fcid from the host.
+func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, fcid types.FileContractID) (_ types.FileContractRevision, err error) {
+	stream := p.managedNewStream()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
+
+	// Fetch the price table.
+	pt, err := p.managedFetchPriceTable()
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCLatestRevision)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// send the request.
+	err = modules.RPCWrite(stream, modules.RPCLatestRevisionRequest{
+		FileContractID: fcid,
+	})
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// read the response.
+	var lrr modules.RPCLatestRevisionResponse
+	err = modules.RPCRead(stream, &lrr)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// provide payment
+	if payByFC {
+		err = p.managedPayByContract(stream, fundAmt, fundAcc)
+		if err != nil {
+			return types.FileContractRevision{}, err
+		}
+	} else {
+		err = p.managedPayByEphemeralAccount(stream, fundAmt)
+		if err != nil {
+			return types.FileContractRevision{}, err
+		}
+	}
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return types.FileContractRevision{}, err
+	}
+
+	return lrr.Revision, nil
+}
+
 // AccountBalance returns the account balance of the renter's EA on the host.
 func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 	return p.managedAccountBalance(payByFC, p.pt.AccountBalanceCost, p.staticAccountID, p.staticAccountID)
 }
 
+// BeginSubscription starts the subscription loop and returns the stream.
+func (p *renterHostPair) BeginSubscription(budget types.Currency, subscriber types.Specifier) (siamux.Stream, error) {
+	return p.managedBeginSubscription(false, budget, p.staticAccountID, subscriber)
+}
+
+// LatestRevision performs a RPCLatestRevision to get the latest revision for
+// the contract from the host.
+func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevision, error) {
+	return p.managedLatestRevision(payByFC, p.pt.LatestRevisionCost, p.staticAccountID, p.staticFCID)
+}
+
+// StopSubscription gracefully stops a subscription session.
+func (p *renterHostPair) StopSubscription(stream siamux.Stream) error {
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestStop)
+	if err != nil {
+		return errors.AddContext(err, "StopSubscription failed to send specifier")
+	}
+	_, err = stream.Read(make([]byte, 1))
+	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
+	}
+	return stream.Close()
+}
+
+// SubscribeToRV subscribes to the given publickey/tweak pair.
+func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
+	// Send the type of the request.
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)
+	if err != nil {
+		return nil, err
+	}
+	// Send the request.
+	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
+		PubKey: pubkey,
+		Tweak:  tweak,
+	}})
+	if err != nil {
+		return nil, err
+	}
+	// Read response.
+	var rvs []modules.SignedRegistryValue
+	err = modules.RPCRead(stream, &rvs)
+	if err != nil {
+		return nil, err
+	}
+	var rv *modules.SignedRegistryValue
+	if len(rvs) > 1 {
+		build.Critical("more responses than subscribed to values")
+	} else if len(rvs) == 1 {
+		rv = &rvs[0]
+		err = rv.Verify(pubkey.ToPublicKey())
+	}
+	return rv, err
+}
+
+// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair.
+func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
+	// Send the type of the request.
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestUnsubscribe)
+	if err != nil {
+		return err
+	}
+	// Send the request.
+	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
+		PubKey: pubkey,
+		Tweak:  tweak,
+	}})
+	if err != nil {
+		return err
+	}
+	// Read the "OK" response.
+	var resp modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+	if resp.Type != modules.SubscriptionResponseUnsubscribeSuccess {
+		return fmt.Errorf("wrong type was returned: %v", resp.Type)
+	}
+	return nil
+}
+
+// FundSubscription pays the host to increase the subscription budget.
+func (p *renterHostPair) FundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
+	// Send the type of the request.
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestPrepay)
+	if err != nil {
+		return err
+	}
+
+	// Provide payment
+	err = p.managedPayByEphemeralAccount(stream, fundAmt)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// ExtendSubscription extends the subscription with the given price table.
+func (p *renterHostPair) ExtendSubscription(stream siamux.Stream, pt *modules.RPCPriceTable) error {
+	// Send the type of the request.
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestExtend)
+	if err != nil {
+		return err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
 // table on the pair
-func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
+func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) (err error) {
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return err
 	}
@@ -918,7 +1149,11 @@ func TestHostInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// verify its initial block height is zero
 	if ht.host.blockHeight != 0 {
@@ -933,6 +1168,142 @@ func TestHostInitialization(t *testing.T) {
 	}
 }
 
+// TestHostRegistry tests that changing the internal settings of the host will
+// update the registry as well.
+func TestHostRegistry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := ht.host
+	r := h.staticRegistry
+
+	// The registry should be disabled by default.
+	is := h.managedInternalSettings()
+	if is.RegistrySize != 0 {
+		t.Fatal("registry size should be 0 by default")
+	}
+	if r.Len() != 0 || r.Cap() != 0 {
+		t.Fatal("registry len and cap should be 0")
+	}
+
+	// Update the internal settings.
+	is.RegistrySize = 128 * modules.RegistryEntrySize
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 0 || r.Cap() != 128 {
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
+	}
+
+	// Add 64 entries.
+	for i := 0; i < 64; i++ {
+		sk, pk := crypto.GenerateKeyPair()
+		var spk types.SiaPublicKey
+		spk.Algorithm = types.SignatureEd25519
+		spk.Key = pk[:]
+		var tweak crypto.Hash
+		fastrand.Read(tweak[:])
+		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0).Sign(sk)
+		_, err := h.RegistryUpdate(rv, spk, 1337)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check registry.
+	if r.Len() != 64 || r.Cap() != 128 {
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
+	}
+
+	// Try truncating below that. Should round up to 64 entries.
+	is.RegistrySize = 64*modules.RegistryEntrySize - 1
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 64 || r.Cap() != 64 {
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
+	}
+
+	// Move to new location.
+	dst := filepath.Join(ht.persistDir, "newreg.dat")
+	is.CustomRegistryPath = dst
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that file exists and the old one doesn't.
+	if _, err := os.Stat(dst); err != nil {
+		t.Fatal(err)
+	}
+	defaultPath := filepath.Join(ht.host.persistDir, modules.HostRegistryFile)
+	if _, err := os.Stat(defaultPath); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	// Close host and restart it.
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err = New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := h.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r = h.staticRegistry
+
+	// Check registry.
+	if r.Len() != 64 || r.Cap() != 64 {
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
+	}
+
+	// Clear registry.
+	_, err = r.Prune(types.BlockHeight(math.MaxUint64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 0 || r.Cap() != 64 {
+		t.Fatal("clearing wasn't successful", r.Len(), r.Cap())
+	}
+
+	// Set the size back to 0.
+	is.RegistrySize = 0
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 0 || r.Cap() != 0 {
+		t.Fatal("truncate wasn't called on registry")
+	}
+
+	// Move registry back to default.
+	is.CustomRegistryPath = ""
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that registry exists at default again.
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(defaultPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestHostMultiClose checks that the host returns an error if Close is called
 // multiple times on the host.
 func TestHostMultiClose(t *testing.T) {
@@ -944,18 +1315,22 @@ func TestHostMultiClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = ht.host.Close()
-	if err != siasync.ErrStopped {
+	if !errors.Contains(err, siasync.ErrStopped) {
 		t.Fatal(err)
 	}
 	err = ht.host.Close()
-	if err != siasync.ErrStopped {
+	if !errors.Contains(err, siasync.ErrStopped) {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
@@ -977,23 +1352,27 @@ func TestNilValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	hostDir := filepath.Join(ht.persistDir, modules.HostDir)
 	_, err = New(nil, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", hostDir)
-	if err != errNilCS {
+	if !errors.Contains(err, errNilCS) {
 		t.Fatal("could not trigger errNilCS")
 	}
 	_, err = New(ht.cs, nil, ht.tpool, ht.wallet, ht.mux, "localhost:0", hostDir)
-	if err != errNilGateway {
+	if !errors.Contains(err, errNilGateway) {
 		t.Fatal("Could not trigger errNilGateay")
 	}
 	_, err = New(ht.cs, ht.gateway, nil, ht.wallet, ht.mux, "localhost:0", hostDir)
-	if err != errNilTpool {
+	if !errors.Contains(err, errNilTpool) {
 		t.Fatal("could not trigger errNilTpool")
 	}
 	_, err = New(ht.cs, ht.gateway, ht.tpool, nil, ht.mux, "localhost:0", hostDir)
-	if err != errNilWallet {
+	if !errors.Contains(err, errNilWallet) {
 		t.Fatal("Could not trigger errNilWallet")
 	}
 }
@@ -1027,7 +1406,11 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check the default settings get returned at first call.
 	settings := ht.host.InternalSettings()
@@ -1139,7 +1522,12 @@ func TestSetAndGetSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+  if err := ht.Close(); err != nil {
+t.Fatal(err)
+}
+
+}()
 
 	// Check the default settings get returned at first call.
 	settings := ht.host.Settings()
@@ -1217,7 +1605,12 @@ func TestPersistentSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+  if err := ht.Close(); err != nil {
+t.Fatal(err)
+}
+
+}()
 
 	// Submit updated settings.
 	settings := ht.host.Settings()

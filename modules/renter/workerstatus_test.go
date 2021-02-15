@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -13,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestWorkerAccountStatus is a small unit test that verifies the output of the
@@ -24,7 +24,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{})
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,14 +49,16 @@ func TestWorkerAccountStatus(t *testing.T) {
 	// fetch the worker's account status and verify its output
 	a := w.staticAccount
 	status := a.managedStatus()
-	if !(status.Funded == true &&
+	if !(!status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
-		status.OnCoolDown == false &&
-		status.OnCoolDownUntil == time.Time{} &&
-		status.ConsecutiveFailures == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
+	}
+
+	// ensure the worker is not on maintenance cooldown
+	if w.managedOnMaintenanceCooldown() {
+		t.Fatal("Unexpected maintenance cooldown")
 	}
 
 	// nullify the account balance to ensure refilling triggers a max balance
@@ -68,14 +70,16 @@ func TestWorkerAccountStatus(t *testing.T) {
 
 	// fetch the worker's account status and verify the error is being set
 	status = a.managedStatus()
-	if !(status.Funded == false &&
+	if !(status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.IsZero() &&
-		status.OnCoolDown == true &&
-		status.OnCoolDownUntil != time.Time{} &&
-		status.ConsecutiveFailures == 1 &&
 		status.RecentErr != "" &&
 		status.RecentErrTime != time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
+	}
+
+	// ensure the worker's RHP3 system is on cooldown
+	if !w.managedOnMaintenanceCooldown() {
+		t.Fatal("Expected RHP3 to have been put on cooldown")
 	}
 }
 
@@ -120,9 +124,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	// fetch the worker's pricetable status and verify its output
 	status := w.staticPriceTableStatus()
 	if !(status.Active == true &&
-		status.OnCoolDown == false &&
-		status.OnCoolDownUntil == time.Time{} &&
-		status.ConsecutiveFailures == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected price table status", ToJSON(status))
@@ -146,9 +147,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		status = w.staticPriceTableStatus()
 		if !(status.Active == true &&
-			status.OnCoolDown == true &&
-			status.OnCoolDownUntil != time.Time{} &&
-			status.ConsecutiveFailures == 1 &&
 			status.RecentErr != "" &&
 			status.RecentErrTime != time.Time{}) {
 			return fmt.Errorf("Unexpected pricetable status %v", ToJSON(status))
@@ -171,12 +169,20 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	w := wt.worker
+
+	var hostClosed bool
 	defer func() {
+		if hostClosed {
+			if err := wt.rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		if err := wt.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
-	w := wt.worker
 
 	// allow the worker some time to fetch a PT and fund its EA
 	err = build.Retry(600, 100*time.Millisecond, func() error {
@@ -189,83 +195,37 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
-	err = wt.host.AddSector(sectorRoot, sectorData)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// fetch the worker's read jobs status and verify its output
 	status := w.callReadJobStatus()
-	if !(status.AvgJobTime64k == 0 &&
-		status.AvgJobTime1m == 0 &&
-		status.AvgJobTime4m == 0 &&
-		status.ConsecutiveFailures == 0 &&
+	if !(status.ConsecutiveFailures == 0 &&
 		status.JobQueueSize == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected read job status", ToJSON(status))
 	}
 
-	// prevent the worker from doing any work by manipulating its read limit
-	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+	// close the host to ensure the job fails
+	err = wt.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostClosed = true
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobReadResponse)
 
 	jhs := &jobReadSector{
 		jobRead: jobRead{
-			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
+			staticResponseChan: rc,
+
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
-		staticSector: sectorRoot,
-	}
-	if !w.staticJobReadQueue.callAdd(jhs) {
-		t.Fatal("Could not add job to queue")
-	}
-
-	// fetch the worker's read job status again and verify its output
-	status = w.callReadJobStatus()
-	if status.JobQueueSize != 1 {
-		t.Fatal("Unexpected read job status", ToJSON(status))
-	}
-
-	// restore the read limit
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
-
-	// verify the status in a build.Retry to allow the worker some time to
-	// process the job
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		status = w.callReadJobStatus()
-		if status.AvgJobTime64k == 0 {
-			return fmt.Errorf("Unexpected read job status %v", ToJSON(status))
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// add another job to the worker
-	jhs = &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: rc,
-			staticLength:       modules.SectorSize,
-			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
-			},
-		},
-		staticOffset: 0,
-		staticSector: crypto.Hash{},
 	}
 	if !w.staticJobReadQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
@@ -312,7 +272,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// allow the worker some time to fetch a PT and fund its EA
+	// allow the worker some time to fund its EA
 	if err := build.Retry(600, 100*time.Millisecond, func() error {
 		if w.staticAccount.managedMinExpectedBalance().IsZero() {
 			return errors.New("account not funded yet")
@@ -324,13 +284,13 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 
 	// fetch the worker's has sector jobs status and verify its output
 	status := w.callHasSectorJobStatus()
-	if !(status.AvgJobTime == 0 &&
-		status.ConsecutiveFailures == 0 &&
+	if !(status.ConsecutiveFailures == 0 &&
 		status.JobQueueSize == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected has sector job status", ToJSON(status))
 	}
+	initialAvg := status.AvgJobTime
 
 	// prevent the worker from doing any work by manipulating its read limit
 	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
@@ -338,16 +298,9 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
-	jhs := &jobHasSector{
-		staticSector:       crypto.Hash{},
-		staticResponseChan: rc,
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobHasSectorQueue,
-		},
-	}
+	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -365,7 +318,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	// process the job
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		status = w.callHasSectorJobStatus()
-		if status.AvgJobTime == 0 {
+		if status.AvgJobTime == initialAvg {
 			return fmt.Errorf("Unexpected has sector job status %v", ToJSON(status))
 		}
 		return nil
@@ -381,14 +334,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	hostClosed = true
 
 	// add another job to the worker
-	jhs = &jobHasSector{
-		staticSector:       crypto.Hash{},
-		staticResponseChan: rc,
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobHasSectorQueue,
-		},
-	}
+	jhs = w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -415,4 +361,123 @@ func ToJSON(a interface{}) string {
 		panic(err)
 	}
 	return string(json)
+}
+
+// TestWorkerRegistryJobStatus tests the ReadRegistry and UpdateRegistry related
+// stats.
+func TestWorkerRegistryJobStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hostClosed bool
+	defer func() {
+		if hostClosed {
+			if err := wt.rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// allow the worker some time to fetch a PT and fund its EA
+	if err := build.Retry(600, 100*time.Millisecond, func() error {
+		if w.staticAccount.managedMinExpectedBalance().IsZero() {
+			return errors.New("account not funded yet")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// fetch the worker's has sector jobs status and verify its output
+	statusRead := w.callReadRegistryJobsStatus()
+	if !(statusRead.ConsecutiveFailures == 0 &&
+		statusRead.JobQueueSize == 0 &&
+		statusRead.OnCooldown == false &&
+		statusRead.OnCooldownUntil == time.Time{} &&
+		statusRead.RecentErr == "" &&
+		statusRead.RecentErrTime == time.Time{}) {
+		t.Fatal("Unexpected job status", ToJSON(statusRead))
+	}
+	statusUpdate := w.callUpdateRegistryJobsStatus()
+	if !(statusUpdate.ConsecutiveFailures == 0 &&
+		statusUpdate.JobQueueSize == 0 &&
+		statusUpdate.OnCooldown == false &&
+		statusUpdate.OnCooldownUntil == time.Time{} &&
+		statusUpdate.RecentErr == "" &&
+		statusUpdate.RecentErrTime == time.Time{}) {
+		t.Fatal("Unexpected job status", ToJSON(statusUpdate))
+	}
+
+	// prevent the worker from doing any work by manipulating its read limit
+	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+
+	// add 1 job each to the worker.
+	ctx := context.Background()
+	rrc := make(chan *jobReadRegistryResponse)
+	urc := make(chan *jobUpdateRegistryResponse)
+	jrr := w.newJobReadRegistry(ctx, rrc, types.SiaPublicKey{}, crypto.Hash{})
+	jur := w.newJobUpdateRegistry(ctx, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
+	if !w.staticJobReadRegistryQueue.callAdd(jrr) {
+		t.Fatal("Could not add job to queue")
+	}
+	if !w.staticJobUpdateRegistryQueue.callAdd(jur) {
+		t.Fatal("Could not add job to queue")
+	}
+
+	// fetch the worker's jobs status again.
+	statusRead = w.callReadRegistryJobsStatus()
+	statusUpdate = w.callUpdateRegistryJobsStatus()
+	if statusRead.JobQueueSize != 1 {
+		t.Fatal("Unexpected job status", ToJSON(statusRead))
+	}
+	if statusUpdate.JobQueueSize != 1 {
+		t.Fatal("Unexpected job status", ToJSON(statusUpdate))
+	}
+
+	// close the host to ensure the jobs will fail
+	err = wt.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostClosed = true
+
+	// restore the read limit
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
+
+	// verify the status in a build.Retry to allow the worker some time to
+	// process the jobs
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		statusRead = w.callReadRegistryJobsStatus()
+		if !(statusRead.ConsecutiveFailures == 1 &&
+			statusRead.OnCooldown == true &&
+			statusRead.OnCooldownUntil != time.Time{} &&
+			statusRead.RecentErr != "" &&
+			statusRead.RecentErrTime != time.Time{}) {
+			return fmt.Errorf("Unexpected job %v", ToJSON(statusRead))
+		}
+		statusUpdate = w.callUpdateRegistryJobsStatus()
+		if !(statusUpdate.ConsecutiveFailures == 1 &&
+			statusUpdate.OnCooldown == true &&
+			statusUpdate.OnCooldownUntil != time.Time{} &&
+			statusUpdate.RecentErr != "" &&
+			statusUpdate.RecentErrTime != time.Time{}) {
+			return fmt.Errorf("Unexpected job %v", ToJSON(statusUpdate))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 }

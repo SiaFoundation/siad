@@ -43,7 +43,11 @@ func TestSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check the transaction pool is empty when initialized.
 	if len(tpt.tpool.transactionSets) != 0 {

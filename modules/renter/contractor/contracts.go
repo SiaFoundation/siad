@@ -3,6 +3,7 @@ package contractor
 import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -158,13 +159,8 @@ func (c *Contractor) MarkContractBad(id types.FileContractID) error {
 	if !exists {
 		return errors.New("contract not found")
 	}
-	u := sc.Utility()
-	u.GoodForUpload = false
-	u.GoodForRenew = false
-	u.BadContract = true
-	err := c.callUpdateUtility(sc, u, false)
-	c.staticContracts.Return(sc)
-	return errors.AddContext(err, "unable to mark contract as bad")
+	defer c.staticContracts.Return(sc)
+	return c.managedMarkContractBad(sc)
 }
 
 // OldContracts returns the contracts formed by the contractor that have
@@ -191,4 +187,14 @@ func (c *Contractor) RecoverableContracts() []modules.RecoverableContract {
 		contracts = append(contracts, c)
 	}
 	return contracts
+}
+
+// managedMarkContractBad marks an already acquired SafeContract as bad.
+func (c *Contractor) managedMarkContractBad(sc *proto.SafeContract) error {
+	u := sc.Utility()
+	u.GoodForUpload = false
+	u.GoodForRenew = false
+	u.BadContract = true
+	err := c.callUpdateUtility(sc, u, false)
+	return errors.AddContext(err, "unable to mark contract as bad")
 }

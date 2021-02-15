@@ -3,7 +3,7 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // TestWritePiecesPanic is a regression test that ensures WritePieces does not
@@ -17,6 +17,6 @@ func TestWritePiecesPanic(t *testing.T) {
 
 	// Test case of offset being less than the progress. Ignore the error since
 	// we are only concerned with the mutex panic.
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	ddw.WritePieces(rsc, [][]byte{}, 0, 0, 0)
 }

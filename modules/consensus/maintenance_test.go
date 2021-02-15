@@ -1,5 +1,14 @@
 package consensus
 
+import (
+	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/fastrand"
+)
+
 /*
 import (
 	"testing"
@@ -17,7 +26,11 @@ func TestApplyMinerPayouts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  		if err := cst.Close(); err != nil {
+   	 		t.Fatal(err)
+  		}
+	}()
 
 	// Create a block node with a single miner payout.
 	pb := new(processedBlock)
@@ -120,7 +133,11 @@ func TestApplyMaturedSiacoinOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  		if err := cst.Close(); err != nil {
+    		t.Fatal(err)
+  		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Trigger the sanity check concerning already-matured outputs.
@@ -152,7 +169,11 @@ func TestApplyMissedStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  		if err := cst.Close(); err != nil {
+   			t.Fatal(err)
+  		}
+	}()
 
 	// Create a block node.
 	pb := new(processedBlock)
@@ -243,7 +264,11 @@ func TestApplyFileContractMaintenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node.
 	pb := new(processedBlock)
@@ -285,3 +310,75 @@ func TestApplyFileContractMaintenance(t *testing.T) {
 	}
 }
 */
+
+// TestApplyFoundationSubsidy probes the applyFoundationSubsidy function.
+func TestApplyFoundationSubsidy(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	apply := func(height types.BlockHeight) (dscod modules.DelayedSiacoinOutputDiff, created bool) {
+		err := cst.cs.db.Update(func(tx *bolt.Tx) error {
+			pb := &processedBlock{
+				Height: height,
+			}
+			fastrand.Read(pb.Block.Nonce[:])
+			createDSCOBucket(tx, height+types.MaturityDelay) // applyFoundationSubsidy expects this bucket to exist
+			applyFoundationSubsidy(tx, pb)
+			if len(pb.DelayedSiacoinOutputDiffs) > 0 {
+				dscod = pb.DelayedSiacoinOutputDiffs[0]
+				created = true
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	// apply a block prior to the hardfork
+	if _, ok := apply(types.FoundationHardforkHeight - 1); ok {
+		t.Error("no output should be created for a block prior to the hardfork")
+	}
+
+	// apply a block at the hardfork height
+	if dscod, ok := apply(types.FoundationHardforkHeight); !ok {
+		t.Error("an output should be created for the hardfork block")
+	} else if !dscod.SiacoinOutput.Value.Equals(types.InitialFoundationSubsidy) {
+		t.Error("output for hardfork block should equal InitialFoundationSubsidy")
+	} else if dscod.SiacoinOutput.UnlockHash != types.InitialFoundationUnlockHash {
+		t.Error("output for hardfork block should be sent to InitialFoundationUnlockHash")
+	}
+
+	// apply a block between the hardfork and first subsidy
+	if _, ok := apply(types.FoundationHardforkHeight + 1); ok {
+		t.Error("no output should be created for a block between the hardfork and first subsidy")
+	}
+
+	// set new primary address
+	newPrimary := types.UnlockHash{1, 2, 3}
+	cst.cs.db.Update(func(tx *bolt.Tx) error {
+		setFoundationUnlockHashes(tx, newPrimary, types.UnlockHash{})
+		return nil
+	})
+
+	// apply a block at the first subsidy height
+	if dscod, ok := apply(types.FoundationHardforkHeight + types.FoundationSubsidyFrequency); !ok {
+		t.Error("an output should be created for the first subsidy block")
+	} else if !dscod.SiacoinOutput.Value.Equals(types.FoundationSubsidyPerBlock.Mul64(uint64(types.FoundationSubsidyFrequency))) {
+		t.Error("output for first subsidy block should equal FoundationSubsidyPerBlock*FoundationSubsidyFrequency")
+	} else if dscod.SiacoinOutput.UnlockHash != newPrimary {
+		t.Error("output for hardfork block should be sent to current primary unlock hash")
+	}
+}

@@ -73,10 +73,7 @@ func TestSiapathValidate(t *testing.T) {
 		{".", false},
 	}
 	for _, pathtest := range pathtests {
-		siaPath := SiaPath{
-			Path: pathtest.in,
-		}
-		err := siaPath.Validate(false)
+		err := ValidatePathString(pathtest.in, false)
 		if err != nil && pathtest.valid {
 			t.Fatal("validateSiapath failed on valid path: ", pathtest.in)
 		}

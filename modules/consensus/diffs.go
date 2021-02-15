@@ -183,6 +183,27 @@ func updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirectio
 	}
 }
 
+// commitFoundationUpdate updates the current Foundation unlock hashes in
+// accordance with the specified block and direction.
+//
+// Because these updates do not have associated diffs, we cannot apply multiple
+// updates per block. Instead, we apply the first update and ignore the rest.
+func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+	if dir == modules.DiffApply {
+		for i := range pb.Block.Transactions {
+			applyArbitraryData(tx, pb, pb.Block.Transactions[i])
+		}
+	} else {
+		// Look for a set of prior unlock hashes for this height.
+		primary, failsafe, exists := getPriorFoundationUnlockHashes(tx, pb.Height)
+		if exists {
+			setFoundationUnlockHashes(tx, primary, failsafe)
+			deletePriorFoundationUnlockHashes(tx, pb.Height)
+			transferFoundationOutputs(tx, pb.Height, primary)
+		}
+	}
+}
+
 // commitDiffSet applies or reverts the diffs in a blockNode.
 func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	// Sanity checks - there are a few so they were moved to another function.
@@ -193,6 +214,7 @@ func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	createUpcomingDelayedOutputMaps(tx, pb, dir)
 	commitNodeDiffs(tx, pb, dir)
 	deleteObsoleteDelayedOutputMaps(tx, pb, dir)
+	commitFoundationUpdate(tx, pb, dir)
 	updateCurrentPath(tx, pb, dir)
 }
 
@@ -227,7 +249,7 @@ func generateAndApplyDiff(tx *bolt.Tx, pb *processedBlock) error {
 	// After all of the transactions have been applied, 'maintenance' is
 	// applied on the block. This includes adding any outputs that have reached
 	// maturity, applying any contracts with missed storage proofs, and adding
-	// the miner payouts to the list of delayed outputs.
+	// the miner payouts and Foundation subsidy to the list of delayed outputs.
 	applyMaintenance(tx, pb)
 
 	// DiffsGenerated are only set to true after the block has been fully

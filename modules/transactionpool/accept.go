@@ -4,7 +4,6 @@ package transactionpool
 // between a file contract revision and a file contract.
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/Sia/types/typesutil"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -304,7 +304,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 	cc, err := txnFn(ts)
 	if err != nil {
-		return nil, modules.NewConsensusConflict("provided transaction set is standalone and invalid: " + err.Error())
+		return nil, modules.NewConsensusConflict("provided transaction set is invalid: " + err.Error())
 	}
 
 	// Add the transaction set to the pool.
@@ -352,7 +352,7 @@ func (tp *TransactionPool) submitTransactionSet(ts []types.Transaction) ([]types
 
 		// Attempt to get the transaction set into the transaction pool.
 		superset, acceptErr = tp.acceptTransactionSet(ts, txnFn)
-		if acceptErr == modules.ErrDuplicateTransactionSet {
+		if errors.Contains(acceptErr, modules.ErrDuplicateTransactionSet) {
 			tp.log.Debugln("Transaction set is a duplicate:", acceptErr)
 			return acceptErr
 		}
@@ -393,7 +393,7 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 
 	tp.log.Debugln("Received a transaction (internal or external), attempting to broadcast")
 	minSuperSet, err := tp.submitTransactionSet(ts)
-	if err == modules.ErrDuplicateTransactionSet {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		return err
 	}
 	if err != nil {

@@ -67,7 +67,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment := deepCopy(payment)
 	badPayment.NewMissedProofOutputs = badOutputs
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadContractOutputCounts {
+	if !errors.Contains(err, ErrBadContractOutputCounts) {
 		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
 	}
 
@@ -75,7 +75,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badCurr := deepCopy(curr)
 	badCurr.NewWindowStart = curr.NewWindowStart - 1
 	err = verifyEAFundRevision(badCurr, payment, height, amount)
-	if err != ErrLateRevision {
+	if !errors.Contains(err, ErrLateRevision) {
 		t.Fatalf("Expected ErrLateRevision but received '%v'", err)
 	}
 
@@ -170,7 +170,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment.NewMissedProofOutputs = badOutputs
 	badPayment.NewRevisionNumber--
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadRevisionNumber {
+	if !errors.Contains(err, ErrBadRevisionNumber) {
 		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
 	}
 
@@ -178,7 +178,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.ParentID = types.FileContractID(hash)
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadParentID {
+	if !errors.Contains(err, ErrBadParentID) {
 		t.Fatalf("Expected ErrBadParentID but received '%v'", err)
 	}
 
@@ -186,7 +186,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.UnlockConditions.Timelock = payment.UnlockConditions.Timelock + 1
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadUnlockConditions {
+	if !errors.Contains(err, ErrBadUnlockConditions) {
 		t.Fatalf("Expected ErrBadUnlockConditions but received '%v'", err)
 	}
 
@@ -194,7 +194,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewFileSize = payment.NewFileSize + 1
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadFileSize {
+	if !errors.Contains(err, ErrBadFileSize) {
 		t.Fatalf("Expected ErrBadFileSize but received '%v'", err)
 	}
 
@@ -202,7 +202,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewFileMerkleRoot = hash
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadFileMerkleRoot {
+	if !errors.Contains(err, ErrBadFileMerkleRoot) {
 		t.Fatalf("Expected ErrBadFileMerkleRoot but received '%v'", err)
 	}
 
@@ -210,7 +210,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewWindowStart = curr.NewWindowStart + 1
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadWindowStart {
+	if !errors.Contains(err, ErrBadWindowStart) {
 		t.Fatalf("Expected ErrBadWindowStart but received '%v'", err)
 	}
 
@@ -218,7 +218,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewWindowEnd = curr.NewWindowEnd - 1
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadWindowEnd {
+	if !errors.Contains(err, ErrBadWindowEnd) {
 		t.Fatalf("Expected ErrBadWindowEnd but received '%v'", err)
 	}
 
@@ -226,7 +226,7 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewUnlockHash = types.UnlockHash(hash)
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
-	if err != ErrBadUnlockHash {
+	if !errors.Contains(err, ErrBadUnlockHash) {
 		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
 	}
 
@@ -234,9 +234,15 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	badCurr = deepCopy(curr)
 	badCurr.SetMissedHostPayout(payment.MissedHostPayout().Add64(1))
 	err = verifyEAFundRevision(badCurr, payment, height, amount)
-	if err != ErrLowHostMissedOutput {
+	if !errors.Contains(err, ErrLowHostMissedOutput) {
 		t.Fatalf("Expected ErrLowHostMissedOutput but received '%v'", err)
 	}
+
+	// NOTE: we don't trigger the last check in verifyEAFundRevision which makes
+	// sure that the payouts between the revisions match. This is due to the
+	// fact that the existing checks around the outputs are so tight, that they
+	// will trigger before the payout check does. This essentially makes the
+	// payout check redundant, but it's skill kept to be 100% sure.
 }
 
 // TestProcessPayment verifies the host's ProcessPayment method. It covers both
@@ -286,8 +292,14 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Error(err)
 		return
 	}
-	defer rStream.Close()
-	defer hStream.Close()
+	defer func() {
+		if err := rStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := hStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a refund account.
 	_, refundAccount := prepareAccount()
@@ -422,8 +434,14 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 		t.Error(err)
 		return
 	}
-	defer rStream.Close()
-	defer hStream.Close()
+	defer func() {
+		if err := rStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := hStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	var payment modules.PaymentDetails
 
@@ -469,8 +487,14 @@ func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 		t.Error(err)
 		return
 	}
-	defer rStream.Close()
-	defer hStream.Close()
+	defer func() {
+		if err := rStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := hStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = run(func() error {
 		// send PaymentRequest
@@ -676,6 +700,7 @@ func (s testStream) Write(b []byte) (n int, err error) { return s.c.Write(b) }
 func (s testStream) Close() error                      { return s.c.Close() }
 
 func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
+func (s testStream) Mux() *mux.Mux                  { panic("not implemented") }
 func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
 func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
 func (s testStream) SetPriority(priority int) error { panic("not implemented") }

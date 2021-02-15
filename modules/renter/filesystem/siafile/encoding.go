@@ -144,10 +144,10 @@ func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCod
 	parityPieces := int(binary.LittleEndian.Uint32(ecParams[4:]))
 	// Create correct erasure coder.
 	switch ecType {
-	case ECReedSolomon:
-		return NewRSCode(dataPieces, parityPieces)
-	case ECReedSolomonSubShards64:
-		return NewRSSubCode(dataPieces, parityPieces, 64)
+	case modules.ECReedSolomon:
+		return modules.NewRSCode(dataPieces, parityPieces)
+	case modules.ECReedSolomonSubShards64:
+		return modules.NewRSSubCode(dataPieces, parityPieces, 64)
 	default:
 		return nil, errors.New("unknown erasure code type")
 	}
@@ -185,7 +185,7 @@ func unmarshalPubKeyTable(raw []byte) (keys []HostPublicKey, err error) {
 	// Unmarshal the keys one by one until EOF or a different error occur.
 	for {
 		var key HostPublicKey
-		if err = key.UnmarshalSia(r); err == io.EOF {
+		if err = key.UnmarshalSia(r); errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
 			return nil, err

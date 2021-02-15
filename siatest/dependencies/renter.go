@@ -40,6 +40,19 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops"
 }
 
+// DependencyDisableRepairAndHealthLoopsMulti prevents the background loops for
+// repairs and updating directory metadata from running in multiple places. This
+// includes threadedUploadAndRepair, threadedStuckLoop, and
+// threadedUpdateRenterHealth
+type DependencyDisableRepairAndHealthLoopsMulti struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will prevent the repair and health loops from running
+func (d *DependencyDisableRepairAndHealthLoopsMulti) Disrupt(s string) bool {
+	return s == "DisableRepairAndHealthLoops" || s == "DisableLHCTCorrection"
+}
+
 // DependencyAddUnrepairableChunks will have the repair loop always add chunks
 // to the upload heap even if they are unrepairable
 type DependencyAddUnrepairableChunks struct {
@@ -119,4 +132,26 @@ func (d *DependencyHighMinHostScore) ForceHighMinHostScore(force bool) {
 	d.mu.Lock()
 	d.forcingHighMinScore = force
 	d.mu.Unlock()
+}
+
+// DependencySkipPrepareNextChunk skips the managedPrepareNextChunk step when
+// calling managedPushChunkForRepair.
+type DependencySkipPrepareNextChunk struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt forces an immediate timeout for DownloadByRoot projects.
+func (d *DependencySkipPrepareNextChunk) Disrupt(s string) bool {
+	return s == "skipPrepareNextChunk"
+}
+
+// DependencyIgnoreFailedRepairs ignores failed repairs and does not make the
+// file as stuck.
+type DependencyIgnoreFailedRepairs struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will ignore a failed repair.
+func (d *DependencyIgnoreFailedRepairs) Disrupt(s string) bool {
+	return s == "IgnoreFailedRepairs"
 }

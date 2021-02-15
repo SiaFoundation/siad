@@ -2,55 +2,42 @@ package siatest
 
 import (
 	"bytes"
-	"fmt"
 	"mime/multipart"
-	"net/textproto"
-	"os"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// AddMultipartFile is a helper function to add a file to the multipart form-
-// data. Note that the given data will be treated as binary data, and the multi
-// part's ContentType header will be set accordingly.
-func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
-	filemodeStr := fmt.Sprintf("%o", filemode)
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr)
-	part, err := w.CreatePart(partHeader)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = part.Write(filedata)
-	if err != nil {
-		panic(err)
-	}
-
-	metadata := modules.SkyfileSubfileMetadata{
-		Filename:    filename,
-		ContentType: "application/octet-stream",
-		FileMode:    os.FileMode(filemode),
-		Len:         uint64(len(filedata)),
-	}
-
-	if offset != nil {
-		metadata.Offset = *offset
-		*offset += metadata.Len
-	}
-
-	return metadata
+// TestFile is a small helper struct that identifies a file to be uploaded. The
+// upload helpers take a slice of these files to ensure order is maintained.
+type TestFile struct {
+	Name string
+	Data []byte
 }
 
-// UploadNewSkyfileBlocking attempts to upload a skyfile of given size. After it
-// has successfully performed the upload, it will verify the file can be
-// downloaded using its Skylink. Returns the skylink, the parameters used for
-// the upload and potentially an error.
-func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+// UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
+// data. After it has successfully performed the upload, it will verify the file
+// can be downloaded using its Skylink. Returns the skylink, the parameters used
+// for the upload and potentially an error.
+func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata []byte, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadNewEncryptedSkyfileBlocking(filename, filedata, "", force)
+}
+
+// UploadNewEncryptedSkyfileBlocking attempts to upload a skyfile. After it has
+// successfully performed the upload, it will verify the file can be downloaded
+// using its Skylink. Returns the skylink, the parameters used for the upload
+// and potentially an error.
+func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata []byte, skykeyName string, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, 2, force)
+}
+
+// UploadSkyfileCustom attempts to upload a skyfile. Returns the skylink, the
+// parameters used for the upload and potentially an error.
+func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -58,19 +45,17 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 		return
 	}
 
-	// create random data and wrap it in a reader
-	data := fastrand.Bytes(int(filesize))
-	reader := bytes.NewReader(data)
+	// wrap the data in a reader
+	reader := bytes.NewReader(filedata)
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             skyfilePath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     modules.DefaultFilePerm,
-		},
-		Reader: reader,
-		Force:  force,
-		Root:   false,
+		BaseChunkRedundancy: baseChunkRedundancy,
+		Filename:            filename,
+		Mode:                modules.DefaultFilePerm,
+		Reader:              reader,
+		Force:               force,
+		Root:                false,
+		SkykeyName:          skykeyName,
 	}
 
 	// upload a skyfile
@@ -87,10 +72,26 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 			return
 		}
 	}
-	rf := &RemoteFile{
-		checksum: crypto.HashBytes(data),
+	// Return the Remote File for callers to block for upload progress
+	rf = &RemoteFile{
+		checksum: crypto.HashBytes(filedata),
 		siaPath:  skyfilePath,
 		root:     true,
+	}
+	return
+}
+
+// UploadSkyfileBlockingCustom attempts to upload a skyfile. After it has
+// successfully performed the upload, it will verify the file can be downloaded
+// using its Skylink. Returns the skylink, the parameters used for the upload
+// and potentially an error.
+func (tn *TestNode) UploadSkyfileBlockingCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	// Upload the file
+	var rf *RemoteFile
+	skylink, sup, sshp, rf, err = tn.UploadSkyfileCustom(filename, filedata, skykeyName, baseChunkRedundancy, force)
+	if err != nil {
+		err = errors.AddContext(err, "Skyfile upload failed")
+		return
 	}
 
 	// Wait until upload reached the specified progress
@@ -108,14 +109,30 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 	return
 }
 
+// UploadNewSkyfileBlocking attempts to upload a skyfile of given size. After it
+// has successfully performed the upload, it will verify the file can be
+// downloaded using its Skylink. Returns the skylink, the parameters used for
+// the upload and potentially an error.
+func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	data := fastrand.Bytes(int(filesize))
+	return tn.UploadNewSkyfileWithDataBlocking(filename, data, force)
+}
+
 // UploadNewMultipartSkyfileBlocking uploads a multipart skyfile that
 // contains several files. After it has successfully performed the upload, it
 // will verify the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.
 // The `files` argument is a map of filepath->fileContent.
-// `defaultPath` is a pointer in order to represent the case in which the user
-// didn't specify it.
-func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map[string][]byte, defaultPath *string, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, "", skykey.SkykeyID{})
+}
+
+// UploadNewMultipartSkyfileEncryptedBlocking uploads a multipart skyfile that
+// contains several files. After it has successfully performed the upload, it
+// will verify if the file can be downloaded using its Skylink. Returns the
+// skylink, the parameters used for the upload and potentially an error.  The
+// `files` argument is a map of filepath->fileContent.
+func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -125,13 +142,16 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	subfiles := make(modules.SkyfileSubfiles)
+
 	// add the files
 	var offset uint64
-	for fname, fcontent := range files {
-		subfile := AddMultipartFile(writer, fcontent, "files[]", fname, modules.DefaultFilePerm, &offset)
-		subfiles[subfile.Filename] = subfile
+	for _, tf := range files {
+		_, err = modules.AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
+		if err != nil {
+			panic(err)
+		}
 	}
+
 	if err = writer.Close(); err != nil {
 		return
 	}
@@ -146,10 +166,11 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map
 		ContentType:         writer.FormDataContentType(),
 		Filename:            filename,
 		DefaultPath:         defaultPath,
+		DisableDefaultPath:  disableDefaultPath,
 	}
 
 	// upload a skyfile
-	skylink, sshp, err = tn.SkynetSkyfileMultiPartPost(sup)
+	skylink, sshp, err = tn.SkynetSkyfileMultiPartEncryptedPost(sup, skykeyName, skykeyID)
 	if err != nil {
 		err = errors.AddContext(err, "Failed to upload skyfile")
 		return
@@ -181,23 +202,4 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map
 	}
 
 	return
-}
-
-// escapeQuotes escapes the quotes in the given string.
-func escapeQuotes(s string) string {
-	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-	return quoteEscaper.Replace(s)
-}
-
-// createFormFileHeaders builds a header from the given params. These headers
-// are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode string) textproto.MIMEHeader {
-	fieldname = escapeQuotes(fieldname)
-	filename = escapeQuotes(filename)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", "application/octet-stream")
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
-	h.Set("mode", filemode)
-	return h
 }

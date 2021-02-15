@@ -119,3 +119,30 @@ func TestSiaWalletPassword(t *testing.T) {
 		t.Errorf("Expected wallet password to be %v but was %v", newPW, pw)
 	}
 }
+
+// TestSiaExchangeRate tests getting and setting the Sia Exchange Rate
+func TestSiaExchangeRate(t *testing.T) {
+	// Unset any defaults, this only affects in memory state. Any Env Vars will
+	// remain intact on disk
+	err := os.Unsetenv(siaExchangeRate)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Test Default
+	rate := ExchangeRate()
+	if rate != "" {
+		t.Errorf("Expected exchange rate to be blank but was %v", rate)
+	}
+
+	// Test Env Variable
+	newRate := "abc123"
+	err = os.Setenv(siaExchangeRate, newRate)
+	if err != nil {
+		t.Error(err)
+	}
+	rate = ExchangeRate()
+	if rate != newRate {
+		t.Errorf("Expected exchange rate to be %v but was %v", newRate, rate)
+	}
+}

@@ -10,7 +10,7 @@ import (
 )
 
 type (
-	// jobReadSector contains information about a hasSector query.
+	// jobReadSector contains information about a readSector query.
 	jobReadSector struct {
 		jobRead
 
@@ -45,26 +45,64 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	data, err := j.jobRead.managedRead(w, program, programData, cost)
-	return data, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	responses, err := j.jobRead.managedRead(w, program, programData, cost)
+	if err != nil {
+		return nil, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	}
+	data := responses[0].Output
+	proof := responses[0].Proof
+
+	// verify proof
+	proofStart := int(j.staticOffset) / crypto.SegmentSize
+	proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
+	if !crypto.VerifyRangeProof(data, proof, proofStart, proofEnd, j.staticSector) {
+		return nil, errors.New("proof verification failed")
+	}
+	return data, nil
+}
+
+// newJobReadSector creates a new read sector job.
+func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, respChan chan *jobReadResponse, root crypto.Hash, offset, length uint64) *jobReadSector {
+	return &jobReadSector{
+		jobRead: jobRead{
+			staticResponseChan: respChan,
+			staticLength:       length,
+
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadMetadata{
+				staticSectorRoot: root,
+				staticWorker:     w,
+			}),
+		},
+		staticOffset: offset,
+		staticSector: root,
+	}
+}
+
+// ReadSector is a helper method to run a ReadSector job with low priority on a
+// worker.
+func (w *worker) ReadSectorLowPrio(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+	readSectorRespChan := make(chan *jobReadResponse)
+	jro := w.newJobReadSector(ctx, w.staticJobLowPrioReadQueue, readSectorRespChan, root, offset, length)
+
+	// Add the job to the queue.
+	if !w.staticJobReadQueue.callAdd(jro) {
+		return nil, errors.New("worker unavailable")
+	}
+
+	// Wait for the response.
+	var resp *jobReadResponse
+	select {
+	case <-ctx.Done():
+		return nil, errors.New("Read interrupted")
+	case resp = <-readSectorRespChan:
+	}
+	return resp.staticData, resp.staticErr
 }
 
 // ReadSector is a helper method to run a ReadSector job on a worker.
 func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	readSectorRespChan := make(chan *jobReadResponse)
-	jro := &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: readSectorRespChan,
-			staticLength:       length,
-			jobGeneric: &jobGeneric{
-				staticCancelChan: ctx.Done(),
-
-				staticQueue: w.staticJobReadQueue,
-			},
-		},
-		staticOffset: offset,
-		staticSector: root,
-	}
+	jro := w.newJobReadSector(ctx, w.staticJobReadQueue, readSectorRespChan, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {

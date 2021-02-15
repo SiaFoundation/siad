@@ -19,6 +19,13 @@ const (
 	// HostSiaMuxSubscriberName is the name used by the host to register a
 	// listener on the SiaMux.
 	HostSiaMuxSubscriberName = "host"
+
+	// HostWALFile is the name of the file the host's wal is stored in.
+	HostWALFile = "host.wal"
+
+	// HostRegistryFile is the name of the file the host's registry is stored
+	// in.
+	HostRegistryFile = "registry.dat"
 )
 
 var (
@@ -38,6 +45,12 @@ var (
 	Hostv143PersistMetadata = persist.Metadata{
 		Header:  "Sia Host",
 		Version: "1.4.3",
+	}
+
+	// Hostv151PersistMetadata is the header of the v151 host persist file.
+	Hostv151PersistMetadata = persist.Metadata{
+		Header:  "Sia Host",
+		Version: "1.5.1",
 	}
 )
 
@@ -273,6 +286,9 @@ type (
 		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
+
+		CustomRegistryPath string `json:"customregistrypath"`
+		RegistrySize       uint64 `json:"registrysize"`
 	}
 
 	// HostNetworkMetrics reports the quantity of each type of RPC call that
@@ -408,6 +424,9 @@ type (
 		NetworkMetrics() HostNetworkMetrics
 
 		PaymentProcessor
+
+		// PriceTable returns the host's current price table.
+		PriceTable() RPCPriceTable
 
 		// PruneStaleStorageObligations will delete storage obligations from the
 		// host that, for whatever reason, did not make it on the block chain.

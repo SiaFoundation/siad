@@ -80,8 +80,9 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 	// If the host is not accepting contracts, the connection can be closed.
 	// The renter has been given enough information in the host settings to
 	// understand that the connection is going to be closed.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	if !settings.AcceptingContracts {
 		h.log.Debugln("Turning down contract because the host is not accepting contracts.")
@@ -180,7 +181,7 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
+		contractPrice:           settings.ContractPrice,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
@@ -188,7 +189,6 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      types.ZeroCurrency,
 		hostInitialRisk:         types.ZeroCurrency,
-		settings:                settings,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
@@ -309,7 +309,14 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 		registerHostInsufficientCollateral = true
 		return errCollateralBudgetExceeded
 	}
-
+	// Check that the total payouts match.
+	totalPayout, validPayout, missedPayout := fc.TotalPayout()
+	if !validPayout.Equals(missedPayout) {
+		return ErrInvalidPayoutSums
+	}
+	if !types.PostTax(blockHeight, totalPayout).Equals(validPayout) {
+		return ErrInvalidPayoutSums
+	}
 	// The unlock hash for the file contract must match the unlock hash that
 	// the host knows how to spend.
 	expectedUH := types.UnlockConditions{

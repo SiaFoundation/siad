@@ -1,13 +1,34 @@
+###############################################
+# Define stages of the CI
+###############################################
 stages:
   - lint
   - test
   - deploy
 
+###############################################
+# Define the package variables for the tests
+###############################################
 variables:
   legacy_pkgs: >-
     ./node
     ./node/api
     ./node/api/server
+  package_host_pkgs: >-
+    ./modules/host
+    ./modules/host/contractmanager
+    ./modules/host/mdm
+  package_renter_pkgs: >-
+    ./modules/renter
+    ./modules/renter/contractor
+    ./modules/renter/filesystem
+    ./modules/renter/filesystem/siafile
+    ./modules/renter/filesystem/siadir
+    ./modules/renter/hostdb
+    ./modules/renter/hostdb/hosttree
+    ./modules/renter/proto
+    ./modules/renter/skynetblocklist
+    ./modules/renter/skynetportals
   package_pkgs: >-
     ./build
     ./cmd/sia-node-scanner
@@ -21,22 +42,10 @@ variables:
     ./modules/explorer
     ./modules/feemanager
     ./modules/gateway
-    ./modules/host
-    ./modules/host/contractmanager
-    ./modules/host/mdm
-    ./modules/renter
-    ./modules/renter/contractor
-    ./modules/renter/filesystem
-    ./modules/renter/filesystem/siafile
-    ./modules/renter/filesystem/siadir
-    ./modules/renter/hostdb
-    ./modules/renter/hostdb/hosttree
-    ./modules/renter/proto
-    ./modules/renter/skynetblacklist
-    ./modules/renter/skynetportals
     ./modules/miner
     ./modules/wallet
     ./modules/transactionpool
+    ./profile
     ./persist
     ./sync
     ./skykey
@@ -57,12 +66,18 @@ variables:
     ./siatest/renter/contractor
     ./siatest/renter/hostdb
     ./siatest/renterhost
+  docker_hub_dev_hook: https://hub.docker.com/api/build/v1/source/57afb708-6926-411b-98fc-44c79f59097c/trigger/513a6d92-9f8b-4f04-b20a-ebd51b193b5d/call/
 
+###############################################
+# Define common stage parameters
+###############################################
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
   ## improvements.
-  image: golang:latest
+  image: nebulouslabs/sia-ci
   before_script:
+    - date
+    - go version
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
     - export GOPATH="$CI_PROJECT_DIR/.cache"
@@ -150,6 +165,13 @@ default: &default_params
   only:
    - schedules
 
+###############################################
+# Define specific stage parameters
+###############################################
+
+#################
+# Lint Stage
+#################
 lint:
   stage: lint
   cache:
@@ -157,22 +179,19 @@ lint:
     paths:
       - .cache
   script:
-    ## This is the recommended way to install golang-ci lint.
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.24.0
-    - apt-get update
-    - apt-get -y install python3-pip
-    - pip3 install codespell
-    - go get gitlab.com/NebulousLabs/analyze
-    - ./bin/golangci-lint run -c .golangci.yml ./...
+    - golangci-lint run -c .golangci.yml ./...
     - make lint-analyze
     - make markdown-spellcheck
     - make test
 
+#################
+# Build Stage
+#################
 build:
   stage: lint
   ## go 1.13 is the minimum accepted version for building Sia.
-  image: golang:1.13
+  image: nebulouslabs/sia-ci
   artifacts:
     name: "Binaries"
     paths:
@@ -180,6 +199,23 @@ build:
   script:
     - ./check-builds.sh
 
+#################
+# Deploy Stage
+#################
+deploy:
+  stage: deploy
+  script:
+    - curl -X POST -H "Content-Type:application/json" --data '{"name":"'"$CI_COMMIT_REF_NAME"'"}' $docker_hub_dev_hook
+  only:
+    - master
+
+############################
+# Linux Tests 
+############################
+
+#################
+# Legacy Test
+#################
 legacy-tests:
   <<: *default_test_params
   cache:
@@ -189,6 +225,27 @@ legacy-tests:
   script:
     - make test-long run=. pkgs="$legacy_pkgs"
 
+#################
+# Package Tests
+#################
+package-host-tests:
+  <<: *default_test_params
+  cache:
+    key: package-cache
+    paths:
+      - .cache
+  script:
+    - make test-long run=. pkgs="$package_host_pkgs"
+
+package-renter-tests:
+  <<: *default_test_params
+  cache:
+    key: package-cache
+    paths:
+      - .cache
+  script:
+    - make test-long run=. pkgs="$package_renter_pkgs"
+
 package-tests:
   <<: *default_test_params
   cache:
@@ -197,6 +254,10 @@ package-tests:
       - .cache
   script:
     - make test-long run=. pkgs="$package_pkgs"
+
+#################
+# Siatest Tests
+#################
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -228,6 +289,13 @@ siatest-renter-sub-tests:
     - apt-get install -y fuse
     - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
 
+############################
+# Nightly Tests 
+############################
+
+#################
+# Legacy Test
+#################
 legacy-tests-nightly:
   <<: *default_nightly_params
   script:
@@ -238,6 +306,31 @@ legacy-windows-tests-nightly:
   <<: *default_nightly_windows_params
   script:
     - make test-vlong run=. pkgs="$legacy_pkgs"
+
+#################
+# Package Test
+#################
+package-host-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$package_host_pkgs"
+
+# Windows execution
+package-host-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong run=. pkgs="$package_host_pkgs"
+
+package-renter-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$package_renter_pkgs"
+
+# Windows execution
+package-renter-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong run=. pkgs="$package_renter_pkgs"
 
 package-tests-nightly:
   <<: *default_nightly_params
@@ -250,6 +343,9 @@ package-windows-tests-nightly:
   script:
     - make test-vlong run=. pkgs="$package_pkgs"
 
+#################
+# Siatest Test
+#################
 siatest-tests-nightly:
   <<: *default_nightly_params
   script:
@@ -286,3 +382,21 @@ siatest-renter-sub-windows-tests-nightly:
   <<: *default_nightly_windows_params
   script:
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+
+############################
+# Antfarm Tests 
+############################
+# TODO:
+# Enable antfarm test triger when the following permission issue is fixed:
+# https://gitlab.com/gitlab-org/gitlab/-/issues/299433
+# Updates to master and nightly schedule pipelines will trigger Sia Antfarm
+# version tests
+# antfarm-version-tests:
+#   stage: test
+#   trigger:
+#     project: NebulousLabs/Sia-Ant-Farm
+#     # strategy: depend
+#   variables:
+#     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+#   only:
+#     - master

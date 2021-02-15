@@ -12,12 +12,17 @@ package renter
 // lru, and cause data fetches to be evicted before they become useful.
 
 import (
+	"context"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 const (
@@ -51,6 +56,37 @@ var (
 		Standard: uint64(1 << 25), // 32 MiB
 		Testing:  uint64(1 << 8),  // 256 bytes
 	}).(uint64)
+
+	// keepOldBuffersDuration specifies how long a stream buffer will stay in
+	// the buffer set after the final stream is closed. This gives some buffer
+	// time for a new request to the same resource, without having the data
+	// source fully cleared out. This optimization is particularly useful for
+	// certain video players and web applications.
+	keepOldBuffersDuration = build.Select(build.Var{
+		Dev:      time.Second * 15,
+		Standard: time.Second * 60,
+		Testing:  time.Second * 2,
+	}).(time.Duration)
+
+	// minimumLookahead defines the minimum amount that the stream will fetch
+	// ahead of the current seek position in a stream.
+	//
+	// Note that there is a throughput vs. latency tradeoff here. The maximum
+	// speed of a stream has an upper bound of the lookahead / latency. So if it
+	// takes 1 second to fetch data and the lookahead is 2 MB, the maximum speed
+	// of a single stream is going to be 2 MB/s. When Sia is healthy, the
+	// latency on a fetch should be under 200ms, which means with a 2 MB
+	// lookahead a single stream should be able to do more than 10 MB/s.
+	//
+	// A smaller minimum lookahead means that less data is being buffered
+	// simultaneously, so seek times should be lower. A smaller minimum
+	// lookahead becomes less important if we get some way to ensure the earlier
+	// parts are prioritized, but we don't have control over that at the moment.
+	minimumLookahead = build.Select(build.Var{
+		Dev:      uint64(1 << 21), // 2 MiB
+		Standard: uint64(1 << 21), // 2 MiB
+		Testing:  uint64(1 << 6),  // 64 bytes
+	}).(uint64)
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
@@ -65,7 +101,13 @@ type streamBufferDataSource interface {
 	// ID returns the ID of the data source. This should be unique to the data
 	// source - that is, every data source that returns the same ID should have
 	// identical data and be fully interchangeable.
-	ID() streamDataSourceID
+	ID() modules.DataSourceID
+
+	// Metadata returns the Skyfile metadata of a data source.
+	Metadata() modules.SkyfileMetadata
+
+	// Layout returns the Skyfile layout of a data source.
+	Layout() modules.SkyfileLayout
 
 	// RequestSize should return the request size that the dataSource expects
 	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
@@ -87,13 +129,18 @@ type streamBufferDataSource interface {
 	// if the closing fails.
 	SilentClose()
 
-	// ReaderAt allows the stream buffer to request specific data chunks.
-	io.ReaderAt
+	// ReadStream allows the stream buffer to request specific data chunks from
+	// the data source. It returns a channel containing a read response.
+	ReadStream(context.Context, uint64, uint64, types.Currency) chan *readResponse
 }
 
-// streamDataSourceID is a type safe crypto.Hash which is used to uniquely
-// identify data sources for streams.
-type streamDataSourceID crypto.Hash
+// readResponse is a helper struct that is returned when reading from the data
+// source. It contains the data being downloaded and an error in case of
+// failure.
+type readResponse struct {
+	staticData []byte
+	staticErr  error
+}
 
 // dataSection represents a section of data from a data source. The data section
 // includes a refcount of how many different streams have the data in their LRU.
@@ -126,9 +173,14 @@ type stream struct {
 
 	mu                 sync.Mutex
 	staticStreamBuffer *streamBuffer
+	staticCtx          context.Context
+	staticCancel       context.CancelFunc
 }
 
 // streamBuffer is a buffer for a single dataSource.
+//
+// The streamBuffer uses a threadgroup to ensure that it does not call ReadAt
+// after calling SilentClose.
 type streamBuffer struct {
 	dataSections map[uint64]*dataSection
 
@@ -138,26 +190,31 @@ type streamBuffer struct {
 	externRefCount uint64
 
 	mu                    sync.Mutex
+	staticTG              threadgroup.ThreadGroup
 	staticDataSize        uint64
 	staticDataSource      streamBufferDataSource
 	staticDataSectionSize uint64
 	staticStreamBufferSet *streamBufferSet
-	staticStreamID        streamDataSourceID
+	staticStreamID        modules.DataSourceID
+	staticPricePerMS      types.Currency
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
 // When a new stream is created, the stream buffer set is referenced to check
 // whether another stream using the same data source already exists.
 type streamBufferSet struct {
-	streams map[streamDataSourceID]*streamBuffer
+	streams map[modules.DataSourceID]*streamBuffer
 
-	mu sync.Mutex
+	staticTG *threadgroup.ThreadGroup
+	mu       sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
-func newStreamBufferSet() *streamBufferSet {
+func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 	return &streamBufferSet{
-		streams: make(map[streamDataSourceID]*streamBuffer),
+		streams: make(map[modules.DataSourceID]*streamBuffer),
+
+		staticTG: tg,
 	}
 }
 
@@ -175,7 +232,7 @@ func newStreamBufferSet() *streamBufferSet {
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64) *stream {
+func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -188,6 +245,7 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 			staticDataSize:        dataSource.DataSize(),
 			staticDataSource:      dataSource,
 			staticDataSectionSize: dataSource.RequestSize(),
+			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
 		}
@@ -199,41 +257,77 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout)
+}
 
-	// Determine how many data sections the stream should cache.
-	dataSectionsToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
-	if dataSectionsToCache < minimumDataSections {
-		dataSectionsToCache = minimumDataSections
+// callNewStreamFromID will check the stream buffer set to see if a stream
+// buffer exists for the given data source id. If so, a new stream will be
+// created using the data source, and the bool will be set to 'true'. Otherwise,
+// the stream returned will be nil and the bool will be set to 'false'.
+func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
+	sbs.mu.Lock()
+	streamBuf, exists := sbs.streams[id]
+	if !exists {
+		sbs.mu.Unlock()
+		return nil, false
 	}
-
-	// Create a stream that points to the stream buffer.
-	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, streamBuf),
-		offset: initialOffset,
-
-		staticStreamBuffer: streamBuf,
-	}
-	stream.prepareOffset()
-	return stream
+	streamBuf.externRefCount++
+	sbs.mu.Unlock()
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout), true
 }
 
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
-func (ds *dataSection) managedData() ([]byte, error) {
-	<-ds.dataAvailable
+func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
+	select {
+	case <-ds.dataAvailable:
+	case <-ctx.Done():
+		return nil, errors.New("could not get data from data section, context timed out")
+	}
 	return ds.externData, ds.externErr
 }
 
 // Close will release all of the resources held by a stream.
+//
+// Before removing the stream, this function will sleep for some time. This is
+// specifically to address the use case where an application may be using the
+// same file or resource continuously, but doing so by repeatedly opening new
+// connections to siad rather than keeping a single stable connection. Some
+// video players do this. On Skynet, most javascript applications do this, as
+// the javascript application does not realize that multiple files within the
+// app are all part of the same resource. This sleep here to delay the release
+// of a resource substantially improves performance in practice, in many cases
+// causing a 4x reduction in response latency.
 func (s *stream) Close() error {
-	// Drop all nodes from the lru.
-	s.lru.callEvictAll()
+	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
+		// Convenience variables.
+		sb := s.staticStreamBuffer
+		sbs := sb.staticStreamBufferSet
+		// Keep the memory for a while after closing.
+		sbs.staticTG.Sleep(keepOldBuffersDuration)
 
-	// Remove the stream from the streamBuffer.
-	streamBuf := s.staticStreamBuffer
-	streamBufSet := streamBuf.staticStreamBufferSet
-	streamBufSet.managedRemoveStream(streamBuf)
+		// Drop all nodes from the lru.
+		s.lru.callEvictAll()
+
+		// Remove the stream from the streamBuffer.
+		sbs.managedRemoveStream(sb)
+
+		// Cancel the stream's context
+		if s.staticCancel != nil {
+			s.staticCancel()
+		}
+	})
 	return nil
+}
+
+// Metadata returns the skyfile metadata associated with this stream.
+func (s *stream) Metadata() modules.SkyfileMetadata {
+	return s.staticStreamBuffer.staticDataSource.Metadata()
+}
+
+// Layout returns the skyfile layout associated with this stream.
+func (s *stream) Layout() modules.SkyfileLayout {
+	return s.staticStreamBuffer.staticDataSource.Layout()
 }
 
 // Read will read data into 'b', returning the number of bytes read and any
@@ -285,7 +379,7 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Block until the data is available.
-	data, err := dataSection.managedData()
+	data, err := dataSection.managedData(s.staticCtx)
 	if err != nil {
 		return 0, errors.AddContext(err, "read call failed because data section fetch failed")
 	}
@@ -350,10 +444,20 @@ func (s *stream) prepareOffset() {
 	index := s.offset / dataSectionSize
 	s.lru.callUpdate(index)
 
-	// If there is a following data section, update that as well.
+	// If there is a following data section, update that as well. This update is
+	// done regardless of the minimumLookahead, we always want to buffer at
+	// least one more piece than the current piece.
 	nextIndex := index + 1
 	if nextIndex*dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
+	}
+
+	// Keep adding more pieces to the buffer until we have buffered at least
+	// minimumLookahead total data or have reached the end of the stream.
+	nextIndex++
+	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
+		s.lru.callUpdate(nextIndex)
+		nextIndex++
 	}
 }
 
@@ -393,6 +497,36 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 	}
 }
 
+// managedPrepareNewStream creates a new stream from an existing stream buffer.
+// The ref count for the buffer needs to be incremented under the
+// streamBufferSet lock, before this method is called.
+func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration) *stream {
+	// Determine how many data sections the stream should cache.
+	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
+	if dataSectionsToCache < minimumDataSections {
+		dataSectionsToCache = minimumDataSections
+	}
+
+	// Create a context for the stream
+	ctx := sb.staticTG.StopCtx()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(sb.staticTG.StopCtx(), timeout)
+	}
+
+	// Create a stream that points to the stream buffer.
+	stream := &stream{
+		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
+		offset: initialOffset,
+
+		staticCtx:          ctx,
+		staticCancel:       cancel,
+		staticStreamBuffer: sb,
+	}
+	stream.prepareOffset()
+	return stream
+}
+
 // newDataSection will create a new data section for the streamBuffer and spin
 // up a goroutine to pull the data from the data source.
 func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
@@ -422,11 +556,26 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
-		_, err := sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
+		defer close(ds.dataAvailable)
+
+		// Ensure that the streambuffer has not closed.
+		err := sb.staticTG.Add()
 		if err != nil {
-			ds.externErr = errors.AddContext(err, "data section fetch failed")
+			ds.externErr = errors.AddContext(err, "stream buffer has been shut down")
+			return
 		}
-		close(ds.dataAvailable)
+		defer sb.staticTG.Done()
+
+		// Grab the data from the data source.
+		responseChan := sb.staticDataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
+
+		select {
+		case response := <-responseChan:
+			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
+			ds.externData = response.staticData
+		case <-sb.staticTG.StopChan():
+			ds.externErr = errors.New("failed to read response from ReadStream")
+		}
 	}()
 	return ds
 }
@@ -439,17 +588,21 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 // stream buffer set because the stream buffer needs to be deleted from the
 // stream buffer set simultaneously with the reference counter reaching zero.
 func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
-
 	// Decrement the refcount of the streamBuffer.
+	sbs.mu.Lock()
 	sb.externRefCount--
 	if sb.externRefCount > 0 {
 		// streamBuffer still in use, nothing to do.
+		sbs.mu.Unlock()
 		return
 	}
-
-	// Close out the streamBuffer and its data source.
 	delete(sbs.streams, sb.staticStreamID)
+	sbs.mu.Unlock()
+
+	// Close out the streamBuffer and its data source. Calling Stop() will block
+	// any new calls to ReadAt from executing, and will block until all existing
+	// calls are completed. This prevents any issues that could be caused by the
+	// data source being accessed after it has been closed.
+	sb.staticTG.Stop()
 	sb.staticDataSource.SilentClose()
 }

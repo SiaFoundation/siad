@@ -1,10 +1,11 @@
 package consensus
 
 import (
-	"errors"
+	"bytes"
 	"math/big"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -24,6 +25,7 @@ var (
 	errUnfinishedFileContract     = errors.New("file contract window has not yet openend")
 	errUnrecognizedFileContractID = errors.New("cannot fetch storage proof segment for unknown file contract")
 	errWrongUnlockConditions      = errors.New("transaction contains incorrect unlock conditions")
+	errUnsignedFoundationUpdate   = errors.New("transaction contains an Foundation UnlockHash update with missing or invalid signatures")
 )
 
 // validSiacoins checks that the siacoin inputs and outputs are valid in the
@@ -233,13 +235,8 @@ func validFileContractRevisions(tx *bolt.Tx, t types.Transaction) error {
 
 		// Check that the payout of the revision matches the payout of the
 		// original, and that the payouts match each other.
-		var validPayout, missedPayout, oldPayout types.Currency
-		for _, output := range fcr.NewValidProofOutputs {
-			validPayout = validPayout.Add(output.Value)
-		}
-		for _, output := range fcr.NewMissedProofOutputs {
-			missedPayout = missedPayout.Add(output.Value)
-		}
+		validPayout, missedPayout := fcr.TotalPayout()
+		var oldPayout types.Currency
 		for _, output := range fc.ValidProofOutputs {
 			oldPayout = oldPayout.Add(output.Value)
 		}
@@ -281,12 +278,57 @@ func validSiafunds(tx *bolt.Tx, t types.Transaction) (err error) {
 	return
 }
 
+// validArbitraryData checks that the ArbitraryData portions of the transaction are
+// valid in the context of the consensus set. Currently, only ArbitraryData with
+// the types.SpecifierFoundation prefix is examined.
+func validArbitraryData(tx *bolt.Tx, t types.Transaction, currentHeight types.BlockHeight) error {
+	if currentHeight < types.FoundationHardforkHeight {
+		return nil
+	}
+	for _, arb := range t.ArbitraryData {
+		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
+			// NOTE: (Transaction).StandaloneValid ensures that the update is correctly encoded.
+			if !foundationUpdateIsSigned(tx, t) {
+				return errUnsignedFoundationUpdate
+			}
+		}
+	}
+	return nil
+}
+
+// foundationUpdateIsSigned checks that the transaction has a signature that
+// covers a SiacoinInput controlled by the primary or failsafe UnlockHash. To
+// minimize surface area, the signature must cover the whole transaction.
+//
+// This function does not actually validate the signature. By the time
+// foundationUpdateIsSigned is called, all of the transaction's signatures have
+// already been validated by StandaloneValid.
+func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction) bool {
+	primary, failsafe := getFoundationUnlockHashes(tx)
+	for _, sci := range t.SiacoinInputs {
+		// NOTE: this conditional is split up to better visualize test coverage
+		if uh := sci.UnlockConditions.UnlockHash(); uh != primary {
+			if uh != failsafe {
+				continue
+			}
+		}
+		// Locate the corresponding signature.
+		for _, sig := range t.TransactionSignatures {
+			if sig.ParentID == crypto.Hash(sci.ParentID) && sig.CoveredFields.WholeTransaction {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // validTransaction checks that all fields are valid within the current
 // consensus state. If not an error is returned.
 func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 	// StandaloneValid will check things like signatures and properties that
 	// should be inherent to the transaction. (storage proof rules, etc.)
-	err := t.StandaloneValid(blockHeight(tx))
+	currentHeight := blockHeight(tx)
+	err := t.StandaloneValid(currentHeight)
 	if err != nil {
 		return err
 	}
@@ -306,6 +348,10 @@ func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 		return err
 	}
 	err = validSiafunds(tx, t)
+	if err != nil {
+		return err
+	}
+	err = validArbitraryData(tx, t, currentHeight)
 	if err != nil {
 		return err
 	}
@@ -341,15 +387,17 @@ func (cs *ConsensusSet) tryTransactionSet(txns []types.Transaction) (modules.Con
 		}
 		return errSuccess
 	})
-	if err != errSuccess {
+	if !errors.Contains(err, errSuccess) {
 		return modules.ConsensusChange{}, err
 	}
 	cc := modules.ConsensusChange{
-		SiacoinOutputDiffs:        diffHolder.SiacoinOutputDiffs,
-		FileContractDiffs:         diffHolder.FileContractDiffs,
-		SiafundOutputDiffs:        diffHolder.SiafundOutputDiffs,
-		DelayedSiacoinOutputDiffs: diffHolder.DelayedSiacoinOutputDiffs,
-		SiafundPoolDiffs:          diffHolder.SiafundPoolDiffs,
+		ConsensusChangeDiffs: modules.ConsensusChangeDiffs{
+			SiacoinOutputDiffs:        diffHolder.SiacoinOutputDiffs,
+			FileContractDiffs:         diffHolder.FileContractDiffs,
+			SiafundOutputDiffs:        diffHolder.SiafundOutputDiffs,
+			DelayedSiacoinOutputDiffs: diffHolder.DelayedSiacoinOutputDiffs,
+			SiafundPoolDiffs:          diffHolder.SiafundPoolDiffs,
+		},
 	}
 	return cc, nil
 }

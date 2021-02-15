@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -50,14 +51,14 @@ func TestTwofishEncryption(t *testing.T) {
 		t.Fatal("Expecting failed authentication err", err)
 	}
 	_, err = key.DecryptBytes(ciphertext[:10])
-	if err != ErrInsufficientLen {
+	if !errors.Contains(err, ErrInsufficientLen) {
 		t.Error("Expecting ErrInsufficientLen:", err)
 	}
 
 	// Try to trigger a panic or error with nil values.
 	key.EncryptBytes(nil)
 	_, err = key.DecryptBytes(nil)
-	if err != ErrInsufficientLen {
+	if !errors.Contains(err, ErrInsufficientLen) {
 		t.Error("Expecting ErrInsufficientLen:", err)
 	}
 }

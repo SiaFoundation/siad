@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Wallet tester contains a ConsensusTester and has a bunch of helpful
@@ -159,15 +160,15 @@ func TestNilInputs(t *testing.T) {
 
 	wdir := filepath.Join(testdir, modules.WalletDir)
 	_, err = New(cs, nil, wdir)
-	if err != errNilTpool {
+	if !errors.Contains(err, errNilTpool) {
 		t.Error(err)
 	}
 	_, err = New(nil, tp, wdir)
-	if err != errNilConsensusSet {
+	if !errors.Contains(err, errNilConsensusSet) {
 		t.Error(err)
 	}
 	_, err = New(nil, nil, wdir)
-	if err != errNilConsensusSet {
+	if !errors.Contains(err, errNilConsensusSet) {
 		t.Error(err)
 	}
 }
@@ -182,7 +183,11 @@ func TestAllAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	wt.wallet.keys[types.UnlockHash{1}] = spendableKey{}
 	wt.wallet.keys[types.UnlockHash{5}] = spendableKey{}
@@ -239,7 +244,11 @@ func TestRescanning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// A fresh wallet should not be rescanning.
 	rescanning, err := wt.wallet.Rescanning()
@@ -251,7 +260,10 @@ func TestRescanning(t *testing.T) {
 	}
 
 	// lock the wallet
-	wt.wallet.Lock()
+	err = wt.wallet.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// spawn an unlock goroutine
 	errChan := make(chan error)
@@ -298,7 +310,11 @@ func TestLookaheadGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check if number of future keys is correct
 	wt.wallet.mu.RLock()
@@ -320,8 +336,14 @@ func TestLookaheadGeneration(t *testing.T) {
 	}
 
 	// Lock and unlock
-	wt.wallet.Lock()
-	wt.wallet.Unlock(wt.walletMasterKey)
+	err = wt.wallet.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.wallet.Unlock(wt.walletMasterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	wt.wallet.mu.RLock()
 	progress, err = dbGetPrimarySeedProgress(wt.wallet.dbTx)
@@ -356,7 +378,11 @@ func TestAdvanceLookaheadNoRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	builder, err := wt.wallet.StartTransaction()
 	if err != nil {
@@ -431,11 +457,17 @@ func TestAdvanceLookaheadForceRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine blocks without payouts so that the balance stabilizes
 	for i := types.BlockHeight(0); i < types.MaturityDelay; i++ {
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Get the current progress and balance
@@ -479,7 +511,9 @@ func TestAdvanceLookaheadForceRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 	newBal, _, _, err := wt.wallet.ConfirmedBalance()
 	if err != nil {
 		t.Fatal(err)
@@ -528,7 +562,9 @@ func TestAdvanceLookaheadForceRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Allow the wallet rescan to finish
 	time.Sleep(time.Second * 2)
@@ -568,7 +604,11 @@ func TestDistantWallets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create another wallet with the same seed.
 	w2, err := New(wt.cs, wt.tpool, build.TempDir(modules.WalletDir, t.Name()+"2", modules.WalletDir))
@@ -591,7 +631,9 @@ func TestDistantWallets(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// The second wallet's balance should update accordingly.
@@ -632,7 +674,9 @@ func TestDistantWallets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 
 	if newBal, _, _, err := w2.ConfirmedBalance(); !newBal.Equals(w2bal.Sub(value)) {
 		if err != nil {

@@ -13,6 +13,7 @@ package renter
 
 import (
 	"container/heap"
+	"context"
 	"io"
 	"os"
 	"sync/atomic"
@@ -70,7 +71,7 @@ func (r *Renter) managedAcquireMemoryForDownloadChunk(udc *unfinishedDownloadChu
 	// go over the memory limits when we decode pieces.
 	memoryRequired := uint64(udc.staticOverdrive+udc.erasureCode.MinPieces()) * udc.staticPieceSize
 	udc.memoryAllocated = memoryRequired
-	return r.memoryManager.Request(memoryRequired, memoryPriorityHigh)
+	return udc.staticMemoryManager.Request(context.Background(), memoryRequired, memoryPriorityHigh)
 }
 
 // managedAddChunkToDownloadHeap will add a chunk to the download heap in a
@@ -130,7 +131,7 @@ func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownload
 	udc.workersRemaining = len(r.staticWorkerPool.workers)
 	udc.mu.Unlock()
 	for _, worker := range r.staticWorkerPool.workers {
-		worker.callQueueDownloadChunk(udc)
+		go worker.threadedPerformDownloadChunkJob(udc)
 	}
 	r.staticWorkerPool.mu.RUnlock()
 
@@ -214,7 +215,11 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	}
 	go func() (success bool) {
 		defer r.tg.Done()
-		defer file.Close()
+		defer func() {
+			if err := file.Close(); err != nil {
+				r.log.Println("WARN: error closing file after download served from disk:", err)
+			}
+		}()
 		// Try downloading if serving from disk failed.
 		defer func() {
 			if success {

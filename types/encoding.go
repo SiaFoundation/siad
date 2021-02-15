@@ -18,14 +18,14 @@ import (
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (b Block) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
-	e.Write(b.ParentID[:])
-	e.Write(b.Nonce[:])
-	e.WriteUint64(uint64(b.Timestamp))
-	e.WriteInt(len(b.MinerPayouts))
+	_, _ = e.Write(b.ParentID[:])
+	_, _ = e.Write(b.Nonce[:])
+	_ = e.WriteUint64(uint64(b.Timestamp))
+	_ = e.WriteInt(len(b.MinerPayouts))
 	for i := range b.MinerPayouts {
 		b.MinerPayouts[i].MarshalSia(e)
 	}
-	e.WriteInt(len(b.Transactions))
+	_ = e.WriteInt(len(b.Transactions))
 	for i := range b.Transactions {
 		if err := b.Transactions[i].MarshalSia(e); err != nil {
 			return err
@@ -591,6 +591,20 @@ func (spk SiaPublicKey) String() string {
 	return spk.Algorithm.String() + ":" + hex.EncodeToString(spk.Key)
 }
 
+// ShortString is a convenience function that returns a representation of the
+// public key that can be used for logging or debugging. It returns the
+// first 16 bytes of the actual key hex encoded.
+//
+// NOTE: this function should only be used for testing and/or debugging
+// purposes, do not use this key representation as key in a map for instance.
+func (spk SiaPublicKey) ShortString() string {
+	// if the key is empty, return the empty string
+	if spk.Key == nil {
+		return ""
+	}
+	return hex.EncodeToString(spk.Key[:16])
+}
+
 // UnmarshalJSON unmarshals a SiaPublicKey as JSON.
 func (spk *SiaPublicKey) UnmarshalJSON(b []byte) error {
 	spk.LoadString(string(bytes.Trim(b, `"`)))
@@ -615,7 +629,7 @@ func (s Specifier) MarshalJSON() ([]byte, error) {
 
 // String returns the specifier as a string, trimming any trailing zeros.
 func (s Specifier) String() string {
-	return string(bytes.TrimRight(s[:], string(0)))
+	return string(bytes.TrimRight(s[:], RuneToString(0)))
 }
 
 // UnmarshalJSON decodes the json string of the specifier.

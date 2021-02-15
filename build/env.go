@@ -16,4 +16,8 @@ var (
 	// siaWalletPassword is the environment variable that can be set to enable
 	// auto unlocking the wallet
 	siaWalletPassword = "SIA_WALLET_PASSWORD"
+
+	// siaExchangeRate is the environment variable that can be set to
+	// show amounts (additionally) in a different currency
+	siaExchangeRate = "SIA_EXCHANGE_RATE"
 )

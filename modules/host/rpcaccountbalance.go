@@ -13,7 +13,7 @@ func (h *Host) managedRPCAccountBalance(stream siamux.Stream) error {
 	// read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read price table")
+		return errors.AddContext(err, "failed to read price table")
 	}
 
 	// Process payment.

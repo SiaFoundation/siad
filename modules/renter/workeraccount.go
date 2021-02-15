@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,14 +18,13 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (
-	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
-	// remains spendable after it has been created. Together with the current block
-	// height at time of creation, this period makes up the WithdrawalMessage's
-	// expiry height.
+	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
+	// message remains spendable after it has been created. Together with the
+	// current block height at time of creation, this period makes up the
+	// WithdrawalMessage's expiry height.
 	withdrawalValidityPeriod = 6
 
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
@@ -73,7 +74,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
-		Testing:  20 * time.Second, // needs to be long even in testing
+		Testing:  5 * time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )
 
@@ -93,11 +94,10 @@ type (
 		pendingWithdrawals types.Currency
 		pendingDeposits    types.Currency
 
-		// Error handling and cooldown tracking.
-		consecutiveFailures uint64
-		cooldownUntil       time.Time
-		recentErr           error
-		recentErrTime       time.Time
+		// Error tracking.
+		recentErr         error
+		recentErrTime     time.Time
+		recentSuccessTime time.Time
 
 		// syncAt defines what time the renter should be syncing the account to
 		// the host.
@@ -132,7 +132,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.Writer, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -289,23 +289,12 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
-// managedIncrementCooldown increments the consecutive failures and registers
-// the given error as most recent error, putting the account on cooldown.
-func (a *account) managedIncrementCooldown(err error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cooldownUntil = cooldownUntil(a.consecutiveFailures)
-	a.consecutiveFailures++
-	a.recentErr = err
-	a.recentErrTime = time.Now()
-}
+// managedNeedsToRefill returns whether or not the account needs to be refilled.
+func (a *account) managedNeedsToRefill(target types.Currency) bool {
 
-// managedOnCooldown returns true if the account is on cooldown and therefore
-// unlikely to receive additional funding in the near future.
-func (a *account) managedOnCooldown() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.cooldownUntil.After(time.Now())
+	return a.availableBalance().Cmp(target) < 0
 }
 
 // managedResetBalance sets the given balance and resets the account's balance
@@ -334,14 +323,9 @@ func (a *account) managedStatus() modules.WorkerAccountStatus {
 		AvailableBalance: a.availableBalance(),
 		NegativeBalance:  a.negativeBalance,
 
-		Funded: !a.availableBalance().IsZero(),
-
-		OnCoolDown:          a.cooldownUntil.After(time.Now()),
-		OnCoolDownUntil:     a.cooldownUntil,
-		ConsecutiveFailures: a.consecutiveFailures,
-
-		RecentErr:     recentErrStr,
-		RecentErrTime: a.recentErrTime,
+		RecentErr:         recentErrStr,
+		RecentErrTime:     a.recentErrTime,
+		RecentSuccessTime: a.recentSuccessTime,
 	}
 }
 
@@ -375,194 +359,6 @@ func newWithdrawalMessage(id modules.AccountID, amount types.Currency, blockHeig
 	}
 }
 
-// managedAccountNeedsRefill will check whether the worker's account needs to be
-// refilled. This function will return false if any conditions are met which
-// are likely to prevent the refill from being successful.
-func (w *worker) managedAccountNeedsRefill() bool {
-	// Check if the host version is compatible with accounts.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		return false
-	}
-	// Check if the price table is valid.
-	if !w.staticPriceTable().staticValid() {
-		return false
-	}
-	// Check if the account is synced.
-	if w.managedNeedsToSyncAccountToHost() {
-		return false
-	}
-
-	// Check if there is a cooldown in place, and check if the balance is low
-	// enough to justify a refill.
-	w.staticAccount.mu.Lock()
-	cooldownUntil := w.staticAccount.cooldownUntil
-	balance := w.staticAccount.availableBalance()
-	w.staticAccount.mu.Unlock()
-	if time.Now().Before(cooldownUntil) {
-		return false
-	}
-	refillAt := w.staticBalanceTarget.Div64(2)
-	if balance.Cmp(refillAt) >= 0 {
-		return false
-	}
-
-	// A refill is needed.
-	return true
-}
-
-// managedRefillAccount will refill the account if it needs to be refilled
-func (w *worker) managedRefillAccount() {
-	if w.renter.deps.Disrupt("DisableFunding") {
-		return // don't refill account
-	}
-	// The account balance dropped to below half the balance target, refill. Use
-	// the max expected balance when refilling to avoid exceeding any host
-	// maximums.
-	balance := w.staticAccount.managedMaxExpectedBalance()
-	amount := w.staticBalanceTarget.Sub(balance)
-
-	// We track that there is a deposit in progress. Because filling an account
-	// is an interactive protocol with another machine, we are never sure of the
-	// exact moment that the deposit has reached our account. Instead, we track
-	// the deposit as a "maybe" until we know for sure that the deposit has
-	// either reached the remote machine or failed.
-	//
-	// At the same time that we track the deposit, we defer a function to check
-	// the error on the deposit
-	w.staticAccount.managedTrackDeposit(amount)
-	var err error
-	defer func() {
-		// If there was no error, the account should now be full, and will not
-		// need to be refilled until the worker has spent up the funds in the
-		// account.
-		w.staticAccount.managedCommitDeposit(amount, err == nil)
-		if err == nil {
-			return
-		}
-
-		// If the error is not nil, increment the cooldown.
-		w.staticAccount.managedIncrementCooldown(err)
-
-		// If the error could be caused by a revision number mismatch,
-		// signal it by setting the flag.
-		if errCausedByRevisionMismatch(err) {
-			w.staticSetSuspectRevisionMismatch()
-			w.staticWake()
-		}
-
-		// Have the threadgroup wake the worker when the account comes off of
-		// cooldown.
-		w.staticAccount.mu.Lock()
-		cd := w.staticAccount.cooldownUntil
-		w.staticAccount.mu.Unlock()
-		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
-			w.staticWake()
-		})
-	}()
-
-	// check the current price table for gouging errors
-	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
-	if err != nil {
-		return
-	}
-
-	// create a new stream
-	var stream siamux.Stream
-	stream, err = w.staticNewStream()
-	if err != nil {
-		err = errors.AddContext(err, "Unable to create a new stream")
-		return
-	}
-	defer func() {
-		closeErr := stream.Close()
-		if closeErr != nil {
-			w.renter.log.Println("ERROR: failed to close stream", closeErr)
-		}
-	}()
-
-	// prepare a buffer so we can optimize our writes
-	buffer := bytes.NewBuffer(nil)
-
-	// write the specifier
-	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
-	if err != nil {
-		err = errors.AddContext(err, "could not write fund account specifier")
-		return
-	}
-
-	// send price table uid
-	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(buffer, pt.UID)
-	if err != nil {
-		err = errors.AddContext(err, "could not write price table uid")
-		return
-	}
-
-	// send fund account request
-	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
-	if err != nil {
-		err = errors.AddContext(err, "could not write the fund account request")
-		return
-	}
-
-	// write contents of the buffer to the stream
-	_, err = stream.Write(buffer.Bytes())
-	if err != nil {
-		err = errors.AddContext(err, "could not write the buffer contents")
-		return
-	}
-
-	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
-	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
-		// The host reporting that the balance has been exceeded suggests that
-		// the host believes that we have more money than we believe that we
-		// have.
-		if !w.renter.deps.Disrupt("DisableCriticalOnMaxBalance") {
-			// Log a critical as this is very unlikely to happen due to the
-			// order of events in the worker loop, seeing as we just synced our
-			// account balance with the host if that was necessary
-			w.renter.log.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
-		}
-		w.staticAccount.mu.Lock()
-		w.staticAccount.syncAt = time.Time{}
-		w.staticAccount.mu.Unlock()
-	}
-	if err != nil {
-		err = errors.AddContext(err, "could not provide payment for the account")
-		return
-	}
-
-	// receive FundAccountResponse. The response contains a receipt and a
-	// signature, which is useful for places where accountability is required,
-	// but no accountability is required in this case, so we ignore the
-	// response.
-	var resp modules.FundAccountResponse
-	err = modules.RPCRead(stream, &resp)
-	if err != nil {
-		err = errors.AddContext(err, "could not read the account response")
-	}
-
-	// TODO: We need to parse the response and check for an error, such as
-	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
-	// to do a balance inquiry and check that the balance is actually high
-	// enough.
-	//
-	// If we are stuck, and the host won't let us get to a good balance level,
-	// we need to go on cooldown, this worker is no good. That will happen as
-	// long as we return an error.
-	//
-	// If we are not stuck, and we have enough balance, we can set the error to
-	// nil (to prevent entering cooldown) even though it technically failed,
-	// because the failure does not indicate a problem.
-
-	// Wake the worker so that any jobs potentially blocking on getting more
-	// money in the account can be activated.
-	w.staticWake()
-	return
-}
-
 // externSyncAccountBalanceToHost is executed before the worker loop and
 // corrects the account balance in case of an unclean renter shutdown. It does
 // so by performing the AccountBalanceRPC and resetting the account to the
@@ -590,15 +386,25 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	start := time.Now()
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
-			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			// The worker failed to go idle for too long. Print the loop state,
+			// so we know what kind of task is keeping it busy.
+			w.renter.log.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
+			// Get the stack traces of all running goroutines.
+			buf := make([]byte, modules.StackSize) // 64MB
+			n := runtime.Stack(buf, true)
+			w.renter.log.Println(string(buf[:n]))
+			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
-		w.renter.tg.Sleep(accountIdleCheckFrequency)
+		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
+		if !awake {
+			return
+		}
 	}
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up
-	// newe jobs while it is performing the sync operation.
+	// new jobs while it is performing the sync operation.
 	defer func() {
 		if !isIdle() {
 			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
@@ -608,17 +414,18 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
 	w.staticAccount.mu.Lock()
-	deltasAreZero := w.staticAccount.negativeBalance.IsZero() &&
-		w.staticAccount.pendingDeposits.IsZero() &&
-		w.staticAccount.pendingWithdrawals.IsZero()
+	deltasAreZero := w.staticAccount.pendingDeposits.IsZero() && w.staticAccount.pendingWithdrawals.IsZero()
 	w.staticAccount.mu.Unlock()
 	if !deltasAreZero {
 		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
 	}
 
+	// Track the outcome of the account sync - this ensures a proper working of
+	// the maintenance cooldown mechanism.
 	balance, err := w.staticHostAccountBalance()
+	w.managedTrackAccountSyncErr(err)
 	if err != nil {
-		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
+		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
@@ -642,15 +449,204 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// accordingly. Perform this check at startup and periodically.
 }
 
-// managedNeedsToSyncAccountToHost returns true if the renter needs to sync the
-// account to the host.
-func (w *worker) managedNeedsToSyncAccountToHost() bool {
-	// There is no need to sync the account to the host if the worker does not
-	// support RHP3.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+// managedNeedsToRefillAccount will check whether the worker's account needs to
+// be refilled. This function will return false if any conditions are met which
+// are likely to prevent the refill from being successful.
+func (w *worker) managedNeedsToRefillAccount() bool {
+	// No need to refill the account if the worker's host does not support RHP3.
+	if !w.staticSupportsRHP3() {
 		return false
 	}
+	// No need to refill the account if the worker is on maintenance cooldown.
+	if w.managedOnMaintenanceCooldown() {
+		return false
+	}
+	// No need to refill if the price table is not valid, as it would only
+	// result in failure anyway.
+	if !w.staticPriceTable().staticValid() {
+		return false
+	}
+
+	return w.staticAccount.managedNeedsToRefill(w.staticBalanceTarget.Div64(2))
+}
+
+// managedNeedsToSyncAccountBalanceToHost returns true if the renter needs to
+// sync the renter's account balance with the host's version of the account.
+func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
+	// No need to sync the account if the worker's host does not support RHP3.
+	if !w.staticSupportsRHP3() {
+		return false
+	}
+	// No need to sync the account if the worker's RHP3 is on cooldown.
+	if w.managedOnMaintenanceCooldown() {
+		return false
+	}
+	// No need to sync if the price table is not valid, as it would only
+	// result in failure anyway.
+	if !w.staticPriceTable().staticValid() {
+		return false
+	}
+
 	return w.staticAccount.callNeedsToSync()
+}
+
+// managedRefillAccount will refill the account if it needs to be refilled
+func (w *worker) managedRefillAccount() {
+	if w.renter.deps.Disrupt("DisableFunding") {
+		return // don't refill account
+	}
+	// The account balance dropped to below half the balance target, refill. Use
+	// the max expected balance when refilling to avoid exceeding any host
+	// maximums.
+	balance := w.staticAccount.managedMaxExpectedBalance()
+	amount := w.staticBalanceTarget.Sub(balance)
+	pt := w.staticPriceTable().staticPriceTable
+
+	// If the target amount is larger than the remaining money, adjust the
+	// target. Make sure it can still cover the funding cost.
+	if contract, ok := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
+		if amount.Add(pt.FundAccountCost).Cmp(contract.RenterFunds) > 0 && contract.RenterFunds.Cmp(pt.FundAccountCost) > 0 {
+			amount = contract.RenterFunds.Sub(pt.FundAccountCost)
+		}
+	}
+
+	// We track that there is a deposit in progress. Because filling an account
+	// is an interactive protocol with another machine, we are never sure of the
+	// exact moment that the deposit has reached our account. Instead, we track
+	// the deposit as a "maybe" until we know for sure that the deposit has
+	// either reached the remote machine or failed.
+	//
+	// At the same time that we track the deposit, we defer a function to check
+	// the error on the deposit
+	w.staticAccount.managedTrackDeposit(amount)
+	var err error
+	defer func() {
+		// If there was no error, the account should now be full, and will not
+		// need to be refilled until the worker has spent up the funds in the
+		// account.
+		w.staticAccount.managedCommitDeposit(amount, err == nil)
+
+		// Track the outcome of the account refill - this ensures a proper
+		// working of the maintenance cooldown mechanism.
+		cd := w.managedTrackAccountRefillErr(err)
+
+		// If the error is nil, return.
+		if err == nil {
+			w.staticAccount.mu.Lock()
+			w.staticAccount.recentSuccessTime = time.Now()
+			w.staticAccount.mu.Unlock()
+			return
+		}
+
+		// Track the error on the account for debugging purposes.
+		w.staticAccount.mu.Lock()
+		w.staticAccount.recentErr = err
+		w.staticAccount.recentErrTime = time.Now()
+		w.staticAccount.mu.Unlock()
+
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
+
+		// Have the threadgroup wake the worker when the account comes off of
+		// cooldown.
+		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
+			w.staticWake()
+		})
+	}()
+
+	// check the current price table for gouging errors
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
+	if err != nil {
+		return
+	}
+
+	// create a new stream
+	var stream net.Conn
+	stream, err = w.staticNewStream()
+	if err != nil {
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
+	}
+	defer func() {
+		closeErr := stream.Close()
+		if closeErr != nil {
+			w.renter.log.Println("ERROR: failed to close stream", closeErr)
+		}
+	}()
+
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
+	// write the specifier
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
+	if err != nil {
+		err = errors.AddContext(err, "could not write fund account specifier")
+		return
+	}
+
+	// send price table uid
+	err = modules.RPCWrite(buffer, pt.UID)
+	if err != nil {
+		err = errors.AddContext(err, "could not write price table uid")
+		return
+	}
+
+	// send fund account request
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+	if err != nil {
+		err = errors.AddContext(err, "could not write the fund account request")
+		return
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		err = errors.AddContext(err, "could not write the buffer contents")
+		return
+	}
+
+	// provide payment
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
+	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
+		// The host reporting that the balance has been exceeded suggests that
+		// the host believes that we have more money than we believe that we
+		// have.
+		if !w.renter.deps.Disrupt("DisableCriticalOnMaxBalance") {
+			// Log a critical in testing as this is very unlikely to happen due
+			// to the order of events in the worker loop, seeing as we just
+			// synced our account balance with the host if that was necessary
+			if build.Release == "testing" {
+				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
+			}
+			w.renter.log.Println("worker account refill failed", err)
+		}
+		w.staticAccount.mu.Lock()
+		w.staticAccount.syncAt = time.Time{}
+		w.staticAccount.mu.Unlock()
+	}
+	if err != nil {
+		err = errors.AddContext(err, "could not provide payment for the account")
+		return
+	}
+
+	// receive FundAccountResponse. The response contains a receipt and a
+	// signature, which is useful for places where accountability is required,
+	// but no accountability is required in this case, so we ignore the
+	// response.
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		err = errors.AddContext(err, "could not read the account response")
+	}
+
+	// Wake the worker so that any jobs potentially blocking on getting more
+	// money in the account can be activated.
+	w.staticWake()
+	return
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host

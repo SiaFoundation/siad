@@ -28,7 +28,12 @@ func TestPersistTransactionCreated(t *testing.T) {
 	}
 
 	// Submit a persist event for a transaction being created
-	txnID := types.Transaction{}.ID()
+	txn := types.Transaction{}
+	err = fm.staticCommon.staticPersist.callPersistTransaction(txn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txnID := txn.ID()
 	err = fm.staticCommon.staticPersist.callPersistTxnCreated(feeUIDs, txnID)
 	if err != nil {
 		t.Fatal(err)
@@ -41,17 +46,22 @@ func TestPersistTransactionCreated(t *testing.T) {
 	}
 
 	// Reopen the FeeManager to load the persistence
-	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticTpool, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify all the fees are now marked as TransactionCreate true
 	fm.mu.Lock()
-	defer fm.mu.Unlock()
 	for _, fee := range fm.fees {
 		if !fee.TransactionCreated {
 			t.Fatal("fee found with TransactionCreate False")
 		}
+	}
+	fm.mu.Unlock()
+
+	ttxns := fm.staticCommon.staticWatchdog.managedTrackedTxns()
+	if len(ttxns) != 1 {
+		t.Fatal("Expected 1 tracked transaction but got", len(ttxns))
 	}
 }

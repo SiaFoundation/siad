@@ -38,6 +38,11 @@ const defaultConnectionDeadline = 5 * time.Minute
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
 var rpcSettingsDeprecated = types.NewSpecifier("Settings")
 
+// afterCloseFn is a function that can be returned by a rpc handler. It will be
+// called at the very end of the rpc after closing the stream, to make sure
+// things like refunding bandwidth can accurately be handled.
+type afterCloseFn func()
+
 // threadedUpdateHostname periodically runs 'managedLearnHostname', which
 // checks if the host's hostname has changed, and makes an updated host
 // announcement if so.
@@ -241,14 +246,16 @@ func (h *Host) initNetworking(address string) (err error) {
 	go h.threadedListen(threadedListenerClosedChan)
 
 	// Create a listener for the SiaMux.
-	err = h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.threadedHandleStream)
-	if err != nil {
-		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
+	if !h.dependencies.Disrupt("DisableHostSiamux") {
+		err = h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.threadedHandleStream)
+		if err != nil {
+			return errors.AddContext(err, "Failed to subscribe to the SiaMux")
+		}
+		// Close the listener when h.tg.OnStop is called.
+		h.tg.OnStop(func() {
+			h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
+		})
 	}
-	// Close the listener when h.tg.OnStop is called.
-	h.tg.OnStop(func() {
-		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
-	})
 
 	return nil
 }
@@ -316,9 +323,9 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	case modules.RPCDownload:
 		atomic.AddUint64(&h.atomicDownloadCalls, 1)
 		err = extendErr("incoming RPCDownload failed: ", h.managedRPCDownload(conn))
-	case modules.RPCRenewContract:
+	case modules.RPCRenewContractRHP2:
 		atomic.AddUint64(&h.atomicRenewCalls, 1)
-		err = extendErr("incoming RPCRenewContract failed: ", h.managedRPCRenewContract(conn))
+		err = extendErr("incoming RPCRenewContract failed: ", h.managedRPCRenewContractRHP2(conn))
 	case modules.RPCFormContract:
 		atomic.AddUint64(&h.atomicFormContractCalls, 1)
 		err = extendErr("incoming RPCFormContract failed: ", h.managedRPCFormContract(conn))
@@ -344,6 +351,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 // threadedHandleStream handles incoming SiaMux streams.
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// close the stream when the method terminates
+	var cleanup afterCloseFn
 	defer func() {
 		if h.dependencies.Disrupt("DisableStreamClose") {
 			return
@@ -352,7 +360,28 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		if err != nil {
 			h.log.Println("ERROR: failed to close stream:", err)
 		}
+
+		// Update used bandwidth.
+		l := stream.Limit()
+		atomic.AddUint64(&h.atomicStreamUpload, l.Uploaded())
+		atomic.AddUint64(&h.atomicStreamDownload, l.Downloaded())
+
+		// Call rpc specific cleanup if necessary.
+		if cleanup != nil {
+			cleanup()
+		}
 	}()
+
+	// If the right dependency was injected we block here until it's disabled
+	// again.
+	for h.dependencies.Disrupt("HostBlockRPC") {
+		select {
+		case <-time.After(time.Second):
+			continue
+		case <-h.tg.StopChan():
+			return
+		}
+	}
 
 	err := h.tg.Add()
 	if err != nil {
@@ -389,6 +418,12 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		err = h.managedRPCUpdatePriceTable(stream)
 	case modules.RPCFundAccount:
 		err = h.managedRPCFundEphemeralAccount(stream)
+	case modules.RPCLatestRevision:
+		err = h.managedRPCLatestRevision(stream)
+	case modules.RPCRegistrySubscription:
+		cleanup, err = h.managedRPCRegistrySubscribe(stream)
+	case modules.RPCRenewContract:
+		err = h.managedRPCRenewContract(stream)
 	default:
 		h.log.Debugf("WARN: incoming stream %v requested unknown RPC \"%v\"", stream.RemoteAddr().String(), rpcID)
 		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))

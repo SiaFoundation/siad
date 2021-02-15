@@ -18,7 +18,11 @@ func TestSendSiacoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get the initial balance - should be 1 block. The unconfirmed balances
 	// should be 0.
@@ -100,7 +104,11 @@ func TestSendSiacoinsFeeIncluded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get the initial balance - should be 1 block. The unconfirmed balances
 	// should be 0.
@@ -212,7 +220,11 @@ func TestIntegrationSendOverUnder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Spend too many siacoins.
 	tooManyCoins := types.SiacoinPrecision.Mul64(1e12)
@@ -240,7 +252,11 @@ func TestIntegrationSpendHalfHalf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Spend more than half of the coins twice.
 	halfPlus := types.SiacoinPrecision.Mul64(200e3)
@@ -263,7 +279,11 @@ func TestIntegrationSpendUnconfirmed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Spend the only output.
 	halfPlus := types.SiacoinPrecision.Mul64(200e3)
@@ -321,11 +341,17 @@ func TestSendSiacoinsAcceptTxnSetFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// There should be no spent transactions in the database at this point
 	wt.wallet.mu.Lock()
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		t.Fatal(err)
+	}
 	if wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN != 0 {
 		wt.wallet.mu.Unlock()
 		t.Fatal("bucketSpentOutputs isn't empty")
@@ -362,7 +388,9 @@ func TestSendSiacoinsAcceptTxnSetFailed(t *testing.T) {
 
 	// There should still be no spent transactions in the database
 	wt.wallet.mu.Lock()
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		t.Fatal(err)
+	}
 	bucket := wt.wallet.dbTx.Bucket(bucketSpentOutputs)
 	if bucket.Stats().KeyN != 0 {
 		wt.wallet.mu.Unlock()

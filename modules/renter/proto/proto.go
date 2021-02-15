@@ -12,6 +12,7 @@ type (
 	transactionBuilder interface {
 		AddArbitraryData(arb []byte) uint64
 		AddFileContract(types.FileContract) uint64
+		AddFileContractRevision(types.FileContractRevision) uint64
 		AddMinerFee(types.Currency) uint64
 		AddParents([]types.Transaction)
 		AddSiacoinInput(types.SiacoinInput) uint64
@@ -35,18 +36,6 @@ type (
 		IncrementFailedInteractions(key types.SiaPublicKey) error
 	}
 )
-
-// ContractParams are supplied as an argument to FormContract.
-type ContractParams struct {
-	Allowance     modules.Allowance
-	Host          modules.HostDBEntry
-	Funding       types.Currency
-	StartHeight   types.BlockHeight
-	EndHeight     types.BlockHeight
-	RefundAddress types.UnlockHash
-	RenterSeed    EphemeralRenterSeed
-	// TODO: add optional keypair
-}
 
 // A revisionNumberMismatchError occurs if the host reports a different revision
 // number than expected.

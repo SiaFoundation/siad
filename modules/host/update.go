@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -100,7 +101,7 @@ func (h *Host) initConsensusSubscription() error {
 	// at this time, none of the host external functions are exposed, so it is
 	// save to make the exported call.
 	err := h.cs.ConsensusSetSubscribe(h, h.recentChange, h.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Perform a rescan of the consensus set if the change id that the host
 		// has is unrecognized by the consensus set. This will typically only
 		// happen if the user has been replacing files inside the Sia folder

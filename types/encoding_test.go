@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -255,7 +256,7 @@ func TestNegativeCurrencyUnmarshalJSON(t *testing.T) {
 	// Try unmarshalling the negative currency.
 	var cNeg Currency
 	err = cNeg.UnmarshalJSON(cMar)
-	if err != ErrNegativeCurrency {
+	if !errors.Contains(err, ErrNegativeCurrency) {
 		t.Error("expecting ErrNegativeCurrency:", err)
 	}
 	if cNeg.i.Sign() < 0 {
@@ -268,7 +269,7 @@ func TestNegativeCurrencyUnmarshalJSON(t *testing.T) {
 func TestNegativeCurrencyScan(t *testing.T) {
 	var c Currency
 	_, err := fmt.Sscan("-23", &c)
-	if err != ErrNegativeCurrency {
+	if !errors.Contains(err, ErrNegativeCurrency) {
 		t.Error("expecting ErrNegativeCurrency:", err)
 	}
 }
@@ -458,13 +459,27 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 
 	// Try loading crappy strings.
 	parts := strings.Split(spkString, ":")
-	spk.LoadString(parts[0])
-	spk.LoadString(parts[0][1:])
-	spk.LoadString(parts[0][:1])
-	spk.LoadString(parts[1])
-	spk.LoadString(parts[1][1:])
-	spk.LoadString(parts[1][:1])
-	spk.LoadString(parts[0] + parts[1])
+	if err := spk.LoadString(parts[0]); err == nil {
+		t.Fatal("should have failed")
+	}
+	if err := spk.LoadString(parts[0][1:]); err == nil {
+		t.Fatal("should have failed")
+	}
+	if err := spk.LoadString(parts[0][:1]); err == nil {
+		t.Fatal("should have failed")
+	}
+	if err := spk.LoadString(parts[1]); err == nil {
+		t.Fatal("should have failed")
+	}
+	if err := spk.LoadString(parts[1][1:]); err == nil {
+		t.Fatal("should have failed")
+	}
+	if err := spk.LoadString(parts[1][:1]); err == nil {
+		t.Fatal("should have failed")
+	}
+	if err := spk.LoadString(parts[0] + parts[1]); err == nil {
+		t.Fatal("should have failed")
+	}
 }
 
 // TestSiaPublicKeyString does a quick check to verify that the String method
@@ -477,6 +492,23 @@ func TestSiaPublicKeyString(t *testing.T) {
 
 	if spk.String() != "ed25519:0000000000000000000000000000000000000000000000000000000000000000" {
 		t.Error("got wrong value for spk.String():", spk.String())
+	}
+}
+
+// TestSiaPublicKeyShortString does a quick check to verify that the ShortString
+// method on the SiaPublicKey is producing the expected output.
+func TestSiaPublicKeyShortString(t *testing.T) {
+	var spk SiaPublicKey
+	if spk.ShortString() != "" {
+		t.Fatal("expected empty string as result of ShortString for unitialised key")
+	}
+	err := json.Unmarshal([]byte(`{ "algorithm": "ed25519", "key": "5GhilFqVBKtSCedCZc6TIthzxvyBH9gPqqf+Z9hsfBo=" }`), &spk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if spk.ShortString() != "e46862945a9504ab5209e74265ce9322" {
+		t.Fatal("got wrong value for spk.ShortString():", spk.ShortString(), spk.String())
 	}
 }
 
@@ -593,7 +625,7 @@ func TestUnlockHashJSONMarshalling(t *testing.T) {
 	// Corrupt the checksum.
 	marUH[36]++
 	err = umarUH.UnmarshalJSON(marUH)
-	if err != ErrInvalidUnlockHashChecksum {
+	if !errors.Contains(err, ErrInvalidUnlockHashChecksum) {
 		t.Error("expecting an invalid checksum:", err)
 	}
 	marUH[36]--
@@ -608,7 +640,7 @@ func TestUnlockHashJSONMarshalling(t *testing.T) {
 
 	// Try an input of the wrong length.
 	err = (&umarUH).UnmarshalJSON(marUH[2:])
-	if err != ErrUnlockHashWrongLen {
+	if !errors.Contains(err, ErrUnlockHashWrongLen) {
 		t.Error("Got wrong error:", err)
 	}
 }
@@ -641,7 +673,7 @@ func TestUnlockHashStringMarshalling(t *testing.T) {
 	byteMarUH := []byte(marUH)
 	byteMarUH[36]++
 	err = umarUH.LoadString(string(byteMarUH))
-	if err != ErrInvalidUnlockHashChecksum {
+	if !errors.Contains(err, ErrInvalidUnlockHashChecksum) {
 		t.Error("expecting an invalid checksum:", err)
 	}
 	byteMarUH[36]--
@@ -656,7 +688,7 @@ func TestUnlockHashStringMarshalling(t *testing.T) {
 
 	// Try an input of the wrong length.
 	err = umarUH.LoadString(string(byteMarUH[2:]))
-	if err != ErrUnlockHashWrongLen {
+	if !errors.Contains(err, ErrUnlockHashWrongLen) {
 		t.Error("Got wrong error:", err)
 	}
 }

@@ -5,14 +5,14 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
 
 // TestRecoveredDataOffset tests the recoveredDataOffset helper function.
 func TestRecoveredDataOffset(t *testing.T) {
 	// Test the legacy erasure coder first.
-	rscOld, err := siafile.NewRSCode(10, 20)
+	rscOld, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestRecoveredDataOffset(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestRecoveredDataOffset(t *testing.T) {
 // TestBytesToRecover tests the bytesToRecover helper function.
 func TestBytesToRecover(t *testing.T) {
 	// Test the legacy erasure coder first.
-	rscOld, err := siafile.NewRSCode(10, 20)
+	rscOld, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestBytesToRecover(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}

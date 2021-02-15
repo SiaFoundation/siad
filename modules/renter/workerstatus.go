@@ -8,15 +8,32 @@ import (
 
 // callStatus returns the status of the worker.
 func (w *worker) callStatus() modules.WorkerStatus {
+	downloadQueue := w.staticJobLowPrioReadQueue
+	downloadQueue.mu.Lock()
+	downloadOnCoolDown := downloadQueue.onCooldown()
+	downloadTerminated := downloadQueue.killed
+	downloadQueueSize := downloadQueue.jobs.Len()
+	downloadCoolDownTime := downloadQueue.cooldownUntil.Sub(time.Now())
+
+	var downloadCoolDownErr string
+	if downloadQueue.recentErr != nil {
+		downloadCoolDownErr = downloadQueue.recentErr.Error()
+	}
+	downloadQueue.mu.Unlock()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	downloadOnCoolDown := w.onDownloadCooldown()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
-
 	var uploadCoolDownErr string
 	if w.uploadRecentFailureErr != nil {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
+	maintenanceOnCooldown, maintenanceCoolDownTime, maintenanceCoolDownErr := w.staticMaintenanceState.managedMaintenanceCooldownStatus()
+	var mcdErr string
+	if maintenanceCoolDownErr != nil {
+		mcdErr = maintenanceCoolDownErr.Error()
 	}
 
 	// Update the worker cache before returning a status.
@@ -29,20 +46,27 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		HostPubKey:      w.staticHostPubKey,
 
 		// Download information
-		DownloadOnCoolDown: downloadOnCoolDown,
-		DownloadQueueSize:  len(w.downloadChunks),
-		DownloadTerminated: w.downloadTerminated,
+		DownloadCoolDownError: downloadCoolDownErr,
+		DownloadCoolDownTime:  downloadCoolDownTime,
+		DownloadOnCoolDown:    downloadOnCoolDown,
+		DownloadQueueSize:     downloadQueueSize,
+		DownloadTerminated:    downloadTerminated,
 
 		// Upload information
 		UploadCoolDownError: uploadCoolDownErr,
 		UploadCoolDownTime:  uploadCoolDownTime,
 		UploadOnCoolDown:    uploadOnCoolDown,
-		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadQueueSize:     w.unprocessedChunks.Len(),
 		UploadTerminated:    w.uploadTerminated,
 
 		// Job Queues
-		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
-		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+		DownloadSnapshotJobQueueSize: int(w.staticJobDownloadSnapshotQueue.callStatus().size),
+		UploadSnapshotJobQueueSize:   int(w.staticJobUploadSnapshotQueue.callStatus().size),
+
+		// Maintenance Cooldown Information
+		MaintenanceOnCooldown:    maintenanceOnCooldown,
+		MaintenanceCoolDownError: mcdErr,
+		MaintenanceCoolDownTime:  maintenanceCoolDownTime,
 
 		// Account Information
 		AccountBalanceTarget: w.staticBalanceTarget,
@@ -56,6 +80,12 @@ func (w *worker) callStatus() modules.WorkerStatus {
 
 		// HasSector Job Information
 		HasSectorJobsStatus: w.callHasSectorJobStatus(),
+
+		// ReadRegistry Job Information
+		ReadRegistryJobsStatus: w.callReadRegistryJobsStatus(),
+
+		// UpdateRegistry Job Information
+		UpdateRegistryJobsStatus: w.callUpdateRegistryJobsStatus(),
 	}
 }
 
@@ -68,23 +98,11 @@ func (w *worker) staticPriceTableStatus() modules.WorkerPriceTableStatus {
 		recentErrStr = pt.staticRecentErr.Error()
 	}
 
-	// use consecutive failures and the update time to figure out whether the
-	// worker's price table is on cooldown
-	ocd := pt.staticConsecutiveFailures > 0
-	var ocdu time.Time
-	if ocd {
-		ocdu = pt.staticUpdateTime
-	}
-
 	return modules.WorkerPriceTableStatus{
 		ExpiryTime: pt.staticExpiryTime,
 		UpdateTime: pt.staticUpdateTime,
 
 		Active: time.Now().Before(pt.staticExpiryTime),
-
-		OnCoolDown:          ocd,
-		OnCoolDownUntil:     ocdu,
-		ConsecutiveFailures: pt.staticConsecutiveFailures,
 
 		RecentErr:     recentErrStr,
 		RecentErrTime: pt.staticRecentErrTime,
@@ -102,7 +120,7 @@ func (w *worker) callReadJobStatus() modules.WorkerReadJobsStatus {
 	}
 
 	avgJobTimeInMs := func(l uint64) uint64 {
-		if d := jrq.callAverageJobTime(l); d > 0 {
+		if d := jrq.callExpectedJobTime(l); d > 0 {
 			return uint64(d.Milliseconds())
 		}
 		return 0
@@ -129,8 +147,10 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 		recentErrStr = status.recentErr.Error()
 	}
 
+	// Use 30 sectors for the expected job time since that is the default
+	// redundancy for files.
 	var avgJobTimeInMs uint64 = 0
-	if d := hsq.callAverageJobTime(); d > 0 {
+	if d := hsq.callExpectedJobTime(uint64(modules.RenterDefaultDataPieces + modules.RenterDefaultParityPieces)); d > 0 {
 		avgJobTimeInMs = uint64(d.Milliseconds())
 	}
 
@@ -140,5 +160,38 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 		JobQueueSize:        status.size,
 		RecentErr:           recentErrStr,
 		RecentErrTime:       status.recentErrTime,
+	}
+}
+
+// callGenericWorkerJobStatus returns the status for the generic job queue.
+func callGenericWorkerJobStatus(queue *jobGenericQueue) modules.WorkerGenericJobsStatus {
+	status := queue.callStatus()
+
+	var recentErrStr string
+	if status.recentErr != nil {
+		recentErrStr = status.recentErr.Error()
+	}
+
+	return modules.WorkerGenericJobsStatus{
+		ConsecutiveFailures: status.consecutiveFailures,
+		JobQueueSize:        status.size,
+		OnCooldown:          time.Now().Before(status.cooldownUntil),
+		OnCooldownUntil:     status.cooldownUntil,
+		RecentErr:           recentErrStr,
+		RecentErrTime:       status.recentErrTime,
+	}
+}
+
+// callUpdateRegistryJobsStatus returns the status for the ReadRegistry queue.
+func (w *worker) callReadRegistryJobsStatus() modules.WorkerReadRegistryJobStatus {
+	return modules.WorkerReadRegistryJobStatus{
+		WorkerGenericJobsStatus: callGenericWorkerJobStatus(w.staticJobReadRegistryQueue.jobGenericQueue),
+	}
+}
+
+// callUpdateRegistryJobsStatus returns the status for the UpdateRegistry queue.
+func (w *worker) callUpdateRegistryJobsStatus() modules.WorkerUpdateRegistryJobStatus {
+	return modules.WorkerUpdateRegistryJobStatus{
+		WorkerGenericJobsStatus: callGenericWorkerJobStatus(w.staticJobUpdateRegistryQueue.jobGenericQueue),
 	}
 }

@@ -243,23 +243,21 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Take down all of the hosts and check if redundancy decreases.
-	hostsRemoved := 0
+	var hostsRemoved []*siatest.TestNode
+	hosts := tg.Hosts()
 	for i := uint64(0); i < parityPieces+dataPieces; i++ {
-		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
-			t.Fatal("Failed to shutdown host", err)
-		}
-		hostsRemoved++
+		hostsRemoved = append(hostsRemoved, hosts[i])
+	}
+	if err := tg.RemoveNodeN(hostsRemoved...); err != nil {
+		t.Fatal("Failed to shutdown host", err)
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
 	// Bring up hosts to replace the ones that went offline.
-	for hostsRemoved > 0 {
-		hostsRemoved--
-		_, err = tg.AddNodes(node.HostTemplate)
-		if err != nil {
-			t.Fatal("Failed to create a new host", err)
-		}
+	_, err = tg.AddNodeN(node.HostTemplate, len(hostsRemoved))
+	if err != nil {
+		t.Fatal("Failed to replace hosts", err)
 	}
 	// Read the contents of the file from disk.
 	b, err := ioutil.ReadFile(localFile.Path())
@@ -270,7 +268,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	corruptB := fastrand.Bytes(len(b))
 	// Try repairing the file with the corrupt data. This should fail.
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(corruptB), remoteFile.SiaPath()); err == nil {
-		t.Fatal(err)
+		t.Fatal("Corrupt file repair should fail")
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't staying at 0", err)
@@ -334,12 +332,12 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file again.
-	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true)
+	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Compare downloaded data to original one.
-	if !bytes.Equal([]byte(data), downloadedData) {
+	if !bytes.Equal(data, downloadedData) {
 		t.Log("originalData:", data)
 		t.Log("downloadedData:", downloadedData)
 		t.Fatal("Downloaded data doesn't match uploaded data")
@@ -359,7 +357,11 @@ func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create some random data to write.
 	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes

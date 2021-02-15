@@ -9,6 +9,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
+const testSkykeyString string = "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
+
 // TestSkykeyCommands tests the basic functionality of the siac skykey commands
 // interface. More detailed testing of the skykey manager is done in the skykey
 // package.
@@ -24,6 +26,7 @@ func TestSkykeyCommands(t *testing.T) {
 		{name: "TestDuplicateSkykeyAdd", test: testDuplicateSkykeyAdd},
 		{name: "TestChangeKeyEntropyKeepName", test: testChangeKeyEntropyKeepName},
 		{name: "TestAddKeyTwice", test: testAddKeyTwice},
+		{name: "TestDelete", test: testDeleteKey},
 		{name: "TestInvalidSkykeyType", test: testInvalidSkykeyType},
 		{name: "TestSkykeyGet", test: testSkykeyGet},
 		{name: "TestSkykeyGetUsingNameAndID", test: testSkykeyGetUsingNameAndID},
@@ -43,7 +46,6 @@ func TestSkykeyCommands(t *testing.T) {
 // testDuplicateSkykeyAdd tests that adding with duplicate Skykey will return
 // duplicate name error.
 func testDuplicateSkykeyAdd(t *testing.T, c client.Client) {
-	testSkykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
 	err := skykeyAdd(c, testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +62,7 @@ func testDuplicateSkykeyAdd(t *testing.T, c client.Client) {
 func testChangeKeyEntropyKeepName(t *testing.T, c client.Client) {
 	// Change the key entropy, but keep the same name.
 	var sk skykey.Skykey
-	skykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
-	err := sk.FromString(skykeyString)
+	err := sk.FromString(testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,9 +95,90 @@ func testAddKeyTwice(t *testing.T, c client.Client) {
 	}
 }
 
+// testDeleteKey tests that deleting a Skykey by name or id actually deletes
+// the key
+func testDeleteKey(t *testing.T, c client.Client) {
+	// Create a key.
+	keyName := "keyToDeleteByName"
+	_, err := skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the Key
+	sk, err := c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Name != keyName {
+		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
+	}
+
+	// Delete key by name
+	err = c.SkykeyDeleteByNamePost(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and get the key again
+	_, err = c.SkykeyGetByName(keyName)
+	if err == nil || !strings.Contains(err.Error(), skykey.ErrNoSkykeysWithThatName.Error()) {
+		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
+	}
+
+	// Create key again
+	_, err = skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get ID
+	sk, err = c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete key by ID
+	err = c.SkykeyDeleteByIDPost(sk.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and get the key again
+	_, err = c.SkykeyGetByName(keyName)
+	if err == nil || !strings.Contains(err.Error(), skykey.ErrNoSkykeysWithThatName.Error()) {
+		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
+	}
+}
+
 // testInvalidSkykeyType tests that invalid cipher types are caught.
 func testInvalidSkykeyType(t *testing.T, c client.Client) {
+	// Verify invalid type returns error
 	_, err := skykeyCreate(c, "createkey2", skykey.TypeInvalid.ToString())
+	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
+		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
+	}
+
+	// Submitting a blank skykey type should succeed and default to private
+	keyName := "blankType"
+	_, err = skykeyCreate(c, keyName, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk, err := c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Type != skykey.TypePrivateID {
+		t.Fatal("Skykey type expected to be private")
+	}
+	// Delete Key to not impact future sub tests
+	err = c.SkykeyDeleteByNamePost(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify a random type gives an error
+	_, err = skykeyCreate(c, "", "not a type")
 	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
 		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
 	}
@@ -341,7 +423,6 @@ func testSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys(t *testing.T, c clien
 func initSkykeyData(t *testing.T, c client.Client, keyStrings, keyNames, keyIDs []string) {
 	keyName1 := "createkey1"
 	keyName2 := "createkey testSkykeyGet"
-	testSkykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
 
 	getKeyStr1, err := skykeyGet(c, keyName1, "")
 	if err != nil {

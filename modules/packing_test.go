@@ -59,6 +59,41 @@ func TestPackFiles(t *testing.T) {
 			},
 			num: 1,
 		},
+		// Test case to ensure that the smallest file, despite being packed
+		// last, does not have the highest offset of all the files if there are
+		// small previous buckets available.
+		//
+		// NOTE: The packer picks the first of the *largest* available buckets,
+		// so we must first fill up the whole sector before smaller previous
+		// buckets can be considered.
+		{
+			in: map[string]uint64{
+				"test1": 100,
+				"test2": 2*mib + 499*kib,
+				"test3": 1*mib + 499*kib,
+			},
+			out: []FilePlacement{
+				{
+					FileID:       "test2",
+					Size:         2*mib + 499*kib,
+					SectorIndex:  0,
+					SectorOffset: 0 * kib,
+				},
+				{
+					FileID:       "test3",
+					Size:         1*mib + 499*kib,
+					SectorIndex:  0,
+					SectorOffset: 2*mib + 512*kib,
+				},
+				{
+					FileID:       "test1",
+					Size:         100,
+					SectorIndex:  0,
+					SectorOffset: 2*mib + 500*kib,
+				},
+			},
+			num: 1,
+		},
 		{
 			in: map[string]uint64{
 				"test1": 1,
@@ -253,7 +288,9 @@ func TestPackingUtilization(t *testing.T) {
 		fmt.Fprintln(w, amount, "\t", avgSectors, "\t", avgUtil*100)
 	}
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		t.Error("failed to flush writer")
+	}
 }
 
 // randomFileMap generates a map of random files for testing purposes.

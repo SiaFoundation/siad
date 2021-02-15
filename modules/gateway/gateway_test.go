@@ -12,7 +12,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -73,10 +75,10 @@ func TestExportedMethodsErrAfterClose(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Close(); err != threadgroup.ErrStopped {
+	if err := g.Close(); !errors.Contains(err, threadgroup.ErrStopped) {
 		t.Fatalf("expected %q, got %q", siasync.ErrStopped, err)
 	}
-	if err := g.Connect("localhost:1234"); err != threadgroup.ErrStopped {
+	if err := g.Connect("localhost:1234"); !errors.Contains(err, threadgroup.ErrStopped) {
 		t.Fatalf("expected %q, got %q", siasync.ErrStopped, err)
 	}
 }
@@ -90,7 +92,11 @@ func TestAddress(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if g.Address() != g.myAddr {
 		t.Fatal("Address does not return g.myAddr")
@@ -118,9 +124,17 @@ func TestPeers(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err := g1.Connect(g2.Address())
 	if err != nil {
@@ -159,7 +173,7 @@ func TestNew(t *testing.T) {
 	// create corrupted nodes.json
 	dir := build.TempDir("gateway", t.Name()+"2")
 	os.MkdirAll(dir, 0700)
-	err := ioutil.WriteFile(filepath.Join(dir, "nodes.json"), []byte{1, 2, 3}, 0660)
+	err := ioutil.WriteFile(filepath.Join(dir, "nodes.json"), []byte{1, 2, 3}, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal("couldn't create corrupted file:", err)
 	}
@@ -238,19 +252,27 @@ func TestManualConnectDisconnect(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// g1 should be able to connect to g2
 	if err := connectToNode(g1, g2, false); err != nil {
 		t.Fatal("failed to connect:", err)
 	}
-	// g2 manually disconnects from g1 and therefore blacklists it
+	// g2 manually disconnects from g1 and therefore blocklists it
 	if err := disconnectFromNode(g2, g1, true); err != nil {
 		t.Fatal("failed to disconnect:", err)
 	}
-	// Neither g1 nor g2 can connect after g1 being blacklisted
+	// Neither g1 nor g2 can connect after g1 being blocklisted
 	if err := connectToNode(g1, g2, false); err == nil {
 		t.Fatal("shouldn't be able to connect")
 	}
@@ -261,7 +283,7 @@ func TestManualConnectDisconnect(t *testing.T) {
 		t.Fatal("shouldn't be able to connect")
 	}
 
-	// g2 manually connects and therefore removes g1 from the blacklist again
+	// g2 manually connects and therefore removes g1 from the blocklist again
 	if err := connectToNode(g2, g1, true); err != nil {
 		t.Fatal("failed to connect:", err)
 	}
@@ -283,7 +305,7 @@ func TestManualConnectDisconnect(t *testing.T) {
 	}
 }
 
-// TestManualConnectDisconnectPersist checks if the blacklist is persistet on
+// TestManualConnectDisconnectPersist checks if the blocklist is persistet on
 // disk
 func TestManualConnectDisconnectPersist(t *testing.T) {
 	if testing.Short() {
@@ -291,7 +313,11 @@ func TestManualConnectDisconnectPersist(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
 
 	// g1 should be able to connect to g2
@@ -299,12 +325,12 @@ func TestManualConnectDisconnectPersist(t *testing.T) {
 		t.Fatal("failed to connect:", err)
 	}
 
-	// g2 manually disconnects from g1 and therefore blacklists it
+	// g2 manually disconnects from g1 and therefore blocklists it
 	if err := disconnectFromNode(g2, g1, true); err != nil {
 		t.Fatal("failed to disconnect:", err)
 	}
 
-	// Neither g1 nor g2 can connect after g1 being blacklisted
+	// Neither g1 nor g2 can connect after g1 being blocklisted
 	if err := connectToNode(g1, g2, false); err == nil {
 		t.Fatal("shouldn't be able to connect")
 	}
@@ -321,9 +347,13 @@ func TestManualConnectDisconnectPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
-	// Neither g1 nor g2 can connect after g1 being blacklisted
+	// Neither g1 nor g2 can connect after g1 being blocklisted
 	if err := connectToNode(g1, g2, false); err == nil {
 		t.Fatal("shouldn't be able to connect")
 	}

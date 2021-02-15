@@ -123,6 +123,10 @@ issues:
       text: "G107: Potential HTTP request made with variable url"
       linters:
         - gosec
+    - path: build/
+      text: "G110: Potential DoS vulnerability via decompression bomb"
+      linters:
+        - gosec
 
     # Some default exclude patterns that we want to keep after setting
     # `exclude-use-default` to `false`.
@@ -135,6 +139,8 @@ issues:
     - text: "G301: Expect directory permissions to be 0750 or less"
       linters:
         - gosec
+    # NOTE: our use of constants avoids these errors while allowing for file
+    # permissions higher than 0600
     - text: "G302: Expect file permissions to be 0600 or less"
       linters:
         - gosec

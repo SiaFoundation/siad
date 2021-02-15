@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // addBlockNoPayout adds a block to the wallet tester that does not have any
@@ -41,7 +42,11 @@ func TestViewAdded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine an extra block to get more outputs - the wallet is going to be
 	// loading two transactions at the same time.
@@ -132,7 +137,7 @@ func TestViewAdded(t *testing.T) {
 	}
 	set3Txn, set3Parents := b.View()
 	err = wt.tpool.AcceptTransactionSet(append(set3Parents, set3Txn))
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal(err)
 	}
 }
@@ -147,7 +152,11 @@ func TestDoubleSignError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction, add money to it, and then call sign twice.
 	b, err := wt.wallet.StartTransaction()
@@ -165,7 +174,7 @@ func TestDoubleSignError(t *testing.T) {
 		t.Fatal(err)
 	}
 	txnSet2, err := b.Sign(true)
-	if err != errBuilderAlreadySigned {
+	if !errors.Contains(err, errBuilderAlreadySigned) {
 		t.Error("the wrong error is being returned after a double call to sign")
 	}
 	if err != nil && txnSet2 != nil {
@@ -188,7 +197,11 @@ func TestConcurrentBuilders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a few more blocks so that the wallet has lots of outputs to pick
 	// from.
@@ -289,7 +302,11 @@ func TestConcurrentBuildersSingleOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine MaturityDelay blocks on the wallet using blocks that don't give
 	// miner payouts to the wallet, so that all outputs can be condensed into a
@@ -374,7 +391,7 @@ func TestConcurrentBuildersSingleOutput(t *testing.T) {
 	}
 	// This add should fail, blocking the builder from completion.
 	err = builder2.FundSiacoins(funding)
-	if err != modules.ErrIncompleteTransactions {
+	if !errors.Contains(err, modules.ErrIncompleteTransactions) {
 		t.Fatal(err)
 	}
 
@@ -421,7 +438,11 @@ func TestParallelBuilders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a few more blocks so that the wallet has lots of outputs to pick
 	// from.
@@ -518,7 +539,11 @@ func TestUnconfirmedParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Send all of the wallet's available balance to itself.
 	uc, err := wt.wallet.NextAddress()
@@ -574,7 +599,11 @@ func TestDoubleSpendCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction, add money to it.
 	b, err := wt.wallet.StartTransaction()
@@ -644,7 +673,11 @@ func TestReplaceOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	b, err := wt.wallet.StartTransaction()
 	if err != nil {
@@ -714,7 +747,11 @@ func TestMarkWalletInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	b, err := wt.wallet.StartTransaction()
 	if err != nil {
@@ -778,7 +815,11 @@ func TestDoubleSpendAfterMarking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction, add money to it.
 	b, err := wt.wallet.StartTransaction()

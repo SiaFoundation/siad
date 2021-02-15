@@ -72,6 +72,11 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	h.managedLockStorageObligation(fcid)
 	defer h.managedUnlockStorageObligation(fcid)
 
+	// simulate a missing obligation.
+	if h.dependencies.Disrupt("StorageObligationNotFound") {
+		return nil, errors.AddContext(errNoStorageObligation, "Could not fetch storage obligation")
+	}
+
 	// get the storage obligation
 	so, err := h.managedGetStorageObligation(fcid)
 	if err != nil {
@@ -280,7 +285,7 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
 	// Check that the revision count has increased.
 	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
-		return ErrBadRevisionNumber
+		return errors.AddContext(ErrBadRevisionNumber, fmt.Sprintf("%v <= %v", paymentRevision.NewRevisionNumber, existingRevision.NewRevisionNumber))
 	}
 
 	// Check that the revision is well-formed.
@@ -372,6 +377,9 @@ func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRe
 	}
 	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
 		return ErrBadUnlockHash
+	}
+	if err := verifyPayoutSums(existingRevision, paymentRevision); err != nil {
+		return errors.Compose(ErrInvalidPayoutSums, err)
 	}
 	return nil
 }
