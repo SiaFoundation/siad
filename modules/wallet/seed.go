@@ -127,25 +127,31 @@ func (w *Wallet) nextPrimarySeedAddresses(tx *bolt.Tx, n uint64) ([]types.Unlock
 	}
 	n -= neededUnused
 
-	// Fetch and increment the seed progress.
-	progress, err := dbGetPrimarySeedProgress(tx)
-	if err != nil {
-		return []types.UnlockConditions{}, err
+	// Generate new keys if the unused ones are not enough. This happens first
+	// since it's the only part of the code that might fail. So we don't want to
+	// remove keys from the unused map until after we are sure this worked.
+	var ucs []types.UnlockConditions
+	if n > 0 {
+		// Fetch and increment the seed progress.
+		progress, err := dbGetPrimarySeedProgress(tx)
+		if err != nil {
+			return []types.UnlockConditions{}, err
+		}
+		if err = dbPutPrimarySeedProgress(tx, progress+n); err != nil {
+			return []types.UnlockConditions{}, err
+		}
+		// Integrate the next keys into the wallet, and return the unlock
+		// conditions. Also remove new keys from the future keys and update them
+		// according to new progress
+		spendableKeys := generateKeys(w.primarySeed, progress, n)
+		ucs = make([]types.UnlockConditions, 0, len(spendableKeys))
+		for _, spendableKey := range spendableKeys {
+			w.keys[spendableKey.UnlockConditions.UnlockHash()] = spendableKey
+			delete(w.lookahead, spendableKey.UnlockConditions.UnlockHash())
+			ucs = append(ucs, spendableKey.UnlockConditions)
+		}
+		w.regenerateLookahead(progress + n)
 	}
-	if err = dbPutPrimarySeedProgress(tx, progress+n); err != nil {
-		return []types.UnlockConditions{}, err
-	}
-	// Integrate the next keys into the wallet, and return the unlock
-	// conditions. Also remove new keys from the future keys and update them
-	// according to new progress
-	spendableKeys := generateKeys(w.primarySeed, progress, n)
-	ucs := make([]types.UnlockConditions, 0, len(spendableKeys))
-	for _, spendableKey := range spendableKeys {
-		w.keys[spendableKey.UnlockConditions.UnlockHash()] = spendableKey
-		delete(w.lookahead, spendableKey.UnlockConditions.UnlockHash())
-		ucs = append(ucs, spendableKey.UnlockConditions)
-	}
-	w.regenerateLookahead(progress + n)
 
 	// Add as many unused UCs as necessary.
 	unusedUCs := make([]types.UnlockConditions, 0, int(neededUnused))
