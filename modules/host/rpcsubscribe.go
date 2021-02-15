@@ -261,9 +261,9 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, oldD
 // track bandwidth and updating the price table, we lock the subscriptionInfo
 // during the whole operation and notify the renter when setting the new limit
 // is done.
-func (h *Host) managedHandlePrepayBandwidth(stream siamux.Stream, info *subscriptionInfo) error {
+func (h *Host) managedHandlePrepayBandwidth(stream siamux.Stream, info *subscriptionInfo, pt *modules.RPCPriceTable) error {
 	// Process payment.
-	pd, err := h.ProcessPayment(stream)
+	pd, err := h.ProcessPayment(stream, pt.HostBlockHeight)
 	if err != nil {
 		return errors.AddContext(err, "managedHandlePrepaybandwidth: failed to process payment")
 	}
@@ -375,7 +375,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 	}
 
 	// Process bandwidth payment.
-	pd, err := h.ProcessPayment(stream)
+	pd, err := h.ProcessPayment(stream, pt.HostBlockHeight)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to process payment")
 	}
@@ -445,7 +445,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 		case modules.SubscriptionRequestExtend:
 			pt, deadline, err = h.managedHandleExtendSubscriptionRequest(stream, deadline, info, bandwidthLimit)
 		case modules.SubscriptionRequestPrepay:
-			err = h.managedHandlePrepayBandwidth(stream, info)
+			err = h.managedHandlePrepayBandwidth(stream, info, pt)
 		case modules.SubscriptionRequestStop:
 			err = h.managedHandleStopSubscription(info)
 			return refund, err
