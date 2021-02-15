@@ -16,6 +16,12 @@ import (
 // HostHeight when updating the price table and will not accept a height that is
 // significantly lower than our blockheight.
 func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a new worker tester
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
