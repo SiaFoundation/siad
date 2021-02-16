@@ -43,6 +43,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// a price table that is at least valid for another 5 minutes. The
 		// SubscriptionPeriod also happens to be 5 minutes but we renew 2.5
 		// minutes before it ends.
+		w.renter.log.Printf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
 
 		// Trigger an update by setting the update time to now.
 		newPT := *pt
@@ -80,7 +81,7 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 	return nil, modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
 }
 
-// FundSubscription pays the host to increase the subscription budget.
+// managedFundSubscription pays the host to increase the subscription budget.
 func (w *worker) managedFundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
 	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, w.staticCache().staticBlockHeight, fundAmt)
 }
