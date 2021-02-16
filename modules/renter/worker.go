@@ -19,7 +19,6 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
 
@@ -27,7 +26,8 @@ import (
 )
 
 const (
-	// minRHP3Version defines the minimum version that supports RHP3.
+	// minRHP3Version defines the minimum version that supports RHP3. Note that
+	// this constant is not used, it is left in for documentation purposes only.
 	minRHP3Version = "1.4.10"
 
 	// minRegistryVersion defines the minimum version that is required for a
@@ -190,13 +190,6 @@ func (w *worker) staticKilled() bool {
 	default:
 		return false
 	}
-}
-
-// staticSupportsRHP3 is a convenience function to determine whether the host is
-// on a version that supports the RHP3 protocol.
-func (w *worker) staticSupportsRHP3() bool {
-	cache := w.staticCache()
-	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // staticWake will wake the worker from sleeping. This should be called any time
