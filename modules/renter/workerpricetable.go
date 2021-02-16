@@ -107,6 +107,13 @@ func (wpt *workerPriceTable) staticValid() bool {
 	return time.Now().Before(wpt.staticExpiryTime)
 }
 
+// staticValidFor is a helper that returns true if the price table is valid
+// for the provided duration.
+func (wpt *workerPriceTable) staticValidFor(duration time.Duration) bool {
+	minExpiry := time.Now().Add(duration)
+	return minExpiry.Before(wpt.staticExpiryTime)
+}
+
 // staticNeedsToUpdate returns whether or not the price table needs to be
 // updated.
 func (wpt *workerPriceTable) staticNeedsToUpdate() bool {

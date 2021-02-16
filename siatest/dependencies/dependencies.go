@@ -362,6 +362,9 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 	if s == "DisableSnapshotSync" {
 		return true
 	}
+	if s == "DisableSubscriptionLoop" {
+		return true
+	}
 	return false
 }
 

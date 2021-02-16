@@ -275,9 +275,7 @@ func (w *worker) managedBlockUntilReady() bool {
 	// connectivity, block until connectivity is restored.
 	for !w.renter.g.Online() {
 		select {
-		case <-w.renter.tg.StopChan():
-			return false
-		case <-w.killChan:
+		case <-w.staticTG.StopChan():
 			return false
 		case <-time.After(offlineCheckFrequency):
 		}
@@ -397,9 +395,7 @@ func (w *worker) threadedWorkLoop() {
 		select {
 		case <-w.wakeChan:
 			continue
-		case <-w.killChan:
-			return
-		case <-w.renter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 			return
 		}
 	}
