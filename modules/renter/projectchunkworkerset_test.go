@@ -6,10 +6,8 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
-	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -540,13 +538,5 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	if expectedDurInS != 123+60 {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
-	}
-
-	// tweak the version to make it non async ready
-	cache := &workerCache{staticHostVersion: "1.4.8"} // pre-dates RHP3
-	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(cache))
-	err = pcws.managedLaunchWorker(context.Background(), w, responseChan, ws)
-	if err == nil || !strings.Contains(err.Error(), "worker is not RHP3 ready") {
-		t.Fatal(err)
 	}
 }
