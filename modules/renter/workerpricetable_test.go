@@ -121,23 +121,24 @@ func TestUpdatePriceTableGouging(t *testing.T) {
 func TestHostBlockHeightWithinTolerance(t *testing.T) {
 	t.Parallel()
 
+	l := priceTableHostBlockHeightLeeWay
 	inputs := []struct {
 		RenterSynced      bool
 		RenterBlockHeight types.BlockHeight
 		HostBlockHeight   types.BlockHeight
 		ExpectedOutcome   bool
 	}{
-		{true, 2, 0, true},   // renter synced and hbh lower (verify underflow)
-		{true, 3, 0, true},   // renter synced and hbh lower
-		{true, 4, 0, false},  // renter synced and hbh too low
-		{false, 3, 0, false}, // renter not synced and hbh lower
-		{true, 5, 8, true},   // renter synced and hbh higher
-		{true, 5, 2, true},   // renter synced and hbh lower
-		{true, 5, 9, false},  // renter synced and hbh too high
-		{true, 5, 1, false},  // renter synced and hbh too low
-		{false, 5, 4, false}, // renter not synced and hbh too low
-		{false, 5, 5, true},  // renter not synced and hbh equal
-		{false, 5, 6, true},  // renter not synced and hbh higher
+		{true, l - 1, 0, true},  // renter synced and hbh lower (verify underflow)
+		{true, l, 0, true},      // renter synced and hbh lower
+		{true, l + 1, 0, false}, // renter synced and hbh too low
+		{false, l, 0, false},    // renter not synced and hbh lower
+		{true, 1, 1 + l, true},  // renter synced and hbh higher
+		{true, l + 1, 1, true},  // renter synced and hbh lower
+		{true, 0, l + 1, false}, // renter synced and hbh too high
+		{true, l + 2, 1, false}, // renter synced and hbh too low
+		{false, 5, 4, false},    // renter not synced and hbh too low
+		{false, 5, 5, true},     // renter not synced and hbh equal
+		{false, 5, 6, true},     // renter not synced and hbh higher
 	}
 
 	for _, input := range inputs {
