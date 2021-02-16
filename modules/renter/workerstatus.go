@@ -147,12 +147,7 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 		recentErrStr = status.recentErr.Error()
 	}
 
-	// Use 30 sectors for the expected job time since that is the default
-	// redundancy for files.
-	var avgJobTimeInMs uint64 = 0
-	if d := hsq.callExpectedJobTime(uint64(modules.RenterDefaultDataPieces + modules.RenterDefaultParityPieces)); d > 0 {
-		avgJobTimeInMs = uint64(d.Milliseconds())
-	}
+	avgJobTimeInMs := uint64(hsq.callExpectedJobTime().Milliseconds())
 
 	return modules.WorkerHasSectorJobsStatus{
 		AvgJobTime:          avgJobTimeInMs,
