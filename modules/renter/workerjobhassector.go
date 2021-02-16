@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -123,6 +124,10 @@ func (j *jobHasSector) callExecute() {
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
+	// sanity check
+	if len(j.staticSectors) == 0 {
+		build.Critical("expected bandwidth requested for a job that has no staticSectors set")
+	}
 	return hasSectorJobExpectedBandwidth(len(j.staticSectors))
 }
 

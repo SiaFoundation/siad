@@ -128,7 +128,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// stream if it does not agree with pricing. The price table has not yet
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
-	payment, err := h.ProcessPayment(stream)
+	payment, err := h.ProcessPayment(stream, pt.HostBlockHeight)
 	if errors.Contains(err, io.ErrClosedPipe) {
 		return nil // renter didn't intend to pay
 	}
