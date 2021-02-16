@@ -88,7 +88,7 @@ func (urp *uniqueRefreshPaths) callNumParentDirs() int {
 	return len(urp.parentDirs)
 }
 
-// callRefreshAll will updated the directories in the childDir map by calling
+// callRefreshAll will update the directories in the childDir map by calling
 // refreshAll in a go routine.
 func (urp *uniqueRefreshPaths) callRefreshAll() error {
 	urp.mu.Lock()
@@ -101,7 +101,7 @@ func (urp *uniqueRefreshPaths) callRefreshAll() error {
 	})
 }
 
-// callRefreshAllBlocking will updated the directories in the childDir map by
+// callRefreshAllBlocking will update the directories in the childDir map by
 // calling refreshAll.
 func (urp *uniqueRefreshPaths) callRefreshAllBlocking() error {
 	urp.mu.Lock()
@@ -133,7 +133,13 @@ func (urp *uniqueRefreshPaths) refreshAll() (err error) {
 
 	// Add all child dir siaPaths to the siaPathChan
 	for sp := range urp.childDirs {
-		siaPathChan <- sp
+		select {
+		case siaPathChan <- sp:
+		case <-urp.r.tg.StopChan():
+			// Renter has shutdown, close the channel and return
+			close(siaPathChan)
+			return
+		}
 	}
 
 	// Close siaPathChan and wait for worker groups to complete
