@@ -235,6 +235,22 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		t.Fatal(err)
 	}
 
+	// wait until we're certain all workers are fit for duty
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		ws, err := wt.renter.WorkerPoolStatus()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range ws.Workers {
+			if w.AccountStatus.AvailableBalance.IsZero() ||
+				!w.PriceTableStatus.Active ||
+				w.MaintenanceOnCooldown {
+				return errors.New("worker is not ready yet")
+			}
+		}
+		return nil
+	})
+
 	// create PCWS
 	pcws, err := wt.renter.newPCWSByRoots(context.Background(), roots, ec, ptck, 0)
 	if err != nil {
@@ -277,7 +293,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		}
 
 		if !isEqualTo(rw.pieceIndices, expected) {
-			t.Error("unexpected pieces", hostname, rw.worker.staticHostPubKeyStr[64:], rw.pieceIndices)
+			t.Error("unexpected pieces", hostname, rw.worker.staticHostPubKeyStr[64:], rw.pieceIndices, rw.err)
 		}
 	}
 }
@@ -482,7 +498,6 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 
 	// give it a name and set an initial estimate on the HS queue
 	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
-	w.staticJobHasSectorQueue.weightedJobsCompleted = 1
 	w.staticHostPubKeyStr = "myworker"
 
 	// ensure PT is valid and host is considered RHP3 ready

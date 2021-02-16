@@ -43,6 +43,35 @@ const (
 	bubblePending
 )
 
+// BubbleMetadata calculates the updated values of a directory's metadata and
+// updates the siadir metadata on disk then calls callThreadedBubbleMetadata on
+// the parent directory so that it is only blocking for the current directory
+//
+// If the recursive boolean is supplied, all sub directories will be bubbled.
+//
+// If the force boolean is supplied, the LastHealthCheckTime of the directories
+// will be ignored so all directories will be considered.
+func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
+	// If this is not a recursive call then call bubble
+	if !recursive {
+		return r.managedBubbleMetadata(siaPath)
+	}
+
+	// Prepare the subtree for bubble
+	urp, err := r.managedPrepareForBubble(siaPath, force)
+	if err != nil {
+		return errors.AddContext(err, "unable to prepare subtree for bubble")
+	}
+	// Call bubble in a non blocking manner
+	urp.callRefreshAll()
+	return nil
+}
+
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
 // caller should proceed by calling bubble. If 'false' is returned, the caller
 // should not bubble, another thread will handle running the bubble.
@@ -82,6 +111,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateRepairSize:          uint64(0),
 		AggregateSize:                uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
+		AggregateStuckSize:           uint64(0),
 
 		AggregateSkynetFiles: uint64(0),
 		AggregateSkynetSize:  uint64(0),
@@ -97,6 +127,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		RepairSize:          uint64(0),
 		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
+		StuckSize:           uint64(0),
 
 		SkynetFiles: uint64(0),
 		SkynetSize:  uint64(0),
@@ -191,7 +222,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 			// Update repair fields
 			metadata.AggregateRepairSize += fileMetadata.RepairBytes
+			metadata.AggregateStuckSize += fileMetadata.StuckBytes
 			metadata.RepairSize += fileMetadata.RepairBytes
+			metadata.StuckSize += fileMetadata.StuckBytes
 
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
@@ -264,11 +297,15 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// before the health loop has been able to set the LastHealthCheckTime.
 			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
-				err = r.tg.Launch(func() {
-					r.callThreadedBubbleMetadata(dirMetadata.sp)
-				})
-				if err != nil {
-					r.log.Printf("WARN: unable to launch bubble for '%v'", dirMetadata.sp)
+				// Check for the dependency to disable the LastHealthCheckTime
+				// correction, (LHCT = LastHealthCheckTime).
+				if !r.deps.Disrupt("DisableLHCTCorrection") {
+					err = r.tg.Launch(func() {
+						r.callThreadedBubbleMetadata(dirMetadata.sp)
+					})
+					if err != nil {
+						r.log.Printf("WARN: unable to launch bubble for '%v'", dirMetadata.sp)
+					}
 				}
 			}
 
@@ -286,6 +323,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateRepairSize += dirMetadata.AggregateRepairSize
 			metadata.AggregateSize += dirMetadata.AggregateSize
+			metadata.AggregateStuckSize += dirMetadata.AggregateStuckSize
 
 			// Update aggregate Skynet fields
 			metadata.AggregateSkynetFiles += dirMetadata.AggregateSkynetFiles
@@ -358,7 +396,7 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 	}
 
 	// Calculate file health
-	health, stuckHealth, _, _, numStuckChunks, repairBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
@@ -389,6 +427,7 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 			RepairBytes:         repairBytes,
 			Size:                sf.Size(),
 			StuckHealth:         stuckHealth,
+			StuckBytes:          stuckBytes,
 			UID:                 sf.UID(),
 		},
 	}, nil
@@ -671,7 +710,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 	// loops start at the root directory so there is no point triggering them
 	// until the root directory is updated
 	if siaPath.IsRoot() {
-		if metadata.AggregateHealth >= RepairThreshold {
+		if modules.NeedsRepair(metadata.AggregateHealth) {
 			select {
 			case r.uploadHeap.repairNeeded <- struct{}{}:
 			default:

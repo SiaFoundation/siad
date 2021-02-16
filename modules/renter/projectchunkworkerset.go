@@ -10,11 +10,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+
 	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
@@ -33,6 +41,10 @@ var (
 		Standard: time.Minute * 3,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
+
+	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
+	// amount of lookups vs downloads. It is used in price gouging checks.
+	sectorLookupToDownloadRatio = 16
 )
 
 const (
@@ -64,10 +76,12 @@ type pcwsUnresolvedWorker struct {
 
 // pcwsWorkerResponse contains a worker's response to a HasSector query. There
 // is a list of piece indices where the worker responded that they had the piece
-// at that index.
+// at that index. There is also an error field that will be set in the event an
+// error occurred while performing the HasSector query.
 type pcwsWorkerResponse struct {
 	worker       *worker
 	pieceIndices []uint64
+	err          error
 }
 
 // pcwsWorkerState contains the worker state for a single thread that is
@@ -261,19 +275,23 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
+	// Defer closing the update chans to signal we've received and processed an
+	// HS response.
+	defer ws.closeUpdateChans()
+
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	if w == nil {
 		ws.staticRenter.log.Critical("nil worker provided in resp")
 	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
-	ws.closeUpdateChans()
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 			worker: w,
+			err:    resp.staticErr,
 		})
 		return
 	}
@@ -336,8 +354,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
-		staticWorker: w,
-
+		staticWorker:               w,
 		staticExpectedResolvedTime: expectedResolveTime,
 	}
 
@@ -541,6 +558,13 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// erasure coder have required segment sizes.
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
+	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero,
+	// or multiplication by zero, possibly resulting in unwanted side-effects in
+	// the worker selection and/or any other algorithms.
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1)
+	}
+
 	// Create the workerResponseChan.
 	//
 	// The worker response chan is allocated to be quite large. This is because
@@ -581,6 +605,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerSet:            pcws,
 		workerState:          ws,
 	}
+
+	// Set debug variables on the pdc
+	fastrand.Read(pdc.uid[:])
+	pdc.launchTime = time.Now()
 
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()

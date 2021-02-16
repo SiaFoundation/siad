@@ -99,7 +99,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	}
 
 	// verify invalid offset and length
-	responseChan := sds.ReadStream(1, modules.SectorSize)
+	responseChan := sds.ReadStream(context.Background(), 1, modules.SectorSize, types.ZeroCurrency)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr == nil {
@@ -114,7 +114,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
-	responseChan = sds.ReadStream(offset, length)
+	responseChan = sds.ReadStream(context.Background(), offset, length, types.ZeroCurrency)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr != nil {
@@ -198,7 +198,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
 
-	responseChan := sds.ReadStream(offset, length)
+	responseChan := sds.ReadStream(context.Background(), offset, length, types.ZeroCurrency)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr != nil {

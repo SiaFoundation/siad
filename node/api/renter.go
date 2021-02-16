@@ -313,6 +313,69 @@ func trimDownloadInfo(dis ...modules.DownloadInfo) (_ []modules.DownloadInfo, er
 	return dis, nil
 }
 
+// renterBubbleHandlerPOST handles the API calls to /renter/bubble.
+func (api *API) renterBubbleHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the 'rootsiapath' parameter
+	rootSiaPath := false
+	var err error
+	if r := req.FormValue("rootsiapath"); r != "" {
+		rootSiaPath, err = scanBool(r)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'rootsiapath' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse the siaPath
+	var siaPath modules.SiaPath
+	s := req.FormValue("siapath")
+	if rootSiaPath && s != "" {
+		WriteError(w, Error{"rootsiapath and non empty siapath cannot both be used"}, http.StatusBadRequest)
+		return
+	}
+	if !rootSiaPath && s == "" {
+		WriteError(w, Error{"rootsiapath should be true if no siapath is provided"}, http.StatusBadRequest)
+		return
+	}
+	if rootSiaPath {
+		siaPath = modules.RootSiaPath()
+	} else {
+		err = siaPath.LoadString(s)
+		if err != nil {
+			WriteError(w, Error{"unable to parse siapath: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse the 'force' parameter
+	force := false
+	if f := req.FormValue("force"); f != "" {
+		force, err = scanBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	// Parse the 'recursive' parameter
+	recursive := false
+	if r := req.FormValue("recursive"); r != "" {
+		recursive, err = strconv.ParseBool(r)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'recursive' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Call bubble
+	err = api.renter.BubbleMetadata(siaPath, force, recursive)
+	if err != nil {
+		WriteError(w, Error{"unable to bubble directory: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteSuccess(w)
+	return
+}
+
 // renterBackupsHandlerGET handles the API calls to /renter/backups.
 func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	backups, syncedHosts, err := api.renter.UploadedBackups()

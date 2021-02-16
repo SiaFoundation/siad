@@ -3,6 +3,7 @@ package renter
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -22,7 +23,7 @@ func TestStreamLRU(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
 	sbs := newStreamBufferSet(&tg)
-	stream := sbs.callNewStream(dataSource, 0)
+	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
 
 	// Extract the LRU from the stream to test it directly.
 	lru := stream.lru

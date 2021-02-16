@@ -31,15 +31,6 @@ func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy 
 
 // Default redundancy parameters.
 var (
-	// RepairThreshold defines the threshold at which the renter decides to
-	// repair a file. The renter will start repairing the file when the health
-	// is equal to or greater than this value.
-	RepairThreshold = build.Select(build.Var{
-		Dev:      0.25,
-		Standard: 0.25,
-		Testing:  0.25,
-	}).(float64)
-
 	// syncCheckInterval is how often the repair heap checks the consensus code
 	// to see if the renter is synced. This is created because the contractor
 	// may not update the synced channel until a block is received under some
@@ -97,7 +88,7 @@ var (
 	// where we don't count all of the memory usage accurately.
 	repairMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
-		Standard: uint64(1 << 30), // 1.0 GiB
+		Standard: uint64(1 << 31), // 2.0 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
@@ -115,7 +106,7 @@ var (
 
 	// repairMemoryPriorityDefault is the amount of memory that is held in
 	// reserve explicitly for priority actions.
-	repairMemoryPriorityDefault = repairMemoryDefault / 2
+	repairMemoryPriorityDefault = repairMemoryDefault / 4
 
 	// gcMemoryThreshold is the amount of memory after which a memory manager
 	// triggers a garbage collection.

@@ -1044,53 +1044,74 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 
 // RPCBeginSubscription begins a subscription on a new stream and returns
 // it.
-func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.SiaPublicKey, pt *RPCPriceTable, initialBudget types.Currency, fundAcc AccountID, bh types.BlockHeight, subscriber types.Specifier) (_ siamux.Stream, err error) {
+func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.SiaPublicKey, pt *RPCPriceTable, initialBudget types.Currency, fundAcc AccountID, bh types.BlockHeight, subscriber types.Specifier) error {
 	// initiate the RPC
-	err = RPCWrite(stream, RPCRegistrySubscription)
+	buf := bytes.NewBuffer(nil)
+	err := RPCWrite(buf, RPCRegistrySubscription)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Write the pricetable uid.
-	err = RPCWrite(stream, pt.UID)
+	err = RPCWrite(buf, pt.UID)
 	if err != nil {
-		return nil, err
+		return err
+	}
+
+	// Write buffer to stream.
+	_, err = buf.WriteTo(stream)
+	if err != nil {
+		return err
 	}
 
 	// Provide payment
 	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Send the subscriber.
-	return stream, RPCWrite(stream, subscriber)
+	// Send subscriber.
+	err = RPCWrite(stream, subscriber)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RPCStopSubscription gracefully stops a subscription session.
-func RPCStopSubscription(stream siamux.Stream) error {
-	err := RPCWrite(stream, SubscriptionRequestStop)
-	if err != nil {
+func RPCStopSubscription(stream siamux.Stream) (err error) {
+	// Close the stream at the end.
+	defer func() {
 		err = errors.Compose(err, stream.Close())
+	}()
+	// Write the stop signal.
+	err = RPCWrite(stream, SubscriptionRequestStop)
+	if err != nil {
 		return errors.AddContext(err, "StopSubscription failed to send specifier")
 	}
+	// Read a byte to block until the host closed the connection.
 	_, err = stream.Read(make([]byte, 1))
 	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
-		err = errors.Compose(err, stream.Close())
 		return errors.AddContext(err, "StopSubscription failed to wait for closed stream")
 	}
-	return stream.Close()
+	return nil
 }
 
 // RPCSubscribeToRVs subscribes to the given publickey/tweak pairs.
 func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionRequest) ([]RPCRegistrySubscriptionNotificationEntryUpdate, error) {
 	// Send the type of the request.
-	err := RPCWrite(stream, SubscriptionRequestSubscribe)
+	buf := bytes.NewBuffer(nil)
+	err := RPCWrite(buf, SubscriptionRequestSubscribe)
 	if err != nil {
 		return nil, err
 	}
 	// Send the request.
-	err = RPCWrite(stream, requests)
+	err = RPCWrite(buf, requests)
+	if err != nil {
+		return nil, err
+	}
+	// Write buffer to stream.
+	_, err = buf.WriteTo(stream)
 	if err != nil {
 		return nil, err
 	}
@@ -1158,17 +1179,21 @@ func RPCUnsubscribeFromRVs(stream siamux.Stream, requests []RPCRegistrySubscript
 // RPCFundSubscription pays the host to increase the subscription budget.
 func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, pp PaymentProvider, aid AccountID, bh types.BlockHeight, fundAmt types.Currency) error {
 	// Send the type of the request.
-	err := RPCWrite(stream, SubscriptionRequestPrepay)
+	buf := bytes.NewBuffer(nil)
+	err := RPCWrite(buf, SubscriptionRequestPrepay)
 	if err != nil {
 		return err
 	}
 
 	// Provide payment
-	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, fundAmt, aid, bh)
+	err = pp.ProvidePayment(buf, host, RPCRegistrySubscription, fundAmt, aid, bh)
 	if err != nil {
 		return err
 	}
-	return nil
+
+	// Write buffer to stream.
+	_, err = buf.WriteTo(stream)
+	return err
 }
 
 // RPCExtendSubscription extends the subscription with the given price table.

@@ -78,19 +78,11 @@ type (
 		staticHostPubKey    types.SiaPublicKey
 		staticHostPubKeyStr string
 
-		// Download variables related to queuing work. They have a separate
-		// mutex to minimize lock contention.
-		downloadChunks              *downloadChunks // Yet unprocessed work items.
-		downloadMu                  sync.Mutex
-		downloadTerminated          bool      // Has downloading been terminated for this worker?
-		downloadConsecutiveFailures int       // How many failures in a row?
-		downloadRecentFailure       time.Time // How recent was the last failure?
-		downloadRecentFailureErr    error     // What was the reason for the last failure?
-
 		// Job queues for the worker.
 		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
+		staticJobLowPrioReadQueue      *jobReadQueue
 		staticJobReadRegistryQueue     *jobReadRegistryQueue
 		staticJobRenewQueue            *jobRenewQueue
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
@@ -127,8 +119,12 @@ type (
 		// subscription-related fields
 		staticSubscriptionInfo *subscriptionInfos
 
+		// staticSetInitialEstimates is an object that ensures the initial queue
+		// estimates of the HS and RJ queues are only set once.
+		staticSetInitialEstimates sync.Once
+
 		// Utilities.
-		tg       threadgroup.ThreadGroup
+		staticTG threadgroup.ThreadGroup
 		mu       sync.Mutex
 		renter   *Renter
 		wakeChan chan struct{} // Worker will check queues if given a wake signal.
@@ -182,7 +178,7 @@ func (w *worker) managedKill() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	err := w.tg.Stop()
+	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 		w.renter.log.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
 	}
@@ -192,11 +188,18 @@ func (w *worker) managedKill() {
 // killed or not.
 func (w *worker) staticKilled() bool {
 	select {
-	case <-w.tg.StopChan():
+	case <-w.staticTG.StopChan():
 		return true
 	default:
 		return false
 	}
+}
+
+// staticSupportsRHP3 is a convenience function to determine whether the host is
+// on a version that supports the RHP3 protocol.
+func (w *worker) staticSupportsRHP3() bool {
+	cache := w.staticCache()
+	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // staticWake will wake the worker from sleeping. This should be called any time
@@ -206,13 +209,6 @@ func (w *worker) staticWake() {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
-}
-
-// staticSupportsRHP3 is a convenience function to determine whether the host is
-// on a version that supports the RHP3 protocol.
-func (w *worker) staticSupportsRHP3() bool {
-	cache := w.staticCache()
-	return build.VersionCmp(cache.staticHostVersion, minRHP3Version) >= 0
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
@@ -262,7 +258,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		downloadChunks:    newDownloadChunks(),
 		unprocessedChunks: newUploadChunks(),
 		wakeChan:          make(chan struct{}, 1),
 		renter:            r,
@@ -271,6 +266,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobLowPrioReadQueue()
 	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()

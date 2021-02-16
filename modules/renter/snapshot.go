@@ -616,7 +616,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				return
 			}
 
-			if info.Health >= RepairThreshold {
+			if modules.NeedsRepair(info.Health) {
 				// not ready for upload yet
 				return
 			}

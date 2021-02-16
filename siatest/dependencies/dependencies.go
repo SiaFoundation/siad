@@ -154,12 +154,6 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyRenewWithoutClear will force contracts to be renewed without
-	// clearing their contents.
-	DependencyRenewWithoutClear struct {
-		modules.ProductionDependencies
-	}
-
 	// DependencyInterruptAccountSaveOnShutdown will interrupt the account save
 	// when the renter shuts down.
 	DependencyInterruptAccountSaveOnShutdown struct {
@@ -206,6 +200,17 @@ type (
 // manually corrupt the MDM output returned by hosts.
 func NewDependencyCorruptMDMOutput() *DependencyInterruptOnceOnKeyword {
 	return newDependencyInterruptOnceOnKeyword("CorruptMDMOutput")
+}
+
+// NewDependencyCorruptReadSector returns a dependency that can be used to
+// ensure ReadSector instructions on the host fail due to corruption of the MDM
+// output.
+//
+// NOTE: this dependency is very similar to 'NewDependencyCorruptMDMOutput' and
+// even uses the same disrupt string, the difference is that this is an
+// enable-disable, and not interrupt once.
+func NewDependencyCorruptReadSector() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("CorruptMDMOutput")
 }
 
 // NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
@@ -444,11 +449,6 @@ func (d *DependencyLowFundsRenewalFail) Disrupt(s string) bool {
 // Disrupt causes contract renewal to fail due to low allowance funds.
 func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
 	return s == "LowFundsRefresh"
-}
-
-// Disrupt causes contract renewal to not clear the contents of a contract.
-func (d *DependencyRenewWithoutClear) Disrupt(s string) bool {
-	return s == "RenewWithoutClear"
 }
 
 // Disrupt causes contract renewal to not clear the contents of a contract.

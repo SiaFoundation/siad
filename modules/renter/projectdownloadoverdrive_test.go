@@ -37,20 +37,6 @@ func TestAddCostPenalty(t *testing.T) {
 		t.Error("unexpected")
 	}
 
-	// verify penalty is set to 1H if zero is passed
-	//
-	// calculate the expected outcome
-	hasting := types.NewCurrency64(1)
-	penalty, err = jc.Div(hasting).Uint64()
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected = jt + (time.Duration(penalty) * time.Millisecond)
-	adjusted = addCostPenalty(jt, jc, types.ZeroCurrency)
-	if adjusted != expected {
-		t.Error("unexpected", adjusted, expected)
-	}
-
 	// verify overflow
 	jt = time.Duration(1)
 	jc = types.NewCurrency64(math.MaxUint64).Mul64(10)
@@ -104,7 +90,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	t.Parallel()
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := mockWorker(10)
+	worker := mockWorker(100 * time.Millisecond)
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0
@@ -142,9 +128,9 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	ec := modules.NewRSSubCodeDefault()
 
 	// mock two workers with different traits
-	w1 := mockWorker(5) // avg 200ms job time
+	w1 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	w1.staticHostPubKeyStr = "w1"
-	w2 := mockWorker(10) // avg 100ms job time
+	w2 := mockWorker(100 * time.Millisecond) // avg 100ms job time
 	w2.staticHostPubKeyStr = "w2"
 
 	// mock a pdc
@@ -236,8 +222,8 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 	}
 
 	// mock two workers with different traits
-	w1 := mockWorker(10) // avg 100ms job time
-	w2 := mockWorker(5)  // avg 200ms job time
+	w1 := mockWorker(100 * time.Millisecond) // avg 100ms job time
+	w2 := mockWorker(200 * time.Millisecond) // avg 200ms job time
 	uws = []*pcwsUnresolvedWorker{
 		{
 			staticWorker:               w1,

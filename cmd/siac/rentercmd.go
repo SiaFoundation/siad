@@ -56,6 +56,14 @@ var (
 		Run:   wrap(renterallowancecmd),
 	}
 
+	renterBubbleCmd = &cobra.Command{
+		Use:   "bubble [directory]",
+		Short: "Call bubble on a directory.",
+		Long: `Call bubble on a directory to manually force an update of the directories metadata.
+To bubble the root directory pass in '.' as the directory.`,
+		Run: wrap(renterbubblecmd),
+	}
+
 	renterBackupCreateCmd = &cobra.Command{
 		Use:   "createbackup [name]",
 		Short: "Create a backup of the renter's siafiles",
@@ -1341,6 +1349,30 @@ how large the files are.`)
 	return req
 }
 
+// renterbubblecmd is the handler for the command `siac renter
+// bubble`.
+func renterbubblecmd(directory string) {
+	// Parse the siapath
+	var siaPath modules.SiaPath
+	if directory == "." {
+		directory = "root" // For UX
+		siaPath = modules.RootSiaPath()
+	} else {
+		err := siaPath.LoadString(directory)
+		if err != nil {
+			die("Unable to load siapath:", err)
+		}
+	}
+	fmt.Println("Calling bubble on:", directory)
+
+	// Bubble Directory
+	err := httpClient.RenterBubblePost(siaPath, true, renterBubbleAll)
+	if err != nil {
+		die("Unable to bubble", directory, ":", err)
+	}
+	fmt.Println("Bubble successful!")
+}
+
 // renterbackcreatecmd is the handler for the command `siac renter
 // createbackup`.
 func renterbackupcreatecmd(name string) {
@@ -1777,7 +1809,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	for _, dir := range dirs {
 		fmt.Println(dir.dir.SiaPath.String() + "/")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
+		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\tHealth\tStuck Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
 			name := subDir.SiaPath.Name() + "/"
 			size := modules.FilesizeUnits(subDir.AggregateSize)
@@ -1785,9 +1817,10 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			if subDir.AggregateMinRedundancy == -1 {
 				redundancyStr = "-"
 			}
-			healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
+			healthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(subDir.AggregateHealth))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(subDir.AggregateStuckHealth))
 			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckHealthStr, stuckStr, "-", "-", "-")
 		}
 
 		for _, file := range dir.files {
@@ -1803,12 +1836,14 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			if file.Redundancy == -1 {
 				redundancyStr = "-"
 			}
-			healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+
+			healthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(file.Health))
+			stuckHealthStr := fmt.Sprintf("%.2f%%", modules.HealthPercentage(file.StuckHealth))
 			stuckStr := yesNo(file.Stuck)
 			renewStr := yesNo(file.Renewing)
 			onDiskStr := yesNo(file.OnDisk)
 			recoverStr := yesNo(file.Recoverable)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckStr, renewStr, onDiskStr, recoverStr)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckHealthStr, stuckStr, renewStr, onDiskStr, recoverStr)
 		}
 		if err := w.Flush(); err != nil {
 			die("failed to flush writer:", err)

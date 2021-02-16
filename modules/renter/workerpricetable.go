@@ -9,10 +9,18 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
+	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow in
+	// the host's blockheight field on the price table. If we are synced we
+	// expect the host to be at most 'priceTableHostBlockHeightLeeWay' blocks
+	// higher or lower than our own block height, if we are not synced we expect
+	// the host's block height to be higher or equal.
+	priceTableHostBlockHeightLeeWay = 3
+
 	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
 	// in relation to the allowance, at which we consider the cost of updating
 	// the price table to be too expensive. E.g. the cost of updating the price
@@ -25,6 +33,11 @@ var (
 	// errPriceTableGouging is returned when price gouging is detected
 	errPriceTableGouging = errors.New("price table rejected due to price gouging")
 
+	// errHostBlockHeightNotWithinTolerance is returned when the block height
+	// returned by the host is not within a certain tolerance, the
+	// priceTableHostBlockHeightLeeWay,  of our own block height.
+	errHostBlockHeightNotWithinTolerance = errors.New("host blockheight is not within tolerance, host is unsynced")
+
 	// minAcceptedPriceTableValidity is the minimum price table validity
 	// the renter will accept.
 	minAcceptedPriceTableValidity = build.Select(build.Var{
@@ -32,6 +45,10 @@ var (
 		Dev:      1 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
+
+	// minInitialEstimate is the minimum job time estimate that's set on the HS
+	// and RJ queue in case we fail to update the price table successfully
+	minInitialEstimate = time.Second
 )
 
 type (
@@ -145,12 +162,32 @@ func (w *worker) staticUpdatePriceTable() {
 		})
 	}()
 
+	var err error
+
+	// If this is the first time we are fetching a price table update from the
+	// host, we use the time it took for a single round trip as an initial
+	// estimate for both the HS and RJ queue job time estimates.
+	var elapsed time.Duration
+	defer func() {
+		// As a safety precaution, set the elapsed duration to the minimum
+		// estimate in case we did not manage to update the price table
+		// successfully.
+		if err != nil && elapsed < minInitialEstimate {
+			elapsed = minInitialEstimate
+		}
+		w.staticSetInitialEstimates.Do(func() {
+			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
+		})
+	}()
+
 	// All remaining errors represent short term issues with the host, so the
 	// price table should be updated to represent the failure, but should retain
 	// the existing price table, which will allow the renter to continue
 	// performing tasks even though it's having trouble getting a new price
 	// table.
-	var err error
 	currentPT := w.staticPriceTable()
 	defer func() {
 		// Track the result of the pricetable update, in case of failure this
@@ -200,6 +237,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}()
 
 	// write the specifier
+	start := time.Now()
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		err = errors.AddContext(err, "unable to write price table specifier")
@@ -213,6 +251,7 @@ func (w *worker) staticUpdatePriceTable() {
 		err = errors.AddContext(err, "unable to read price table response")
 		return
 	}
+	elapsed = time.Since(start)
 
 	// decode the JSON
 	var pt modules.RPCPriceTable
@@ -230,8 +269,17 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
+	// Before we pay for the price table we validate the host's block height,
+	// this is necessary because we use the host's block height when making
+	// payments by ephemeral account.
+	cache := w.staticCache()
+	if !hostBlockHeightWithinTolerance(cache.staticSynced, cache.staticBlockHeight, pt.HostBlockHeight) {
+		err = errors.AddContext(errHostBlockHeightNotWithinTolerance, fmt.Sprintf("renter height: %v synced: %v, host height: %v", cache.staticBlockHeight, cache.staticSynced, pt.HostBlockHeight))
+		return
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, pt.HostBlockHeight)
 	if err != nil {
 		err = errors.AddContext(err, "unable to provide payment")
 		return
@@ -299,4 +347,23 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	}
 
 	return nil
+}
+
+// hostBlockHeightWithinTolerance verfies whether the given host blockheight is
+// within a certain leeway from the given renter block height.
+func hostBlockHeightWithinTolerance(synced bool, renterBlockHeight, hostBlockHeight types.BlockHeight) bool {
+	if !synced {
+		// If we are not synced, we only assert that the host blockheight is
+		// equal or greater than ours.
+		if hostBlockHeight < renterBlockHeight {
+			return false
+		}
+	} else {
+		// If we are synced, we assert the host's block height is within a
+		// certain leeway from our own block height.
+		if hostBlockHeight+priceTableHostBlockHeightLeeWay < renterBlockHeight || hostBlockHeight > renterBlockHeight+priceTableHostBlockHeightLeeWay {
+			return false
+		}
+	}
+	return true
 }

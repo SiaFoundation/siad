@@ -260,10 +260,10 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 // subscription alive. If the subscription dies, threadedSubscriptionLoop will
 // start it again.
 func (w *worker) threadedSubscriptionLoop() {
-	if err := w.tg.Add(); err != nil {
+	if err := w.staticTG.Add(); err != nil {
 		return
 	}
-	defer w.tg.Done()
+	defer w.staticTG.Done()
 
 	// No need to run loop if the host doesn't support it.
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
@@ -281,7 +281,7 @@ func (w *worker) threadedSubscriptionLoop() {
 	for {
 		// Check for shutdown
 		select {
-		case <-w.tg.StopChan():
+		case <-w.staticTG.StopChan():
 			return // shutdown
 		default:
 		}
@@ -294,7 +294,7 @@ func (w *worker) threadedSubscriptionLoop() {
 			select {
 			case <-subInfo.staticWakeChan:
 				// Wait for work
-			case <-w.tg.StopChan():
+			case <-w.staticTG.StopChan():
 				return // shutdown
 			}
 		}
@@ -303,7 +303,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		// to establish a new subscriptoin session.
 		if w.managedOnMaintenanceCooldown() {
 			cooldownTime := w.callStatus().MaintenanceCoolDownTime
-			w.tg.Sleep(cooldownTime)
+			w.staticTG.Sleep(cooldownTime)
 			continue // try again
 		}
 
@@ -333,7 +333,7 @@ func (w *worker) threadedSubscriptionLoop() {
 
 			// Log error and wait for some time before trying again.
 			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
-			w.tg.Sleep(subscriptionLoopCooldown)
+			w.staticTG.Sleep(subscriptionLoopCooldown)
 			continue
 		}
 
@@ -355,7 +355,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		}
 		if err != nil {
 			w.renter.log.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
-			w.tg.Sleep(subscriptionLoopCooldown)
+			w.staticTG.Sleep(subscriptionLoopCooldown)
 			continue
 		}
 	}
@@ -466,7 +466,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 			// Wait for "ok".
 			select {
-			case <-w.tg.StopChan():
+			case <-w.staticTG.StopChan():
 				return threadgroup.ErrStopped
 			case <-time.After(time.Until(deadline)):
 				return errors.New("never received the 'ok' response for extending the subscription")
@@ -570,7 +570,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		// Wait until some time passed or until there is new work.
 		t := time.NewTimer(subscriptionLoopInterval)
 		select {
-		case <-w.tg.StopChan():
+		case <-w.staticTG.StopChan():
 			return threadgroup.ErrStopped // shutdown
 		case <-t.C:
 			// continue right away since the timer is drained.
@@ -640,7 +640,7 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 			err = errors.Compose(err, stream.Close())
 		}
 	}()
-	return modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
+	return nil, modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
 }
 
 // FundSubscription pays the host to increase the subscription budget.
@@ -708,7 +708,7 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 	for _, c := range subChans {
 		select {
 		case <-c:
-		case <-w.tg.StopChan():
+		case <-w.staticTG.StopChan():
 			return nil, threadgroup.ErrStopped // shutdown
 		case <-ctx.Done():
 			return nil, errors.New("subscription timed out")

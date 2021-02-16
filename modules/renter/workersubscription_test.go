@@ -476,7 +476,7 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// Stop goroutines and wait for them to finish.
 	close(stopTicker)
-	err = wt.tg.Stop()
+	err = wt.staticTG.Stop()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +742,7 @@ func TestSubscriptionSubscribeUnsubscribe(t *testing.T) {
 	subInfo.mu.Unlock()
 
 	// Stop the loop by shutting down the worker.
-	err = wt.tg.Stop()
+	err = wt.staticTG.Stop()
 	if err != nil {
 		t.Fatal(err)
 	}

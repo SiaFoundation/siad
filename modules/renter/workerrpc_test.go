@@ -1,16 +1,89 @@
 package renter
 
 import (
+	"strings"
 	"testing"
-	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// TestUseHostBlockHeight verifies we use the host's blockheight.
+func TestUseHostBlockHeight(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a new worker tester
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// manually corrupt the price table's host blockheight
+	wpt := w.staticPriceTable()
+	hbh := wpt.staticPriceTable.HostBlockHeight // save host blockheight
+	var pt modules.RPCPriceTable
+	err = encoding.Unmarshal(encoding.Marshal(wpt.staticPriceTable), &pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt.HostBlockHeight += 1e3
+
+	wptc := new(workerPriceTable)
+	wptc.staticExpiryTime = wpt.staticExpiryTime
+	wptc.staticUpdateTime = wpt.staticUpdateTime
+	wptc.staticPriceTable = pt
+	w.staticSetPriceTable(wptc)
+
+	// create a dummy program
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	p, data := pb.Program()
+	cost, _, _ := pb.Cost(true)
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
+
+	// execute the program
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	if err == nil || !strings.Contains(err.Error(), "ephemeral account withdrawal message expires too far into the future") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// revert the corruption to assert success
+	wpt = w.staticPriceTable()
+	err = encoding.Unmarshal(encoding.Marshal(wpt.staticPriceTable), &pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt.HostBlockHeight = hbh
+
+	wptc = new(workerPriceTable)
+	wptc.staticExpiryTime = wpt.staticExpiryTime
+	wptc.staticUpdateTime = wpt.staticUpdateTime
+	wptc.staticPriceTable = pt
+	w.staticSetPriceTable(wptc)
+
+	// execute the program
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+}
 
 // TestExecuteProgramUsedBandwidth verifies the bandwidth used by executing
 // various MDM programs on the host
@@ -32,17 +105,6 @@ func TestExecuteProgramUsedBandwidth(t *testing.T) {
 		}
 	}()
 
-	// wait until we have a valid pricetable
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !wt.worker.staticPriceTable().staticValid() {
-			return errors.New("price table not updated yet")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("HasSector", func(t *testing.T) {
 		testExecuteProgramUsedBandwidthHasSector(t, wt)
 	})
@@ -63,7 +125,11 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobHasSector).callExpectedBandwidth()
+
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
+
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
