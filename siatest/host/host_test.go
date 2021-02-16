@@ -387,12 +387,14 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have storage revenue")
 	}
 
-	if hc.Contracts[0].ValidProofOutputs[1].Value.Cmp(prevValidPayout) != 1 {
-		t.Fatal("valid payout should be greater than old valid payout")
+	vpo := hc.Contracts[0].ValidProofOutputs[1].Value
+	if vpo.Cmp(prevValidPayout) != 1 {
+		t.Fatalf("valid payout should be greater than old valid payout %v %v", vpo, prevValidPayout)
 	}
 
-	if cmp := hc.Contracts[0].MissedProofOutputs[1].Value.Cmp(prevMissPayout); cmp != 1 {
-		t.Fatal("missed payout should be more than old missed payout", cmp)
+	mpo := hc.Contracts[0].MissedProofOutputs[1].Value
+	if mpo.Cmp(prevMissPayout) != 1 {
+		t.Fatalf("missed payout should be more than old missed payout %v %v", mpo, prevMissPayout)
 	}
 }
 

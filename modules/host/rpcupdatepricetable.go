@@ -22,6 +22,10 @@ var (
 	// ErrPriceTableExpired is returned when the specified price table has
 	// expired
 	ErrPriceTableExpired = errors.New("Price table requested is expired")
+
+	// errEmptyPriceTableUID is returned if a user provides a zero UID for the
+	// price table to use.
+	errEmptyPriceTableUID = errors.New("empty price table UID was provided")
 )
 
 type (
@@ -93,10 +97,9 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 	return pt
 }
 
-// managedRPCUpdatePriceTable returns a copy of the host's current rpc price
-// table. These prices are valid for the duration of the
-// rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
-func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+// managedPriceTableForRenter returns a copy of the host's current rpc price
+// table ready for handing it to a renter but without tracking it yet.
+func (h *Host) managedPriceTableForRenter() *modules.RPCPriceTable {
 	// update the price table to make sure it has the most recent information.
 	h.managedUpdatePriceTable()
 
@@ -110,6 +113,14 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// set the host's current blockheight, this allows the renter to create
 	// valid withdrawal messages in case it is not synced yet
 	pt.HostBlockHeight = h.BlockHeight()
+	return &pt
+}
+
+// managedRPCUpdatePriceTable returns a copy of the host's current rpc price
+// table. These prices are valid for the duration of the
+// rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+	pt := *h.managedPriceTableForRenter()
 
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
@@ -165,6 +176,11 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	err := modules.RPCRead(stream, &uid)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to read price table UID")
+	}
+
+	// if an empty price table was provided, we are not going to find a table.
+	if uid == (modules.UniqueID{}) {
+		return nil, errEmptyPriceTableUID
 	}
 
 	// check if we know the uid, if we do return it
