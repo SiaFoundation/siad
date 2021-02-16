@@ -32,14 +32,6 @@ var defaultRPCDeadline = build.Select(build.Var{
 }).(time.Duration)
 
 var (
-	// renewGougingBlockHeightDiff is the acceptable difference in blockheights
-	// between a renter and host when renewing a contract.
-	renewGougingBlockHeightDiff = build.Select(build.Var{
-		Dev:      types.BlockHeight(300 * types.BlocksPerHour), // Dev mines 50 times faster than standard
-		Standard: types.BlockHeight(6 * types.BlocksPerHour),
-		Testing:  types.BlockHeight(3600 * types.BlocksPerHour), // Testing mines 600 times faster than standard
-	}).(types.BlockHeight)
-
 	// renewGougingFeeMultiplier is the acceptable multiple by which the fee
 	// estimation of the host may differ from the renter's.
 	renewGougingFeeMultiplier = types.NewCurrency64(5)
@@ -252,15 +244,9 @@ func (w *worker) managedRenew(fcid types.FileContractID, params modules.Contract
 	if pt.TxnFeeMaxRecommended.Cmp(max.Mul(renewGougingFeeMultiplier)) > 0 {
 		return modules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table txn fee max gouging %v > %v", pt.TxnFeeMaxRecommended, max.Mul(renewGougingFeeMultiplier))
 	}
-	// For the blockheight we accept a difference of 6 hours.
-	workerHeight := w.staticCache().staticBlockHeight
-	maxHeight := workerHeight + renewGougingBlockHeightDiff
-	var minHeight types.BlockHeight
-	if workerHeight > renewGougingBlockHeightDiff {
-		minHeight = workerHeight - renewGougingBlockHeightDiff
-	}
-	if pt.HostBlockHeight > maxHeight || pt.HostBlockHeight < minHeight {
-		return modules.RenterContract{}, nil, fmt.Errorf("managedRenew: price table host height gouging %v != %v +- %v", pt.HostBlockHeight, workerHeight, renewGougingBlockHeightDiff)
+	// Check blockheight.
+	if !hostBlockHeightWithinTolerance(w.staticCache().staticSynced, w.staticCache().staticBlockHeight, pt.HostBlockHeight) {
+		return modules.RenterContract{}, nil, errors.AddContext(errHostBlockHeightNotWithinTolerance, fmt.Sprintf("managedRenew failed pt height gouging: renter height: %v synced: %v, host height: %v", w.staticCache().staticBlockHeight, w.staticCache().staticSynced, pt.HostBlockHeight))
 	}
 
 	// have the contractset handle the renewal.
