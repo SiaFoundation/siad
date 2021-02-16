@@ -608,7 +608,13 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	lwi.jobDuration = 20 * time.Second
 	lwi.totalDuration = time.Since(lwi.launchTime)
 
-	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms", w.staticHostPubKey.ShortString())
+	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms and finished successfully", w.staticHostPubKey.ShortString())
+	if !strings.Contains(lwi.String(), expected) {
+		t.Fatal("unexpected", lwi.String())
+	}
+
+	lwi.jobErr = errors.New("some failure")
+	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms, failed with err: some failure", w.staticHostPubKey.ShortString())
 	if !strings.Contains(lwi.String(), expected) {
 		t.Fatal("unexpected", lwi.String())
 	}
