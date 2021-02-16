@@ -129,6 +129,9 @@ type (
 		// complete the download.
 		expectedDuration time.Duration
 
+		// jobErr will contain the error in case it failed.
+		jobErr error
+
 		pdc    *projectDownloadChunk
 		worker *worker
 	}
@@ -217,6 +220,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	// debugging purposes.
 	launchedWorker.completeTime = time.Now()
 	launchedWorker.jobDuration = jrr.staticJobTime
+	launchedWorker.jobErr = jrr.staticErr
 	launchedWorker.totalDuration = time.Since(launchedWorker.launchTime)
 
 	// Check whether the job failed.
