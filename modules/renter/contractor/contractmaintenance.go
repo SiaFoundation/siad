@@ -330,7 +330,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Cu
 
 // managedNewContract negotiates an initial file contract with the specified
 // host, saves it, and returns it.
-func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFunding types.Currency, endHeight types.BlockHeight) (types.Currency, modules.RenterContract, error) {
+func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFunding types.Currency, endHeight types.BlockHeight) (_ types.Currency, _ modules.RenterContract, err error) {
 	// reject hosts that are too expensive
 	if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return types.ZeroCurrency, modules.RenterContract{}, errTooExpensive
@@ -356,7 +356,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	}
 
 	// Check for price gouging.
-	err := checkFormContractGouging(allowance, hostSettings)
+	err = checkFormContractGouging(allowance, hostSettings)
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract due to price gouging detection")
 	}
@@ -366,6 +366,11 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
+	defer func() {
+		if err != nil {
+			err = errors.Compose(err, c.wallet.MarkAddressUnused(uc))
+		}
+	}()
 
 	// get the wallet seed.
 	seed, _, err := c.wallet.PrimarySeed()
@@ -578,7 +583,7 @@ func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
+func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (_ modules.RenterContract, err error) {
 	// Fetch the host associated with this contract.
 	host, ok, err := c.hdb.Host(hpk)
 	if err != nil {
@@ -633,6 +638,11 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	defer func() {
+		if err != nil {
+			err = errors.Compose(err, c.wallet.MarkAddressUnused(uc))
+		}
+	}()
 
 	// get the wallet seed
 	seed, _, err := c.wallet.PrimarySeed()
