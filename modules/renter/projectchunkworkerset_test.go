@@ -500,11 +500,8 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
 	w.staticHostPubKeyStr = "myworker"
 
-	// ensure PT is valid and host is considered RHP3 ready
+	// ensure PT is valid
 	w.staticPriceTable().staticExpiryTime = time.Now().Add(time.Hour)
-	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minRHP3Version,
-	}))
 
 	// launch the worker
 	responseChan := make(chan *jobHasSectorResponse, 0)

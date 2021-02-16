@@ -38,11 +38,6 @@ type programResponse struct {
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
-	// check host version
-	if !w.staticSupportsRHP3() {
-		build.Critical("Executing new RHP RPC on host with version", w.staticCache().staticHostVersion)
-	}
-
 	// track the withdrawal
 	// TODO: this is very naive and does not consider refunds at all
 	w.staticAccount.managedTrackWithdrawal(cost)
@@ -149,11 +144,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 // staticNewStream returns a new stream to the worker's host
 func (w *worker) staticNewStream() (siamux.Stream, error) {
-	if !w.staticSupportsRHP3() {
-		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
-		return nil, errors.New("host doesn't support this")
-	}
-
 	// If disrupt is called we sleep for the specified 'defaultNewStreamTimeout'
 	// simulating how an unreachable host would behave in production.
 	timeout := defaultNewStreamTimeout

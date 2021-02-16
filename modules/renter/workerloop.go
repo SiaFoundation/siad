@@ -178,12 +178,6 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 // performing async work have not been met. 'true' will be returned if the
 // worker is ready for async work.
 func (w *worker) managedAsyncReady() bool {
-	// Hosts that do not support the async protocol cannot do async jobs.
-	if !w.staticSupportsRHP3() {
-		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
-		return false
-	}
-
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
 		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
@@ -315,32 +309,30 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
-	if w.staticSupportsRHP3() {
-		// Ensure the renter's revision number of the underlying file contract
-		// is in sync with the host's revision number. This check must happen at
-		// the top as consecutive checks make use of the file contract for
-		// payment.
-		w.externTryFixRevisionMismatch()
+	// Ensure the renter's revision number of the underlying file contract
+	// is in sync with the host's revision number. This check must happen at
+	// the top as consecutive checks make use of the file contract for
+	// payment.
+	w.externTryFixRevisionMismatch()
 
-		// The worker cannot execute any async tasks unless the price table of
-		// the host is known, the balance of the worker account is known, and
-		// the account has sufficient funds in it. This update is done as a
-		// blocking update to ensure nothing else runs until the price table is
-		// available.
-		w.staticUpdatePriceTable()
+	// The worker cannot execute any async tasks unless the price table of
+	// the host is known, the balance of the worker account is known, and
+	// the account has sufficient funds in it. This update is done as a
+	// blocking update to ensure nothing else runs until the price table is
+	// available.
+	w.staticUpdatePriceTable()
 
-		// Perform a balance check on the host and sync it to his version if
-		// necessary. This avoids running into MaxBalanceExceeded errors upon
-		// refill after an unclean shutdown.
-		if w.staticPriceTable().staticValid() {
-			w.externSyncAccountBalanceToHost()
-		}
+	// Perform a balance check on the host and sync it to his version if
+	// necessary. This avoids running into MaxBalanceExceeded errors upon
+	// refill after an unclean shutdown.
+	if w.staticPriceTable().staticValid() {
+		w.externSyncAccountBalanceToHost()
+	}
 
-		// This update is done as a blocking update to ensure nothing else runs
-		// until the account has filled.
-		if w.managedNeedsToRefillAccount() {
-			w.managedRefillAccount()
-		}
+	// This update is done as a blocking update to ensure nothing else runs
+	// until the account has filled.
+	if w.managedNeedsToRefillAccount() {
+		w.managedRefillAccount()
 	}
 
 	// The worker will continuously perform jobs in a loop.
