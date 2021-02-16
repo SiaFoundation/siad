@@ -40,7 +40,7 @@ type (
 		// staticChunkFetchers contains one pcws for every chunk in the fanout.
 		// The worker sets are spun up in advance so that the HasSector queries
 		// have completed by the time that someone needs to fetch the data.
-		staticChunkFetchers     []chunkFetcher
+		staticChunkFetchers []chunkFetcher
 
 		// Utilities
 		staticCtx        context.Context
@@ -321,8 +321,8 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, timeout time.Duration, 
 		staticLayout:   layout,
 		staticMetadata: metadata,
 
-		staticBaseSectorPayload:    baseSectorPayload,
-		staticChunkFetchers: fanoutChunkFetchers,
+		staticBaseSectorPayload: baseSectorPayload,
+		staticChunkFetchers:     fanoutChunkFetchers,
 
 		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
