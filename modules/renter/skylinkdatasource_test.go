@@ -74,8 +74,8 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 			Length:   datasize,
 		},
 
-		staticFirstChunk:    data,
-		staticChunkFetchers: make([]chunkFetcher, 0),
+		staticBaseSectorPayload: data,
+		staticChunkFetchers:     make([]chunkFetcher, 0),
 
 		staticCancelFunc: cancel,
 		staticCtx:        ctx,
@@ -168,7 +168,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 			Length:   datasize,
 		},
 
-		staticFirstChunk: make([]byte, 0),
+		staticBaseSectorPayload: make([]byte, 0),
 		staticChunkFetchers: []chunkFetcher{
 			newChunkFetcher(fanoutChunk1, nil),
 			newChunkFetcher(fanoutChunk2, nil),
