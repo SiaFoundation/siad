@@ -170,6 +170,13 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// we have to manually update the pricetable here and reset the time of the
+	// last scheduled update to null to ensure we're allowed to schedule two
+	// updates in short succession
+	update := *w.staticPriceTable()
+	update.staticLastScheduledTime = time.Time{}
+	w.staticSetPriceTable(&update)
+
 	// keep track of the current values
 	pt = w.staticPriceTable()
 	cUID = pt.staticPriceTable.UID
@@ -191,7 +198,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 
 	// execute it
 	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
-	if !isPriceTableInvalidErr(err) {
+	if !modules.IsPriceTableInvalidErr(err) {
 		t.Fatal("unexpected")
 	}
 
@@ -219,36 +226,24 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected")
 	}
-}
 
-// TestCheckErrInvalidPricetable is a small unit test that verifies the
-// functionality of the `checkErrPriceTableInvalid` helper.
-func TestCheckErrPriceTableInvalid(t *testing.T) {
-	t.Parallel()
+	// keep track of the current values
+	pt = w.staticPriceTable()
+	cUID = pt.staticPriceTable.UID
+	cUpdTime = pt.staticUpdateTime
 
-	if isPriceTableInvalidErr(nil) {
-		t.Fatal("unexpected")
-	}
-	if isPriceTableInvalidErr(errors.New("some error")) {
-		t.Fatal("unexpected")
-	}
-	if !isPriceTableInvalidErr(modules.ErrPriceTableExpired) {
-		t.Fatal("unexpected")
-	}
-	if !isPriceTableInvalidErr(modules.ErrPriceTableNotFound) {
-		t.Fatal("unexpected")
-	}
-	if !isPriceTableInvalidErr(errors.Compose(modules.ErrPriceTableNotFound, modules.ErrPriceTableExpired)) {
-		t.Fatal("unexpected")
-	}
-	if !isPriceTableInvalidErr(errors.Compose(modules.ErrPriceTableNotFound, errors.New("other error"))) {
-		t.Fatal("unexpected")
-	}
-	if !isPriceTableInvalidErr(errors.Compose(modules.ErrPriceTableExpired, errors.New("other error"))) {
-		t.Fatal("unexpected")
-	}
-	if !isPriceTableInvalidErr(errors.AddContext(modules.ErrPriceTableNotFound, "some error")) {
-		t.Fatal("unexpected")
+	// check whether the price table got updated in a retry, which should
+	// **not** have been the case because not enough time elapsed since the last
+	// manually scheduled update
+	err = build.Retry(10, 50*time.Millisecond, func() error {
+		pt := w.staticPriceTable()
+		if !bytes.Equal(pt.staticPriceTable.UID[:], cUID[:]) {
+			return errors.New("should not have been scheduled to update")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

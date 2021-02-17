@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -497,4 +498,13 @@ func (uid *UniqueID) UnmarshalJSON(b []byte) error {
 
 	// b[1 : len(b)-1] cuts off the leading and trailing `"` in the JSON string.
 	return uid.LoadString(string(b[1 : len(b)-1]))
+}
+
+// IsPriceTableInvalidErr is a helper function that verifies whether the
+// given error indicates the pricetable is invalid. It is used during error
+// handling, when the renter sends its pricetable UID to the host and that
+// returns with an error. If the host deems the price table invalid, the renter
+// wants to update it as fast as possible.
+func IsPriceTableInvalidErr(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error()))
 }
