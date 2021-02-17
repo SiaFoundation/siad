@@ -347,7 +347,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 	// updated
 	dirsToUpdate := r.newUniqueRefreshPaths()
 	defer func() {
-		errors.Compose(err, dirsToUpdate.callRefreshAll())
+		err = errors.Compose(err, dirsToUpdate.callRefreshAll())
 	}()
 
 	// Copy the files from the tarball to the new location.
