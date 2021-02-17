@@ -365,13 +365,13 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 	return stream, modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
 }
 
-// FundSubscription pays the host to increase the subscription budget.
+// managedFundSubscription pays the host to increase the subscription budget.
 func (w *worker) managedFundSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, fundAmt types.Currency) error {
 	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, pt.HostBlockHeight, fundAmt)
 }
 
 // Unsubscribe marks the provided entries as not subscribed to and notifies the
-// worker of the change. It will then handle
+// worker of the change.
 func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest) {
 	subInfo := w.staticSubscriptionInfo
 
