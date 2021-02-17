@@ -20,14 +20,37 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
-// correct chunks are being added to the heap
-func TestBuildUnfinishedChunks(t *testing.T) {
+// TestUploadHeap tests the uploadheap subsystem
+func TestUploadHeap(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
+	// Basic function tests
+	t.Run("Basic", testUploadHeapBasic)
+
+	// Specific method unit tests
+	t.Run("managedAddChunkToHeap", testManagedAddChunksToHeap)
+	t.Run("managedBuildChunkHeap", testManagedBuildChunkHeap)
+	t.Run("managedBuildUnfinishedChunks", testManagedBuildUnfinishedChunks)
+	t.Run("managedPushChunkForRepair", testManagedPushChunkForRepair)
+	t.Run("managedTryUpdate", testManagedTryUpdate)
+
+	// Specific condition unit tests
+	t.Run("AddChunksToHeapPanic", testAddChunksToHeapPanic)
+	t.Run("AddDirectories", testAddDirectoryBackToHeap)
+	t.Run("HeapMaps", testUploadHeapMaps)
+	t.Run("PauseChan", testUploadHeapPauseChan)
+	t.Run("RemoteChunks", testAddRemoteChunksToHeap)
+
+	// Regression Tests
+	t.Run("Regression_SwitchStuckStatus", testChunkSwitchStuckStatus)
+}
+
+// testManagedBuildUnfinishedChunks probes managedBuildUnfinishedChunks to make
+// sure that the correct chunks are being added to the heap
+func testManagedBuildUnfinishedChunks(t *testing.T) {
 	// Create Renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -78,9 +101,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	// Manually add workers to worker pool
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
-			killChan: make(chan struct{}),
-		}
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{}
 	}
 	rt.renter.staticWorkerPool.mu.Unlock()
 
@@ -136,14 +157,9 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	}
 }
 
-// TestBuildChunkHeap probes managedBuildChunkHeap to make sure that the correct
-// chunks are being added to the heap
-func TestBuildChunkHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+// testManagedBuildChunkHeap probes managedBuildChunkHeap to make sure that the
+// correct chunks are being added to the heap
+func testManagedBuildChunkHeap(t *testing.T) {
 	// Create Renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -179,9 +195,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f1.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
-			killChan: make(chan struct{}),
-		}
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{}
 	}
 	rt.renter.staticWorkerPool.mu.Unlock()
 
@@ -239,14 +253,9 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 	return nil
 }
 
-// TestUploadHeap probes the upload heap to make sure chunks are sorted
-// correctly
-func TestUploadHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+// testUploadHeapBasic probes the basic functionality of the upload heap, such
+// as making sure chunks are sorted correctly
+func testUploadHeapBasic(t *testing.T) {
 	// Create renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -394,14 +403,9 @@ func TestUploadHeap(t *testing.T) {
 	uh.mu.Unlock()
 }
 
-// TestAddChunksToHeap probes the managedAddChunksToHeap method to ensure it is
-// functioning as intended
-func TestAddChunksToHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+// testManagedAddChunksToHeap probes the managedAddChunksToHeap method to ensure
+// it is functioning as intended
+func testManagedAddChunksToHeap(t *testing.T) {
 	// Create Renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -490,9 +494,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
-			killChan: make(chan struct{}),
-		}
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{}
 	}
 	rt.renter.staticWorkerPool.mu.Unlock()
 
@@ -519,14 +521,9 @@ func TestAddChunksToHeap(t *testing.T) {
 	}
 }
 
-// TestAddRemoteChunksToHeap probes how the upload heap handles adding chunks
+// testAddRemoteChunksToHeap probes how the upload heap handles adding chunks
 // when there are remote chunks present
-func TestAddRemoteChunksToHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+func testAddRemoteChunksToHeap(t *testing.T) {
 	// Create Renter with dependencies that prevent the background repair
 	// loop from running as well as ensure that chunks viewed as not
 	// repairable are added to the heap.
@@ -609,9 +606,7 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
-			killChan: make(chan struct{}),
-		}
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{}
 	}
 	rt.renter.staticWorkerPool.mu.Unlock()
 
@@ -646,15 +641,10 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 	}
 }
 
-// TestAddDirectoryBackToHeap ensures that when not all the chunks in a
+// testAddDirectoryBackToHeap ensures that when not all the chunks in a
 // directory are added to the uploadHeap that the directory is added back to the
 // directoryHeap with an updated Health
-func TestAddDirectoryBackToHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+func testAddDirectoryBackToHeap(t *testing.T) {
 	// Create Renter with interrupt dependency
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -698,9 +688,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	// Manually add workers to worker pool
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
-			killChan: make(chan struct{}),
-		}
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{}
 	}
 	rt.renter.staticWorkerPool.mu.Unlock()
 
@@ -785,14 +773,9 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	}
 }
 
-// TestUploadHeapMaps tests that the uploadHeap's maps are properly updated
-// through pushing, popping, and reseting the heap
-func TestUploadHeapMaps(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+// testUploadHeapMaps tests that the uploadHeap's maps are properly updated
+// through pushing, popping, and resetting the heap
+func testUploadHeapMaps(t *testing.T) {
 	// Create renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -906,9 +889,9 @@ func TestUploadHeapMaps(t *testing.T) {
 	}
 }
 
-// TestUploadHeapPauseChan makes sure that sequential calls to pause and resume
+// testUploadHeapPauseChan makes sure that sequential calls to pause and resume
 // won't cause panics for closing a closed channel
-func TestUploadHeapPauseChan(t *testing.T) {
+func testUploadHeapPauseChan(t *testing.T) {
 	// Initial UploadHeap with the pauseChan initialized such that the uploads
 	// and repairs are not paused
 	uh := uploadHeap{
@@ -930,15 +913,10 @@ func TestUploadHeapPauseChan(t *testing.T) {
 	uh.managedResume()
 }
 
-// TestChunkSwitchStuckStatus is a regression test that confirms the upload heap
+// testChunkSwitchStuckStatus is a regression test that confirms the upload heap
 // won't panic due to a chunk's stuck status changing while it is in the heap
 // and being added twice
-func TestChunkSwitchStuckStatus(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+func testChunkSwitchStuckStatus(t *testing.T) {
 	// Create renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
@@ -1002,14 +980,9 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	}
 }
 
-// TestUploadHeapStreamPush probes the Renter's managedPushChunkForRepair method
-// with the streamChunk type
-func TestUploadHeapStreamPush(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+// testManagedPushChunkForRepair probes the Renter's managedPushChunkForRepair
+// method with the streamChunk type
+func testManagedPushChunkForRepair(t *testing.T) {
 	// Create renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencySkipPrepareNextChunk{})
 	if err != nil {
@@ -1129,13 +1102,8 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	pushAndVerify(streamChunk)
 }
 
-// TestUploadHeapTryUpdate probes the managedTryUpdate method of the uploadHeap.
-func TestUploadHeapTryUpdate(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+// testManagedTryUpdate probes the managedTryUpdate method of the uploadHeap.
+func testManagedTryUpdate(t *testing.T) {
 	// Create renter and define shorter named helper for uploadHeap
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
@@ -1241,14 +1209,9 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 	}
 }
 
-// TestRenterAddChunksToHeapPanic tests that the log.Severe is triggered if
+// testAddChunksToHeapPanic tests that the log.Severe is triggered if
 // there is an error getting a directory from the directory heap.
-func TestRenterAddChunksToHeapPanic(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
+func testAddChunksToHeapPanic(t *testing.T) {
 	// Create Renter
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {

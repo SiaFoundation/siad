@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestAddUniqueRefreshPaths probes the addUniqueRefreshPaths function
-func TestAddUniqueRefreshPaths(t *testing.T) {
+// TestRefreshPaths probes the refreshpaths subsystem
+func TestRefreshPaths(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}

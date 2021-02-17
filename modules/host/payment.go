@@ -16,7 +16,7 @@ import (
 // amount paid and an error in case of failure. The account id will only be
 // valid if the payment method is PayByEphemeralAccount, it will be an empty
 // string otherwise.
-func (h *Host) ProcessPayment(stream siamux.Stream) (modules.PaymentDetails, error) {
+func (h *Host) ProcessPayment(stream siamux.Stream, bh types.BlockHeight) (modules.PaymentDetails, error) {
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := modules.RPCRead(stream, &pr); err != nil {
@@ -25,10 +25,10 @@ func (h *Host) ProcessPayment(stream siamux.Stream) (modules.PaymentDetails, err
 
 	// process payment depending on the payment method
 	if pr.Type == modules.PayByEphemeralAccount {
-		return h.staticPayByEphemeralAccount(stream)
+		return h.staticPayByEphemeralAccount(stream, bh)
 	}
 	if pr.Type == modules.PayByContract {
-		return h.managedPayByContract(stream)
+		return h.managedPayByContract(stream, bh)
 	}
 
 	return nil, errors.Compose(fmt.Errorf("Could not handle payment method %v", pr.Type), modules.ErrUnknownPaymentMethod)
@@ -36,7 +36,7 @@ func (h *Host) ProcessPayment(stream siamux.Stream) (modules.PaymentDetails, err
 
 // staticPayByEphemeralAccount processes a PayByEphemeralAccountRequest coming
 // in over the given stream.
-func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.PaymentDetails, error) {
+func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream, bh types.BlockHeight) (modules.PaymentDetails, error) {
 	// read the PayByEphemeralAccountRequest
 	var req modules.PayByEphemeralAccountRequest
 	if err := modules.RPCRead(stream, &req); err != nil {
@@ -44,7 +44,7 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 	}
 
 	// process the request
-	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
+	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority, bh); err != nil {
 		return nil, errors.AddContext(err, "Withdraw failed")
 	}
 
@@ -54,7 +54,7 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 
 // managedPayByContract processes a PayByContractRequest coming in over the
 // given stream.
-func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetails, error) {
+func (h *Host) managedPayByContract(stream siamux.Stream, bh types.BlockHeight) (modules.PaymentDetails, error) {
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
 	if err := modules.RPCRead(stream, &pbcr); err != nil {
@@ -85,7 +85,6 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 
 	// get the current blockheight
 	h.mu.RLock()
-	bh := h.blockHeight
 	sk := h.secretKey
 	h.mu.RUnlock()
 

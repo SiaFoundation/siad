@@ -129,6 +129,9 @@ type (
 		// complete the download.
 		expectedDuration time.Duration
 
+		// jobErr will contain the error in case it failed.
+		jobErr error
+
 		pdc    *projectDownloadChunk
 		worker *worker
 	}
@@ -151,7 +154,12 @@ type (
 func (lwi *launchedWorkerInfo) String() string {
 	downloadComplete := !lwi.completeTime.IsZero()
 	if downloadComplete {
-		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds())
+		jobErrInfo := " and finished successfully"
+		if lwi.jobErr != nil {
+			jobErrInfo = fmt.Sprintf(", failed with err: %v", lwi.jobErr.Error())
+		}
+
+		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms%v", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds(), jobErrInfo)
 	}
 
 	return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms but has not yet responded after %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), time.Since(lwi.launchTime).Milliseconds())
@@ -217,6 +225,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	// debugging purposes.
 	launchedWorker.completeTime = time.Now()
 	launchedWorker.jobDuration = jrr.staticJobTime
+	launchedWorker.jobErr = jrr.staticErr
 	launchedWorker.totalDuration = time.Since(launchedWorker.launchTime)
 
 	// Check whether the job failed.

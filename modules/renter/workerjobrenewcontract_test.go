@@ -307,3 +307,83 @@ func TestRenewContract(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRenewContractEmptyPriceTableUID is a unit test for the worker's
+// RenewContract method with a price table that has an empty UID.
+func TestRenewContractEmptyPriceTableUID(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker.
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close the worker.
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get a transaction builder and add the funding.
+	funding := types.SiacoinPrecision
+
+	// Get the host from the hostdb.
+	host, _, err := wt.renter.hostDB.Host(wt.staticHostPubKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the wallet seed
+	seed, _, err := wt.rt.wallet.PrimarySeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get some more vars.
+	allowance := wt.rt.renter.hostContractor.Allowance()
+	bh := wt.staticCache().staticBlockHeight
+	rs := modules.DeriveRenterSeed(seed)
+
+	// Define some params for the contract.
+	params := modules.ContractParams{
+		Allowance:     allowance,
+		Host:          host,
+		Funding:       funding,
+		StartHeight:   bh,
+		EndHeight:     bh + allowance.Period,
+		RefundAddress: types.UnlockHash{},
+		RenterSeed:    rs.EphemeralRenterSeed(bh + allowance.Period),
+	}
+
+	// Get a txnbuilder.
+	txnBuilder, err := wt.rt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = txnBuilder.FundSiacoins(funding)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check contract before renewal.
+	oldContractPreRenew, ok := wt.renter.hostContractor.ContractByPublicKey(params.Host.PublicKey)
+	if !ok {
+		t.Fatal("contract doesn't exist")
+	}
+
+	// Overwrite the UID of the price table.
+	wpt := wt.staticPriceTable()
+	wpt.staticPriceTable.UID = modules.UniqueID{}
+	wt.staticSetPriceTable(wpt)
+
+	// Renew the contract. This should work without error.
+	_, _, err = wt.RenewContract(context.Background(), oldContractPreRenew.ID, params, txnBuilder)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

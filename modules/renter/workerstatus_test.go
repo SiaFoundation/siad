@@ -254,6 +254,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}
 	t.Parallel()
 
+	// create a new worker tester
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +283,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// fetch the worker's has sector jobs status and verify its output
+	// fetch the worker's (initial) HS jobs status and verify its output
 	status := w.callHasSectorJobStatus()
 	if !(status.ConsecutiveFailures == 0 &&
 		status.JobQueueSize == 0 &&
@@ -290,40 +291,50 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected has sector job status", ToJSON(status))
 	}
-	initialAvg := status.AvgJobTime
 
-	// prevent the worker from doing any work by manipulating its read limit
+	// prevent the worker from doing any work
 	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
 	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataOutstanding, limit+1)
 
-	// add the job to the worker
-	ctx := context.Background()
-	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
+	hsRespChan := make(chan *jobHasSectorResponse, 10)
+
+	// add a job to the worker
+	jhs := w.newJobHasSector(context.Background(), hsRespChan, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
 
 	// fetch the worker's has sector job status again and verify its output
 	status = w.callHasSectorJobStatus()
-	if status.JobQueueSize != 1 {
+	if status.JobQueueSize == 0 {
 		t.Fatal("Unexpected has sector job status", ToJSON(status))
 	}
 
 	// restore the read limit
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataOutstanding, current)
 
 	// verify the status in a build.Retry to allow the worker some time to
-	// process the job
+	// process the jobs
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		status = w.callHasSectorJobStatus()
-		if status.AvgJobTime == initialAvg {
+		if status.AvgJobTime == 0 ||
+			status.JobQueueSize != 0 {
 			return fmt.Errorf("Unexpected has sector job status %v", ToJSON(status))
 		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+
+	// prevent the worker from doing any work
+	current = atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataOutstanding, limit+1)
+
+	// add another job to the worker
+	jhs = w.newJobHasSector(context.Background(), hsRespChan, crypto.Hash{})
+	if !w.staticJobHasSectorQueue.callAdd(jhs) {
+		t.Fatal("Could not add job to queue")
 	}
 
 	// close the host to ensure the job will fail
@@ -333,15 +344,11 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}
 	hostClosed = true
 
-	// add another job to the worker
-	jhs = w.newJobHasSector(ctx, rc, crypto.Hash{})
-	if !w.staticJobHasSectorQueue.callAdd(jhs) {
-		t.Fatal("Could not add job to queue")
-	}
+	// restore the read limit
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataOutstanding, current)
 
-	// verify the status in a build.Retry to allow the worker some time to
-	// process the job
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
+	// verify the error status in a build.Retry
+	if err := build.Retry(600, 100*time.Millisecond, func() error {
 		status = w.callHasSectorJobStatus()
 		if !(status.ConsecutiveFailures == 1 &&
 			status.RecentErr != "" &&

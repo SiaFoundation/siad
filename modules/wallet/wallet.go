@@ -75,6 +75,7 @@ type Wallet struct {
 	// are not referenced at all. The seeds are only stored so that the user
 	// may access them.
 	seeds        []modules.Seed
+	unusedKeys   map[types.UnlockHash]types.UnlockConditions
 	keys         map[types.UnlockHash]spendableKey
 	lookahead    map[types.UnlockHash]uint64
 	watchedAddrs map[types.UnlockHash]struct{}
@@ -202,6 +203,7 @@ func NewCustomWallet(cs modules.ConsensusSet, tpool modules.TransactionPool, per
 
 		keys:         make(map[types.UnlockHash]spendableKey),
 		lookahead:    make(map[types.UnlockHash]uint64),
+		unusedKeys:   make(map[types.UnlockHash]types.UnlockConditions),
 		watchedAddrs: make(map[types.UnlockHash]struct{}),
 
 		unconfirmedSets: make(map[modules.TransactionSetID][]types.TransactionID),

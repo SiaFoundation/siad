@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -123,6 +124,10 @@ func (j *jobHasSector) callExecute() {
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
+	// sanity check
+	if len(j.staticSectors) == 0 {
+		build.Critical("expected bandwidth requested for a job that has no staticSectors set")
+	}
 	return hasSectorJobExpectedBandwidth(len(j.staticSectors))
 }
 
@@ -169,7 +174,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
-	estimate := jq.expectedJobTime(uint64(len(j.staticSectors)))
+	estimate := jq.expectedJobTime()
 	j.externJobStartTime = now
 	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
@@ -180,10 +185,13 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 
 // callExpectedJobTime returns the expected amount of time that this job will
 // take to complete.
-func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duration {
+//
+// TODO: idealy we pass `numSectors` here and get the expected job time
+// depending on the amount of instructions in the program.
+func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	return jq.expectedJobTime(numSectors)
+	return jq.expectedJobTime()
 }
 
 // callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
@@ -196,7 +204,7 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
-func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
+func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
 	return time.Duration(jq.weightedJobTime)
 }
 

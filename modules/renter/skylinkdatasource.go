@@ -33,11 +33,13 @@ type (
 		staticLayout   modules.SkyfileLayout
 		staticMetadata modules.SkyfileMetadata
 
-		// The first chunk contains all of the raw data for the skylink, and the
-		// chunk fetchers contains one pcws for every chunk in the fanout. The
-		// worker sets are spun up in advance so that the HasSector queries have
-		// completed by the time that someone needs to fetch the data.
-		staticFirstChunk    []byte
+		// staticBaseSectorPayload will contain the raw data for the skylink
+		// if there is no fanout. However if there's a fanout it will be nil.
+		staticBaseSectorPayload []byte
+
+		// staticChunkFetchers contains one pcws for every chunk in the fanout.
+		// The worker sets are spun up in advance so that the HasSector queries
+		// have completed by the time that someone needs to fetch the data.
 		staticChunkFetchers []chunkFetcher
 
 		// Utilities
@@ -91,17 +93,17 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		return responseChan
 	}
 
-	// If there is data in the first chunk it means we are dealing with a small
-	// skyfile without fanout bytes, that means we can simply read from that and
-	// return early.
-	firstChunkLength := uint64(len(sds.staticFirstChunk))
-	if firstChunkLength != 0 {
-		bytesLeft := firstChunkLength - off
+	// If there's data in the base sector payload it means we are dealing with a
+	// small skyfile without fanout bytes. This means we can simply read from
+	// that and return early.
+	baseSectorPayloadLen := uint64(len(sds.staticBaseSectorPayload))
+	if baseSectorPayloadLen != 0 {
+		bytesLeft := baseSectorPayloadLen - off
 		if fetchSize > bytesLeft {
 			fetchSize = bytesLeft
 		}
 		responseChan <- &readResponse{
-			staticData: sds.staticFirstChunk[off : off+fetchSize],
+			staticData: sds.staticBaseSectorPayload[off : off+fetchSize],
 		}
 		return responseChan
 	}
@@ -272,7 +274,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, timeout time.Duration, 
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, firstChunk, err := modules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, baseSectorPayload, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -319,8 +321,8 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, timeout time.Duration, 
 		staticLayout:   layout,
 		staticMetadata: metadata,
 
-		staticFirstChunk:    firstChunk,
-		staticChunkFetchers: fanoutChunkFetchers,
+		staticBaseSectorPayload: baseSectorPayload,
+		staticChunkFetchers:     fanoutChunkFetchers,
 
 		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
