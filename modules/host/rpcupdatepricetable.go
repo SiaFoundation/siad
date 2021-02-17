@@ -15,14 +15,6 @@ import (
 )
 
 var (
-	// ErrPriceTableNotFound is returned when the price table for a certain UID
-	// can not be found in the tracked price tables
-	ErrPriceTableNotFound = errors.New("Price table not found")
-
-	// ErrPriceTableExpired is returned when the specified price table has
-	// expired
-	ErrPriceTableExpired = errors.New("Price table requested is expired")
-
 	// errEmptyPriceTableUID is returned if a user provides a zero UID for the
 	// price table to use.
 	errEmptyPriceTableUID = errors.New("empty price table UID was provided")
@@ -178,6 +170,10 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 		return nil, errors.AddContext(err, "failed to read price table UID")
 	}
 
+	// disrupt and return the price table is not find
+	if h.dependencies.Disrupt("HostLosePriceTable") {
+		return nil, errors.AddContext(modules.ErrPriceTableNotFound, fmt.Sprint(uid))
+	}
 	// if an empty price table was provided, we are not going to find a table.
 	if uid == (modules.UniqueID{}) {
 		return nil, errEmptyPriceTableUID
@@ -187,12 +183,12 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
-		return nil, errors.AddContext(ErrPriceTableNotFound, fmt.Sprint(uid))
+		return nil, errors.AddContext(modules.ErrPriceTableNotFound, fmt.Sprint(uid))
 	}
 
 	// make sure the table isn't expired.
 	if time.Now().After(pt.Expiry()) {
-		return nil, errors.AddContext(ErrPriceTableExpired, fmt.Sprint(uid))
+		return nil, errors.AddContext(modules.ErrPriceTableExpired, fmt.Sprint(uid))
 	}
 	return &pt.RPCPriceTable, nil
 }

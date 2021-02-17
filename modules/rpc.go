@@ -44,6 +44,14 @@ const (
 )
 
 var (
+	// ErrPriceTableNotFound is returned by the host if it can not find a price
+	// table for the provided price table UID.
+	ErrPriceTableNotFound = errors.New("Price table not found")
+
+	// ErrPriceTableExpired is returned by the host when the specified price
+	// table has expired.
+	ErrPriceTableExpired = errors.New("Price table requested is expired")
+
 	// SubscriptionPeriod is the duration by which a period gets extended after
 	// a payment.
 	SubscriptionPeriod = build.Select(build.Var{

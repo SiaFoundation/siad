@@ -3,6 +3,7 @@ package renter
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -108,6 +109,15 @@ func (w *worker) staticPriceTable() *workerPriceTable {
 // provided price table.
 func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 	atomic.StorePointer(&w.atomicPriceTable, unsafe.Pointer(pt))
+}
+
+// staticSchedulePriceTableUpdate will update the 'staticUpdateTime' property on
+// the price table in order for it to get updated on the next iteration.
+func (w *worker) staticSchedulePriceTableUpdate() {
+	update := *w.staticPriceTable()
+	update.staticUpdateTime = time.Now()
+	w.staticSetPriceTable(&update)
+	w.staticWake()
 }
 
 // staticValid will return true if the latest price table that we have is still
@@ -366,4 +376,13 @@ func hostBlockHeightWithinTolerance(synced bool, renterBlockHeight, hostBlockHei
 		}
 	}
 	return true
+}
+
+// isPriceTableInvalidErr is a helper function that verifies whether the
+// given error indicates the pricetable is invalid. It is used during error
+// handling, when the renter sends its pricetable UID to the host and that
+// returns with an error. If the host deems the price table invalid, the renter
+// wants to update it as fast as possible.
+func isPriceTableInvalidErr(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), modules.ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), modules.ErrPriceTableNotFound.Error()))
 }

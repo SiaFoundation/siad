@@ -1,13 +1,17 @@
 package renter
 
 import (
+	"bytes"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -113,6 +117,138 @@ func TestUpdatePriceTableGouging(t *testing.T) {
 	err = checkUpdatePriceTableGouging(pt, allowance)
 	if err != nil {
 		t.Fatalf("unexpected update price table validity gouging error: %v", err)
+	}
+}
+
+// TestSchedulePriceTableUpdate verifies whether scheduling a price table update
+// on the worker effectively executes a price table update immediately after it
+// being scheduled.
+func TestSchedulePriceTableUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a dependency that makes the host refuse a price table
+	deps := dependencies.NewDependencyHostLosePriceTable()
+	deps.Disable()
+
+	// create a new worker tester
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// keep track of the current values
+	pt := w.staticPriceTable()
+	cUID := pt.staticPriceTable.UID
+	cUpdTime := pt.staticUpdateTime
+
+	// schedule an update
+	w.staticSchedulePriceTableUpdate()
+
+	// check whether the price table got updated in a retry, although it should
+	// update on the very next iteration of the loop
+	err = build.Retry(10, 50*time.Millisecond, func() error {
+		if time.Now().After(cUpdTime) {
+			t.Fatal("the price table updated according to the original schedule")
+		}
+		pt := w.staticPriceTable()
+		if bytes.Equal(pt.staticPriceTable.UID[:], cUID[:]) {
+			return errors.New("not updated yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// keep track of the current values
+	pt = w.staticPriceTable()
+	cUID = pt.staticPriceTable.UID
+	cUpdTime = pt.staticUpdateTime
+
+	// enable the dependency
+	deps.Enable()
+
+	// create a dummy program
+	pb := modules.NewProgramBuilder(&pt.staticPriceTable, 0)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	p, data := pb.Program()
+	cost, _, _ := pb.Cost(true)
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt.staticPriceTable, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
+
+	// execute it
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	if !isPriceTableInvalidErr(err) {
+		t.Fatal("unexpected")
+	}
+
+	// check whether the price table got updated in a retry, the error thrown
+	// should have scheduled that
+	err = build.Retry(10, 50*time.Millisecond, func() error {
+		if time.Now().After(cUpdTime) {
+			t.Fatal("the price table updated according to the original schedule")
+		}
+		pt := w.staticPriceTable()
+		if bytes.Equal(pt.staticPriceTable.UID[:], cUID[:]) {
+			return errors.New("not updated yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now disable the dependency
+	deps.Disable()
+
+	// execute the same program
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+}
+
+// TestCheckErrInvalidPricetable is a small unit test that verifies the
+// functionality of the `checkErrPriceTableInvalid` helper.
+func TestCheckErrPriceTableInvalid(t *testing.T) {
+	t.Parallel()
+
+	if isPriceTableInvalidErr(nil) {
+		t.Fatal("unexpected")
+	}
+	if isPriceTableInvalidErr(errors.New("some error")) {
+		t.Fatal("unexpected")
+	}
+	if !isPriceTableInvalidErr(modules.ErrPriceTableExpired) {
+		t.Fatal("unexpected")
+	}
+	if !isPriceTableInvalidErr(modules.ErrPriceTableNotFound) {
+		t.Fatal("unexpected")
+	}
+	if !isPriceTableInvalidErr(errors.Compose(modules.ErrPriceTableNotFound, modules.ErrPriceTableExpired)) {
+		t.Fatal("unexpected")
+	}
+	if !isPriceTableInvalidErr(errors.Compose(modules.ErrPriceTableNotFound, errors.New("other error"))) {
+		t.Fatal("unexpected")
+	}
+	if !isPriceTableInvalidErr(errors.Compose(modules.ErrPriceTableExpired, errors.New("other error"))) {
+		t.Fatal("unexpected")
+	}
+	if !isPriceTableInvalidErr(errors.AddContext(modules.ErrPriceTableNotFound, "some error")) {
+		t.Fatal("unexpected")
 	}
 }
 
