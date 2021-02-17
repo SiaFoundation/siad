@@ -138,6 +138,8 @@ func (urp *uniqueRefreshPaths) refreshAll() (err error) {
 		case <-urp.r.tg.StopChan():
 			// Renter has shutdown, close the channel and return
 			close(siaPathChan)
+			// We wait to avoid the data race of one of the workers updating err
+			wg.Wait()
 			return
 		}
 	}
