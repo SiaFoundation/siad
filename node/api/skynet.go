@@ -1042,8 +1042,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		SiaPath:             params.siaPath,
 
 		// Set filename and mode
-		Filename: params.filename,
-		Mode:     params.mode,
+		Filename:   params.filename,
+		Mode:       params.mode,
+		Monetizers: params.monetizers,
 
 		// Set the default path params
 		DefaultPath:        params.defaultPath,

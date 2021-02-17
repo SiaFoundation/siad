@@ -30,12 +30,22 @@ var (
 // Note that the given data will be treated as binary data and the multipart
 // ContentType header will be set accordingly.
 func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) (SkyfileSubfileMetadata, error) {
+	return AddMultipartFileWithMonetizers(w, filedata, filekey, filename, filemode, offset, nil)
+}
+
+// AddMultipartFileWithMonetizers is a helper function to add a file to
+// multipart form-data. Note that the given data will be treated as binary data
+// and the multipart ContentType header will be set accordingly.
+func AddMultipartFileWithMonetizers(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64, monetizers []Monetizer) (SkyfileSubfileMetadata, error) {
 	filemodeStr := fmt.Sprintf("%o", filemode)
 	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
 	}
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
+	partHeader, err := createFormFileHeaders(filekey, filename, filemodeStr, contentType, monetizers)
+	if err != nil {
+		return SkyfileSubfileMetadata{}, err
+	}
 	part, err := w.CreatePart(partHeader)
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
@@ -327,7 +337,7 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 
 // createFormFileHeaders builds a header from the given params. These headers
 // are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
+func createFormFileHeaders(fieldname, filename, filemode, contentType string, monetizers []Monetizer) (textproto.MIMEHeader, error) {
 	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 	fieldname = quoteEscaper.Replace(fieldname)
 	filename = quoteEscaper.Replace(filename)
@@ -336,7 +346,14 @@ func createFormFileHeaders(fieldname, filename, filemode, contentType string) te
 	h.Set("Content-Type", contentType)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
 	h.Set("mode", filemode)
-	return h
+	if len(monetizers) > 0 {
+		b, err := json.Marshal(monetizers)
+		if err != nil {
+			return nil, errors.AddContext(err, "createFormFileHeader: failed to marshal monetizers")
+		}
+		h.Set("Monetization", string(b))
+	}
+	return h, nil
 }
 
 // fileContentType extracts the content type from a given file. If the content

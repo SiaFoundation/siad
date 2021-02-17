@@ -94,6 +94,10 @@ type (
 		// Mode indicates the file permissions of the skyfile.
 		Mode os.FileMode
 
+		// Monetizers contains a list of monetization info for the upload. It
+		// will be added to the SkyfileMetadata of the uploaded file.
+		Monetizers []Monetizer
+
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
 		// as an archive. If left empty, it will be interpreted as "index.html"
@@ -145,6 +149,10 @@ type (
 
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
+
+		// Monetizers contains a list of monetization info for the upload. It
+		// will be added to the SkyfileMetadata of the uploaded file.
+		Monetizers []Monetizer
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -169,6 +177,7 @@ type (
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
+		Monetization       []Monetizer     `json:"monetization,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -176,6 +185,12 @@ type (
 		Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 		Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
+	}
+
+	// Monetizer refers to a single content provider being paid.
+	Monetizer struct {
+		Address types.UnlockHash `json:"address"`
+		Amount  types.Currency   `json:"amount"`
 	}
 )
 
@@ -188,8 +203,9 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename: path,
-		Subfiles: make(SkyfileSubfiles),
+		Filename:     path,
+		Monetization: sm.Monetization,
+		Subfiles:     make(SkyfileSubfiles),
 	}
 
 	// Try to find an exact match
@@ -398,11 +414,12 @@ func (sl *SkyfileLayout) Encode() []byte {
 // as nested files and directories are allowed within a single Skyfile, but it
 // is not allowed to contain ./, ../, be empty, or start with a forward slash.
 type SkyfileSubfileMetadata struct {
-	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
-	Filename    string      `json:"filename,omitempty"`
-	ContentType string      `json:"contenttype,omitempty"`
-	Offset      uint64      `json:"offset,omitempty"`
-	Len         uint64      `json:"len,omitempty"`
+	FileMode     os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
+	Filename     string      `json:"filename,omitempty"`
+	ContentType  string      `json:"contenttype,omitempty"`
+	Offset       uint64      `json:"offset,omitempty"`
+	Len          uint64      `json:"len,omitempty"`
+	Monetization []Monetizer `json:"monetization,omitempty"`
 }
 
 // IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.
