@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -91,6 +93,11 @@ func newOverflowMap(path string, deps modules.Dependencies) (_ *overflowMap, err
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load file")
+	}
+
+	// Sanity check. The size should never be smaller than the metadata size.
+	if size < overflowMapMetadataSize {
+		build.Critical(fmt.Sprintf("unexpected size of overflow.dat file %v < %v", size, overflowMapMetadataSize))
 	}
 
 	return &overflowMap{
@@ -183,7 +190,7 @@ func loadOverflowMap(f modules.File) (map[sectorID]overflowEntry, error) {
 
 // Close closes the overflowMap's underlying file handle.
 func (of *overflowMap) Close() error {
-	return of.f.Close()
+	return errors.Compose(of.Sync(), of.f.Close())
 }
 
 // Get checks the overflowMap for a specific sectorID and returns its overflow.
