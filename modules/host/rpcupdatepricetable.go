@@ -170,7 +170,7 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 		return nil, errors.AddContext(err, "failed to read price table UID")
 	}
 
-	// disrupt and return the price table is not find
+	// disrupt and return the price table is not found
 	if h.dependencies.Disrupt("HostLosePriceTable") {
 		return nil, errors.AddContext(modules.ErrPriceTableNotFound, fmt.Sprint(uid))
 	}
