@@ -31,10 +31,6 @@ var (
 	// ends when the workers starts trying to extend the subscription.
 	subscriptionExtensionWindow = modules.SubscriptionPeriod / 2 // 50% of period
 
-	// priceTableRetryInterval is the interval the subscription loop waits for
-	// the maintenance to update the price table before checking again.
-	priceTableRetryInterval = time.Second
-
 	// subscriptionLoopInterval is the interval after which the subscription
 	// loop checks for work when it's idle. Idle means the staticWakeChan isn't
 	// signaling new work.
@@ -54,6 +50,10 @@ var (
 		Dev:      3 * time.Second,
 		Standard: 3 * time.Second,
 	}).(time.Duration)
+
+	// priceTableRetryInterval is the interval the subscription loop waits for
+	// the maintenance to update the price table before checking again.
+	priceTableRetryInterval = time.Second
 )
 
 type (
@@ -432,7 +432,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 			w.staticAccount.managedTrackWithdrawal(fundAmt)
 
 			// Fund the subscription.
-			err = w.managedFundSubscription(stream, fundAmt)
+			err = w.managedFundSubscription(stream, pt, fundAmt)
 			if err != nil {
 				w.staticAccount.managedCommitWithdrawal(fundAmt, false)
 				return errors.AddContext(err, "failed to fund subscription")
@@ -606,6 +606,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// a price table that is at least valid for another 5 minutes. The
 		// SubscriptionPeriod also happens to be 5 minutes but we renew 2.5
 		// minutes before it ends.
+		w.renter.log.Printf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
 
 		// Trigger an update by setting the update time to now.
 		newPT := *pt
@@ -640,12 +641,12 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 			err = errors.Compose(err, stream.Close())
 		}
 	}()
-	return nil, modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
+	return stream, modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
 }
 
 // FundSubscription pays the host to increase the subscription budget.
-func (w *worker) managedFundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
-	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, w.staticCache().staticBlockHeight, fundAmt)
+func (w *worker) managedFundSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, fundAmt types.Currency) error {
+	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, pt.HostBlockHeight, fundAmt)
 }
 
 // Unsubscribe marks the provided entries as not subscribed to and notifies the

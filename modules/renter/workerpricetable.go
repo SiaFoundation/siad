@@ -14,13 +14,6 @@ import (
 )
 
 const (
-	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow in
-	// the host's blockheight field on the price table. If we are synced we
-	// expect the host to be at most 'priceTableHostBlockHeightLeeWay' blocks
-	// higher or lower than our own block height, if we are not synced we expect
-	// the host's block height to be higher or equal.
-	priceTableHostBlockHeightLeeWay = 3
-
 	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
 	// in relation to the allowance, at which we consider the cost of updating
 	// the price table to be too expensive. E.g. the cost of updating the price
@@ -49,6 +42,17 @@ var (
 	// minInitialEstimate is the minimum job time estimate that's set on the HS
 	// and RJ queue in case we fail to update the price table successfully
 	minInitialEstimate = time.Second
+
+	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow in
+	// the host's blockheight field on the price table. If we are synced we
+	// expect the host to be at most 'priceTableHostBlockHeightLeeWay' blocks
+	// higher or lower than our own block height, if we are not synced we expect
+	// the host's block height to be higher or equal.
+	priceTableHostBlockHeightLeeWay = build.Select(build.Var{
+		Standard: types.BlockHeight(3),
+		Dev:      types.BlockHeight(150),  // 50 times faster than Standard
+		Testing:  types.BlockHeight(3600), // 600 times faster than Standard
+	}).(types.BlockHeight)
 )
 
 type (
@@ -77,10 +81,6 @@ type (
 // managedNeedsToUpdatePriceTable returns true if the renter needs to update its
 // host prices.
 func (w *worker) managedNeedsToUpdatePriceTable() bool {
-	// No need to update the prices if the worker's host does not support RHP3.
-	if !w.staticSupportsRHP3() {
-		return false
-	}
 	// No need to update the price table if the worker's RHP3 is on cooldown.
 	if w.managedOnMaintenanceCooldown() {
 		return false

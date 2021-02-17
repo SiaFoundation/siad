@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -28,7 +29,22 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 
 	// fetch the price table
 	pt, err := h.staticReadPriceTableID(stream)
-	if err != nil {
+	if errors.Contains(err, errEmptyPriceTableUID) {
+		// send a temporary price table.
+		pt = h.managedPriceTableForRenter()
+
+		// json encode the price table
+		ptBytes, err := json.Marshal(pt)
+		if err != nil {
+			return errors.AddContext(err, "Failed to JSON encode the price table")
+		}
+
+		// send it to the renter
+		uptResp := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
+		if err = modules.RPCWrite(stream, uptResp); err != nil {
+			return errors.AddContext(err, "Failed to write response")
+		}
+	} else if err != nil {
 		return errors.AddContext(err, "failed to fetch price table")
 	}
 

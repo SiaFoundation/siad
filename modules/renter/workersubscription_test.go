@@ -122,7 +122,7 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	}
 
 	// Fund the budget a bit.
-	err = wt.managedFundSubscription(stream, initialSubscriptionBudget.Div64(2))
+	err = wt.managedFundSubscription(stream, pt, initialSubscriptionBudget.Div64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
