@@ -15,9 +15,9 @@ import (
 // TestFile is a small helper struct that identifies a file to be uploaded. The
 // upload helpers take a slice of these files to ensure order is maintained.
 type TestFile struct {
-	Name       string
-	Data       []byte
-	Monetizers []modules.Monetizer
+	Name         string
+	Data         []byte
+	Monetization []modules.Monetizer
 }
 
 // UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
@@ -40,13 +40,13 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 // data and monetization. After it has successfully performed the upload, it
 // will verify the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.
-func (tn *TestNode) UploadNewSkyfileMonetizedBlocking(filename string, filedata []byte, force bool, monetizers []modules.Monetizer) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadSkyfileBlockingCustom(filename, filedata, "", 2, force, monetizers)
+func (tn *TestNode) UploadNewSkyfileMonetizedBlocking(filename string, filedata []byte, force bool, monetization []modules.Monetizer) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, "", 2, force, monetization)
 }
 
 // UploadSkyfileCustom attempts to upload a skyfile. Returns the skylink, the
 // parameters used for the upload and potentially an error.
-func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool, monetizers []modules.Monetizer) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
+func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool, monetization []modules.Monetizer) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -61,7 +61,7 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 		BaseChunkRedundancy: baseChunkRedundancy,
 		Filename:            filename,
 		Mode:                modules.DefaultFilePerm,
-		Monetizers:          monetizers,
+		Monetization:        monetization,
 		Reader:              reader,
 		Force:               force,
 		Root:                false,
@@ -151,7 +151,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileMonetizedBlocking(filename string, 
 // will verify if the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.  The
 // `files` argument is a map of filepath->fileContent.
-func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, monetizers []modules.Monetizer, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, monetization []modules.Monetizer, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -165,7 +165,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, 
 	// add the files
 	var offset uint64
 	for _, tf := range files {
-		_, err = modules.AddMultipartFileWithMonetizers(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset, tf.Monetizers)
+		_, err = modules.AddMultipartFileWithMonetization(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset, tf.Monetization)
 		if err != nil {
 			panic(err)
 		}
@@ -186,7 +186,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, 
 		Filename:            filename,
 		DefaultPath:         defaultPath,
 		DisableDefaultPath:  disableDefaultPath,
-		Monetizers:          monetizers,
+		Monetization:        monetization,
 	}
 
 	// upload a skyfile

@@ -85,7 +85,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-		{Name: "Monetizers", Test: testSkynetMonetizers},
+		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
 	}
 
 	// Run tests
@@ -4143,17 +4143,17 @@ func TestSkynetCleanupOnError(t *testing.T) {
 func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// Create monetizers.
-	monetizers := []modules.Monetizer{
+	// Create monetization.
+	monetization := []modules.Monetizer{
 		{
 			Address: types.UnlockHash{},
 			Amount:  types.NewCurrency64(fastrand.Uint64n(1000) + 1),
 		},
 	}
-	fastrand.Read(monetizers[0].Address[:])
+	fastrand.Read(monetization[0].Address[:])
 
 	// Test regular small file.
-	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetizers)
+	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4161,14 +4161,14 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(md.Monetization, monetizers) {
+	if !reflect.DeepEqual(md.Monetization, monetization) {
 		t.Log("got", md.Monetization)
-		t.Log("want", monetizers)
+		t.Log("want", monetization)
 		t.Error("wrong monetizers")
 	}
 
 	// Test regular large file.
-	skylink, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularLarge", fastrand.Bytes(int(modules.SectorSize)+1), false, monetizers)
+	skylink, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularLarge", fastrand.Bytes(int(modules.SectorSize)+1), false, monetization)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4176,25 +4176,25 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(md.Monetization, monetizers) {
+	if !reflect.DeepEqual(md.Monetization, monetization) {
 		t.Log("got", md.Monetization)
-		t.Log("want", monetizers)
+		t.Log("want", monetization)
 		t.Error("wrong monetizers")
 	}
 
 	// Test multipart file with monetization for the whole link and monetization
 	// for a subfile.
-	fileMonetizers := []modules.Monetizer{
+	fileMonetization := []modules.Monetizer{
 		{
 			Address: types.UnlockHash{},
 			Amount:  types.NewCurrency64(fastrand.Uint64n(1000) + 1),
 		},
 	}
-	fastrand.Read(fileMonetizers[0].Address[:])
+	fastrand.Read(fileMonetization[0].Address[:])
 
-	nestedFile := siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetizers: fileMonetizers}
+	nestedFile := siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: fileMonetization}
 	files := []siatest.TestFile{nestedFile}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartMonetized", files, "", false, false, monetizers)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartMonetized", files, "", false, false, monetization)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4202,9 +4202,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(md.Monetization, monetizers) {
+	if !reflect.DeepEqual(md.Monetization, monetization) {
 		t.Log("got", md.Monetization)
-		t.Log("want", monetizers)
+		t.Log("want", monetization)
 		t.Error("wrong monetizeres")
 	}
 	if len(md.Subfiles) != 1 {
@@ -4215,9 +4215,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		smd = md
 		break
 	}
-	if !reflect.DeepEqual(smd.Monetization, fileMonetizers) {
+	if !reflect.DeepEqual(smd.Monetization, fileMonetization) {
 		t.Log("got", smd.Monetization)
-		t.Log("want", fileMonetizers)
+		t.Log("want", fileMonetization)
 		t.Error("wrong monetizers")
 	}
 
@@ -4228,8 +4228,8 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	sup := modules.SkyfileUploadParameters{
-		SiaPath:    modules.RandomSiaPath(),
-		Monetizers: monetizers,
+		SiaPath:      modules.RandomSiaPath(),
+		Monetization: monetization,
 	}
 	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
 	if err != nil {
@@ -4239,9 +4239,30 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(md.Monetization, monetizers) {
+	if !reflect.DeepEqual(md.Monetization, monetization) {
 		t.Log("got", md.Monetization)
-		t.Log("want", monetizers)
+		t.Log("want", monetization)
 		t.Error("wrong monetizers")
+	}
+
+	// Create monetization.
+	zeroMonetization := []modules.Monetizer{
+		{
+			Address: types.UnlockHash{},
+			Amount:  types.ZeroCurrency,
+		},
+	}
+	fastrand.Read(monetization[0].Address[:])
+
+	// Test zero currency monetization.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
+		t.Fatal("should fail", err)
+	}
+	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: zeroMonetization}
+	files = []siatest.TestFile{nestedFile}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartZeroMonetizer", files, "", false, false, monetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
+		t.Fatal("should fail", err)
 	}
 }

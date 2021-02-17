@@ -161,7 +161,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup modules.SkyfileUploadParameters, s
 	metadata := modules.SkyfileMetadata{
 		Filename:     siaPath.Name(),
 		Mode:         fileNode.Mode(),
-		Monetization: sup.Monetizers,
+		Monetization: sup.Monetization,
 		Length:       fileNode.Size(),
 	}
 	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, nil)

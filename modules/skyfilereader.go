@@ -93,7 +93,7 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 		metadata: SkyfileMetadata{
 			Filename:     sup.Filename,
 			Mode:         sup.Mode,
-			Monetization: sup.Monetizers,
+			Monetization: sup.Monetization,
 		},
 		metadataAvail: make(chan struct{}),
 	}
@@ -266,7 +266,7 @@ func newSkyfileMultipartReader(reader *multipart.Reader, fanoutReader *multipart
 		fanoutReader: newFanoutReader(fanoutReader, sup),
 		metadata: SkyfileMetadata{
 			Filename:           sup.Filename,
-			Monetization:       sup.Monetizers,
+			Monetization:       sup.Monetization,
 			Mode:               sup.Mode,
 			DefaultPath:        sup.DefaultPath,
 			DisableDefaultPath: sup.DisableDefaultPath,
@@ -404,13 +404,18 @@ func (sr *skyfileMultipartReader) createSubfileFromCurrPart() error {
 		return ErrEmptyFilename
 	}
 
-	// Parse the monetizers if available.
-	var monetizers []Monetizer
-	monetizerStr := sr.currPart.Header.Get("Monetization")
-	if monetizerStr != "" {
-		err = json.Unmarshal([]byte(monetizerStr), &monetizers)
+	// Parse the monetization header if available.
+	var monetization []Monetizer
+	monetizationStr := sr.currPart.Header.Get("Monetization")
+	if monetizationStr != "" {
+		err = json.Unmarshal([]byte(monetizationStr), &monetization)
 		if err != nil {
 			return errors.AddContext(err, "unable to parse 'Monetizers' header")
+		}
+		for _, amt := range monetization {
+			if amt.Amount.IsZero() {
+				return ErrZeroMonetizer
+			}
 		}
 	}
 
@@ -420,7 +425,7 @@ func (sr *skyfileMultipartReader) createSubfileFromCurrPart() error {
 		ContentType:  sr.currPart.Header.Get("Content-Type"),
 		Offset:       sr.currOff,
 		Len:          sr.currLen,
-		Monetization: monetizers,
+		Monetization: monetization,
 	}
 	return nil
 }

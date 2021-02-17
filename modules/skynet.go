@@ -41,6 +41,10 @@ var (
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
+
+	// ErrZeroMonetizer is returned if a caller tries to set a monetizer with 0H
+	// payout.
+	ErrZeroMonetizer = errors.New("can't provide 0H monetization")
 )
 
 var (
@@ -94,9 +98,9 @@ type (
 		// Mode indicates the file permissions of the skyfile.
 		Mode os.FileMode
 
-		// Monetizers contains a list of monetization info for the upload. It
+		// Monetization contains a list of monetization info for the upload. It
 		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetizers []Monetizer
+		Monetization []Monetizer
 
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
@@ -150,9 +154,9 @@ type (
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
 
-		// Monetizers contains a list of monetization info for the upload. It
+		// Monetization contains a list of monetization info for the upload. It
 		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetizers []Monetizer
+		Monetization []Monetizer
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
