@@ -12,6 +12,22 @@ repair log should try and document what those failures were. Every message of
 the repair log should be interesting and useful to a power user, there should be
 no logspam and no messages that would only make sense to siad developers.
 
+## Testing
+Testing the Renter module follows the following guidelines. 
+1. `file.go` will have unit tests in `file_test.go`
+1. In `file_test.go` there will be one main test named `TestFile`. `TestFile`
+   will have subtests for specific methods, conditions, etc., such as
+   `TestFile/method1` or `TestFile/condition1`.
+
+Since tests are run by providing the package, it is already clear that the tests
+correspond to the Renter, so Renter in the name is redundant.
+
+An example of a simple test file can be found in
+[`refreshpaths_test.go`](./refreshpaths_test.go).
+
+An example of a test with a number of subtests can be found in
+[`uploadheap_test.go`](./uploadheap_test.go).
+
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
 Renter. This README will provide brief overviews of the submodules, but for more

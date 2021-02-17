@@ -2,7 +2,9 @@ package renter
 
 import (
 	"context"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -11,10 +13,14 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
+var (
 	// skylinkDataSourceRequestSize is the size that is suggested by the data
 	// source to be used when reading data from it.
-	skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
+	skylinkDataSourceRequestSize = build.Select(build.Var{
+		Dev:      uint64(1 << 18), // 256 KiB
+		Standard: uint64(1 << 20), // 1 MiB
+		Testing:  uint64(1 << 9),  // 512 B
+	}).(uint64)
 )
 
 type (
@@ -27,28 +33,19 @@ type (
 		staticLayout   modules.SkyfileLayout
 		staticMetadata modules.SkyfileMetadata
 
-		// The "price per millisecond" is the budget that we are willing to
-		// spend on faster workers. See projectchunkworkset.go.
-		staticPricePerMS types.Currency
+		// staticBaseSectorPayload will contain the raw data for the skylink
+		// if there is no fanout. However if there's a fanout it will be nil.
+		staticBaseSectorPayload []byte
 
-		// The first chunk contains all of the raw data for the skylink, and the
-		// chunk fetchers contains one pcws for every chunk in the fanout. The
-		// worker sets are spun up in advance so that the HasSector queries have
-		// completed by the time that someone needs to fetch the data.
-		staticFirstChunk    []byte
+		// staticChunkFetchers contains one pcws for every chunk in the fanout.
+		// The worker sets are spun up in advance so that the HasSector queries
+		// have completed by the time that someone needs to fetch the data.
 		staticChunkFetchers []chunkFetcher
 
 		// Utilities
-		staticCancelFunc context.CancelFunc
 		staticCtx        context.Context
+		staticCancelFunc context.CancelFunc
 		staticRenter     *Renter
-	}
-
-	// skylinkReadResponse is a helper struct that contains the download
-	// response
-	skylinkReadResponse struct {
-		staticData []byte
-		staticErr  error
 	}
 )
 
@@ -60,6 +57,11 @@ func (sds *skylinkDataSource) DataSize() uint64 {
 // ID implements streamBufferDataSource
 func (sds *skylinkDataSource) ID() modules.DataSourceID {
 	return sds.staticID
+}
+
+// Layout implements streamBufferDataSource
+func (sds *skylinkDataSource) Layout() modules.SkyfileLayout {
+	return sds.staticLayout
 }
 
 // Metadata implements streamBufferDataSource
@@ -81,19 +83,33 @@ func (sds *skylinkDataSource) SilentClose() {
 }
 
 // ReadStream implements streamBufferDataSource
-func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkReadResponse {
+func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uint64, pricePerMS types.Currency) chan *readResponse {
 	// Prepare the response channel
-	responseChan := make(chan *skylinkReadResponse, 1)
+	responseChan := make(chan *readResponse, 1)
 	if off+fetchSize > sds.staticLayout.Filesize {
-		responseChan <- &skylinkReadResponse{
+		responseChan <- &readResponse{
 			staticErr: errors.New("given offset and fetchsize exceed the underlying filesize"),
+		}
+		return responseChan
+	}
+
+	// If there's data in the base sector payload it means we are dealing with a
+	// small skyfile without fanout bytes. This means we can simply read from
+	// that and return early.
+	baseSectorPayloadLen := uint64(len(sds.staticBaseSectorPayload))
+	if baseSectorPayloadLen != 0 {
+		bytesLeft := baseSectorPayloadLen - off
+		if fetchSize > bytesLeft {
+			fetchSize = bytesLeft
+		}
+		responseChan <- &readResponse{
+			staticData: sds.staticBaseSectorPayload[off : off+fetchSize],
 		}
 		return responseChan
 	}
 
 	// Determine how large each chunk is.
 	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
-	firstChunkLength := uint64(len(sds.staticFirstChunk))
 
 	// Prepare an array of download chans on which we'll receive the data.
 	numChunks := fetchSize / chunkSize
@@ -101,20 +117,6 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		numChunks += 1
 	}
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
-
-	// If there is data in the first chunk it means we are dealing with a small
-	// skyfile without fanout bytes, that means we can simply read from that and
-	// return early.
-	if len(sds.staticFirstChunk) != 0 {
-		bytesLeft := firstChunkLength - off
-		if fetchSize > bytesLeft {
-			fetchSize = bytesLeft
-		}
-		responseChan <- &skylinkReadResponse{
-			staticData: sds.staticFirstChunk[off : off+fetchSize],
-		}
-		return responseChan
-	}
 
 	// Otherwise we are dealing with a large skyfile and have to aggregate the
 	// download responses for every chunk in the fanout. We keep reading from
@@ -134,9 +136,9 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		}
 
 		// Schedule the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(sds.staticCtx, sds.staticPricePerMS, offsetInChunk, downloadSize)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
 		if err != nil {
-			responseChan <- &skylinkReadResponse{
+			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
 			}
 			return responseChan
@@ -153,6 +155,7 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		data := make([]byte, fetchSize)
 		offset := 0
 		failed := false
+
 		for _, respChan := range downloadChans {
 			resp := <-respChan
 			if resp.err == nil {
@@ -162,81 +165,102 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 			}
 			if !failed {
 				failed = true
-				responseChan <- &skylinkReadResponse{staticErr: resp.err}
+				responseChan <- &readResponse{staticErr: resp.err}
 				close(responseChan)
 			}
 		}
 
 		if !failed {
-			responseChan <- &skylinkReadResponse{staticData: data}
+			responseChan <- &readResponse{staticData: data}
 			close(responseChan)
 		}
 	})
 	if err != nil {
-		responseChan <- &skylinkReadResponse{staticErr: err}
+		responseChan <- &readResponse{staticErr: err}
 	}
 	return responseChan
 }
 
-// skylinkDataSource will create a streamBufferDataSource for the data contained
-// inside of a Skylink. The function will not return until the base sector and
-// all skyfile metadata has been retrieved.
-//
-// NOTE: Because multiple different callers may want to use the same data
-// source, we want the data source to outlive the initial call. That is why
-// there is no input for a context - the data source will live as long as the
-// stream buffer determines is appropriate.
-//
-// TODO: this should return a streamBufferDataSource, and will do so when we
-// have adjusted the interface
-func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency) (*skylinkDataSource, error) {
-	// Create the context for the data source - a child of the renter
-	// threadgroup but otherwise independent.
-	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
-
-	// If this function exits with an error we need to call cancel, due to the
-	// many returns here we use a boolean that cancels by default, only if we
-	// reach the very end of this function we do not call cancel.
-	cancel := true
-	defer func() {
-		if cancel {
-			cancelFunc()
-		}
-	}()
+// managedDownloadByRoot will fetch data using the merkle root of that data.
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
+	// Create a context that dies when the function ends, this will cancel all
+	// of the worker jobs that get created by this function.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// Create the pcws for the first chunk. We use a passthrough cipher and
 	// erasure coder. If the base sector is encrypted, we will notice and be
 	// able to decrypt it once we have fully downloaded it and are able to
 	// access the layout. We can make the assumption on the erasure coding being
-	// of 1-n seeing as we currently always upload the basechunk using 1-N
+	// of 1-N seeing as we currently always upload the basechunk using 1-N
 	// redundancy.
 	ptec := modules.NewPassthroughErasureCoder()
 	tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create plain skykey")
 	}
-	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{link.MerkleRoot()}, ptec, tpsk, 0)
+	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{root}, ptec, tpsk, 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
 	}
 
 	// Download the base sector. The base sector contains the metadata, without
 	// it we can't provide a completed data source.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to parse skylink")
-	}
-	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, fetchSize)
+	//
+	// NOTE: we pass in the provided context here, if the user imposed a timeout
+	// on the download request, this will fire if it takes too long.
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to start download")
 	}
 	resp := <-respChan
 	if resp.err != nil {
-		return nil, errors.AddContext(err, "base sector download did not succeed")
+		return nil, errors.AddContext(resp.err, "base sector download did not succeed")
 	}
 	baseSector := resp.data
 	if len(baseSector) < modules.SkyfileLayoutSize {
 		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
+
+	return baseSector, nil
+}
+
+// skylinkDataSource will create a streamBufferDataSource for the data contained
+// inside of a Skylink. The function will not return until the base sector and
+// all skyfile metadata has been retrieved.
+//
+// NOTE: Skylink data sources are cached and outlive the user's request because
+// multiple different callers may want to use the same data source. We do have
+// to pass in a context though to adhere to a possible user-imposed request
+// timeout. This can be optimized to always create the data source when it was
+// requested, but we should only do so after gathering some real world feedback
+// that indicates we would benefit from this.
+func (r *Renter) skylinkDataSource(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (streamBufferDataSource, error) {
+	// Create the context using the given timeout, this timeout should only be
+	// applicable to downloading the base sector because the data source might
+	// outlive the request.
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
+	// Get the offset and fetchsize from the skylink
+	offset, fetchSize, err := link.OffsetAndFetchSize()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to parse skylink")
+	}
+
+	// Download the base sector. The base sector contains the metadata, without
+	// it we can't provide a completed data source.
+	//
+	// NOTE: we pass in the provided context here, if the user imposed a timeout
+	// on the download request, this will fire if it takes too long.
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to download base sector")
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
@@ -250,48 +274,58 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, firstChunk, err := modules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, baseSectorPayload, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
 
-	// Derive the fanout key and erasure coder
-	fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to derive encryption key")
-	}
-	ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
-	}
+	// Create the context for the data source - a child of the renter
+	// threadgroup but otherwise independent.
+	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
 
-	// Create PCWSs for every chunk in the fanout
-	fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
-	if err != nil {
-		return nil, errors.AddContext(err, "error parsing skyfile fanout")
-	}
-	fanoutChunkFetchers := make([]chunkFetcher, len(fanoutChunks))
-	for i, chunk := range fanoutChunks {
-		pcws, err := r.newPCWSByRoots(ctx, chunk, ec, fanoutKey, uint64(i))
+	// If there's a fanout create a PCWS for every chunk.
+	var fanoutChunkFetchers []chunkFetcher
+	if len(fanoutBytes) > 0 {
+		// Derive the fanout key
+		fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
+			cancelFunc()
+			return nil, errors.AddContext(err, "unable to derive encryption key")
 		}
-		fanoutChunkFetchers[i] = pcws
+
+		// Create the erasure coder
+		ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+		if err != nil {
+			cancelFunc()
+			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
+		}
+
+		// Create a PCWS for every chunk
+		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
+		if err != nil {
+			cancelFunc()
+			return nil, errors.AddContext(err, "error parsing skyfile fanout")
+		}
+		for i, chunk := range fanoutChunks {
+			pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
+			if err != nil {
+				cancelFunc()
+				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
+			}
+			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
+		}
 	}
 
-	cancel = false
 	sds := &skylinkDataSource{
 		staticID:       link.DataSourceID(),
 		staticLayout:   layout,
 		staticMetadata: metadata,
 
-		staticPricePerMS: pricePerMS,
+		staticBaseSectorPayload: baseSectorPayload,
+		staticChunkFetchers:     fanoutChunkFetchers,
 
-		staticFirstChunk:    firstChunk,
-		staticChunkFetchers: fanoutChunkFetchers,
-
+		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
-		staticCtx:        ctx,
 		staticRenter:     r,
 	}
 	return sds, nil

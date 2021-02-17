@@ -37,20 +37,6 @@ func TestAddCostPenalty(t *testing.T) {
 		t.Error("unexpected")
 	}
 
-	// verify penalty is set to 1H if zero is passed
-	//
-	// calculate the expected outcome
-	hasting := types.NewCurrency64(1)
-	penalty, err = jc.Div(hasting).Uint64()
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected = jt + (time.Duration(penalty) * time.Millisecond)
-	adjusted = addCostPenalty(jt, jc, types.ZeroCurrency)
-	if adjusted != expected {
-		t.Error("unexpected", adjusted, expected)
-	}
-
 	// verify overflow
 	jt = time.Duration(1)
 	jc = types.NewCurrency64(math.MaxUint64).Mul64(10)

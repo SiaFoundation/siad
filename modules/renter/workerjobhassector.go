@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -47,6 +48,10 @@ type (
 		// on one channel for a bunch of workers and still know which worker
 		// successfully found the sector root.
 		staticWorker *worker
+
+		// The time it took for this job to complete is included for debugging
+		// purposes.
+		staticJobTime time.Duration
 	}
 )
 
@@ -90,8 +95,8 @@ func (j *jobHasSector) callExecute() {
 	response := &jobHasSectorResponse{
 		staticAvailables: availables,
 		staticErr:        err,
-
-		staticWorker: w,
+		staticJobTime:    jobTime,
+		staticWorker:     w,
 	}
 	err2 := w.renter.tg.Launch(func() {
 		select {
@@ -119,6 +124,10 @@ func (j *jobHasSector) callExecute() {
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
+	// sanity check
+	if len(j.staticSectors) == 0 {
+		build.Critical("expected bandwidth requested for a job that has no staticSectors set")
+	}
 	return hasSectorJobExpectedBandwidth(len(j.staticSectors))
 }
 
@@ -174,12 +183,6 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 	return now.Add(estimate), nil
 }
 
-// expectedJobTime will return the amount of time that a job is expected to
-// take, given the current conditions of the queue.
-func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
-	return time.Duration(jq.weightedJobTime)
-}
-
 // callExpectedJobTime returns the expected amount of time that this job will
 // take to complete.
 func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duration {
@@ -194,6 +197,12 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+}
+
+// expectedJobTime will return the amount of time that a job is expected to
+// take, given the current conditions of the queue.
+func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
+	return time.Duration(jq.weightedJobTime)
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.

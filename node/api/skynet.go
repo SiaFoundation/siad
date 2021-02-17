@@ -56,6 +56,13 @@ const (
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 )
 
+var (
+	// DefaultSkynetPricePerMS is the default price per millisecond the renter
+	// is able to spend on faster workers when downloading a Skyfile. By default
+	// this is a sane default of 100 nS.
+	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-7) // 100 nS
+)
+
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
@@ -205,8 +212,24 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -459,8 +482,24 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Fetch the skyfile's  streamer to serve the basesector of the file
-	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout)
+	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -601,8 +640,24 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Fetch the skyfile's metadata and a streamer to download the file
-	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -663,12 +718,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		isSkapp := strings.HasSuffix(defaultPath, ".html") || strings.HasSuffix(defaultPath, ".htm")
-		// If we don't have a subPath and the skylink doesn't end with a trailing
-		// slash we need to redirect in order to add the trailing slash.
-		// This is only true for skapps - they need it in order to properly work
-		// with relative paths.
-		// We also don't need to redirect if this is a HEAD request or if it's a
-		// download as attachment.
+		// If we don't have a subPath and the skylink doesn't end with a
+		// trailing slash we need to redirect in order to add the trailing
+		// slash. This is only true for skapps - they need it in order to
+		// properly work with relative paths. We also don't need to redirect if
+		// this is a HEAD request or if it's a download as attachment.
 		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
 			location := skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
@@ -884,6 +938,22 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := types.ParseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Check whether force upload is allowed. Skynet portals might disallow
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
@@ -932,7 +1002,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		BaseChunkRedundancy: redundancy,
 	}
 
-	err = api.renter.PinSkylink(skylink, lup, timeout)
+	err = api.renter.PinSkylink(skylink, lup, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return

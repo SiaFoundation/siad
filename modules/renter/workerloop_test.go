@@ -192,10 +192,6 @@ func TestJobAsync(t *testing.T) {
 	w.staticLoopState.atomicReadDataLimit = 10e6
 	w.staticLoopState.atomicWriteDataLimit = 10e6
 	w.staticMaintenanceState = &workerMaintenanceState{}
-	cache := &workerCache{
-		staticHostVersion: minRHP3Version,
-	}
-	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(cache))
 	w.staticSetPriceTable(&workerPriceTable{
 		staticExpiryTime: time.Now().Add(time.Minute),
 	})

@@ -202,6 +202,17 @@ func NewDependencyCorruptMDMOutput() *DependencyInterruptOnceOnKeyword {
 	return newDependencyInterruptOnceOnKeyword("CorruptMDMOutput")
 }
 
+// NewDependencyCorruptReadSector returns a dependency that can be used to
+// ensure ReadSector instructions on the host fail due to corruption of the MDM
+// output.
+//
+// NOTE: this dependency is very similar to 'NewDependencyCorruptMDMOutput' and
+// even uses the same disrupt string, the difference is that this is an
+// enable-disable, and not interrupt once.
+func NewDependencyCorruptReadSector() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("CorruptMDMOutput")
+}
+
 // NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
 // managedResumeJobDownloadByRoot until the timeout for the download project is
 // reached.
@@ -349,6 +360,9 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 		return true
 	}
 	if s == "DisableSnapshotSync" {
+		return true
+	}
+	if s == "DisableSubscriptionLoop" {
 		return true
 	}
 	return false

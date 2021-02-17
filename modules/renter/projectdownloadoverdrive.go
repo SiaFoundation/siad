@@ -110,7 +110,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 // return value will be 'nil' and instead two channels will be returned which
 // help to indicate when the unresolved worker is resolved.
 //
-// The time.Duration indicatees how long until the preferred worker would be
+// The time.Duration indicates how long until the preferred worker would be
 // late, and the channel will be closed when new worker updates are available.
 //
 // TODO: Remember the edge case where all unresolved workers have not returned
@@ -215,6 +215,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 				continue
 			}
 		}
+
 		return true, expectedReturnTime, nil, nil
 	}
 }
@@ -235,7 +236,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 				continue // skip
 			}
 			launchedWithoutFail = true
-			if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompleteTime) {
+			if !pieceDownload.completed && pieceDownload.expectedCompleteTime.After(latestReturn) {
 				latestReturn = pieceDownload.expectedCompleteTime
 			}
 		}
@@ -253,7 +254,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 
 	// If the latest worker should have already completed its job, return that
 	// an overdrive worker should be launched.
-	if time.Until(latestReturn) <= 0 {
+	if time.Now().After(latestReturn) {
 		return 1, latestReturn
 	}
 
@@ -287,7 +288,7 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 
 		// Worker launched successfully, update the latestReturnTime to account
 		// for the new worker.
-		if latestReturn.Before(expectedReturnTime) {
+		if expectedReturnTime.After(latestReturn) {
 			latestReturn = expectedReturnTime
 		}
 	}
@@ -304,11 +305,6 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 	// return without penalty.
 	if pricePerMS.Cmp(jobCost) >= 0 {
 		return jobTime
-	}
-
-	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero
-	if pricePerMS.IsZero() {
-		pricePerMS = types.NewCurrency64(1)
 	}
 
 	// Otherwise, add a penalty

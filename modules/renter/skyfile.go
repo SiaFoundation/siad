@@ -31,6 +31,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"time"
@@ -68,11 +69,6 @@ var (
 	// sectorsize.
 	ErrMetadataTooBig = errors.New("metadata exceeds sectorsize")
 
-	// ErrRedundancyNotSupported is the error returned when trying to convert a
-	// Siafile that was uploaded with redundancy that is not currently supported
-	// by Skynet
-	ErrRedundancyNotSupported = errors.New("skylinks currently only support 1-of-N redundancy, other redundancies will be supported in a later version")
-
 	// ErrSkylinkBlocked is the error returned when a skylink is blocked
 	ErrSkylinkBlocked = errors.New("skylink is blocked")
 )
@@ -105,10 +101,10 @@ func fileUploadParams(siaPath modules.SiaPath, dataPieces, parityPieces int, for
 	}, nil
 }
 
-// fileUploadParamsFromSUP will derive the FileUploadParams to use when
+// baseSectorUploadParamsFromSUP will derive the FileUploadParams to use when
 // uploading the base chunk siafile of a skyfile using the skyfile's upload
 // parameters.
-func fileUploadParamsFromSUP(sup modules.SkyfileUploadParameters) (modules.FileUploadParams, error) {
+func baseSectorUploadParamsFromSUP(sup modules.SkyfileUploadParameters) (modules.FileUploadParams, error) {
 	// Establish defaults
 	skyfileEstablishDefaults(&sup)
 
@@ -199,12 +195,6 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	ec := fileNode.ErasureCode()
 	if ec.Type() != modules.ECReedSolomonSubShards64 {
 		return modules.Skylink{}, errors.New("siafile has unsupported erasure code type")
-	}
-	// Deny the conversion of siafiles that are not 1 data piece. Not because we
-	// cannot download them, but because it is currently inefficient to download
-	// them.
-	if ec.MinPieces() != 1 {
-		return modules.Skylink{}, ErrRedundancyNotSupported
 	}
 
 	// Marshal the metadata.
@@ -388,17 +378,17 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
 // returning the resulting merkle root, and the fileNode of the siafile that is
 // tracking the base sector.
-func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
-	fileUploadParams, err := fileUploadParamsFromSUP(lup)
+func (r *Renter) managedUploadBaseSector(sup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
+	uploadParams, err := baseSectorUploadParamsFromSUP(sup)
 	if err != nil {
 		return errors.AddContext(err, "failed to create siafile upload parameters")
 	}
-	fileUploadParams.CipherType = crypto.TypePlain // the baseSector should be encrypted by the caller.
 
-	// Perform the actual upload. This will require turning the base sector into
-	// a reader.
-	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
+	// Turn the base sector into a reader
+	reader := bytes.NewReader(baseSector)
+
+	// Perform the actual upload.
+	fileNode, err := r.callUploadStreamFromReader(uploadParams, reader)
 	if err != nil {
 		return errors.AddContext(err, "failed to stream upload small skyfile")
 	}
@@ -509,8 +499,9 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
+
 	// Create the FileUploadParams
-	fup, err := fileUploadParams(siaPath, 1, int(sup.BaseChunkRedundancy)-1, sup.Force, crypto.TypePlain)
+	fup, err := fileUploadParams(siaPath, modules.RenterDefaultDataPieces, modules.RenterDefaultParityPieces, sup.Force, crypto.TypePlain)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create FileUploadParams for large file")
 	}
@@ -561,30 +552,91 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 	return skylink, nil
 }
 
-// DownloadSkylink will take a link and turn it into the metadata and data of a
-// download.
-func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.Streamer, error) {
-	if err := r.tg.Add(); err != nil {
-		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, err
-	}
-	defer r.tg.Done()
-	return r.managedDownloadSkylink(link, timeout)
-}
-
-// DownloadSkylinkBaseSector will take a link and turn it into the data of
-// a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration) (modules.Streamer, error) {
+// DownloadByRoot will fetch data using the merkle root of that data. This uses
+// all of the async worker primitives to improve speed and throughput.
+func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration, pricePerMS types.Currency) ([]byte, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
-	baseSector, err := r.managedDownloadBaseSector(link, timeout)
+
+	// Check if the merkleroot is blocked
+	if r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)) {
+		return nil, ErrSkylinkBlocked
+	}
+
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
+	// Fetch the data
+	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
+	if errors.Contains(err, ErrProjectTimedOut) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	return data, err
+}
+
+// DownloadSkylink will take a link and turn it into the metadata and data of a
+// download.
+func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, err
+	}
+	defer r.tg.Done()
+
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, ErrSkylinkBlocked
+	}
+
+	// Download the data
+	layout, metadata, streamer, err := r.managedDownloadSkylink(link, timeout, pricePerMS)
+	if errors.Contains(err, ErrProjectTimedOut) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	return layout, metadata, streamer, err
+}
+
+// DownloadSkylinkBaseSector will take a link and turn it into the data of
+// a basesector without any decoding of the metadata, fanout, or decryption.
+func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return nil, ErrSkylinkBlocked
+	}
+
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
+	// Find the fetch size.
+	offset, fetchSize, err := link.OffsetAndFetchSize()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to get offset and fetch size")
+	}
+
+	// Download the base sector
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	return StreamerFromSlice(baseSector), err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -595,93 +647,32 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
 	// skip the lookup procedure and use any data that other threads have
-	// cached. Only do this if the skylink is not blocked. We still might have
-	// cached, blocked data.
-	if !r.staticSkynetBlocklist.IsBlocked(link) {
-		id := link.DataSourceID()
-		streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
-		if exists {
-			return streamer.Layout(), streamer.Metadata(), streamer, nil
-		}
+	// cached.
+	id := link.DataSourceID()
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0, timeout)
+	if exists {
+		return streamer.Layout(), streamer.Metadata(), streamer, nil
 	}
 
-	// Try downloading the base sector.
-	baseSector, err := r.managedDownloadBaseSector(link, timeout)
+	// Create the data source and add it to the stream buffer set.
+	dataSource, err := r.skylinkDataSource(link, timeout, pricePerMS)
 	if err != nil {
-		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to perform raw download of the skyfile")
+		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-
-	// Check if the base sector is encrypted, and attempt to decrypt it.
-	// This will fail if we don't have the decryption key.
-	var fileSpecificSkykey skykey.Skykey
-	if modules.IsEncryptedBaseSector(baseSector) {
-		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
-		if err != nil {
-			return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
-		}
-	}
-
-	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, baseSectorPayload, err := modules.ParseSkyfileMetadata(baseSector)
-	if err != nil {
-		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "error parsing skyfile metadata")
-	}
-
-	// If there is no fanout, all of the data will be contained in the base
-	// sector, return a streamer using the data from the base sector.
-	if layout.FanoutSize == 0 {
-		streamer := StreamerFromSlice(baseSectorPayload)
-		return layout, metadata, streamer, nil
-	}
-
-	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
-	if err != nil {
-		return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
-	}
-	return layout, metadata, fs, nil
-}
-
-// managedDownloadBaseSector will download the baseSector for the skylink or
-// return the active stream
-func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Duration) ([]byte, error) {
-	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
-		return nil, ErrSkylinkBlocked
-	}
-
-	// Pull the offset and fetchSize out of the skylink.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to parse skylink")
-	}
-
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to fetch base sector of skylink")
-	}
-	if len(baseSector) < modules.SkyfileLayoutSize {
-		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
-	}
-
-	// Return the baseSector
-	return baseSector, nil
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
+	return dataSource.Layout(), dataSource.Metadata(), stream, nil
 }
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
-func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
+func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error {
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
 	}
 
-	// Set sane defaults for unspecified values.
-	skyfileEstablishDefaults(&lup)
-
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout, pricePerMS)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
@@ -700,10 +691,13 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, _, err := modules.ParseSkyfileMetadata(baseSector)
+	layout, _, _, _, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
 	}
+
+	// Set sane defaults for unspecified values.
+	skyfileEstablishDefaults(&lup)
 
 	// Start setting up the FUP.
 	fup := modules.FileUploadParams{
@@ -731,8 +725,8 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		}
 		fup.CipherType = fanoutSkykey.CipherType()
 
-		// These fields aren't used yet, but we'll set them anyway to mimic behavior in
-		// upload/download code for consistency.
+		// These fields aren't used yet, but we'll set them anyway to mimic
+		// behavior in upload/download code for consistency.
 		lup.SkykeyName = fileSpecificSkykey.Name
 		lup.FileSpecificSkykey = fileSpecificSkykey
 	}
@@ -759,14 +753,15 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
 
-	// Create the fanout streamer that will download the file.
-	streamer, err := r.newFanoutStreamer(skylink, layout, metadata, fanoutBytes, timeout, fileSpecificSkykey)
+	// Create the data source and add it to the stream buffer set.
+	dataSource, err := r.skylinkDataSource(skylink, timeout, pricePerMS)
 	if err != nil {
-		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
+		return errors.AddContext(err, "unable to create data source for skylink")
 	}
+	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0, timeout, pricePerMS)
 
-	// Upload directly from the fanout download streamer.
-	fileNode, err := r.callUploadStreamFromReader(fup, streamer)
+	// Upload directly from the stream.
+	fileNode, err := r.callUploadStreamFromReader(fup, stream)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
 	}

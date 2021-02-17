@@ -12,12 +12,14 @@ package renter
 // lru, and cause data fetches to be evicted before they become useful.
 
 import (
+	"context"
 	"io"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -127,8 +129,17 @@ type streamBufferDataSource interface {
 	// if the closing fails.
 	SilentClose()
 
-	// ReaderAt allows the stream buffer to request specific data chunks.
-	io.ReaderAt
+	// ReadStream allows the stream buffer to request specific data chunks from
+	// the data source. It returns a channel containing a read response.
+	ReadStream(context.Context, uint64, uint64, types.Currency) chan *readResponse
+}
+
+// readResponse is a helper struct that is returned when reading from the data
+// source. It contains the data being downloaded and an error in case of
+// failure.
+type readResponse struct {
+	staticData []byte
+	staticErr  error
 }
 
 // dataSection represents a section of data from a data source. The data section
@@ -162,6 +173,8 @@ type stream struct {
 
 	mu                 sync.Mutex
 	staticStreamBuffer *streamBuffer
+	staticCtx          context.Context
+	staticCancel       context.CancelFunc
 }
 
 // streamBuffer is a buffer for a single dataSource.
@@ -177,12 +190,13 @@ type streamBuffer struct {
 	externRefCount uint64
 
 	mu                    sync.Mutex
-	tg                    threadgroup.ThreadGroup
+	staticTG              threadgroup.ThreadGroup
 	staticDataSize        uint64
 	staticDataSource      streamBufferDataSource
 	staticDataSectionSize uint64
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        modules.DataSourceID
+	staticPricePerMS      types.Currency
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
@@ -218,7 +232,7 @@ func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64) *stream {
+func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64, timeout time.Duration, pricePerMS types.Currency) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -231,6 +245,7 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 			staticDataSize:        dataSource.DataSize(),
 			staticDataSource:      dataSource,
 			staticDataSectionSize: dataSource.RequestSize(),
+			staticPricePerMS:      pricePerMS,
 			staticStreamBufferSet: sbs,
 			staticStreamID:        sourceID,
 		}
@@ -242,14 +257,14 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset)
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout)
 }
 
 // callNewStreamFromID will check the stream buffer set to see if a stream
 // buffer exists for the given data source id. If so, a new stream will be
 // created using the data source, and the bool will be set to 'true'. Otherwise,
 // the stream returned will be nil and the bool will be set to 'false'.
-func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initialOffset uint64) (*stream, bool) {
+func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initialOffset uint64, timeout time.Duration) (*stream, bool) {
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[id]
 	if !exists {
@@ -258,13 +273,17 @@ func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initial
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset), true
+	return streamBuf.managedPrepareNewStream(initialOffset, timeout), true
 }
 
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
-func (ds *dataSection) managedData() ([]byte, error) {
-	<-ds.dataAvailable
+func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
+	select {
+	case <-ds.dataAvailable:
+	case <-ctx.Done():
+		return nil, errors.New("could not get data from data section, context timed out")
+	}
 	return ds.externData, ds.externErr
 }
 
@@ -292,6 +311,11 @@ func (s *stream) Close() error {
 
 		// Remove the stream from the streamBuffer.
 		sbs.managedRemoveStream(sb)
+
+		// Cancel the stream's context
+		if s.staticCancel != nil {
+			s.staticCancel()
+		}
 	})
 	return nil
 }
@@ -355,7 +379,7 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Block until the data is available.
-	data, err := dataSection.managedData()
+	data, err := dataSection.managedData(s.staticCtx)
 	if err != nil {
 		return 0, errors.AddContext(err, "read call failed because data section fetch failed")
 	}
@@ -476,11 +500,18 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 // managedPrepareNewStream creates a new stream from an existing stream buffer.
 // The ref count for the buffer needs to be incremented under the
 // streamBufferSet lock, before this method is called.
-func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64) *stream {
+func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout time.Duration) *stream {
 	// Determine how many data sections the stream should cache.
 	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
 	if dataSectionsToCache < minimumDataSections {
 		dataSectionsToCache = minimumDataSections
+	}
+
+	// Create a context for the stream
+	ctx := sb.staticTG.StopCtx()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(sb.staticTG.StopCtx(), timeout)
 	}
 
 	// Create a stream that points to the stream buffer.
@@ -488,6 +519,8 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64) *stream {
 		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
 		offset: initialOffset,
 
+		staticCtx:          ctx,
+		staticCancel:       cancel,
 		staticStreamBuffer: sb,
 	}
 	stream.prepareOffset()
@@ -523,20 +556,26 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
+		defer close(ds.dataAvailable)
+
 		// Ensure that the streambuffer has not closed.
-		err := sb.tg.Add()
+		err := sb.staticTG.Add()
 		if err != nil {
 			ds.externErr = errors.AddContext(err, "stream buffer has been shut down")
 			return
 		}
-		defer sb.tg.Done()
+		defer sb.staticTG.Done()
 
 		// Grab the data from the data source.
-		_, err = sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
-		if err != nil {
-			ds.externErr = errors.AddContext(err, "data section ReadAt failed")
+		responseChan := sb.staticDataSource.ReadStream(sb.staticTG.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
+
+		select {
+		case response := <-responseChan:
+			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
+			ds.externData = response.staticData
+		case <-sb.staticTG.StopChan():
+			ds.externErr = errors.New("failed to read response from ReadStream")
 		}
-		close(ds.dataAvailable)
 	}()
 	return ds
 }
@@ -564,6 +603,6 @@ func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 	// any new calls to ReadAt from executing, and will block until all existing
 	// calls are completed. This prevents any issues that could be caused by the
 	// data source being accessed after it has been closed.
-	sb.tg.Stop()
+	sb.staticTG.Stop()
 	sb.staticDataSource.SilentClose()
 }

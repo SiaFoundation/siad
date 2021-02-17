@@ -159,7 +159,7 @@ func loadOverflowMap(f modules.File) (map[sectorID]overflowEntry, error) {
 	// Read the entries.
 	entry := make([]byte, overflowMapEntrySize)
 	entryMap := make(map[sectorID]overflowEntry)
-	offset := int64(overflowMapEntrySize)
+	offset := int64(overflowMapMetadataSize)
 	for {
 		// Read the next entry.
 		_, err = io.ReadFull(r, entry)

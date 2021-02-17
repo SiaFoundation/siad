@@ -132,7 +132,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.Writer, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -452,10 +452,6 @@ func (w *worker) externSyncAccountBalanceToHost() {
 // be refilled. This function will return false if any conditions are met which
 // are likely to prevent the refill from being successful.
 func (w *worker) managedNeedsToRefillAccount() bool {
-	// No need to refill the account if the worker's host does not support RHP3.
-	if !w.staticSupportsRHP3() {
-		return false
-	}
 	// No need to refill the account if the worker is on maintenance cooldown.
 	if w.managedOnMaintenanceCooldown() {
 		return false
@@ -472,10 +468,6 @@ func (w *worker) managedNeedsToRefillAccount() bool {
 // managedNeedsToSyncAccountBalanceToHost returns true if the renter needs to
 // sync the renter's account balance with the host's version of the account.
 func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
-	// No need to sync the account if the worker's host does not support RHP3.
-	if !w.staticSupportsRHP3() {
-		return false
-	}
 	// No need to sync the account if the worker's RHP3 is on cooldown.
 	if w.managedOnMaintenanceCooldown() {
 		return false
@@ -609,7 +601,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
@@ -682,7 +674,7 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, pt.HostBlockHeight)
 	if err != nil {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.

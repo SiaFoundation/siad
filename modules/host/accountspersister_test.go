@@ -104,14 +104,14 @@ func TestFingerprintsReload(t *testing.T) {
 
 	// Prepare a withdrawal message
 	amount := types.NewCurrency64(1)
-	msg1, sig1 := prepareWithdrawal(accountID, amount, am.h.blockHeight+10, sk)
-	err = callWithdraw(am, msg1, sig1)
+	msg1, sig1 := prepareWithdrawal(accountID, amount, am.h.BlockHeight()+10, sk)
+	err = callWithdraw(am, msg1, sig1, am.h.BlockHeight()+10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	msg2, sig2 := prepareWithdrawal(accountID, amount, am.h.blockHeight+10, sk)
-	err = callWithdraw(am, msg2, sig2)
+	msg2, sig2 := prepareWithdrawal(accountID, amount, am.h.BlockHeight()+10, sk)
+	err = callWithdraw(am, msg2, sig2, am.h.BlockHeight())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,18 +188,18 @@ func TestFingerprintsRotate(t *testing.T) {
 	msg1, sig1 := prepareWithdrawal(accountID, types.NewCurrency64(1), cbh+1, sk)
 	msg2, sig2 := prepareWithdrawal(accountID, types.NewCurrency64(1), cbh+bucketBlockRange, sk)
 	if err = errors.Compose(
-		callWithdraw(am, msg1, sig1),
-		callWithdraw(am, msg2, sig2),
+		callWithdraw(am, msg1, sig1, cbh),
+		callWithdraw(am, msg2, sig2, cbh),
 	); err != nil {
 		t.Fatal(err)
 	}
 
 	// Vefify we have the fingerprints in memory by perform the same withdrawal
 	// and asserting ErrWithdrawalSpent
-	if err = callWithdraw(am, msg1, sig1); !errors.Contains(err, ErrWithdrawalSpent) {
+	if err = callWithdraw(am, msg1, sig1, cbh); !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Unexpected error, expected ErrWithdrawalSpent but got:", err)
 	}
-	if err = callWithdraw(am, msg2, sig2); !errors.Contains(err, ErrWithdrawalSpent) {
+	if err = callWithdraw(am, msg2, sig2, cbh); !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Unexpected error, expected ErrWithdrawalSpent but got:", err)
 	}
 
