@@ -403,7 +403,7 @@ func TestComputeMonetizationPayout(t *testing.T) {
 		if len(nBytes) < monetizationLotteryEntropy {
 			nBytes = append(make([]byte, monetizationLotteryEntropy-len(nBytes)), nBytes...)
 		}
-		p, err := ComputeMonetizationPayout(amt, base, bytes.NewReader(nBytes))
+		p, err := computeMonetizationPayout(amt, base, bytes.NewReader(nBytes))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -427,10 +427,7 @@ func TestComputeMonetizationPayout(t *testing.T) {
 	amt := types.NewCurrency64(30)
 	base := types.NewCurrency64(100)
 	for i := uint64(0); i < nTotal; i++ {
-		p, err := ComputeMonetizationPayout(amt, base, fastrand.Reader)
-		if err != nil {
-			t.Fatal(err)
-		}
+		p := ComputeMonetizationPayout(amt, base)
 		payout = payout.Add(p)
 	}
 
@@ -445,7 +442,7 @@ func TestComputeMonetizationPayout(t *testing.T) {
 		diff = payout.Sub(idealPayout)
 	}
 	if diff.Cmp(tolerance) > 0 {
-		t.Fatal("diff exceeds the 0.5% tolerance", diff, tolerance)
+		t.Fatal("diff exceeds the 1% tolerance", diff, tolerance)
 	}
 
 	t.Log("Total executions:", nTotal)

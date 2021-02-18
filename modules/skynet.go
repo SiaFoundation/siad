@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -481,7 +482,22 @@ func (sf SkyfileFormat) IsArchive() bool {
 // if a monetizer wants $5 and the base is $5, they will be paid out the base.
 // If they want $6 and the base is $5, they will receive $6. If the amount is $1
 // and the base is $10, the monetizer has a 10% chance of being paid $10.
-func ComputeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.Currency, error) {
+func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
+	payout, err := computeMonetizationPayout(amt, base, fastrand.Reader)
+	if err != nil {
+		panic("computeMonetizationPayout should never fail with a fastrand.Reader")
+	}
+	return payout
+}
+
+// computeMonetizationPayout is a helper function to decide how much money to
+// pay out to a monetizer depending on a given amount and base. The amount is
+// the amount the monetizer should be paid for a single access of their
+// resource. The base is the actual amount the monetizer is paid with 1 txn. So
+// if a monetizer wants $5 and the base is $5, they will be paid out the base.
+// If they want $6 and the base is $5, they will receive $6. If the amount is $1
+// and the base is $10, the monetizer has a 10% chance of being paid $10.
+func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.Currency, error) {
 	// If the amt is 0 or if the base is 0, we never pay out.
 	if amt.IsZero() || base.IsZero() {
 		return types.ZeroCurrency, nil
