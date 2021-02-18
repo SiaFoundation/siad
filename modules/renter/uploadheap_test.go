@@ -594,7 +594,10 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 	}
 
 	// Call bubbled to ensure directory metadata is updated
-	dirSiaPaths.callRefreshAll()
+	err = dirSiaPaths.callRefreshAll()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Block until all bubbles are done
 	rt.managedBlockUntilBubblesComplete()
