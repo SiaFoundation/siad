@@ -11,15 +11,10 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
-
-// bubbleStatus indicates the status of a bubble being executed on a
-// directory
-type bubbleStatus int
 
 // bubbledSiaDirMetadata is a wrapper for siadir.Metadata that also contains the
 // siapath for convenience.
@@ -35,19 +30,15 @@ type bubbledSiaFileMetadata struct {
 	bm siafile.BubbledMetadata
 }
 
-// bubbleError, bubbleInit, bubbleActive, and bubblePending are the constants
-// used to determine the status of a bubble being executed on a directory
-const (
-	bubbleError bubbleStatus = iota
-	bubbleActive
-	bubblePending
-)
-
-// BubbleMetadata calculates the updated values of a directory's metadata and
-// updates the siadir metadata on disk then calls callThreadedBubbleMetadata on
-// the parent directory so that it is only blocking for the current directory
+// BubbleMetadata will queue a bubble update for the directory. A bubble update
+// includes calculating the updated values of a directory's metadata, updating
+// the siadir metadata on disk, and then queuing a bubble update for the parent
+// directory. This process will continue until the root directory is reached.
 //
-// If the recursive boolean is supplied, all sub directories will be bubbled.
+// This method is only blocking for the queuing of the bubble, or the
+// preparation of the subtree if recursive is true.
+//
+// If the recursive boolean is supplied, all sub directories will be queued.
 //
 // If the force boolean is supplied, the LastHealthCheckTime of the directories
 // will be ignored so all directories will be considered.
@@ -59,7 +50,10 @@ func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) 
 
 	// If this is not a recursive call then call bubble
 	if !recursive {
-		return r.managedBubbleMetadata(siaPath)
+		// Queue a bubble to bubble the directory, ignore the return channel as we
+		// do not want to block on this update.
+		_ = r.staticBubbleScheduler.callQueueBubble(siaPath)
+		return nil
 	}
 
 	// Prepare the subtree for bubble
@@ -69,27 +63,6 @@ func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) 
 	}
 	// Call bubble in a non blocking manner
 	return urp.callRefreshAll()
-}
-
-// managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
-// caller should proceed by calling bubble. If 'false' is returned, the caller
-// should not bubble, another thread will handle running the bubble.
-func (r *Renter) managedPrepareBubble(siaPath modules.SiaPath) bool {
-	r.bubbleUpdatesMu.Lock()
-	defer r.bubbleUpdatesMu.Unlock()
-
-	// Check for bubble in bubbleUpdate map
-	siaPathStr := siaPath.String()
-	status, ok := r.bubbleUpdates[siaPathStr]
-	if !ok {
-		r.bubbleUpdates[siaPathStr] = bubbleActive
-		return true
-	}
-	if status != bubbleActive && status != bubblePending {
-		build.Critical("bubble status set to bubbleError")
-	}
-	r.bubbleUpdates[siaPathStr] = bubblePending
-	return false
 }
 
 // managedCalculateDirectoryMetadata calculates the new values for the
@@ -299,12 +272,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				// Check for the dependency to disable the LastHealthCheckTime
 				// correction, (LHCT = LastHealthCheckTime).
 				if !r.deps.Disrupt("DisableLHCTCorrection") {
-					err = r.tg.Launch(func() {
-						r.callThreadedBubbleMetadata(dirMetadata.sp)
-					})
-					if err != nil {
-						r.log.Printf("WARN: unable to launch bubble for '%v'", dirMetadata.sp)
-					}
+					// Queue a bubble to bubble the directory, ignore the return channel
+					// as we do not want to block on this update.
+					_ = r.staticBubbleScheduler.callQueueBubble(dirMetadata.sp)
 				}
 			}
 
@@ -484,47 +454,6 @@ func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []
 	return mds, errs
 }
 
-// managedCompleteBubbleUpdate completes the bubble update and updates and/or
-// removes it from the renter's bubbleUpdates.
-//
-// TODO: bubbleUpdatesMu is in violation of conventions, needs to be moved to
-// its own object to have its own mu.
-func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
-	r.bubbleUpdatesMu.Lock()
-	defer r.bubbleUpdatesMu.Unlock()
-
-	// Check current status
-	siaPathStr := siaPath.String()
-	status, exists := r.bubbleUpdates[siaPathStr]
-
-	// If the status is 'bubbleActive', delete the status and return.
-	if status == bubbleActive {
-		delete(r.bubbleUpdates, siaPathStr)
-		return
-	}
-	// If the status is not 'bubbleActive', and the status is also not
-	// 'bubblePending', this is an error. There should be a status, and it
-	// should either be active or pending.
-	if status != bubblePending {
-		build.Critical("invalid bubble status", status, exists)
-		delete(r.bubbleUpdates, siaPathStr) // Attempt to reset the corrupted state.
-		return
-	}
-	// The status is bubblePending, switch the status to bubbleActive.
-	r.bubbleUpdates[siaPathStr] = bubbleActive
-
-	// Launch a thread to do another bubble on this directory, as there was a
-	// bubble pending waiting for the current bubble to complete.
-	err := r.tg.Add()
-	if err != nil {
-		return
-	}
-	go func() {
-		defer r.tg.Done()
-		r.managedPerformBubbleMetadata(siaPath)
-	}()
-}
-
 // managedDirectoryMetadatas returns all the metadatas of the SiaDirs for the
 // provided siaPaths
 func (r *Renter) managedDirectoryMetadatas(siaPaths []modules.SiaPath) ([]bubbledSiaDirMetadata, error) {
@@ -646,18 +575,6 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	return errors.Compose(err, entry.Close())
 }
 
-// callThreadedBubbleMetadata is the thread safe method used to call
-// managedBubbleMetadata when the call does not need to be blocking
-func (r *Renter) callThreadedBubbleMetadata(siaPath modules.SiaPath) {
-	if err := r.tg.Add(); err != nil {
-		return
-	}
-	defer r.tg.Done()
-	if err := r.managedBubbleMetadata(siaPath); err != nil {
-		r.log.Debugln("WARN: error with bubbling metadata:", err)
-	}
-}
-
 // managedPerformBubbleMetadata will bubble the metadata without checking the
 // bubble preparation.
 func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err error) {
@@ -671,20 +588,24 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Make sure we call callThreadedBubbleMetadata on the parent once we are
 	// done.
-	defer func() error {
+	defer func() {
 		// Complete bubble
-		r.managedCompleteBubbleUpdate(siaPath)
+		r.staticBubbleScheduler.callCompleteBubbleUpdate(siaPath)
 
 		// Continue with parent dir if we aren't in the root dir already.
 		if siaPath.IsRoot() {
-			return nil
+			return
 		}
-		parentDir, err := siaPath.Dir()
-		if err != nil {
-			return errors.AddContext(err, "failed to defer callThreadedBubbleMetadata on parent dir")
+		parentDir, dirErr := siaPath.Dir()
+		if dirErr != nil {
+			dirErr = errors.AddContext(dirErr, "failed to defer callThreadedBubbleMetadata on parent dir")
+			err = errors.Compose(err, dirErr)
+			return
 		}
-		go r.callThreadedBubbleMetadata(parentDir)
-		return nil
+		// Queue a bubble to bubble the directory, ignore the return channel as we
+		// do not want to block on this update.
+		_ = r.staticBubbleScheduler.callQueueBubble(parentDir)
+		return
 	}()
 
 	// Calculate the new metadata values of the directory
@@ -731,18 +652,4 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 		}
 	}
 	return err
-}
-
-// managedBubbleMetadata calculates the updated values of a directory's metadata
-// and updates the siadir metadata on disk then calls callThreadedBubbleMetadata
-// on the parent directory so that it is only blocking for the current directory
-func (r *Renter) managedBubbleMetadata(siaPath modules.SiaPath) error {
-	// Check if bubble is needed
-	proceedWithBubble := r.managedPrepareBubble(siaPath)
-	if !proceedWithBubble {
-		// Update the AggregateLastHealthCheckTime even if we weren't able to
-		// bubble right away.
-		return r.managedUpdateLastHealthCheckTime(siaPath)
-	}
-	return r.managedPerformBubbleMetadata(siaPath)
 }

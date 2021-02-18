@@ -94,39 +94,33 @@ func (urp *uniqueRefreshPaths) callRefreshAll() error {
 	urp.mu.Lock()
 	defer urp.mu.Unlock()
 	return urp.r.tg.Launch(func() {
-		err := urp.refreshAll()
-		if err != nil {
-			urp.r.log.Println("WARN: error with uniqueRefreshPaths refreshAll:", err)
-		}
+		urp.refreshAll()
 	})
 }
 
 // callRefreshAllBlocking will update the directories in the childDir map by
 // calling refreshAll.
-func (urp *uniqueRefreshPaths) callRefreshAllBlocking() error {
+func (urp *uniqueRefreshPaths) callRefreshAllBlocking() {
 	urp.mu.Lock()
 	defer urp.mu.Unlock()
-	return urp.refreshAll()
+	urp.refreshAll()
 }
 
 // refreshAll calls the urp's Renter's managedBubbleMetadata method on all the
 // directories in the childDir map
-func (urp *uniqueRefreshPaths) refreshAll() (err error) {
+func (urp *uniqueRefreshPaths) refreshAll() {
 	// Create a siaPath channel with numBubbleWorkerThreads spaces
 	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
 
 	// Launch worker groups
 	var wg sync.WaitGroup
-	var errMU sync.Mutex
 	for i := 0; i < numBubbleWorkerThreads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for siaPath := range siaPathChan {
-				bubbleErr := urp.r.managedBubbleMetadata(siaPath)
-				errMU.Lock()
-				err = errors.Compose(err, bubbleErr)
-				errMU.Unlock()
+				complete := urp.r.staticBubbleScheduler.callQueueBubble(siaPath)
+				<-complete
 			}
 		}()
 	}
@@ -136,10 +130,9 @@ func (urp *uniqueRefreshPaths) refreshAll() (err error) {
 		select {
 		case siaPathChan <- sp:
 		case <-urp.r.tg.StopChan():
-			// Renter has shutdown, close the channel and return
+			// Renter has shutdown, close the channel and return, no need to wait on
+			// the go routines to close.
 			close(siaPathChan)
-			// We wait to avoid the data race of one of the workers updating err
-			wg.Wait()
 			return
 		}
 	}

@@ -356,9 +356,11 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	numFiles := metadata.NumFiles
 	if aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0 {
 		// If the number of stuck chunks or number of files is zero then this
-		// directory should not have been used to find a stuck file. Call bubble
-		// to make sure that the metadata is updated
-		go r.callThreadedBubbleMetadata(dirSiaPath)
+		// directory should not have been used to find a stuck file.
+		//
+		// Queue a bubble to bubble the directory, ignore the return channel as we
+		// do not want to block on this update.
+		_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
 		err = fmt.Errorf("managedStuckFile should not have been called on %v, AggregateNumStuckChunks: %v, NumStuckChunks: %v, NumFiles: %v", dirSiaPath.String(), aggregateNumStuckChunks, numStuckChunks, numFiles)
 		return modules.SiaPath{}, err
 	}
@@ -411,9 +413,11 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	}
 	if siapath.IsEmpty() {
 		// If no files were selected from the directory than there is a mismatch
-		// between the file metadata and the directory metadata. Call bubble to
-		// update the directory metadata
-		go r.callThreadedBubbleMetadata(dirSiaPath)
+		// between the file metadata and the directory metadata.
+		//
+		// Queue a bubble to bubble the directory, ignore the return channel as we
+		// do not want to block on this update.
+		_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
 		return modules.SiaPath{}, errors.New("no files selected from directory " + dirSiaPath.String())
 	}
 	return siapath, nil
@@ -542,15 +546,7 @@ func (r *Renter) threadedStuckFileLoop() {
 				r.repairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
 			}
 		}
-		err = bubblePaths.callRefreshAllBlocking()
-		if err != nil {
-			r.repairLog.Print("Error bubbling dirSiaPaths", err)
-			select {
-			case <-time.After(stuckLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-		}
+		bubblePaths.callRefreshAllBlocking()
 	}
 }
 
@@ -624,15 +620,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			continue
 		}
 		r.log.Println("Calling bubble on the subtree", siaPath)
-		err = urp.callRefreshAllBlocking()
-		if err != nil {
-			r.log.Println("Error calling managedBubbleMetadata on subtree`", siaPath.String(), "`:", err)
-			select {
-			case <-time.After(healthLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-		}
+		urp.callRefreshAllBlocking()
 	}
 }
 

@@ -470,10 +470,7 @@ func testManagedAddChunksToHeap(t *testing.T) {
 	}
 
 	// Call bubbled to ensure directory metadata is updated
-	err = dirSiaPaths.callRefreshAllBlocking()
-	if err != nil {
-		t.Fatal(err)
-	}
+	dirSiaPaths.callRefreshAllBlocking()
 
 	// Wait until the root health has been updated
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1245,6 +1242,7 @@ func testAddChunksToHeapPanic(t *testing.T) {
 // managedBlockUntilBubblesComplete is a helper that blocks until all pending
 // bubbles are complete
 func (rt *renterTester) managedBlockUntilBubblesComplete() {
+	bs := rt.renter.staticBubbleScheduler
 	for {
 		select {
 		case <-rt.renter.tg.StopChan():
@@ -1254,11 +1252,11 @@ func (rt *renterTester) managedBlockUntilBubblesComplete() {
 		// Sleep to start the loop since most of the time bubble is called in a
 		// go routine so we want to give it time to start.
 		time.Sleep(100 * time.Millisecond)
-		rt.renter.bubbleUpdatesMu.Lock()
-		if len(rt.renter.bubbleUpdates) == 0 {
-			rt.renter.bubbleUpdatesMu.Unlock()
+		bs.mu.Lock()
+		if len(bs.bubbleUpdates) == 0 {
+			bs.mu.Unlock()
 			return
 		}
-		rt.renter.bubbleUpdatesMu.Unlock()
+		bs.mu.Unlock()
 	}
 }

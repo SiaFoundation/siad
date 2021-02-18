@@ -254,7 +254,7 @@ func TestRenterListDirectory(t *testing.T) {
 
 	// Refresh the directories blocking.
 	for _, dir := range directories {
-		err = rt.renter.managedBubbleMetadata(dir.SiaPath)
+		err = rt.renter.managedPerformBubbleMetadata(dir.SiaPath)
 		if err != nil {
 			t.Fatal(err)
 		}

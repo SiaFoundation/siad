@@ -213,9 +213,9 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err1 := rt.renter.managedBubbleMetadata(modules.BackupFolder)
-	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
-	err3 := rt.renter.managedBubbleMetadata(modules.UserFolder)
+	err1 := rt.renter.managedPerformBubbleMetadata(modules.BackupFolder)
+	err2 := rt.renter.managedPerformBubbleMetadata(modules.SkynetFolder)
+	err3 := rt.renter.managedPerformBubbleMetadata(modules.UserFolder)
 	err = errors.Compose(err1, err2, err3)
 	if err != nil {
 		t.Fatal(err)
@@ -322,7 +322,7 @@ func TestBubbleHealth(t *testing.T) {
 	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir modules.SiaPath, anf, ansd uint64) {
 		// Bubble target directory
 		beforeBubble := time.Now()
-		err = rt.renter.managedBubbleMetadata(dirToBubble)
+		err = rt.renter.managedPerformBubbleMetadata(dirToBubble)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -576,7 +576,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
 	// SubDir1/SubDir2 gets bubbled up
 	subDir1 := newSiaPath("root/SubDir1")
-	err = rt.renter.managedBubbleMetadata(subDir1)
+	err = rt.renter.managedPerformBubbleMetadata(subDir1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -617,7 +617,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = rt.renter.managedBubbleMetadata(subDir1)
+	err = rt.renter.managedPerformBubbleMetadata(subDir1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,8 +764,8 @@ func TestNumFiles(t *testing.T) {
 
 	// Call bubble on lowest level and skynet folder and confirm top level reports
 	// accurate number of files and aggregate number of files
-	err1 := rt.renter.managedBubbleMetadata(subDir1_2)
-	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
+	err1 := rt.renter.managedPerformBubbleMetadata(subDir1_2)
+	err2 := rt.renter.managedPerformBubbleMetadata(modules.SkynetFolder)
 	err = errors.Compose(err1, err2)
 	if err != nil {
 		t.Fatal(err)
@@ -890,7 +890,7 @@ func TestDirectorySize(t *testing.T) {
 	}
 
 	// Call bubble on lowest lever and confirm top level reports accurate size
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
@@ -963,7 +963,7 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 
 	// Call Bubble to update filesystem ModTimes so there are no zero times
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1017,7 +1017,7 @@ func TestDirectoryModTime(t *testing.T) {
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1147,7 +1147,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1263,7 +1263,7 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(modules.UserFolder)
+	err = rt.renter.managedPerformBubbleMetadata(modules.UserFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1271,7 +1271,7 @@ func TestRandomStuckFile(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+			err = rt.renter.managedPerformBubbleMetadata(modules.RootSiaPath())
 			if err != nil {
 				return err
 			}
@@ -1328,7 +1328,7 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(dir)
+	err = rt.renter.managedPerformBubbleMetadata(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1336,7 +1336,7 @@ func TestRandomStuckFile(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			err = rt.renter.managedBubbleMetadata(dir)
+			err = rt.renter.managedPerformBubbleMetadata(dir)
 			if err != nil {
 				return err
 			}

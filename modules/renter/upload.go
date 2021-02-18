@@ -108,7 +108,10 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Bubble the health of the SiaFile directory to ensure the health is
 	// updated with the new file
-	go r.callThreadedBubbleMetadata(dirSiaPath)
+	//
+	// Queue a bubble to bubble the directory, ignore the return channel as we do
+	// not want to block on this update.
+	_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
 
 	// Create nil maps for offline and goodForRenew to pass in to
 	// callBuildAndPushChunks. These maps are used to determine the health of
