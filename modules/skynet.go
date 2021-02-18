@@ -496,8 +496,8 @@ func ComputeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.
 	// Otherwise the result will always be 0.
 	amt = amt.Mul(monetizationLotteryPrecision)
 
-	// Otherwise we compute the likelyhood of winning the lottery.
-	// e.g. if base is 2 and amt is 1, the chance is 50%.
+	// Otherwise we compute the likelihood of winning the lottery. e.g. if base
+	// is 2 and amt is 1, the chance is 50%.
 	//
 	chance := amt.Div(base)
 
