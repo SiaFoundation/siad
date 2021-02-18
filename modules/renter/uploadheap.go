@@ -1625,7 +1625,10 @@ func (r *Renter) threadedUploadAndRepair() {
 			}
 		}
 
-		// Call callThreadedBubbleMetadata to update the filesystem.
+		// Update the filesystem.
 		dirSiaPaths.callRefreshAll()
+		if err != nil {
+			r.repairLog.Println("WARN: unable to update the filesystem:", err)
+		}
 	}
 }
