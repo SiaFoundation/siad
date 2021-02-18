@@ -202,21 +202,21 @@ func TestAddStorageFolderConcurrent(t *testing.T) {
 		defer wg.Done()
 		err := cmt.cm.AddStorageFolder(storageFolderOne, modules.SectorSize*storageFolderGranularity*8)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		err := cmt.cm.AddStorageFolder(storageFolderTwo, modules.SectorSize*storageFolderGranularity*8)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		err = cmt.cm.AddStorageFolder(storageFolderThree, modules.SectorSize*storageFolderGranularity*8)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	wg.Wait()
@@ -327,7 +327,7 @@ func TestAddStorageFolderBlocking(t *testing.T) {
 	go func() {
 		err := cmt.cm.AddStorageFolder(storageFolderOne, sfOneSize)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	select {
@@ -357,14 +357,14 @@ func TestAddStorageFolderBlocking(t *testing.T) {
 		defer wg.Done()
 		err := cmt.cm.AddStorageFolder(storageFolderTwo, modules.SectorSize*storageFolderGranularity*8)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		err = cmt.cm.AddStorageFolder(storageFolderThree, modules.SectorSize*storageFolderGranularity*8)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	wg.Wait()

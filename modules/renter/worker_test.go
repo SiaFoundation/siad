@@ -245,7 +245,7 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	w := wt.worker
 
 	// verify it has set the initial estimates on both queues
-	if w.staticJobHasSectorQueue.callExpectedJobTime(fastrand.Uint64n(10)) == 0 {
+	if w.staticJobHasSectorQueue.callExpectedJobTime() == 0 {
 		t.Fatal("unexpected")
 	}
 	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
