@@ -303,7 +303,7 @@ func TestLoadMissingStorageFolder(t *testing.T) {
 			datas[i] = dataI
 			err := cmt.cm.AddSector(rootI, dataI)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}(i)
 	}

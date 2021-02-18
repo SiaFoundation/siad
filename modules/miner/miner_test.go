@@ -344,7 +344,7 @@ func TestMinerCloseDeadlock(t *testing.T) {
 	closed := make(chan struct{})
 	go func() {
 		if err := mt.miner.Close(); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		closed <- struct{}{}
 	}()

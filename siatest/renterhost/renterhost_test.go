@@ -247,7 +247,7 @@ func TestHostLockTimeout(t *testing.T) {
 		}
 		defer func() {
 			if err := cs2.Close(); err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)

@@ -453,7 +453,8 @@ func TestAddOnStop(t *testing.T) {
 	go func() {
 		err := tg.Add()
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		close(addChan)
 
