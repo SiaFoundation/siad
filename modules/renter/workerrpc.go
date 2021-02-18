@@ -50,7 +50,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
 		if modules.IsPriceTableInvalidErr(err) {
-			w.staticSchedulePriceTableUpdate()
+			w.staticTryForcePriceTableUpdate()
 		}
 	}()
 
@@ -194,7 +194,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params modules.Contract
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
 		if modules.IsPriceTableInvalidErr(err) {
-			w.staticSchedulePriceTableUpdate()
+			w.staticTryForcePriceTableUpdate()
 		}
 	}()
 

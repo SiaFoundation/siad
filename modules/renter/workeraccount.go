@@ -559,7 +559,7 @@ func (w *worker) managedRefillAccount() {
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
 		if modules.IsPriceTableInvalidErr(err) {
-			w.staticSchedulePriceTableUpdate()
+			w.staticTryForcePriceTableUpdate()
 		}
 	}()
 
@@ -661,7 +661,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
 		if modules.IsPriceTableInvalidErr(err) {
-			w.staticSchedulePriceTableUpdate()
+			w.staticTryForcePriceTableUpdate()
 		}
 	}()
 

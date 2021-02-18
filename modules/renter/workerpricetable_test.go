@@ -152,7 +152,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	cUpdTime := pt.staticUpdateTime
 
 	// schedule an update
-	w.staticSchedulePriceTableUpdate()
+	w.staticTryForcePriceTableUpdate()
 
 	// check whether the price table got updated in a retry, although it should
 	// update on the very next iteration of the loop
@@ -171,10 +171,10 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	}
 
 	// we have to manually update the pricetable here and reset the time of the
-	// last scheduled update to null to ensure we're allowed to schedule two
+	// last forced update to null to ensure we're allowed to schedule two
 	// updates in short succession
 	update := *w.staticPriceTable()
-	update.staticLastScheduledTime = time.Time{}
+	update.staticLastForcedUpdate = time.Time{}
 	w.staticSetPriceTable(&update)
 
 	// keep track of the current values

@@ -193,28 +193,23 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 func TestIsPriceTableInvalidErr(t *testing.T) {
 	t.Parallel()
 
-	if IsPriceTableInvalidErr(nil) {
-		t.Fatal("unexpected")
+	var tests = []struct {
+		err      error
+		expected bool
+	}{
+		{nil, false},
+		{errors.New("err"), false},
+		{ErrPriceTableExpired, true},
+		{ErrPriceTableNotFound, true},
+		{errors.Compose(ErrPriceTableNotFound, ErrPriceTableExpired), true},
+		{errors.Compose(ErrPriceTableNotFound, errors.New("err")), true},
+		{errors.Compose(ErrPriceTableExpired, errors.New("err")), true},
+		{errors.AddContext(ErrPriceTableNotFound, "err"), true},
 	}
-	if IsPriceTableInvalidErr(errors.New("some error")) {
-		t.Fatal("unexpected")
-	}
-	if !IsPriceTableInvalidErr(ErrPriceTableExpired) {
-		t.Fatal("unexpected")
-	}
-	if !IsPriceTableInvalidErr(ErrPriceTableNotFound) {
-		t.Fatal("unexpected")
-	}
-	if !IsPriceTableInvalidErr(errors.Compose(ErrPriceTableNotFound, ErrPriceTableExpired)) {
-		t.Fatal("unexpected")
-	}
-	if !IsPriceTableInvalidErr(errors.Compose(ErrPriceTableNotFound, errors.New("other error"))) {
-		t.Fatal("unexpected")
-	}
-	if !IsPriceTableInvalidErr(errors.Compose(ErrPriceTableExpired, errors.New("other error"))) {
-		t.Fatal("unexpected")
-	}
-	if !IsPriceTableInvalidErr(errors.AddContext(ErrPriceTableNotFound, "some error")) {
-		t.Fatal("unexpected")
+	for _, test := range tests {
+		actual := IsPriceTableInvalidErr(test.err)
+		if actual != test.expected {
+			t.Fatal("unexpected", test.err)
+		}
 	}
 }
