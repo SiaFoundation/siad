@@ -24,7 +24,7 @@ func TestLowThreadLocking(t *testing.T) {
 		innerID := safeLock.Lock()
 		defer safeLock.Unlock(innerID)
 		if value != 1 {
-			t.Fatal("Lock was grabbed incorrectly")
+			t.Error("Lock was grabbed incorrectly")
 		}
 	}()
 
@@ -53,7 +53,7 @@ func TestHighThreadLocking(t *testing.T) {
 				innerID := safeLock.Lock()
 				defer safeLock.Unlock(innerID)
 				if value != 1 {
-					t.Fatal("Lock was grabbed incorrectly")
+					t.Error("Lock was grabbed incorrectly")
 				}
 			}()
 

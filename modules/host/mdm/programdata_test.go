@@ -93,7 +93,7 @@ func TestEOFWhileReading(t *testing.T) {
 		<-cont
 		defer func() {
 			if err := pd.Close(); err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 	}()
