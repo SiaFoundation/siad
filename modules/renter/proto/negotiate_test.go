@@ -23,7 +23,7 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 	go func(c net.Conn) {
 		defer func() {
 			if err := c.Close(); err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		// read revision
@@ -54,7 +54,7 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 	go func(c net.Conn) {
 		defer func() {
 			if err := c.Close(); err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		encoding.ReadObject(hConn, new(types.FileContractRevision), 1<<22)
