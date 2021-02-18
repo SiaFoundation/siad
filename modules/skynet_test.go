@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -304,4 +305,150 @@ func TestSkyfileMetadata_IsDirectory(t *testing.T) {
 			t.Fatalf("'%s' failed: expected '%t', got '%t'", test.name, test.expectedResult, result)
 		}
 	}
+}
+
+// TestComputeMonetizationPayout is a unit test for ComputeMonetizationPayout.
+func TestComputeMonetizationPayout(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	tests := []struct {
+		amt    uint64
+		base   uint64
+		n      uint64
+		payout uint64
+	}{
+		{
+			// Don't pay if amt is 0.
+			amt:    0,
+			base:   1,
+			payout: 0,
+		},
+		{
+			// Don't pay if base is 0.
+			amt:    1,
+			base:   0,
+			payout: 0,
+		},
+		{
+			// Pay if amt and base are the same.
+			amt:    1,
+			base:   1,
+			payout: 1,
+		},
+		{
+			// Pay if amt > base.
+			amt:    2,
+			base:   1,
+			payout: 2,
+		},
+		{
+			// 50% chance - drawing 49 should pass.
+			amt:    1,
+			base:   2,
+			n:      49,
+			payout: 2,
+		},
+		{
+			// 50% chance - drawing 50 should fail.
+			amt:    1,
+			base:   2,
+			n:      50,
+			payout: 0,
+		},
+		{
+			// 50% chance - drawing 51 should fail.
+			amt:    1,
+			base:   2,
+			n:      51,
+			payout: 0,
+		},
+		{
+			// 99% chance - drawing 98 should pass.
+			amt:    99,
+			base:   100,
+			n:      98,
+			payout: 100,
+		},
+		{
+			// 99% chance - drawing 99 should fail.
+			amt:    99,
+			base:   100,
+			n:      99,
+			payout: 0,
+		},
+		{
+			// 99% chance - drawing 100 should pass.
+			// 100 mod 100 == 0
+			amt:    99,
+			base:   100,
+			n:      100,
+			payout: 100,
+		},
+		{
+			// 99% chance - drawing 1 should pass.
+			amt:    99,
+			base:   100,
+			n:      1,
+			payout: 100,
+		},
+	}
+
+	for i, test := range tests {
+		amt := types.NewCurrency64(test.amt)
+		base := types.NewCurrency64(test.base)
+		nBytes := types.NewCurrency64(test.n).Mul(monetizationLotteryPrecision).Div64(100).Big().Bytes()
+		if len(nBytes) < monetizationLotteryEntropy {
+			nBytes = append(make([]byte, monetizationLotteryEntropy-len(nBytes)), nBytes...)
+		}
+		p, err := ComputeMonetizationPayout(amt, base, bytes.NewReader(nBytes))
+		if err != nil {
+			t.Fatal(err)
+		}
+		payout, err := p.Uint64()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if payout != test.payout {
+			t.Log("amt", test.amt)
+			t.Log("base", test.base)
+			t.Log("n", test.n)
+			t.Log("expected payout", test.payout)
+			t.Log("actual pay", payout)
+			t.Fatalf("Test %v failed", i)
+		}
+	}
+
+	// Do a run with an actual random number generator and a 30% chance.
+	payout := types.ZeroCurrency
+	nTotal := uint64(500000)
+	amt := types.NewCurrency64(30)
+	base := types.NewCurrency64(100)
+	for i := uint64(0); i < nTotal; i++ {
+		p, err := ComputeMonetizationPayout(amt, base, fastrand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payout = payout.Add(p)
+	}
+
+	// The payout should be off by less than 1%.
+	idealPayout := types.NewCurrency64(nTotal).Mul(amt)
+	tolerance := idealPayout.MulFloat(0.01)
+
+	var diff types.Currency
+	if idealPayout.Cmp(payout) > 0 {
+		diff = idealPayout.Sub(payout)
+	} else {
+		diff = payout.Sub(idealPayout)
+	}
+	if diff.Cmp(tolerance) > 0 {
+		t.Fatal("diff exceeds the 0.5% tolerance", diff, tolerance)
+	}
+
+	t.Log("Total executions:", nTotal)
+	t.Log("Ideal payout:    ", idealPayout)
+	t.Log("Actual payout:   ", payout)
 }

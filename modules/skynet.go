@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,10 @@ const (
 
 	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
 	layoutKeyDataSize = 64
+
+	// monetizationLotteryEntropy is the number of bytes generated as entropy
+	// for drawing the lottery ticket.
+	monetizationLotteryEntropy = 100
 )
 
 var (
@@ -41,6 +46,10 @@ var (
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
+
+	// monetizationLotteryPrecision is the precision used for the monetization
+	// lottery.
+	monetizationLotteryPrecision = types.SiacoinPrecision
 )
 
 var (
@@ -463,4 +472,50 @@ func (sf SkyfileFormat) IsArchive() bool {
 	return sf == SkyfileFormatTar ||
 		sf == SkyfileFormatTarGz ||
 		sf == SkyfileFormatZip
+}
+
+// ComputeMonetizationPayout is a helper function to decide how much money to
+// pay out to a monetizer depending on a given amount and base. The amount is
+// the amount the monetizer should be paid for a single access of their
+// resource. The base is the actual amount the monetizer is paid with 1 txn. So
+// if a monetizer wants $5 and the base is $5, they will be paid out the base.
+// If they want $6 and the base is $5, they will receive $6. If the amount is $1
+// and the base is $10, the monetizer has a 10% chance of being paid $10.
+func ComputeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.Currency, error) {
+	// If the amt is 0 or if the base is 0, we never pay out.
+	if amt.IsZero() || base.IsZero() {
+		return types.ZeroCurrency, nil
+	}
+
+	// If the amount is >= than the base, we pay out the amount.
+	if amt.Cmp(base) >= 0 {
+		return amt, nil
+	}
+
+	// Adjust the amt by the lottery's precision.
+	// Otherwise the result will always be 0.
+	amt = amt.Mul(monetizationLotteryPrecision)
+
+	// Otherwise we compute the likelyhood of winning the lottery.
+	// e.g. if base is 2 and amt is 1, the chance is 50%.
+	//
+	chance := amt.Div(base)
+
+	// We need to generate a large random number n.
+	nBytes := make([]byte, monetizationLotteryEntropy)
+	_, err := io.ReadFull(rand, nBytes)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	n := new(big.Int).SetBytes(nBytes)
+
+	// Adjust it to be in the range [0 , 1).
+	one := monetizationLotteryPrecision.Big()
+	n = n.Mod(n, one)
+
+	// If n < chance, you get the base.
+	if n.Cmp(chance.Big()) < 0 {
+		return base, nil
+	}
+	return types.ZeroCurrency, nil
 }
