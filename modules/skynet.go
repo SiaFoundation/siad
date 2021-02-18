@@ -29,6 +29,11 @@ const (
 	layoutKeyDataSize = 64
 )
 
+const (
+	// CurrencyUSD the specifier for USD in the monetizer.
+	CurrencyUSD = "usd"
+)
+
 var (
 	// BaseSectorNonceDerivation is the specifier used to derive a nonce for base
 	// sector encryption
@@ -44,7 +49,11 @@ var (
 
 	// ErrZeroMonetizer is returned if a caller tries to set a monetizer with 0H
 	// payout.
-	ErrZeroMonetizer = errors.New("can't provide 0H monetization")
+	ErrZeroMonetizer = errors.New("can't provide 0 monetization")
+
+	// ErrInvalidCurrency is returned if an unknown monetization currency is
+	// specified.
+	ErrInvalidCurrency = errors.New("specified monetization currency is invalid")
 )
 
 var (
@@ -193,8 +202,9 @@ type (
 
 	// Monetizer refers to a single content provider being paid.
 	Monetizer struct {
-		Address types.UnlockHash `json:"address"`
-		Amount  types.Currency   `json:"amount"`
+		Address  types.UnlockHash `json:"address"`
+		Amount   types.Currency   `json:"amount"`
+		Currency string           `json:"currency"`
 	}
 )
 

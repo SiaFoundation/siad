@@ -4146,8 +4146,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	// Create monetization.
 	monetization := []modules.Monetizer{
 		{
-			Address: types.UnlockHash{},
-			Amount:  types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: modules.CurrencyUSD,
 		},
 	}
 	fastrand.Read(monetization[0].Address[:])
@@ -4186,8 +4187,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	// for a subfile.
 	fileMonetization := []modules.Monetizer{
 		{
-			Address: types.UnlockHash{},
-			Amount:  types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: modules.CurrencyUSD,
 		},
 	}
 	fastrand.Read(fileMonetization[0].Address[:])
@@ -4245,16 +4247,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("wrong monetizers")
 	}
 
-	// Create monetization.
+	// Create zero amount monetization.
 	zeroMonetization := []modules.Monetizer{
 		{
-			Address: types.UnlockHash{},
-			Amount:  types.ZeroCurrency,
+			Address:  types.UnlockHash{},
+			Amount:   types.ZeroCurrency,
+			Currency: modules.CurrencyUSD,
 		},
 	}
 	fastrand.Read(monetization[0].Address[:])
 
-	// Test zero currency monetization.
+	// Test zero amount monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
 		t.Fatal("should fail", err)
@@ -4263,6 +4266,28 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	files = []siatest.TestFile{nestedFile}
 	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartZeroMonetizer", files, "", false, false, monetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
+		t.Fatal("should fail", err)
+	}
+
+	// Create zero amount monetization.
+	unknownMonetization := []modules.Monetizer{
+		{
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: "",
+		},
+	}
+	fastrand.Read(monetization[0].Address[:])
+
+	// Test unknown currency monetization.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownMonetizer", fastrand.Bytes(1), false, unknownMonetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
+		t.Fatal("should fail", err)
+	}
+	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: unknownMonetization}
+	files = []siatest.TestFile{nestedFile}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, monetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
 		t.Fatal("should fail", err)
 	}
 }

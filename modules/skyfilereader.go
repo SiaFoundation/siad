@@ -412,10 +412,8 @@ func (sr *skyfileMultipartReader) createSubfileFromCurrPart() error {
 		if err != nil {
 			return errors.AddContext(err, "unable to parse 'Monetizers' header")
 		}
-		for _, amt := range monetization {
-			if amt.Amount.IsZero() {
-				return ErrZeroMonetizer
-			}
+		if err := ValidateMonetization(monetization); err != nil {
+			return err
 		}
 	}
 

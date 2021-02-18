@@ -335,6 +335,19 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	return nil
 }
 
+// ValidateMonetization is a helper function to validate a list of monetizers.
+func ValidateMonetization(monetization []Monetizer) error {
+	for _, amt := range monetization {
+		if amt.Amount.IsZero() {
+			return ErrZeroMonetizer
+		}
+		if amt.Currency != CurrencyUSD {
+			return ErrInvalidCurrency
+		}
+	}
+	return nil
+}
+
 // createFormFileHeaders builds a header from the given params. These headers
 // are used when creating the parts in a multi-part form upload.
 func createFormFileHeaders(fieldname, filename, filemode, contentType string, monetization []Monetizer) (textproto.MIMEHeader, error) {
