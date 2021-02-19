@@ -129,7 +129,7 @@ func ExtractTarGz(filename, dir string) error {
 		path := filepath.Join(dir, hdr.Name)
 
 		// Check for directory traversal.
-		if !strings.HasPrefix(path, filepath.Clean(dir)+string(os.PathSeparator)) {
+		if hdr.Name != "" && !strings.HasPrefix(path, filepath.Clean(dir)+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal file path: %s", path)
 		}
 

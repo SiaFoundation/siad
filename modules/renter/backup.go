@@ -365,7 +365,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 		dst := filepath.Join(dir, header.Name)
 
 		// Check for directory traversal.
-		if !strings.HasPrefix(dst, filepath.Clean(dir)+string(os.PathSeparator)) {
+		if header.Name != "" && !strings.HasPrefix(dst, filepath.Clean(dir)+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal file path: %s", dst)
 		}
 
