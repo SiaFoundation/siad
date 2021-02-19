@@ -262,9 +262,7 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 		}
 
 		// Close the chan and wait for the worker threads to close
-		fmt.Println("== CLOSING CHAN ==")
 		close(bubbleChan)
-		fmt.Println("== WAITING FOR WAIT GROUP ==")
 		wg.Wait()
 	}
 }

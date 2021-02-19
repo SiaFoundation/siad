@@ -2,6 +2,7 @@ package renter
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -202,6 +203,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	completeChan := bs.callQueueBubble(siaPath)
 
 	// Call complete in a go routine.
+	start := time.Now()
 	duration := time.Second
 	go func() {
 		time.Sleep(duration)
@@ -216,26 +218,26 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	}()
 
 	// Should be blocking until after the duration
-	select {
-	case <-completeChan:
-		t.Error("complete chan closed before time duration")
-	case <-time.After(duration):
+	<-completeChan
+	if time.Since(start) < duration {
+		t.Error("complete chan closed sooner than expected")
 	}
 
-	// Complete chan should no block anymore
+	// Complete chan should not block anymore
 	<-completeChan
 
 	// If multiple calls are made to queue the same bubble update, they should all
 	// block on the same channel
-	done := make(chan struct{})
+	start = time.Now()
+	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			completeChan := bs.callQueueBubble(siaPath)
-			select {
-			case <-completeChan:
+			<-completeChan
+			if time.Since(start) < duration {
 				t.Error("complete chan closed before time duration")
-			case <-time.After(duration):
-			case <-done:
 			}
 		}()
 	}
@@ -249,8 +251,9 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	}
 	// calling complete should close the channel
 	bs.callCompleteBubbleUpdate(siaPath)
-	// Close the done chan to prevent errors from later launched go routines
-	close(done)
+
+	// Wait for go routines to finish
+	wg.Wait()
 
 	// Queue the bubble update request
 	completeChan = bs.callQueueBubble(siaPath)
