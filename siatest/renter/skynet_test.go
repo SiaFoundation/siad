@@ -4149,6 +4149,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 			Address:  types.UnlockHash{},
 			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
 			Currency: modules.CurrencyUSD,
+			License:  modules.LicenseMonetization,
 		},
 	}
 	fastrand.Read(monetization[0].Address[:])
@@ -4190,6 +4191,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 			Address:  types.UnlockHash{},
 			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
 			Currency: modules.CurrencyUSD,
+			License:  modules.LicenseMonetization,
 		},
 	}
 	fastrand.Read(fileMonetization[0].Address[:])
@@ -4253,6 +4255,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 			Address:  types.UnlockHash{},
 			Amount:   types.ZeroCurrency,
 			Currency: modules.CurrencyUSD,
+			License:  modules.LicenseMonetization,
 		},
 	}
 	fastrand.Read(monetization[0].Address[:])
@@ -4275,6 +4278,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 			Address:  types.UnlockHash{},
 			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
 			Currency: "",
+			License:  modules.LicenseMonetization,
 		},
 	}
 	fastrand.Read(monetization[0].Address[:])
@@ -4288,6 +4292,29 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	files = []siatest.TestFile{nestedFile}
 	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, monetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
+		t.Fatal("should fail", err)
+	}
+
+	// Unknown license.
+	unknownLicense := []modules.Monetizer{
+		{
+			Address:  types.UnlockHash{},
+			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Currency: modules.CurrencyUSD,
+			License:  "",
+		},
+	}
+	fastrand.Read(monetization[0].Address[:])
+
+	// Test unknown license.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownLicense", fastrand.Bytes(1), false, unknownLicense)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrUnknownLicense.Error()) {
+		t.Fatal("should fail", err)
+	}
+	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: unknownLicense}
+	files = []siatest.TestFile{nestedFile}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownLicense", files, "", false, false, monetization)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrUnknownLicense.Error()) {
 		t.Fatal("should fail", err)
 	}
 }

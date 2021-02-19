@@ -32,6 +32,9 @@ const (
 const (
 	// CurrencyUSD the specifier for USD in the monetizer.
 	CurrencyUSD = "usd"
+
+	// LicenseMonetization is the first skynet monetization license.
+	LicenseMonetization = "license-placeholder"
 )
 
 var (
@@ -54,6 +57,9 @@ var (
 	// ErrInvalidCurrency is returned if an unknown monetization currency is
 	// specified.
 	ErrInvalidCurrency = errors.New("specified monetization currency is invalid")
+
+	// ErrUnknownLicense is returned if an unknown license is specified.
+	ErrUnknownLicense = errors.New("specified license is unknown")
 )
 
 var (
@@ -205,6 +211,7 @@ type (
 		Address  types.UnlockHash `json:"address"`
 		Amount   types.Currency   `json:"amount"`
 		Currency string           `json:"currency"`
+		License  string           `json:"license"`
 	}
 )
 
