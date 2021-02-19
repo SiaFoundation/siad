@@ -494,8 +494,14 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 // If they want $6 and the base is $5, they will receive $6. If the amount is $1
 // and the base is $10, the monetizer has a 10% chance of being paid $10.
 func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.Currency, error) {
-	// If the amt is 0 or if the base is 0, we never pay out.
-	if amt.IsZero() || base.IsZero() {
+	// If the amt is 0, we don't pay out.
+	if amt.IsZero() {
+		return types.ZeroCurrency, nil
+	}
+
+	// The base should never be zero.
+	if base.IsZero() {
+		build.Critical("computeMonetizationPayout called with 0 base")
 		return types.ZeroCurrency, nil
 	}
 

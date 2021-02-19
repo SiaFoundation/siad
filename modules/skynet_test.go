@@ -327,12 +327,6 @@ func TestComputeMonetizationPayout(t *testing.T) {
 			payout: 0,
 		},
 		{
-			// Don't pay if base is 0.
-			amt:    1,
-			base:   0,
-			payout: 0,
-		},
-		{
 			// Pay if amt and base are the same.
 			amt:    1,
 			base:   1,
@@ -449,4 +443,12 @@ func TestComputeMonetizationPayout(t *testing.T) {
 	t.Log("Total executions:", nTotal)
 	t.Log("Ideal payout:    ", idealPayout)
 	t.Log("Actual payout:   ", payout)
+
+	// Check critical for 0 base.
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("build.Critical wasn't triggered")
+		}
+	}()
+	ComputeMonetizationPayout(types.NewCurrency64(1), types.ZeroCurrency)
 }
