@@ -5409,6 +5409,7 @@ supplied, this metadata will be relative to the given path.
       "address": "e81107109496fe714a492f557c2af4b281e4913c674d10e8b3cd5cd3b7e59c582590531607c8", // hash
       "amount": "1000000000000000000000000" // types.Currency
       "currency": "usd"                     // string
+      "license": "license-placeholder"      // string
     }
   ],
   "subfiles": {         // map[string]SkyfileSubfileMetadata | null
@@ -5423,6 +5424,7 @@ supplied, this metadata will be relative to the given path.
           "address": "284f6fe9c9c394015c04f04e112c0b571a518980fab4e7f5b4e09a592ad7e001231ddbfbc262", // hash
           "amount": "10000000000000000000000" // types.Currency
           "currency": "usd"                   // string
+          "license": "license-placeholder"    // string
         }
       ]
     }
@@ -5467,7 +5469,7 @@ curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filenam
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png' as before. This time with a monetizer that
 // consists of a payout address and payout amount.
-curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%5B%7B%22address%22%3A%22035e40b78367b31dae22399b2e09ac6914273b6ae01f8006871ed8baaf294ac888ca82b0c884%22%2C%22amount%22%3A%2260%22%2C%22currency%22%3A%22usd%22%7D%5D" -F 'file=@image.png'
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%5B%7B%22address%22%3A%229e0eb21aace235e3f069418e905cb7e2e35669e8dd9e367e5759854a3883fd03ebb85bc23b04%22%2C%22amount%22%3A%22527%22%2C%22currency%22%3A%22usd%22%2C%22license%22%3A%22license-placeholder%22%7D%5D" -F 'file=@image.png'
 ```
 
 Uploads a file to the network using a stream. If the upload stream POST call
@@ -5545,11 +5547,11 @@ presented a file with this mode. If no mode is set, the default of 0644 will be
 used.
 
 **monetization** | string  
-A json encoded array of monetizers. Each monetizer contains contains an
-address, a payout amount and a currency. The specified amount has to be >0
-and the only supported currency is "usd" at the moment. NOTE: The precision
-for $1 is the same as the siacoin precision. So `1000000000000000000000000`
-equals $1.
+A json encoded array of monetizers. Each monetizer contains an address, a
+payout amount, a license and a currency. The specified amount has to be >0,
+the only supported currency is "usd" at the moment and the only available
+license is "license-placeholder". NOTE: The precision for $1 is the same as
+the siacoin precision. So `1000000000000000000000000` equals $1.
 
 **root** | bool  
 Whether or not to treat the siapath as being relative to the root directory. If

@@ -207,6 +207,8 @@ type (
 	}
 
 	// Monetizer refers to a single content provider being paid.
+	// TODO: don't merge before the license has a good name.
+	// TODO: Quersion: should the license be per monetizer or per skyfile?
 	Monetizer struct {
 		Address  types.UnlockHash `json:"address"`
 		Amount   types.Currency   `json:"amount"`
