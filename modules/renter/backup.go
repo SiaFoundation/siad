@@ -360,8 +360,8 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 			return errors.AddContext(err, "could not get next entry in the tar archive")
 		}
 
-		// Disable gosec for this line since directory traversal is checked for.
-		//nolint:gosec
+		// nolint:gosec // Disable gosec for this line since directory traversal
+		// is checked below.
 		dst := filepath.Join(dir, header.Name)
 
 		// Check for directory traversal.

@@ -124,8 +124,8 @@ func ExtractTarGz(filename, dir string) error {
 			return err
 		}
 
-		// Disable gosec for this line since directory traversal is checked for.
-		//nolint:gosec
+		// nolint:gosec // Disable gosec for this line since directory traversal
+		// is checked below.
 		path := filepath.Join(dir, hdr.Name)
 
 		// Check for directory traversal.
