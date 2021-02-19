@@ -5450,6 +5450,11 @@ func TestRenterRepairSize(t *testing.T) {
 			if err := m.MineBlock(); err != nil {
 				return err
 			}
+			// Call bubble on the directory to make sure it is being updated
+			err := r.RenterBubblePost(dirSiaPath, true, false)
+			if err != nil {
+				return err
+			}
 			// Grab renter's root directory
 			dis, err := r.RenterDirRootGet(modules.RootSiaPath())
 			if err != nil {
