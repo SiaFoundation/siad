@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -51,9 +52,12 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		oldPT := (*workerPriceTable)(atomic.SwapPointer(&w.atomicPriceTable, unsafe.Pointer(&newPT)))
 
 		// The old table's UID should be the same. Otherwise we just swapped out
-		// a new table and need to try again.
+		// a new table and need to try again. This condition can be false when
+		// pricetable got updated between now and when we fetched it at the
+		// beginning of this iteration.
 		if oldPT.staticPriceTable.UID != pt.staticPriceTable.UID {
 			w.staticSetPriceTable(oldPT) // set back to the old one
+			fmt.Println("old table UID is not the same - continue")
 			continue
 		}
 
