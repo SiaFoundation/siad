@@ -3,10 +3,12 @@ package build
 import (
 	"archive/tar"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -122,7 +124,15 @@ func ExtractTarGz(filename, dir string) error {
 			return err
 		}
 
+		// Disable gosec for this line since directory traversal is checked for.
+		//nolint:gosec
 		path := filepath.Join(dir, hdr.Name)
+
+		// Check for directory traversal.
+		if !strings.HasPrefix(path, filepath.Clean(dir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", path)
+		}
+
 		info := hdr.FileInfo()
 		if info.IsDir() {
 			// Create directory.

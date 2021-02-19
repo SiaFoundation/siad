@@ -180,8 +180,7 @@ lint:
       - .cache
   script:
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - golangci-lint run -c .golangci.yml ./...
-    - make lint-analyze
+    - make lint
     - make markdown-spellcheck
     - make test
 

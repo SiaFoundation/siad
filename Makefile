@@ -131,20 +131,8 @@ markdown-spellcheck:
 
 # lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
 # and other linters), the custom analyzers, and also a markdown spellchecker.
-lint: markdown-spellcheck lint-analyze
-	golangci-lint run -c .golangci.yml
-
-# lint-ci runs golint.
-lint-ci:
-# golint is skipped on Windows.
-ifneq ("$(OS)","Windows_NT")
-# Linux
-	go get golang.org/x/lint/golint
-	golint -min_confidence=1.0 -set_exit_status $(pkgs)
-endif
-
-# lint-analyze runs the custom analyzers.
-lint-analyze:
+lint: markdown-spellcheck
+	golangci-lint run -c .golangci.yml ./...
 	analyze -lockcheck=false -- $(pkgs)
 	analyze -lockcheck -- $(lockcheckpkgs)
 
