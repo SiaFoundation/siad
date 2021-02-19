@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -213,13 +214,16 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err1 := rt.renter.managedPerformBubbleMetadata(modules.BackupFolder)
-	err2 := rt.renter.managedPerformBubbleMetadata(modules.SkynetFolder)
-	err3 := rt.renter.managedPerformBubbleMetadata(modules.UserFolder)
-	err = errors.Compose(err1, err2, err3)
-	if err != nil {
-		t.Fatal(err)
+	var wg sync.WaitGroup
+	for _, sp := range []modules.SiaPath{modules.BackupFolder, modules.SkynetFolder, modules.UserFolder} {
+		wg.Add(1)
+		go func(siaPath modules.SiaPath) {
+			complete := rt.renter.staticBubbleScheduler.callQueueBubble(siaPath)
+			<-complete
+			wg.Done()
+		}(sp)
 	}
+	wg.Wait()
 	defaultMetadata := siadir.Metadata{
 		AggregateHealth: siadir.DefaultDirHealth,
 		Health:          siadir.DefaultDirHealth,
@@ -322,10 +326,8 @@ func TestBubbleHealth(t *testing.T) {
 	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir modules.SiaPath, anf, ansd uint64) {
 		// Bubble target directory
 		beforeBubble := time.Now()
-		err = rt.renter.managedPerformBubbleMetadata(dirToBubble)
-		if err != nil {
-			t.Fatal(err)
-		}
+		complete := rt.renter.staticBubbleScheduler.callQueueBubble(dirToBubble)
+		<-complete
 
 		// Check metadata from expectedMDDir to root
 		var expectedMetadata, metadata siadir.Metadata
@@ -576,10 +578,8 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
 	// SubDir1/SubDir2 gets bubbled up
 	subDir1 := newSiaPath("root/SubDir1")
-	err = rt.renter.managedPerformBubbleMetadata(subDir1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete := rt.renter.staticBubbleScheduler.callQueueBubble(subDir1)
+	<-complete
 	err = build.Retry(60, time.Second, func() error {
 		// Find the oldest directory, even though SubDir1/SubDir2 is the oldest,
 		// SubDir1 should be returned since it is the lowest level directory tree
@@ -617,10 +617,8 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = rt.renter.managedPerformBubbleMetadata(subDir1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete = rt.renter.staticBubbleScheduler.callQueueBubble(subDir1)
+	<-complete
 	err = build.Retry(60, time.Second, func() error {
 		// Find the oldest directory, should be SubDir1_2 now
 		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
@@ -764,12 +762,16 @@ func TestNumFiles(t *testing.T) {
 
 	// Call bubble on lowest level and skynet folder and confirm top level reports
 	// accurate number of files and aggregate number of files
-	err1 := rt.renter.managedPerformBubbleMetadata(subDir1_2)
-	err2 := rt.renter.managedPerformBubbleMetadata(modules.SkynetFolder)
-	err = errors.Compose(err1, err2)
-	if err != nil {
-		t.Fatal(err)
+	var wg sync.WaitGroup
+	for _, sp := range []modules.SiaPath{subDir1_2, modules.SkynetFolder} {
+		wg.Add(1)
+		go func(siaPath modules.SiaPath) {
+			complete := rt.renter.staticBubbleScheduler.callQueueBubble(siaPath)
+			<-complete
+			wg.Done()
+		}(sp)
 	}
+	wg.Wait()
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
@@ -890,7 +892,8 @@ func TestDirectorySize(t *testing.T) {
 	}
 
 	// Call bubble on lowest lever and confirm top level reports accurate size
-	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
+	complete := rt.renter.staticBubbleScheduler.callQueueBubble(subDir1_2)
+	<-complete
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
@@ -963,10 +966,8 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 
 	// Call Bubble to update filesystem ModTimes so there are no zero times
-	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete := rt.renter.staticBubbleScheduler.callQueueBubble(subDir1_2)
+	<-complete
 	// Sleep for 1 second to allow bubbles to update filesystem. Retry doesn't
 	// work here as we are waiting for the ModTime to be fully updated but we
 	// don't know what that value will be. We need this value to be updated and
@@ -1017,10 +1018,8 @@ func TestDirectoryModTime(t *testing.T) {
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
-	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete = rt.renter.staticBubbleScheduler.callQueueBubble(subDir1_2)
+	<-complete
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
@@ -1147,10 +1146,8 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
-	err = rt.renter.managedPerformBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete := rt.renter.staticBubbleScheduler.callQueueBubble(subDir1_2)
+	<-complete
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Metadata
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
@@ -1263,18 +1260,14 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedPerformBubbleMetadata(modules.UserFolder)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete := rt.renter.staticBubbleScheduler.callQueueBubble(modules.UserFolder)
+	<-complete
 	i := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			err = rt.renter.managedPerformBubbleMetadata(modules.RootSiaPath())
-			if err != nil {
-				return err
-			}
+			complete := rt.renter.staticBubbleScheduler.callQueueBubble(modules.RootSiaPath())
+			<-complete
 		}
 		// Get Root Directory Metadata
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
@@ -1328,18 +1321,14 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedPerformBubbleMetadata(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	complete = rt.renter.staticBubbleScheduler.callQueueBubble(dir)
+	<-complete
 	i = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			err = rt.renter.managedPerformBubbleMetadata(dir)
-			if err != nil {
-				return err
-			}
+			complete = rt.renter.staticBubbleScheduler.callQueueBubble(dir)
+			<-complete
 		}
 		// Get Directory Metadata
 		metadata, err := rt.renter.managedDirectoryMetadata(dir)

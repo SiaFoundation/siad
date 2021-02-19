@@ -3,6 +3,7 @@ package renter
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
@@ -80,6 +81,7 @@ func testBubbleQueue(t *testing.T) {
 
 // testBubbleScheduler probes the bubbleScheduler
 func testBubbleScheduler(t *testing.T) {
+	// Basic functionality test
 	t.Run("Basic", testBubbleScheduler_Basic)
 
 	if testing.Short() {
@@ -87,9 +89,12 @@ func testBubbleScheduler(t *testing.T) {
 	}
 	t.Parallel()
 
+	// Blocking functionality test
 	t.Run("Blocking", testBubbleScheduler_Blocking)
 }
 
+// testBubbleScheduler_Basic probes the basic functionality of the
+// bubbleScheduler
 func testBubbleScheduler_Basic(t *testing.T) {
 	// Initialize a bubble scheduler
 	bs := newBubbleScheduler(&Renter{})
@@ -136,13 +141,13 @@ func testBubbleScheduler_Basic(t *testing.T) {
 
 	// queue a bubble update request
 	siaPath := modules.RandomSiaPath()
-	bs.callQueueBubble(siaPath)
+	_ = bs.callQueueBubble(siaPath)
 
 	// Check the status
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// Calling queue again should have no impact
-	bs.callQueueBubble(siaPath)
+	_ = bs.callQueueBubble(siaPath)
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// managedPop should return the bubble update with the status now set to
@@ -155,7 +160,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	}
 
 	// Calling queue should update the status to pending
-	bs.callQueueBubble(siaPath)
+	_ = bs.callQueueBubble(siaPath)
 	checkStatus(siaPath, bubblePending, false)
 	// Queue should still be empty
 	if bs.fifo.Len() != 0 {
@@ -163,7 +168,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	}
 
 	// Calling queue again should have no impact
-	bs.callQueueBubble(siaPath)
+	_ = bs.callQueueBubble(siaPath)
 	checkStatus(siaPath, bubblePending, false)
 	// Queue should still be empty
 	if bs.fifo.Len() != 0 {
@@ -186,10 +191,100 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	}
 }
 
+// testBubbleScheduler_Blocking probes the blocking nature of the complete
+// channel in the bubble update
 func testBubbleScheduler_Blocking(t *testing.T) {
-	// multiple calls to the queue should block on the same chan and release all
-	// together
-	//
-	// queues after pending should be a different block
+	// Initialize a bubble scheduler
+	bs := newBubbleScheduler(&Renter{})
 
+	// queue a bubble update request
+	siaPath := modules.RandomSiaPath()
+	completeChan := bs.callQueueBubble(siaPath)
+
+	// Call complete in a go routine.
+	duration := time.Second
+	go func() {
+		time.Sleep(duration)
+		// Call pop to prevent panic for incorrect status when complete is called
+		bu := bs.managedPop()
+		if bu == nil {
+			t.Error("no bubble update")
+			return
+		}
+		// calling complete should close the channel
+		bs.callCompleteBubbleUpdate(siaPath)
+	}()
+
+	// Should be blocking until after the duration
+	select {
+	case <-completeChan:
+		t.Error("complete chan closed before time duration")
+	case <-time.After(duration):
+	}
+
+	// Complete chan should no block anymore
+	<-completeChan
+
+	// If multiple calls are made to queue the same bubble update, they should all
+	// block on the same channel
+	done := make(chan struct{})
+	for i := 0; i < 5; i++ {
+		go func() {
+			completeChan := bs.callQueueBubble(siaPath)
+			select {
+			case <-completeChan:
+				t.Error("complete chan closed before time duration")
+			case <-time.After(duration):
+			case <-done:
+			}
+		}()
+	}
+
+	// Sleep for the duration
+	time.Sleep(duration)
+	// Call pop to prevent panic for incorrect status when complete is called
+	bu := bs.managedPop()
+	if bu == nil {
+		t.Fatal("no bubble update")
+	}
+	// calling complete should close the channel
+	bs.callCompleteBubbleUpdate(siaPath)
+	// Close the done chan to prevent errors from later launched go routines
+	close(done)
+
+	// Queue the bubble update request
+	completeChan = bs.callQueueBubble(siaPath)
+
+	// Pop the update
+	bu = bs.managedPop()
+	if bu == nil {
+		t.Fatal("no bubble update")
+	}
+
+	// Call queue again to update the status to pending
+	//
+	// The complete channel returned should be the same as the original channel
+	completeChan2 := bs.callQueueBubble(siaPath)
+
+	// Call complete
+	bs.callCompleteBubbleUpdate(siaPath)
+
+	// Both of the original complete channels should not longer be blocking
+	select {
+	case <-completeChan:
+	default:
+		t.Error("first complete chan is still blocking")
+	}
+	select {
+	case <-completeChan2:
+	default:
+		t.Error("second complete chan is still blocking")
+	}
+
+	// The complete chan in the bubble update should still be blocking
+	select {
+	case <-bu.complete:
+		t.Error("bubble update complete chan is not blocking")
+	default:
+	}
 }

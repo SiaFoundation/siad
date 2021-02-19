@@ -1098,8 +1098,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			return nil, err
 		}
 		go r.threadedUpdateRenterHealth()
-		go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
 	}
+	// We do not group the staticBubbleScheduler's background thread with the
+	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
+	// for bubble updates are processed.
+	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
+
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
 		cs.Unsubscribe(r)

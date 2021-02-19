@@ -581,6 +581,9 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 	// Since this is an expensive method and includes disk writes, we want to make
 	// sure that regardless of how this method is called we are protecting against
 	// a shutdown that could leave disk writes in abandoned threads.
+	//
+	// TODO: This should only ever be called from the bubble thread which has
+	// a thread group add already so this can probably be removed.
 	if err := r.tg.Add(); err != nil {
 		return err
 	}

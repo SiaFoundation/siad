@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/list"
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -84,7 +85,7 @@ func newBubbleScheduler(r *Renter) *bubbleScheduler {
 	return &bubbleScheduler{
 		bubbleUpdates: make(map[modules.SiaPath]*bubbleUpdate),
 		fifo:          newBubbleQueue(),
-		bubbleNeeded:  make(chan struct{}),
+		bubbleNeeded:  make(chan struct{}, 1),
 
 		staticRenter: r,
 	}
@@ -113,7 +114,8 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 	// Grab the bubble update from the map
 	bu, ok := bs.bubbleUpdates[siaPath]
 	if !ok {
-		build.Critical("bubble update not found in map when complete is called")
+		str := fmt.Sprintf("bubble update for '%v' not found in map when complete is called", siaPath)
+		build.Critical(str)
 		return
 	}
 
@@ -127,7 +129,8 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 	switch bu.status {
 	case bubbleQueued:
 		// bubbleQueue status was found, remove from map to try and clean up the error
-		build.Critical("bubbleQueue status found during complete call")
+		str := fmt.Sprintf("bubbleQueue status for '%v' found during complete call", siaPath)
+		build.Critical(str)
 		delete(bs.bubbleUpdates, siaPath)
 		return
 	case bubbleActive:
@@ -146,7 +149,8 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 		return
 	default:
 		// Error was found, remove from map to try and clean up the error
-		build.Critical("bubbleError status found during complete call")
+		str := fmt.Sprintf("bubbleError status for '%v' found during complete call", siaPath)
+		build.Critical(str)
 		delete(bs.bubbleUpdates, siaPath)
 		return
 	}
@@ -197,7 +201,8 @@ func (bs *bubbleScheduler) callQueueBubble(siaPath modules.SiaPath) chan struct{
 		// There is an active bubble update in process and another thread has
 		// already requested another bubble update.
 	default:
-		build.Critical("bubbleError status found in callQueueBubble")
+		str := fmt.Sprintf("bubbleError status for '%v' found in callQueueBubble", siaPath)
+		build.Critical(str)
 	}
 	return bu.complete
 }
@@ -241,8 +246,8 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 		}
 
 		// Send the queued bubbles to the workers
-
-		for bu := bs.managedPop(); bu != nil; {
+		bu := bs.managedPop()
+		for bu != nil {
 			// Grab the siaPath from the bubble update
 			bu.mu.Lock()
 			siaPath := bu.siaPath
@@ -253,10 +258,13 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 				break
 			case bubbleChan <- siaPath:
 			}
+			bu = bs.managedPop()
 		}
 
 		// Close the chan and wait for the worker threads to close
+		fmt.Println("== CLOSING CHAN ==")
 		close(bubbleChan)
+		fmt.Println("== WAITING FOR WAIT GROUP ==")
 		wg.Wait()
 	}
 }

@@ -253,12 +253,16 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Refresh the directories blocking.
+	var wg sync.WaitGroup
 	for _, dir := range directories {
-		err = rt.renter.managedPerformBubbleMetadata(dir.SiaPath)
-		if err != nil {
-			t.Fatal(err)
-		}
+		wg.Add(1)
+		go func(sp modules.SiaPath) {
+			complete := rt.renter.staticBubbleScheduler.callQueueBubble(sp)
+			<-complete
+			wg.Done()
+		}(dir.SiaPath)
 	}
+	wg.Wait()
 
 	// Wait for root directory to show proper number of files and subdirs.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
