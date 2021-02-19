@@ -32,7 +32,7 @@ const (
 
 	// monetizationLotteryEntropy is the number of bytes generated as entropy
 	// for drawing the lottery ticket.
-	monetizationLotteryEntropy = 100
+	monetizationLotteryEntropy = 32
 )
 
 var (
