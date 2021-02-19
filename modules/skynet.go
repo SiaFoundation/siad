@@ -29,6 +29,11 @@ const (
 	layoutKeyDataSize = 64
 )
 
+const (
+	// CurrencyUSD the specifier for USD in the monetizer.
+	CurrencyUSD = "usd"
+)
+
 var (
 	// BaseSectorNonceDerivation is the specifier used to derive a nonce for base
 	// sector encryption
@@ -41,6 +46,14 @@ var (
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
+
+	// ErrZeroMonetizer is returned if a caller tries to set a monetizer with 0H
+	// payout.
+	ErrZeroMonetizer = errors.New("can't provide 0 monetization")
+
+	// ErrInvalidCurrency is returned if an unknown monetization currency is
+	// specified.
+	ErrInvalidCurrency = errors.New("specified monetization currency is invalid")
 )
 
 var (
@@ -94,6 +107,10 @@ type (
 		// Mode indicates the file permissions of the skyfile.
 		Mode os.FileMode
 
+		// Monetization contains a list of monetization info for the upload. It
+		// will be added to the SkyfileMetadata of the uploaded file.
+		Monetization []Monetizer
+
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
 		// as an archive. If left empty, it will be interpreted as "index.html"
@@ -145,6 +162,10 @@ type (
 
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
+
+		// Monetization contains a list of monetization info for the upload. It
+		// will be added to the SkyfileMetadata of the uploaded file.
+		Monetization []Monetizer
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -169,6 +190,7 @@ type (
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
+		Monetization       []Monetizer     `json:"monetization,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -176,6 +198,13 @@ type (
 		Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 		Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
+	}
+
+	// Monetizer refers to a single content provider being paid.
+	Monetizer struct {
+		Address  types.UnlockHash `json:"address"`
+		Amount   types.Currency   `json:"amount"`
+		Currency string           `json:"currency"`
 	}
 )
 
@@ -188,8 +217,9 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename: path,
-		Subfiles: make(SkyfileSubfiles),
+		Filename:     path,
+		Monetization: sm.Monetization,
+		Subfiles:     make(SkyfileSubfiles),
 	}
 
 	// Try to find an exact match
@@ -398,11 +428,12 @@ func (sl *SkyfileLayout) Encode() []byte {
 // as nested files and directories are allowed within a single Skyfile, but it
 // is not allowed to contain ./, ../, be empty, or start with a forward slash.
 type SkyfileSubfileMetadata struct {
-	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
-	Filename    string      `json:"filename,omitempty"`
-	ContentType string      `json:"contenttype,omitempty"`
-	Offset      uint64      `json:"offset,omitempty"`
-	Len         uint64      `json:"len,omitempty"`
+	FileMode     os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
+	Filename     string      `json:"filename,omitempty"`
+	ContentType  string      `json:"contenttype,omitempty"`
+	Offset       uint64      `json:"offset,omitempty"`
+	Len          uint64      `json:"len,omitempty"`
+	Monetization []Monetizer `json:"monetization,omitempty"`
 }
 
 // IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.

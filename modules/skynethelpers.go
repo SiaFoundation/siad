@@ -30,12 +30,22 @@ var (
 // Note that the given data will be treated as binary data and the multipart
 // ContentType header will be set accordingly.
 func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) (SkyfileSubfileMetadata, error) {
+	return AddMultipartFileWithMonetization(w, filedata, filekey, filename, filemode, offset, nil)
+}
+
+// AddMultipartFileWithMonetization is a helper function to add a file to
+// multipart form-data. Note that the given data will be treated as binary data
+// and the multipart ContentType header will be set accordingly.
+func AddMultipartFileWithMonetization(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64, monetization []Monetizer) (SkyfileSubfileMetadata, error) {
 	filemodeStr := fmt.Sprintf("%o", filemode)
 	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
 	}
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
+	partHeader, err := createFormFileHeaders(filekey, filename, filemodeStr, contentType, monetization)
+	if err != nil {
+		return SkyfileSubfileMetadata{}, err
+	}
 	part, err := w.CreatePart(partHeader)
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
@@ -325,9 +335,22 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	return nil
 }
 
+// ValidateMonetization is a helper function to validate a list of monetizers.
+func ValidateMonetization(monetization []Monetizer) error {
+	for _, amt := range monetization {
+		if amt.Amount.IsZero() {
+			return ErrZeroMonetizer
+		}
+		if amt.Currency != CurrencyUSD {
+			return ErrInvalidCurrency
+		}
+	}
+	return nil
+}
+
 // createFormFileHeaders builds a header from the given params. These headers
 // are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
+func createFormFileHeaders(fieldname, filename, filemode, contentType string, monetization []Monetizer) (textproto.MIMEHeader, error) {
 	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 	fieldname = quoteEscaper.Replace(fieldname)
 	filename = quoteEscaper.Replace(filename)
@@ -336,7 +359,14 @@ func createFormFileHeaders(fieldname, filename, filemode, contentType string) te
 	h.Set("Content-Type", contentType)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
 	h.Set("mode", filemode)
-	return h
+	if len(monetization) > 0 {
+		b, err := json.Marshal(monetization)
+		if err != nil {
+			return nil, errors.AddContext(err, "createFormFileHeader: failed to marshal monetizers")
+		}
+		h.Set("Monetization", string(b))
+	}
+	return h, nil
 }
 
 // fileContentType extracts the content type from a given file. If the content
