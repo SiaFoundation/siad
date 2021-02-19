@@ -190,7 +190,7 @@ func (tb *transactionBuilder) MarkWalletInputs() bool {
 // transaction. A parent transaction may be needed to achieve an input with the
 // correct value. The siacoin input will not be signed until 'Sign' is called
 // on the transaction builder.
-func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
+func (tb *transactionBuilder) FundSiacoins(amount types.Currency) (err error) {
 	if amount.IsZero() {
 		return nil
 	}
@@ -280,6 +280,11 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			tb.wallet.managedMarkAddressUnused(parentUnlockConditions)
+		}
+	}()
 
 	exactOutput := types.SiacoinOutput{
 		Value:      amount,
@@ -293,6 +298,11 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if err != nil {
+				tb.wallet.managedMarkAddressUnused(refundUnlockConditions)
+			}
+		}()
 		refundOutput := types.SiacoinOutput{
 			Value:      fund.Sub(amount),
 			UnlockHash: refundUnlockConditions.UnlockHash(),
@@ -335,7 +345,7 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 // transaction. A parent transaction may be needed to achieve an input with the
 // correct value. The siafund input will not be signed until 'Sign' is called
 // on the transaction builder.
-func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
+func (tb *transactionBuilder) FundSiafunds(amount types.Currency) (err error) {
 	if amount.IsZero() {
 		return nil
 	}
@@ -389,6 +399,11 @@ func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if err != nil {
+				tb.wallet.markAddressUnused(parentClaimUnlockConditions)
+			}
+		}()
 		sfi := types.SiafundInput{
 			ParentID:         sfoid,
 			UnlockConditions: outputUnlockConditions,
@@ -417,6 +432,11 @@ func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			tb.wallet.markAddressUnused(parentUnlockConditions)
+		}
+	}()
 	exactOutput := types.SiafundOutput{
 		Value:      amount,
 		UnlockHash: parentUnlockConditions.UnlockHash(),
@@ -429,6 +449,11 @@ func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if err != nil {
+				tb.wallet.markAddressUnused(refundUnlockConditions)
+			}
+		}()
 		refundOutput := types.SiafundOutput{
 			Value:      fund.Sub(amount),
 			UnlockHash: refundUnlockConditions.UnlockHash(),
@@ -446,6 +471,11 @@ func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			tb.wallet.markAddressUnused(claimUnlockConditions)
+		}
+	}()
 	newInput := types.SiafundInput{
 		ParentID:         parentTxn.SiafundOutputID(0),
 		UnlockConditions: parentUnlockConditions,

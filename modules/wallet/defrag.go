@@ -14,7 +14,7 @@ var (
 
 // managedCreateDefragTransaction creates a transaction that spends multiple existing
 // wallet outputs into a single new address.
-func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
+func (w *Wallet) managedCreateDefragTransaction() (_ []types.Transaction, err error) {
 	// dustThreshold and minFee have to be obtained separate from the lock
 	dustThreshold, err := w.DustThreshold()
 	if err != nil {
@@ -76,6 +76,11 @@ func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			w.markAddressUnused(parentUnlockConditions)
+		}
+	}()
 	exactOutput := types.SiacoinOutput{
 		Value:      amount,
 		UnlockHash: parentUnlockConditions.UnlockHash(),
@@ -92,6 +97,11 @@ func (w *Wallet) managedCreateDefragTransaction() ([]types.Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			w.markAddressUnused(refundAddr)
+		}
+	}()
 
 	// compute the transaction fee.
 	sizeAvgOutput := uint64(250)

@@ -382,10 +382,9 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Curr
 // caller can specify a priority. This priority defines the order in which the
 // withdrawals get processed in the event they are blocked due to insufficient
 // funds.
-func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypto.Signature, priority int64) error {
+func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypto.Signature, priority int64, bh types.BlockHeight) error {
 	// Gather some variables
 	his := am.h.managedInternalSettings()
-	bh := am.h.BlockHeight()
 	maxRisk := his.MaxEphemeralAccountRisk
 
 	// Validate the message's expiry and signature first

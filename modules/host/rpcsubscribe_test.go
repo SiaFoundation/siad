@@ -68,7 +68,7 @@ func assertNumSubscriptions(host *Host, n int) error {
 // assertSubscriptionInfos asserts the number of times a specific entry has been
 // subscribed to and returns the corresponding nsubscription infos.
 func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Hash, n int) ([]*subscriptionInfo, error) {
-	sid := deriveSubscriptionID(spk, tweak)
+	sid := modules.RegistrySubscriptionID(spk, tweak)
 	host.staticRegistrySubscriptions.mu.Lock()
 	subInfos, found := host.staticRegistrySubscriptions.subscriptions[sid]
 	host.staticRegistrySubscriptions.mu.Unlock()
@@ -318,7 +318,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Extend the subscription.
-	err = rhp.ExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Extend the subscription.
-	err = rhp.ExtendSubscription(stream, pt)
+	err = modules.RPCExtendSubscription(stream, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -732,7 +732,7 @@ func testRPCSubscribeExtendTimeout(t *testing.T, rhp *renterHostPair) {
 	n := 3
 	for i := 0; i < n; i++ {
 		time.Sleep(modules.SubscriptionPeriod / 2)
-		err = rhp.ExtendSubscription(stream, pt)
+		err = modules.RPCExtendSubscription(stream, pt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -905,7 +905,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	n := 3
 	for i := 0; i < n; i++ {
 		time.Sleep(modules.SubscriptionPeriod / 2)
-		err = rhp.ExtendSubscription(stream, pt)
+		err = modules.RPCExtendSubscription(stream, pt)
 		if err != nil {
 			t.Fatal(err)
 		}

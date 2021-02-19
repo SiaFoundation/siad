@@ -274,13 +274,16 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		{{launched: true, worker: w}},
 	}
 
-	lwi := launchedWorkerInfo{}
+	lwi := launchedWorkerInfo{
+		launchTime: time.Now().Add(-time.Minute),
+	}
 	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
 
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
-		staticData: pieces[3],
-		staticErr:  nil,
+		staticData:    pieces[3],
+		staticErr:     nil,
+		staticJobTime: time.Duration(1),
 		staticMetadata: jobReadMetadata{
 			staticLaunchedWorkerIndex: 0,
 			staticPieceRootIndex:      3,
@@ -302,10 +305,19 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		t.Fatal("unexpected") // verify we unset the data
 	}
 
+	// verify the worker information got updated
+	if lwi.completeTime == (time.Time{}) ||
+		lwi.jobDuration == 0 ||
+		lwi.totalDuration == 0 ||
+		lwi.jobErr != nil {
+		t.Fatal("unexpected")
+	}
+
 	// verify the pdc after a failed read
 	pdc.handleJobReadResponse(&jobReadResponse{
-		staticData: nil,
-		staticErr:  errors.New("read failed"),
+		staticData:    nil,
+		staticErr:     errors.New("read failed"),
+		staticJobTime: time.Duration(1),
 		staticMetadata: jobReadMetadata{
 			staticPieceRootIndex: 0,
 			staticSectorRoot:     empty,
@@ -320,6 +332,14 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	}
 	if pdc.dataPieces[0] != nil {
 		t.Fatal("unexpected")
+	}
+
+	// verify the worker information got updated
+	if lwi.completeTime == (time.Time{}) ||
+		lwi.jobDuration == 0 ||
+		lwi.totalDuration == 0 ||
+		lwi.jobErr == nil {
+		t.Fatal("unexpected", lwi)
 	}
 
 	// rig the availablepieces in a way that it has a duplicate piece, we added
@@ -588,7 +608,13 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	lwi.jobDuration = 20 * time.Second
 	lwi.totalDuration = time.Since(lwi.launchTime)
 
-	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms", w.staticHostPubKey.ShortString())
+	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms and finished successfully", w.staticHostPubKey.ShortString())
+	if !strings.Contains(lwi.String(), expected) {
+		t.Fatal("unexpected", lwi.String())
+	}
+
+	lwi.jobErr = errors.New("some failure")
+	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms, failed with err: some failure", w.staticHostPubKey.ShortString())
 	if !strings.Contains(lwi.String(), expected) {
 		t.Fatal("unexpected", lwi.String())
 	}

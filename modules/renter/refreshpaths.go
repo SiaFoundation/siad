@@ -88,23 +88,65 @@ func (urp *uniqueRefreshPaths) callNumParentDirs() int {
 	return len(urp.parentDirs)
 }
 
-// callRefreshAll uses the uniqueRefreshPaths's Renter to call
-// callThreadedBubbleMetadata on all the directories in the childDir map
-func (urp *uniqueRefreshPaths) callRefreshAll() {
+// callRefreshAll will update the directories in the childDir map by calling
+// refreshAll in a go routine.
+func (urp *uniqueRefreshPaths) callRefreshAll() error {
 	urp.mu.Lock()
 	defer urp.mu.Unlock()
-	for sp := range urp.childDirs {
-		go urp.r.callThreadedBubbleMetadata(sp)
-	}
+	return urp.r.tg.Launch(func() {
+		err := urp.refreshAll()
+		if err != nil {
+			urp.r.log.Println("WARN: error with uniqueRefreshPaths refreshAll:", err)
+		}
+	})
 }
 
-// callRefreshAllBlocking uses the uniqueRefreshPaths's Renter to call
-// managedBubbleMetadata on all the directories in the childDir map
-func (urp *uniqueRefreshPaths) callRefreshAllBlocking() (err error) {
+// callRefreshAllBlocking will update the directories in the childDir map by
+// calling refreshAll.
+func (urp *uniqueRefreshPaths) callRefreshAllBlocking() error {
 	urp.mu.Lock()
 	defer urp.mu.Unlock()
-	for sp := range urp.childDirs {
-		err = errors.Compose(err, urp.r.managedBubbleMetadata(sp))
+	return urp.refreshAll()
+}
+
+// refreshAll calls the urp's Renter's managedBubbleMetadata method on all the
+// directories in the childDir map
+func (urp *uniqueRefreshPaths) refreshAll() (err error) {
+	// Create a siaPath channel with numBubbleWorkerThreads spaces
+	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
+
+	// Launch worker groups
+	var wg sync.WaitGroup
+	var errMU sync.Mutex
+	for i := 0; i < numBubbleWorkerThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for siaPath := range siaPathChan {
+				bubbleErr := urp.r.managedBubbleMetadata(siaPath)
+				errMU.Lock()
+				err = errors.Compose(err, bubbleErr)
+				errMU.Unlock()
+			}
+		}()
 	}
+
+	// Add all child dir siaPaths to the siaPathChan
+	for sp := range urp.childDirs {
+		select {
+		case siaPathChan <- sp:
+		case <-urp.r.tg.StopChan():
+			// Renter has shutdown, close the channel and return
+			close(siaPathChan)
+			// We wait to avoid the data race of one of the workers updating err
+			wg.Wait()
+			return
+		}
+	}
+
+	// Close siaPathChan and wait for worker groups to complete
+	close(siaPathChan)
+	wg.Wait()
+
 	return
 }

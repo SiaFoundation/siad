@@ -126,10 +126,10 @@ func TestAccountCallWithdraw(t *testing.T) {
 
 	// Prepare a withdrawal message
 	amount := types.NewCurrency64(5)
-	msg, sig := prepareWithdrawal(accountID, amount, am.h.blockHeight, sk)
+	msg, sig := prepareWithdrawal(accountID, amount, am.h.BlockHeight(), sk)
 
 	// Spend half of it and verify account balance
-	err = callWithdraw(am, msg, sig)
+	err = callWithdraw(am, msg, sig, am.h.BlockHeight())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,8 +152,8 @@ func TestAccountCallWithdraw(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		msg, sig = prepareWithdrawal(accountID, overSpend, am.h.blockHeight, sk)
-		if err := callWithdraw(am, msg, sig); err != nil {
+		msg, sig = prepareWithdrawal(accountID, overSpend, am.h.BlockHeight(), sk)
+		if err := callWithdraw(am, msg, sig, am.h.BlockHeight()); err != nil {
 			t.Log(err)
 			atomic.AddUint64(&atomicErrs, 1)
 		}
@@ -204,8 +204,8 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 
 	// Withdraw from it
 	amount := types.NewCurrency64(1)
-	msg, sig := prepareWithdrawal(unknown, amount, am.h.blockHeight, sk)
-	if err := callWithdraw(am, msg, sig); !errors.Contains(err, ErrBalanceInsufficient) {
+	msg, sig := prepareWithdrawal(unknown, amount, am.h.BlockHeight(), sk)
+	if err := callWithdraw(am, msg, sig, am.h.BlockHeight()); !errors.Contains(err, ErrBalanceInsufficient) {
 		t.Fatal("Unexpected error: ", err)
 	}
 }
@@ -288,13 +288,13 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
-	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+10, sk)
-	err = callWithdraw(am, msg, sig)
+	msg, sig := prepareWithdrawal(accountID, diff, am.h.BlockHeight()+10, sk)
+	err = callWithdraw(am, msg, sig, am.h.BlockHeight()+10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = callWithdraw(am, msg, sig)
+	err = callWithdraw(am, msg, sig, am.h.BlockHeight())
 	if !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Expected withdrawal spent error", err)
 	}
@@ -332,8 +332,8 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
-	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight-1, sk)
-	err = callWithdraw(am, msg, sig)
+	msg, sig := prepareWithdrawal(accountID, diff, am.h.BlockHeight()-1, sk)
+	err = callWithdraw(am, msg, sig, am.h.BlockHeight())
 	if !errors.Contains(err, modules.ErrWithdrawalExpired) {
 		t.Fatal("Expected withdrawal expired error", err)
 	}
@@ -376,13 +376,13 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	// Prepare a withdrawal message
 	oneCurrency := types.NewCurrency64(1)
 	msg, sig := prepareWithdrawal(accountID, oneCurrency, shouldExpire, sk)
-	err = callWithdraw(am, msg, sig)
+	err = callWithdraw(am, msg, sig, am.h.BlockHeight())
 	if !errors.Contains(err, modules.ErrWithdrawalExtremeFuture) {
 		t.Fatal("Expected withdrawal extreme future error", err)
 	}
 
 	msg, sig = prepareWithdrawal(accountID, oneCurrency, shouldNotExpire, sk)
-	err = callWithdraw(am, msg, sig)
+	err = callWithdraw(am, msg, sig, am.h.BlockHeight())
 	if errors.Contains(err, modules.ErrWithdrawalExtremeFuture) {
 		t.Fatal("Expected withdrawal to be valid", err)
 	}
@@ -424,7 +424,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	sk2, _ := prepareAccount()
 	_, sig2 := prepareWithdrawal(accountID1, diff, am.h.blockHeight+5, sk2)
 
-	err = callWithdraw(am, msg1, sig2)
+	err = callWithdraw(am, msg1, sig2, am.h.BlockHeight())
 	if !errors.Contains(err, modules.ErrWithdrawalInvalidSignature) {
 		t.Fatal("Expected withdrawal invalid signature error", err)
 	}
@@ -577,7 +577,7 @@ func TestAccountRiskBenchmark(t *testing.T) {
 					withdrawn, _ := withdrawalSize.Uint64()
 					atomic.AddUint64(&atomicWithdrawn[randIndex], withdrawn)
 
-					wErr := callWithdraw(am, msg, sig)
+					wErr := callWithdraw(am, msg, sig, am.h.BlockHeight())
 					if errors.Contains(wErr, errMaxRiskReached) {
 						atomic.StoreUint64(&atomicMaxRiskReached, 1)
 					} else if errors.Contains(wErr, ErrBalanceInsufficient) {
@@ -704,7 +704,7 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 				defer wg.Done()
 				for i := 0; i < withdrawals/threads; i++ {
 					start := time.Now()
-					if wErr := callWithdraw(am, msgs[thread][i], sigs[thread][i]); wErr != nil {
+					if wErr := callWithdraw(am, msgs[thread][i], sigs[thread][i], am.h.BlockHeight()); wErr != nil {
 						atomic.AddUint64(&atomicWithdrawalErrs, 1)
 						t.Log(wErr)
 					}
@@ -796,7 +796,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		go func(thread int) {
 			defer wg.Done()
 			for i := thread * (withdrawals / threads); i < (thread+1)*(withdrawals/threads); i++ {
-				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
+				if wErr := callWithdraw(am, msgs[i], sigs[i], am.h.BlockHeight()); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
 				}
@@ -881,7 +881,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		go func(bucket int) {
 			defer wg.Done()
 			for i := bucket * (withdrawals / buckets); i < (bucket+1)*(withdrawals/buckets); i++ {
-				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
+				if wErr := callWithdraw(am, msgs[i], sigs[i], am.h.BlockHeight()); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
 				}
@@ -977,7 +977,7 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 			accID := accountIDs[i]
 			accSK := accountSKs[i]
 			msg, sig := prepareWithdrawal(accID, maxBalance, cbh, accSK)
-			if wErr := callWithdraw(am, msg, sig); errors.Contains(wErr, errMaxRiskReached) {
+			if wErr := callWithdraw(am, msg, sig, am.h.BlockHeight()); errors.Contains(wErr, errMaxRiskReached) {
 				atomic.AddUint64(&atomicMaxRiskReached, 1)
 			}
 		}(i)
@@ -1146,7 +1146,7 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 
 	// Verify withdrawal is active
 	msg, sig := prepareWithdrawal(accountID, oneCurrency, am.h.blockHeight, sk)
-	err = callWithdraw(am, msg, sig)
+	err = callWithdraw(am, msg, sig, am.h.blockHeight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1156,7 +1156,7 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 
 	// Verify withdrawal is active
 	msg, sig = prepareWithdrawal(accountID, oneCurrency, am.h.blockHeight, sk)
-	err = callWithdraw(am, msg, sig)
+	err = callWithdraw(am, msg, sig, am.h.blockHeight)
 	if !errors.Contains(err, modules.ErrWithdrawalsInactive) {
 		t.Fatal(err)
 	}
@@ -1192,8 +1192,8 @@ func managedAccountIndexCheck(am *accountManager) string {
 }
 
 // callWithdraw will perform the withdrawal using a timestamp for the priority
-func callWithdraw(am *accountManager, msg *modules.WithdrawalMessage, sig crypto.Signature) error {
-	return am.callWithdraw(msg, sig, time.Now().UnixNano())
+func callWithdraw(am *accountManager, msg *modules.WithdrawalMessage, sig crypto.Signature, bh types.BlockHeight) error {
+	return am.callWithdraw(msg, sig, time.Now().UnixNano(), bh)
 }
 
 // callDeposit will perform the deposit on the account manager and close out the

@@ -326,11 +326,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		return err
 	}
 
-	// Check whether the worker is on RHP3
-	if !w.staticSupportsRHP3() {
-		return errors.New("worker is not RHP3 ready")
-	}
-
 	// Check whether the worker is on a cooldown. Because the PCWS is cached, we
 	// do not want to exclude this worker if it is on a cooldown, however we do
 	// want to take into consideration the cooldown period when we estimate the

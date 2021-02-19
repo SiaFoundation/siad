@@ -1024,7 +1024,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 // set, this is essentially an upload streaming endpoint for Skynet which
 // returns a skylink.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// start the timer for the performance measurement.
+	// Start the timer for the performance measurement.
 	startTime := time.Now()
 
 	// parse the request headers and parameters
@@ -1042,8 +1042,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		SiaPath:             params.siaPath,
 
 		// Set filename and mode
-		Filename: params.filename,
-		Mode:     params.mode,
+		Filename:     params.filename,
+		Mode:         params.mode,
+		Monetization: params.monetization,
 
 		// Set the default path params
 		DefaultPath:        params.defaultPath,

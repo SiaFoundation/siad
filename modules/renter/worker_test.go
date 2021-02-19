@@ -6,10 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
-	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -203,26 +201,11 @@ func TestManagedAsyncReady(t *testing.T) {
 	w.newPriceTable()
 	w.staticPriceTable().staticExpiryTime = timeInFuture
 
-	// ensure cache indicates host version meets min requirements
-	w.newCache()
-	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
-		staticHostVersion: minRHP3Version,
-	}))
-
-	// ensure the worker has a maintenancestate, by default it will pass the
-	// checks
+	// ensure the worker has a maintenancestate, by default it will pass
 	w.newMaintenanceState()
 
 	// verify worker is considered async ready
 	if !w.managedAsyncReady() {
-		t.Fatal("unexpected")
-	}
-
-	// tweak the version to make it non async ready
-	badWorkerVersion := w
-	cache := &workerCache{staticHostVersion: "1.4.8"} // pre-dates RHP3
-	atomic.StorePointer(&badWorkerVersion.atomicCache, unsafe.Pointer(cache))
-	if badWorkerVersion.managedAsyncReady() {
 		t.Fatal("unexpected")
 	}
 
@@ -262,7 +245,7 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	w := wt.worker
 
 	// verify it has set the initial estimates on both queues
-	if w.staticJobHasSectorQueue.callExpectedJobTime(fastrand.Uint64n(10)) == 0 {
+	if w.staticJobHasSectorQueue.callExpectedJobTime() == 0 {
 		t.Fatal("unexpected")
 	}
 	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {

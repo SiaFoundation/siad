@@ -117,7 +117,7 @@ func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	multiFileTest := func(filename, skykeyName string, files []siatest.TestFile) {
 		// Portal 1 uploads the multipart skyfile
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
@@ -173,7 +173,7 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	directoryTest := func(filename, skykeyName, defaultPath string, files []siatest.TestFile, disableDefaultPath, force bool) {
 		// Portal 1 uploads the directory
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
@@ -237,7 +237,7 @@ func testDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	directoryTest := func(filename, skykeyName string, files []siatest.TestFile) {
 		// Portal 1 uploads the directory
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}

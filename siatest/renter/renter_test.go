@@ -4233,7 +4233,7 @@ func TestAsyncStartupRace(t *testing.T) {
 			defer wg.Done()
 			_, err := node.ConsensusGet()
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		// Contractor
@@ -4242,7 +4242,7 @@ func TestAsyncStartupRace(t *testing.T) {
 			defer wg.Done()
 			_, err := node.RenterContractsGet()
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		// HostDB
@@ -4251,11 +4251,12 @@ func TestAsyncStartupRace(t *testing.T) {
 			defer wg.Done()
 			_, err := node.HostDbAllGet()
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			_, err = node.HostDbGet()
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		// Renter
@@ -4264,7 +4265,7 @@ func TestAsyncStartupRace(t *testing.T) {
 			defer wg.Done()
 			_, err := node.RenterGet()
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 		wg.Wait()
@@ -5345,7 +5346,7 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false)
+	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

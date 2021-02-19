@@ -378,6 +378,10 @@ type (
 		// become spendable.
 		LoadSiagKeys(crypto.CipherKey, []string) error
 
+		// MarkAddressUnused marks the provided address as unused which causes it to be
+		// handed out by a subsequent call to `NextAddresses` again.
+		MarkAddressUnused(...types.UnlockConditions) error
+
 		// NextAddress returns a new coin addresses generated from the
 		// primary seed.
 		NextAddress() (types.UnlockConditions, error)

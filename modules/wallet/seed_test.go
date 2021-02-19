@@ -573,3 +573,122 @@ func TestGenerateKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestMarkAddressUnused is a unit test for MarkAddressUnused.
+func TestMarkAddressUnused(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Declare helper to determine whether two slices are the same without
+	// necessarily having the same ordering.
+	equal := func(ucs1, ucs2 []types.UnlockConditions) bool {
+		if len(ucs1) != len(ucs2) {
+			return false
+		}
+		ucsMap := make(map[types.UnlockHash]struct{})
+		for _, uc := range ucs1 {
+			ucsMap[uc.UnlockHash()] = struct{}{}
+		}
+		for _, uc := range ucs2 {
+			if _, exists := ucsMap[uc.UnlockHash()]; !exists {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Get 10 addresses.
+	w := wt.wallet
+	ucs, err := w.NextAddresses(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark them unused.
+	err = w.MarkAddressUnused(ucs...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.unusedKeys) != 10 {
+		t.Fatal("wrong number of unused keys")
+	}
+
+	// Get 10 addresses. These should be the same again.
+	ucsNew10, err := w.NextAddresses(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equal(ucs, ucsNew10) {
+		t.Log(ucs)
+		t.Log(ucsNew10)
+		t.Fatal("addresses were not recycled")
+	}
+	if len(w.unusedKeys) != 0 {
+		t.Fatal("wrong number of unused keys")
+	}
+
+	// Mark them unused. This time twice.
+	err = w.MarkAddressUnused(ucsNew10...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = w.MarkAddressUnused(ucsNew10...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.unusedKeys) != 10 {
+		t.Fatal("wrong number of unused keys")
+	}
+
+	// Get 20 addresses. The first 10 should be the same again. The next 10
+	// shouldn't be.
+	ucsNew20, err := w.NextAddresses(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equal(ucsNew20[:10], ucsNew10) {
+		t.Fatal("addresses were not recycled")
+	}
+	if equal(ucsNew20[10:], ucsNew10) {
+		t.Fatal("addresses should not be the same")
+	}
+	if len(w.unusedKeys) != 0 {
+		t.Fatal("wrong number of unused keys")
+	}
+
+	// Mark them unused.
+	err = w.MarkAddressUnused(ucsNew20...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.unusedKeys) != 20 {
+		t.Fatal("wrong number of unused keys")
+	}
+
+	// Call NextAddresses twice to fetch them.
+	ucsNew20a, err := w.NextAddresses(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ucsNew20b, err := w.NextAddresses(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equal(append(ucsNew20a, ucsNew20b...), ucsNew20) {
+		t.Fatal("addresses were not recycled")
+	}
+	if len(w.unusedKeys) != 0 {
+		t.Fatal("wrong number of unused keys")
+	}
+}

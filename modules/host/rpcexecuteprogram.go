@@ -26,7 +26,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Process payment.
-	pd, err := h.ProcessPayment(stream)
+	pd, err := h.ProcessPayment(stream, pt.HostBlockHeight)
 	if err != nil {
 		return errors.AddContext(err, "failed to process payment")
 	}
