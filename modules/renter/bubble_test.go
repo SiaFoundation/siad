@@ -13,7 +13,7 @@ import (
 //
 // TODO: moves bubble tests from other files into here
 func TestBubble(t *testing.T) {
-	// Sub tests are responsible for short vs long test determination
+	t.Parallel()
 
 	// bubbleQueue unit tests
 	t.Run("BubbleQueue", testBubbleQueue)
@@ -35,8 +35,8 @@ func testBubbleQueue(t *testing.T) {
 
 	// Add a bubble update to the queue
 	newBU := &bubbleUpdate{
-		siaPath: modules.RandomSiaPath(),
-		status:  bubbleQueued,
+		staticSiaPath: modules.RandomSiaPath(),
+		status:        bubbleQueued,
 	}
 	bq.Push(newBU)
 
@@ -63,8 +63,8 @@ func testBubbleQueue(t *testing.T) {
 	// Push a few more updates
 	for i := 0; i < 5; i++ {
 		bq.Push(&bubbleUpdate{
-			siaPath: modules.RandomSiaPath(),
-			status:  bubbleQueued,
+			staticSiaPath: modules.RandomSiaPath(),
+			status:        bubbleQueued,
 		})
 	}
 
@@ -88,7 +88,6 @@ func testBubbleScheduler(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	// Blocking functionality test
 	t.Run("Blocking", testBubbleScheduler_Blocking)
@@ -99,6 +98,12 @@ func testBubbleScheduler(t *testing.T) {
 func testBubbleScheduler_Basic(t *testing.T) {
 	// Initialize a bubble scheduler
 	bs := newBubbleScheduler(&Renter{})
+
+	// Check status
+	fifoSize, mapSize := bs.atomicStatus()
+	if fifoSize != 0 || mapSize != 0 {
+		t.Error("unexpected", fifoSize, mapSize)
+	}
 
 	// managedPop should return nil
 	bu := bs.managedPop()
@@ -113,8 +118,8 @@ func testBubbleScheduler_Basic(t *testing.T) {
 		if !ok {
 			t.Fatal("bad")
 		}
-		if !bu.siaPath.Equals(siaPath) {
-			t.Log("found", bu.siaPath)
+		if !bu.staticSiaPath.Equals(siaPath) {
+			t.Log("found", bu.staticSiaPath)
 			t.Log("expected", siaPath)
 			t.Error("incorrect siaPath found")
 		}
@@ -147,48 +152,72 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	// Check the status
 	checkStatus(siaPath, bubbleQueued, true)
 
+	// Check status
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 1 || mapSize != 1 {
+		t.Error("unexpected", fifoSize, mapSize)
+	}
+
 	// Calling queue again should have no impact
 	_ = bs.callQueueBubble(siaPath)
 	checkStatus(siaPath, bubbleQueued, true)
+
+	// Check status
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 1 || mapSize != 1 {
+		t.Error("unexpected", fifoSize, mapSize)
+	}
 
 	// managedPop should return the bubble update with the status now set to
 	// bubbleActive
 	bu = bs.managedPop()
 	checkStatus(siaPath, bubbleActive, false)
-	// Queue should be empty
-	if bs.fifo.Len() != 0 {
-		t.Error("Queue is not empty")
+
+	// Queue should be empty but map should still have update
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 0 || mapSize != 1 {
+		t.Error("unexpected", fifoSize, mapSize)
 	}
 
 	// Calling queue should update the status to pending
 	_ = bs.callQueueBubble(siaPath)
 	checkStatus(siaPath, bubblePending, false)
-	// Queue should still be empty
-	if bs.fifo.Len() != 0 {
-		t.Error("Queue is not empty")
+
+	// Queue should be empty but map should still have update
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 0 || mapSize != 1 {
+		t.Error("unexpected", fifoSize, mapSize)
 	}
 
 	// Calling queue again should have no impact
 	_ = bs.callQueueBubble(siaPath)
 	checkStatus(siaPath, bubblePending, false)
-	// Queue should still be empty
-	if bs.fifo.Len() != 0 {
-		t.Error("Queue is not empty")
+
+	// Queue should be empty but map should still have update
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 0 || mapSize != 1 {
+		t.Error("unexpected", fifoSize, mapSize)
 	}
 
 	// Calling complete should add the update back to the queue
 	bs.callCompleteBubbleUpdate(siaPath)
 	checkStatus(siaPath, bubbleQueued, true)
 
+	// Check Status
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 1 || mapSize != 1 {
+		t.Error("unexpected", fifoSize, mapSize)
+	}
+
 	// calling managed pop and then calling complete should result in an empty map
 	// and queue
 	_ = bs.managedPop()
 	bs.callCompleteBubbleUpdate(siaPath)
-	if len(bs.bubbleUpdates) != 0 {
-		t.Error("map is not empty")
-	}
-	if bs.fifo.Len() != 0 {
-		t.Error("Queue is not empty")
+
+	// Check Status
+	fifoSize, mapSize = bs.atomicStatus()
+	if fifoSize != 0 || mapSize != 0 {
+		t.Error("unexpected", fifoSize, mapSize)
 	}
 }
 

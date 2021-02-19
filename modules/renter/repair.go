@@ -619,7 +619,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 			continue
 		}
-		r.log.Println("Calling bubble on the subtree", siaPath)
+		r.log.Printf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
 		urp.callRefreshAllBlocking()
 	}
 }

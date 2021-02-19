@@ -274,6 +274,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				if !r.deps.Disrupt("DisableLHCTCorrection") {
 					// Queue a bubble to bubble the directory, ignore the return channel
 					// as we do not want to block on this update.
+					r.log.Debugf("Found zero time for ALHCT at '%v'", dirMetadata.sp)
 					_ = r.staticBubbleScheduler.callQueueBubble(dirMetadata.sp)
 				}
 			}
