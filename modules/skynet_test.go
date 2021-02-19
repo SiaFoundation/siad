@@ -345,25 +345,26 @@ func TestComputeMonetizationPayout(t *testing.T) {
 			payout: 2,
 		},
 		{
-			// 50% chance - drawing 49 should pass.
+			// 50% chance - drawing 0 should pass.
 			amt:    1,
 			base:   2,
-			n:      49,
+			n:      0,
 			payout: 2,
 		},
 		{
 			// 50% chance - drawing 50 should fail.
 			amt:    1,
 			base:   2,
-			n:      50,
+			n:      1,
 			payout: 0,
 		},
 		{
-			// 50% chance - drawing 51 should fail.
+			// 50% chance - drawing 2 should pass.
+			// 2 mod 2 == 0 mod 2
 			amt:    1,
 			base:   2,
-			n:      51,
-			payout: 0,
+			n:      2,
+			payout: 2,
 		},
 		{
 			// 99% chance - drawing 98 should pass.
@@ -399,7 +400,7 @@ func TestComputeMonetizationPayout(t *testing.T) {
 	for i, test := range tests {
 		amt := types.NewCurrency64(test.amt)
 		base := types.NewCurrency64(test.base)
-		nBytes := types.NewCurrency64(test.n).Mul(monetizationLotteryPrecision).Div64(100).Big().Bytes()
+		nBytes := types.NewCurrency64(test.n).Big().Bytes()
 		if len(nBytes) < monetizationLotteryEntropy {
 			nBytes = append(make([]byte, monetizationLotteryEntropy-len(nBytes)), nBytes...)
 		}

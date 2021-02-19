@@ -47,10 +47,6 @@ var (
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
-
-	// monetizationLotteryPrecision is the precision used for the monetization
-	// lottery.
-	monetizationLotteryPrecision = types.SiacoinPrecision
 )
 
 var (
@@ -508,15 +504,6 @@ func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.
 		return amt, nil
 	}
 
-	// Adjust the amt by the lottery's precision.
-	// Otherwise the result will always be 0.
-	amt = amt.Mul(monetizationLotteryPrecision)
-
-	// Otherwise we compute the likelihood of winning the lottery. e.g. if base
-	// is 2 and amt is 1, the chance is 50%.
-	//
-	chance := amt.Div(base)
-
 	// We need to generate a large random number n.
 	nBytes := make([]byte, monetizationLotteryEntropy)
 	_, err := io.ReadFull(rand, nBytes)
@@ -525,12 +512,11 @@ func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.
 	}
 	n := new(big.Int).SetBytes(nBytes)
 
-	// Adjust it to be in the range [0 , 1).
-	one := monetizationLotteryPrecision.Big()
-	n = n.Mod(n, one)
+	// Adjust it to be in the range [0 , base).
+	n = n.Mod(n, base.Big())
 
-	// If n < chance, you get the base.
-	if n.Cmp(chance.Big()) < 0 {
+	// If n < amt, you get the base.
+	if n.Cmp(amt.Big()) < 0 {
 		return base, nil
 	}
 	return types.ZeroCurrency, nil
