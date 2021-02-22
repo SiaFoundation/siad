@@ -162,6 +162,8 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 		spending.ContractSpendingDeprecated = spending.TotalAllocated
 		// Calculate Spending
 		spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
+		spending.FundAccountSpending = spending.FundAccountSpending.Add(contract.FundAccountSpending)
+		spending.MaintenanceSpending = spending.MaintenanceSpending.Add(contract.MaintenanceSpending)
 		spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 		spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
 	}
@@ -184,6 +186,8 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 			spending.TotalAllocated = spending.TotalAllocated.Add(contract.TotalCost)
 			// Calculate Spending
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
+			spending.FundAccountSpending = spending.FundAccountSpending.Add(contract.FundAccountSpending)
+			spending.MaintenanceSpending = spending.MaintenanceSpending.Add(contract.MaintenanceSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
 		} else if err != nil && exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
@@ -195,11 +199,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 			}
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.ContractFee).Add(contract.TxnFee).
-				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
+				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending)
 		} else {
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.ContractFee).Add(contract.TxnFee).
-				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
+				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending)
 		}
 	}
 
@@ -208,6 +212,8 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	allSpending = allSpending.Add(spending.DownloadSpending)
 	allSpending = allSpending.Add(spending.UploadSpending)
 	allSpending = allSpending.Add(spending.StorageSpending)
+	allSpending = allSpending.Add(spending.FundAccountSpending)
+	allSpending = allSpending.Add(spending.MaintenanceSpending)
 	if c.allowance.Funds.Cmp(allSpending) >= 0 {
 		spending.Unspent = c.allowance.Funds.Sub(allSpending)
 	}

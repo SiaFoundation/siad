@@ -740,9 +740,11 @@ type RenterContract struct {
 
 	// The FileContract does not indicate what funds were spent on, so we have
 	// to track the various costs manually.
-	DownloadSpending types.Currency
-	StorageSpending  types.Currency
-	UploadSpending   types.Currency
+	DownloadSpending    types.Currency
+	FundAccountSpending types.Currency
+	MaintenanceSpending types.Currency
+	StorageSpending     types.Currency
+	UploadSpending      types.Currency
 
 	// Utility contains utility information about the renter.
 	Utility ContractUtility
@@ -786,6 +788,13 @@ type ContractorSpending struct {
 	ContractFees types.Currency `json:"contractfees"`
 	// DownloadSpending is the money currently spent on downloads.
 	DownloadSpending types.Currency `json:"downloadspending"`
+	// FundAccountSpending is the money used to fund an ephemeral account on the
+	// host.
+	FundAccountSpending types.Currency `json:"fundaccountspending"`
+	// MaintenanceSpending is the money spent on maintenance tasks in support of
+	// the RHP3 protocol, this includes updating the price table as well as
+	// syncing the ephemeral account balance.
+	MaintenanceSpending types.Currency `json:"maintenancespending"`
 	// StorageSpending is the money currently spent on storage.
 	StorageSpending types.Currency `json:"storagespending"`
 	// ContractSpending is the total amount of money that the renter has put

@@ -96,6 +96,9 @@ type (
 		EndHeight types.BlockHeight `json:"endheight"`
 		// Fees paid in order to form the file contract.
 		Fees types.Currency `json:"fees"`
+		// Amount of contract funds that have been spent on funding an ephemeral
+		// account on the host.
+		FundAccountSpending types.Currency `json:"fundaccountspending"`
 		// Public key of the host the contract was formed with.
 		HostPublicKey types.SiaPublicKey `json:"hostpublickey"`
 		// HostVersion is the version of Sia that the host is running
@@ -104,6 +107,10 @@ type (
 		ID types.FileContractID `json:"id"`
 		// A signed transaction containing the most recent contract revision.
 		LastTransaction types.Transaction `json:"lasttransaction"`
+		// Amount of contract funds that have been spent on maintenance tasks
+		// such as updating the price table or syncing the ephemeral account
+		// balance.
+		MaintenanceSpending types.Currency `json:"maintenancespending"`
 		// Address of the host the file contract was formed with.
 		NetAddress modules.NetAddress `json:"netaddress"`
 		// Remaining funds left for the renter to spend on uploads & downloads.
@@ -1117,6 +1124,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
+			FundAccountSpending:       c.FundAccountSpending,
 			GoodForUpload:             c.Utility.GoodForUpload,
 			GoodForRenew:              c.Utility.GoodForRenew,
 			HostPublicKey:             c.HostPublicKey,
@@ -1124,6 +1132,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 			ID:                        c.ID,
 			LastTransaction:           c.Transaction,
 			NetAddress:                netAddress,
+			MaintenanceSpending:       c.MaintenanceSpending,
 			RenterFunds:               c.RenterFunds,
 			Size:                      c.Size(),
 			StartHeight:               c.StartHeight,
@@ -1181,12 +1190,14 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
+			FundAccountSpending:       c.FundAccountSpending,
 			GoodForUpload:             c.Utility.GoodForUpload,
 			GoodForRenew:              c.Utility.GoodForRenew,
 			HostPublicKey:             c.HostPublicKey,
 			HostVersion:               hdbe.Version,
 			ID:                        c.ID,
 			LastTransaction:           c.Transaction,
+			MaintenanceSpending:       c.MaintenanceSpending,
 			NetAddress:                netAddress,
 			RenterFunds:               c.RenterFunds,
 			Size:                      size,

@@ -119,6 +119,31 @@ func TestContractUncommittedTxn(t *testing.T) {
 		}
 		testContractUncomittedTxn(t, initialHeader, updateFunc)
 	})
+	// Test RecordPaymentIntent.
+	t.Run("RecordPaymentIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending:     types.ZeroCurrency,
+				UploadSpending:      types.ZeroCurrency,
+				FundAccountSpending: types.NewCurrency64(42),
+			}
+			revisedRoots := []crypto.Hash{{1}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			amount := revisedHeader.FundAccountSpending.Sub(initialHeader.FundAccountSpending)
+			txn, err := sc.RecordPaymentIntent(fcr, amount, modules.RPCFundAccount)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
 }
 
 // testContractUncommittedTxn tests that if a contract revision is left in an

@@ -68,6 +68,60 @@ type v1412ContractHeader struct {
 	Locked        bool
 }
 
+// v155ContractHeader is the contract header that was used up to and including
+// v1.5.5.
+type v155ContractHeader struct {
+	// transaction is the signed transaction containing the most recent
+	// revision of the file contract.
+	Transaction types.Transaction
+
+	// secretKey is the key used by the renter to sign the file contract
+	// transaction.
+	SecretKey crypto.SecretKey
+
+	// Same as modules.RenterContract.
+	StartHeight      types.BlockHeight
+	DownloadSpending types.Currency
+	StorageSpending  types.Currency
+	UploadSpending   types.Currency
+	TotalCost        types.Currency
+	ContractFee      types.Currency
+	TxnFee           types.Currency
+	SiafundFee       types.Currency
+
+	Utility modules.ContractUtility
+}
+
+// contractHeaderDecodeV155ToV156 attempts to decode a contract header using
+// the persist struct as of v1.4.1.2, returning a header that has been converted
+// to the v1.5.6 version of the header.
+func contractHeaderDecodeV1420ToV156(f io.Reader, decodeMaxSize int) (contractHeader, error) {
+	var v155Header v155ContractHeader
+	err := encoding.NewDecoder(f, decodeMaxSize).Decode(&v155Header)
+	if err != nil {
+		return contractHeader{}, errors.AddContext(err, "unable to decode header as a v155Header header")
+	}
+
+	return contractHeader{
+		Transaction: v155Header.Transaction,
+
+		SecretKey: v155Header.SecretKey,
+
+		StartHeight:         v155Header.StartHeight,
+		DownloadSpending:    v155Header.DownloadSpending,
+		FundAccountSpending: types.ZeroCurrency,
+		MaintenanceSpending: types.ZeroCurrency,
+		StorageSpending:     v155Header.StorageSpending,
+		UploadSpending:      v155Header.UploadSpending,
+		TotalCost:           v155Header.TotalCost,
+		ContractFee:         v155Header.ContractFee,
+		TxnFee:              v155Header.TxnFee,
+		SiafundFee:          v155Header.SiafundFee,
+
+		Utility: v155Header.Utility,
+	}, nil
+}
+
 // contractHeaderDecodeV1412ToV1420 attempts to decode a contract header using
 // the persist struct as of v1.4.1.2, returning a header that has been converted
 // to the v1.4.2 version of the header.

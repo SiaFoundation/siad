@@ -149,15 +149,17 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// Estimate the amount of money that's going to be needed for existing
 	// storage.
 	dataStored := contract.Transaction.FileContractRevisions[0].NewFileSize
-	maintenanceCost := types.NewCurrency64(dataStored).Mul64(uint64(allowance.Period)).Mul(host.StoragePrice)
+	storageCost := types.NewCurrency64(dataStored).Mul64(uint64(allowance.Period)).Mul(host.StoragePrice)
 
-	// For the upload and download estimates, we're going to need to know the
-	// amount of money that was spent on upload and download by this contract
-	// line in this period. That's going to require iterating over the renew
-	// history of the contract to get all the spending across any refreshes that
-	// occurred this period.
+	// For the spending estimates, we're going to need to know the amount of
+	// money that was spent on upload and download by this contract line in this
+	// period. That's going to require iterating over the renew history of the
+	// contract to get all the spending across any refreshes that occurred this
+	// period.
 	prevUploadSpending := contract.UploadSpending
 	prevDownloadSpending := contract.DownloadSpending
+	prevFundAccountSpending := contract.FundAccountSpending
+	prevMaintenanceSpending := contract.MaintenanceSpending
 	c.mu.Lock()
 	currentID := contract.ID
 	for i := 0; i < 10e3; i++ { // prevent an infinite loop if there's an [impossible] contract cycle
@@ -182,9 +184,11 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 			break
 		}
 
-		// Add the upload and download spending.
+		// Add the historical spending metrics.
 		prevUploadSpending = prevUploadSpending.Add(currentContract.UploadSpending)
 		prevDownloadSpending = prevDownloadSpending.Add(currentContract.DownloadSpending)
+		prevFundAccountSpending = prevFundAccountSpending.Add(currentContract.FundAccountSpending)
+		prevMaintenanceSpending = prevMaintenanceSpending.Add(currentContract.MaintenanceSpending)
 	}
 	c.mu.Unlock()
 
@@ -213,6 +217,13 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// uploading more data, the expectation is that the download amounts will be
 	// relatively constant. Add in the contract price as well.
 	newDownloadsCost := prevDownloadSpending
+
+	// The estimated cost for funding ephemeral accounts and performing RHP3
+	// maintenance such as updating price tables and syncing the ephemeral
+	// account balance is expected to remain identical.
+	newFundAccountCost := prevFundAccountSpending
+	newMaintenanceCost := prevMaintenanceSpending
+
 	contractPrice := host.ContractPrice
 
 	// Aggregate all estimates so far to compute the estimated siafunds fees.
@@ -220,7 +231,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// users are not charged siafund fees on money that doesn't go into the file
 	// contract (and the transaction fee goes to the miners, not the file
 	// contract).
-	beforeSiafundFeesEstimate := maintenanceCost.Add(newUploadsCost).Add(newDownloadsCost).Add(contractPrice)
+	beforeSiafundFeesEstimate := storageCost.Add(newUploadsCost).Add(newDownloadsCost).Add(newFundAccountCost).Add(newMaintenanceCost).Add(contractPrice)
 	afterSiafundFeesEstimate := types.Tax(blockHeight, beforeSiafundFeesEstimate).Add(beforeSiafundFeesEstimate)
 
 	// Get an estimate for how much money we will be charged before going into

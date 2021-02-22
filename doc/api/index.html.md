@@ -2997,13 +2997,15 @@ Returns the current settings along with metrics on the renter's spending.
     "streamcachesize":    4     // int
   },
   "financialmetrics": {
-    "contractfees":     "1234", // hastings
-    "contractspending": "1234", // hastings (deprecated, now totalallocated)
-    "downloadspending": "5678", // hastings
-    "storagespending":  "1234", // hastings
-    "totalallocated":   "1234", // hastings
-    "uploadspending":   "5678", // hastings
-    "unspent":          "1234"  // hastings
+    "contractfees":        "1234", // hastings
+    "contractspending":    "1234", // hastings (deprecated, now totalallocated)
+    "downloadspending":    "5678", // hastings
+    "fundaccountspending": "5678", // hastings
+    "maintenancespending": "5678", // hastings
+    "storagespending":     "1234", // hastings
+    "totalallocated":      "1234", // hastings
+    "uploadspending":      "5678", // hastings
+    "unspent":             "1234"  // hastings
   },
   "currentperiod":  6000  // blockheight
   "nextperiod":    12248  // blockheight
@@ -3136,6 +3138,13 @@ fees.
 
 **downloadspending** | hastings  
 Amount of money spent on downloads.  
+
+**fundaccountspending** | hastings  
+Amount of money spent on funding an ephemeral account on a host.  
+
+**maintenancespending** | hastings  
+Amount of money spent on maintenance, such as updating price tables or syncing
+the ephemeral account balance with the host.  
 
 **storagespending** | hastings  
 Amount of money spend on storage.  
@@ -3429,9 +3438,10 @@ flag indicating if recoverable contracts should be returned.
 {
   "activecontracts": [
     {
-      "downloadspending": "1234", // hastings
-      "endheight":        50000,  // block height
-      "fees":             "1234", // hastings
+      "downloadspending": "1234",    // hastings
+      "endheight":        50000,     // block height
+      "fees":             "1234",    // hastings
+      "fundaccountspending": "1234", // hastings
       "hostpublickey": {
         "algorithm": "ed25519",   // string
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // hash
@@ -3439,6 +3449,7 @@ flag indicating if recoverable contracts should be returned.
       "hostversion":      "1.4.0",  // string
       "id": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // hash
       "lasttransaction": {},                // transaction
+      "maintenancespending": "1234",        // hastings
       "netaddress":       "12.34.56.78:9",  // string
       "renterfunds":      "1234",           // hastings
       "size":             8192,             // bytes
@@ -3461,6 +3472,9 @@ flag indicating if recoverable contracts should be returned.
 ```
 **downloadspending** | hastings  
 Amount of contract funds that have been spent on downloads.  
+
+**fundaccountspending** | hastings  
+Amount of money spent on funding an ephemeral account on a host.  
 
 **endheight** | block height  
 Block height that the file contract ends on.  
@@ -3485,6 +3499,10 @@ ID of the file contract.
 
 **lasttransaction** | transaction  
 A signed transaction containing the most recent contract revision.  
+
+**maintenancespending** | hastings  
+Amount of money spent on maintenance, such as updating price tables or syncing
+the ephemeral account balance with the host.  
 
 **netaddress** | string  
 Address of the host the file contract was formed with.  

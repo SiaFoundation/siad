@@ -103,16 +103,18 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 	totalCost = totalCost.Add(rc.FileContract.ValidRenterPayout())
 	totalCost = totalCost.Add(rc.TxnFee)
 	return cs.managedInsertContract(contractHeader{
-		Transaction:      revTxn,
-		SecretKey:        sk,
-		StartHeight:      rc.StartHeight,
-		DownloadSpending: types.NewCurrency64(1), // TODO set this
-		StorageSpending:  types.NewCurrency64(1), // TODO set this
-		UploadSpending:   types.NewCurrency64(1), // TODO set this
-		TotalCost:        totalCost,
-		ContractFee:      types.NewCurrency64(1), // TODO set this
-		TxnFee:           rc.TxnFee,
-		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout),
+		Transaction:         revTxn,
+		SecretKey:           sk,
+		StartHeight:         rc.StartHeight,
+		DownloadSpending:    types.NewCurrency64(1), // TODO set this
+		FundAccountSpending: types.NewCurrency64(1), // TODO set this
+		MaintenanceSpending: types.NewCurrency64(1), // TODO set this
+		StorageSpending:     types.NewCurrency64(1), // TODO set this
+		UploadSpending:      types.NewCurrency64(1), // TODO set this
+		TotalCost:           totalCost,
+		ContractFee:         types.NewCurrency64(1), // TODO set this
+		TxnFee:              rc.TxnFee,
+		SiafundFee:          types.Tax(rc.StartHeight, rc.Payout),
 	}, roots)
 }
 

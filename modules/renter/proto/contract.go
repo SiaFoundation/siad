@@ -63,15 +63,17 @@ type contractHeader struct {
 	SecretKey crypto.SecretKey
 
 	// Same as modules.RenterContract.
-	StartHeight      types.BlockHeight
-	DownloadSpending types.Currency
-	StorageSpending  types.Currency
-	UploadSpending   types.Currency
-	TotalCost        types.Currency
-	ContractFee      types.Currency
-	TxnFee           types.Currency
-	SiafundFee       types.Currency
-	Utility          modules.ContractUtility
+	StartHeight         types.BlockHeight
+	DownloadSpending    types.Currency
+	FundAccountSpending types.Currency
+	MaintenanceSpending types.Currency
+	StorageSpending     types.Currency
+	UploadSpending      types.Currency
+	TotalCost           types.Currency
+	ContractFee         types.Currency
+	TxnFee              types.Currency
+	SiafundFee          types.Currency
+	Utility             modules.ContractUtility
 }
 
 // validate returns an error if the contractHeader is invalid.
@@ -189,8 +191,19 @@ func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.T
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
 
-	// TODO update contract header to support 'FundAccountSpending' or
-	// 'UnknownSpending', depending on the RPC
+	// track spending
+	switch rpc {
+	// fund account
+	case modules.RPCFundAccount:
+		newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+	// maintenance spending
+	case modules.RPCAccountBalance:
+		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(amount)
+	case modules.RPCUpdatePriceTable:
+		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(amount)
+	default:
+		build.Critical("unexpected rpc") // ensure we track all RPCs
+	}
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
@@ -241,20 +254,22 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 	defer c.mu.Unlock()
 	h := c.header
 	return modules.RenterContract{
-		ID:               h.ID(),
-		Transaction:      h.copyTransaction(),
-		HostPublicKey:    h.HostPublicKey(),
-		StartHeight:      h.StartHeight,
-		EndHeight:        h.EndHeight(),
-		RenterFunds:      h.RenterFunds(),
-		DownloadSpending: h.DownloadSpending,
-		StorageSpending:  h.StorageSpending,
-		UploadSpending:   h.UploadSpending,
-		TotalCost:        h.TotalCost,
-		ContractFee:      h.ContractFee,
-		TxnFee:           h.TxnFee,
-		SiafundFee:       h.SiafundFee,
-		Utility:          h.Utility,
+		ID:                  h.ID(),
+		Transaction:         h.copyTransaction(),
+		HostPublicKey:       h.HostPublicKey(),
+		StartHeight:         h.StartHeight,
+		EndHeight:           h.EndHeight(),
+		RenterFunds:         h.RenterFunds(),
+		DownloadSpending:    h.DownloadSpending,
+		FundAccountSpending: h.FundAccountSpending,
+		MaintenanceSpending: h.MaintenanceSpending,
+		StorageSpending:     h.StorageSpending,
+		UploadSpending:      h.UploadSpending,
+		TotalCost:           h.TotalCost,
+		ContractFee:         h.ContractFee,
+		TxnFee:              h.TxnFee,
+		SiafundFee:          h.SiafundFee,
+		Utility:             h.Utility,
 	}
 }
 
@@ -276,8 +291,19 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 	newHeader.Transaction.TransactionSignatures = nil
 
-	// TODO update contract header to support 'FundAccountSpending' or
-	// 'UnknownSpending', depending on the RPC
+	// track spending
+	switch rpc {
+	// fund account
+	case modules.RPCFundAccount:
+		newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+	// maintenance spending
+	case modules.RPCAccountBalance:
+		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(amount)
+	case modules.RPCUpdatePriceTable:
+		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(amount)
+	default:
+		build.Critical("unexpected rpc") // ensure we track all RPCs
+	}
 
 	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
@@ -903,14 +929,18 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 	if err != nil {
 		// Unable to decode the old header, try a new decode. Seek the file back
 		// to the beginning.
-		var v1412DecodeErr error
+		var decodeErr error
 		_, seekErr := f.Seek(0, 0)
 		if seekErr != nil {
 			return contractHeader{}, errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
 		}
-		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
-		if v1412DecodeErr != nil {
-			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
+		header, decodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
+		if decodeErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, decodeErr), "unable to decode v1412 contract header")
+		}
+		header, decodeErr = contractHeaderDecodeV1420ToV156(f, decodeMaxSize)
+		if decodeErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, decodeErr), "unable to decode v142 contract header")
 		}
 	}
 	if err := header.validate(); err != nil {

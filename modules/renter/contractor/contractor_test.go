@@ -551,6 +551,11 @@ func TestPayment(t *testing.T) {
 	// backup the amount renter funds
 	initial := contract.RenterFunds
 
+	// check spending metrics are zero
+	if !contract.FundAccountSpending.IsZero() || !contract.MaintenanceSpending.IsZero() {
+		t.Fatal("unexpected spending metrics")
+	}
+
 	// write the rpc id
 	stream, err := newStream(mux, h)
 	if err != nil {
@@ -594,6 +599,11 @@ func TestPayment(t *testing.T) {
 	expected := initial.Sub(pt.UpdatePriceTableCost)
 	if !remaining.Equals(expected) {
 		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
+	}
+
+	// check maintenance funding metric got updated
+	if !contract.MaintenanceSpending.Equals(pt.UpdatePriceTableCost) {
+		t.Fatal("unexpected maintenance spending metric", contract.MaintenanceSpending)
 	}
 
 	// prepare a buffer so we can optimize our writes
@@ -659,6 +669,12 @@ func TestPayment(t *testing.T) {
 	}
 	if !receipt.Host.Equals(hpk) {
 		t.Fatalf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, receipt.Host)
+	}
+
+	// check fund account metric got updated
+	contract, _ = c.ContractByPublicKey(hpk)
+	if !contract.FundAccountSpending.Equals(funding.Add(pt.FundAccountCost)) {
+		t.Fatalf("unexpected funding spending metric %v != %v", contract.FundAccountSpending, funding)
 	}
 }
 
