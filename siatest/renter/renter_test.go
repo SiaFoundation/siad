@@ -5447,6 +5447,11 @@ func TestRenterRepairSize(t *testing.T) {
 	m := tg.Miners()[0]
 	checkRepairSize := func(dirSiaPath modules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
+			// Make sure the directory is being updated
+			err := r.RenterBubblePost(dirSiaPath, true, true)
+			if err != nil {
+				return err
+			}
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
 				return err

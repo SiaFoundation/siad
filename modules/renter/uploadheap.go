@@ -723,15 +723,18 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 			continue
 		}
 
-		// If a chunk is not able to be repaired, mark it as stuck.
-		var stuck bool
+		// If a chunk is not able to be repaired, mark it as stuck. Otherwise we do
+		// not want to update the stuck status as another thread might have update
+		// the stuck status while we have been working with this chunk.
+		var setStuck bool
 		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
-			stuck = true
+			chunk.stuck = true
+			setStuck = true
 		}
 
 		// Close entry of completed chunk
-		err := r.managedSetStuckAndClose(chunk, stuck)
+		err := r.managedSetStuckAndClose(chunk, chunk.stuck, setStuck)
 		if err != nil {
 			r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
