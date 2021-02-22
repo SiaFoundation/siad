@@ -242,7 +242,9 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
-			build.Critical("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
+			err = errors.New("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
+			build.Critical(err)
+			return err
 		}
 		sub.subscribed = make(chan struct{})
 	}
