@@ -123,7 +123,6 @@ type (
 		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
 
-		// Utilities.
 		staticTG threadgroup.ThreadGroup
 		mu       sync.Mutex
 		renter   *Renter

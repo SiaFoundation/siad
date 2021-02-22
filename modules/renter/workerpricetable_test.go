@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -34,6 +35,11 @@ func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
 	}()
 	w := wt.worker
 
+	// verify recent err is nil
+	if w.staticPriceTable().staticRecentErr != nil {
+		t.Fatal("unexpected")
+	}
+
 	// get the host's blockheight
 	hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
 
@@ -59,12 +65,18 @@ func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
 	wptc.staticPriceTable = wpt.staticPriceTable
 	w.staticSetPriceTable(wptc)
 
-	// update the price table, verify the update errored out and rejected the
-	// host's price table due to an invalid blockheight
-	w.staticUpdatePriceTable()
-	err = w.staticPriceTable().staticRecentErr
-	if !errors.Contains(err, errHostBlockHeightNotWithinTolerance) {
-		t.Fatalf("Expected price table to be rejected due to invalid host block height, instead error was '%v'", err)
+	// verify the update errored out and rejected the host's price table due to
+	// an invalid blockheight
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		w.staticWake()
+		err = w.staticPriceTable().staticRecentErr
+		if !errors.Contains(err, errHostBlockHeightNotWithinTolerance) {
+			return errors.New("pricetable was not rejected")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

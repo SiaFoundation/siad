@@ -268,7 +268,7 @@ func TestAddSectorFillFolder(t *testing.T) {
 			defer wg.Done()
 			err := cmt.cm.AddSector(roots[i], datas[i])
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}(i)
 	}
@@ -349,7 +349,7 @@ func TestAddSectorFillLargerFolder(t *testing.T) {
 			defer wg.Done()
 			err := cmt.cm.AddSector(roots[i], datas[i])
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}(i)
 	}
@@ -727,14 +727,14 @@ func TestAddVirtualSectorParallel(t *testing.T) {
 		defer wg.Done()
 		err := cmt.cm.AddSector(root, data)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		err := cmt.cm.AddSector(root, data)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 	wg.Wait()
@@ -1599,7 +1599,7 @@ func TestSectorBalancing(t *testing.T) {
 			defer wg.Done()
 			err := cmt.cm.AddSector(randSector())
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 	}
@@ -1778,7 +1778,7 @@ func TestFailingStorageFolder(t *testing.T) {
 			defer wg.Done()
 			err := cmt.cm.AddSector(randSector())
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 	}
@@ -1831,7 +1831,7 @@ func TestFailingStorageFolder(t *testing.T) {
 			defer wg.Done()
 			err := cmt.cm.AddSector(randSector())
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		}()
 	}
