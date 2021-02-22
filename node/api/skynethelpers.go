@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -34,6 +35,7 @@ type (
 		filename            string
 		force               bool
 		mode                os.FileMode
+		monetization        []modules.Monetizer
 		root                bool
 		siaPath             modules.SiaPath
 		skyKeyID            skykey.SkykeyID
@@ -232,6 +234,19 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
+	// parse 'monetization'.
+	var monetization []modules.Monetizer
+	monetizationStr := queryForm.Get("monetization")
+	if monetizationStr != "" {
+		err = json.Unmarshal([]byte(monetizationStr), &monetization)
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'monetizers'")
+		}
+		if err := modules.ValidateMonetization(monetization); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	// validate parameter combos
 
 	// verify force is not set if disable force header was set
@@ -278,6 +293,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		filename:            filename,
 		force:               force,
 		mode:                mode,
+		monetization:        monetization,
 		root:                root,
 		siaPath:             siaPath,
 		skyKeyID:            skykeyID,

@@ -77,22 +77,22 @@ and performant manner.
 ## Subsystems
 The Renter has the following subsystems that help carry out its
 responsibilities.
- - [Filesystem Controllers](#filesystem-controllers)
- - [Fuse Subsystem](#fuse-subsystem)
- - [Fuse Manager Subsystem](#fuse-manager-subsystem)
- - [Persistence Subsystem](#persistence-subsystem)
- - [Memory Subsystem](#memory-subsystem)
- - [Worker Subsystem](#worker-subsystem)
- - [Download Subsystem](#download-subsystem)
+ - [Backup Subsystem](#backup-subsystem)
+ - [Download Project Subsystem](#download-project-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
- - [Download By Root Subsystem](#download-by-root-subsystem)
+ - [Download Subsystem](#download-subsystem)
+ - [Filesystem Controllers](#filesystem-controllers)
+ - [Fuse Manager Subsystem](#fuse-manager-subsystem)
+ - [Fuse Subsystem](#fuse-subsystem)
+ - [Health and Repair Subsystem](#health-and-repair-subsystem)
+ - [Memory Subsystem](#memory-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
  - [Skyfile Subsystem](#skyfile-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
- - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
- - [Health and Repair Subsystem](#health-and-repair-subsystem)
- - [Backup Subsystem](#backup-subsystem)
- - [Refresh Paths Subsystem](#refresh-paths-subsystem)
+ - [Upload Subsystem](#upload-subsystem)
+ - [Worker Subsystem](#worker-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -425,11 +425,47 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
+### Download Project Subsystem
+**Key Files**
+ - [projectchunkworkerset.go](./projectchunkworkerset.go)
+ - [projectdownloadchunk.go](./projectdownloadchunk.go)
+ - [projectdownloadinit.go](./projectdownloadinit.go)
+ - [projectdownloadoverdrive.go](./projectdownloadoverdrive.go)
+
+The download project subsystem contains all the necessary logic to download a
+single chunk. Such a project can be initialized with a set of roots, which is
+what happens for Skynet downloads, or with a Siafile, where we already know what
+hosts have what roots.
+
+The project will, immediately after it has been initialized, spin up a bunch of
+jobs that will locate what hosts have what sectors. This is accomplished through
+'HasSector' worker jobs. The result of this initial scan is saved in the
+project's worker state. Every so often this state is being recalculated to
+ensure we keep up-to-date on the best way to retrieve the file from the network.
+
+Once the project has been initialized it can be used to download data, because
+we keep the track of the network state it is beneficial to reuse these objects,
+as it saves the time it takes to scan the network. Downloading data happens
+through a different download project called the 'ProjectDownloadChunk', or PDC
+for short.
+
+The PDC will use the network scan performed earlier to launch download jobs on
+workers that should be able to retrieve the piece. This process consist of two
+stages, namely the initial launch stage and the overdrive stage. The download
+code is very clever when selecting the initial set of workers that are being
+launched, it will take into account historical job timings and will try to make
+good estimates on how long a worker should take to retrieve the data from its
+host. This, in combination with a parameter that can be configured by the caller
+called 'price per millisecond', will be used to construct a set of workers, best
+suited for the download job. Once these workers have been launched, the second
+stage will kick in. This stage is called the overdrive stage, and will make sure
+that consecutive workers will be launched, should a worker in the initial set
+fail or be late.
+
 ### Skyfile Subsystem
 **Key Files**
  - [skyfile.go](./skyfile.go)
  - [skyfilefanout.go](./skyfilefanout.go)
- - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
 
 The skyfile system contains methods for encoding, decoding, uploading, and
 downloading skyfiles using Skylinks, and is one of the foundations underpinning
@@ -450,6 +486,7 @@ skylink.
 **Key Files**
  - [streambuffer.go](./streambuffer.go)
  - [streambufferlru.go](./streambufferlru.go)
+ - [skylinkdatasource.go](./skylinkdatasource.go)
 
 The stream buffer subsystem coordinates buffering for a set of streams. Each
 stream has an LRU which includes both the recently visited data as well as data
@@ -461,6 +498,11 @@ share their cache. Each stream will maintain its own LRU, but the data is stored
 in a common stream buffer. The stream buffers draw their data from a data source
 interface, which allows multiple different types of data sources to use the
 stream buffer.
+
+A SkylinkDataSource acts as a data source to the stream buffer. As the name
+suggests, such a data source can be initialized using a Skylink, and thus be
+used to download the data from the Skyfile. Internally this data source uses the
+download projects, as described in the [download project subsystem](#download-project-subsystem).
 
 ### Upload Subsystem
 **Key Files**
@@ -493,23 +535,6 @@ merkle root and the contract revision.
  - `Upload` calls `callBuildAndPushChunks` to add upload chunks to the
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
-
-### Download By Root Subsystem
-**Key Files**
- - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
- - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
-
-The download by root subsystem exports a single method that allows a caller to
-download or partially download a sector from the Sia network knowing only the
-Merkle root of that sector, and not necessarily knowing which host on the
-network has that sector. The single exported method is 'DownloadByRoot'.
-
-This subsystem was created primarily as a facilitator for the skylinks of
-Skynet. Skylinks provide a merkle root and some offset+length information, but
-do not provide any information about which hosts are storing the sectors. The
-exported method of this subsystem will primarily be called by skylink methods,
-as opposed to being used directly by external users.
-
 ### Upload Streaming Subsystem
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)
