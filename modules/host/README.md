@@ -18,6 +18,20 @@ host. The most common transactions are uploading and downloading data, however
 any RPC that requires payment will support receiving payment from an ephemeral
 account.
 
+## Alerts
+
+The Host implements the `Alert` interface and thus registers several alerts in
+the global Alert system. These alerts are returned by the daemon and notify the
+user of potentially critical events.
+
+The host might register the following alerts:
+- **AlertIDHostDiskTrouble**\
+  registered when the host is encountering problems interacting with one or more
+  of his disks
+- **AlertIDHostInsufficientCollateral**\
+  registered if the host has insufficient collateral budget left to form or
+  renew a contract
+
 ## Submodules
 
  - [ContractManager](./contractmanager/README.md)
