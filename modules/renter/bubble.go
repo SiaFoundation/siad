@@ -117,6 +117,9 @@ func (bs *bubbleScheduler) atomicStatus() (uint64, uint64) {
 
 // callCompleteBubbleUpdate will complete the bubble update and update the
 // status and the bubble map accordingly.
+//
+// TODO: refactor managedPerformBubbleMetadata into bubble subsystem as that is
+// the only reason this is a `call` method instead of a `managed` method
 func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
