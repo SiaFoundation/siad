@@ -120,7 +120,11 @@ func (urp *uniqueRefreshPaths) refreshAll() {
 			defer wg.Done()
 			for siaPath := range siaPathChan {
 				complete := urp.r.staticBubbleScheduler.callQueueBubble(siaPath)
-				<-complete
+				select {
+				case <-complete:
+				case <-urp.r.tg.StopChan():
+					return
+				}
 			}
 		}()
 	}
