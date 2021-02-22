@@ -45,15 +45,15 @@ type (
 		atomicFifoSize uint64
 		atomicMapSize  uint64
 
+		// bubbleNeeded is a channel used to signal the bubbleScheduler that a bubble
+		// is needed
+		bubbleNeeded chan struct{}
+
 		// bubbleUpdates is a map of the requested bubble updates
 		bubbleUpdates map[modules.SiaPath]*bubbleUpdate
 
 		// fifo is a First In Fist Out queue of bubble updates
 		fifo *bubbleQueue
-
-		// bubbleNeeded is a channel used to signal the bubbleScheduler that a bubble
-		// is needed
-		bubbleNeeded chan struct{}
 
 		// Utilities
 		mu           sync.Mutex
@@ -88,9 +88,9 @@ func newBubbleQueue() *bubbleQueue {
 // newBubbleScheduler returns an initialized bubbleScheduler
 func newBubbleScheduler(r *Renter) *bubbleScheduler {
 	return &bubbleScheduler{
+		bubbleNeeded:  make(chan struct{}, 1),
 		bubbleUpdates: make(map[modules.SiaPath]*bubbleUpdate),
 		fifo:          newBubbleQueue(),
-		bubbleNeeded:  make(chan struct{}, 1),
 
 		staticRenter: r,
 	}
@@ -256,8 +256,8 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 		for i := 0; i < numBubbleWorkerThreads; i++ {
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				bubbleWorker(bubbleChan)
-				wg.Done()
 			}()
 		}
 
