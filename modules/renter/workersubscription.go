@@ -70,7 +70,7 @@ type (
 	}
 
 	// subscription is a struct that provides additional information around a
-	// subscribed to registry entry.
+	// subscription.
 	subscription struct {
 		staticRequest *modules.RPCRegistrySubscriptionRequest
 
@@ -105,6 +105,183 @@ func (sub *subscription) active() bool {
 	return false
 }
 
+// managedSubscriptionDiff returns the difference between the desired
+// subscriptions and the active subscriptions. It also returns a slice of
+// channels which need to be closed when the corresponding desired subscription
+// was established.
+func (subInfo *subscriptionInfos) managedSubscriptionDiff() (toSubscribe, toUnsubscribe []modules.RPCRegistrySubscriptionRequest, subChans []chan struct{}) {
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	for sid, sub := range subInfo.subscriptions {
+		if !sub.subscribe && !sub.active() {
+			// Delete the subscription. We are neither supposed to subscribe
+			// to it nor are we subscribed to it.
+			delete(subInfo.subscriptions, sid)
+			// Close its channel.
+			close(sub.subscribed)
+		} else if sub.active() && !sub.subscribe {
+			// Unsubscribe from the entry.
+			toUnsubscribe = append(toUnsubscribe, *sub.staticRequest)
+		} else if !sub.active() && sub.subscribe {
+			// Subscribe and remember the channel to close it later.
+			toSubscribe = append(toSubscribe, *sub.staticRequest)
+			subChans = append(subChans, sub.subscribed)
+		}
+	}
+	return
+}
+
+// managedExtendSubscriptionPeriod extends the ongoing subscription with a host
+// and adjusts the deadline on the stream.
+func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *modules.RPCBudget, oldDeadline time.Time, oldPT *modules.RPCPriceTable) (*modules.RPCPriceTable, time.Time, error) {
+	subInfo := w.staticSubscriptionInfo
+
+	// Get a pricetable that is valid until the new deadline.
+	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
+	newPT := w.managedPriceTableForSubscription(time.Until(newDeadline))
+
+	// Try extending the subscription.
+	err := modules.RPCExtendSubscription(stream, newPT)
+	if err != nil {
+		return nil, time.Time{}, errors.AddContext(err, "failed to extend subscription")
+	}
+
+	// Count the number of active subscriptions.
+	var nSubs uint64
+	for _, sub := range subInfo.subscriptions {
+		if sub.active() {
+			nSubs++
+		}
+	}
+
+	// Withdraw from budget.
+	if !budget.Withdraw(modules.MDMSubscriptionMemoryCost(newPT, nSubs)) {
+		return nil, time.Time{}, errors.New("failed to withdraw subscription extension cost from budget")
+	}
+
+	// Set the stream deadline to the new subscription deadline.
+	err = stream.SetDeadline(newDeadline)
+	if err != nil {
+		return nil, time.Time{}, errors.AddContext(err, "failed to set stream deadlien to subscription deadline")
+	}
+
+	// Increment stats for extending the subscription.
+	atomic.AddUint64(&subInfo.atomicExtensions, 1)
+	return newPT, newDeadline, nil
+}
+
+// managedRefillSubscription refills the subscription up until expectedBudget.
+func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, expectedBudget types.Currency, budget *modules.RPCBudget) error {
+	fundAmt := expectedBudget.Sub(budget.Remaining())
+
+	// Track the withdrawal.
+	w.staticAccount.managedTrackWithdrawal(fundAmt)
+
+	// Fund the subscription.
+	err := w.managedFundSubscription(stream, pt, fundAmt)
+	if err != nil {
+		w.staticAccount.managedCommitWithdrawal(fundAmt, false)
+		return errors.AddContext(err, "failed to fund subscription")
+	}
+
+	// Success. Add the funds to the budget and signal to the account
+	// that the withdrawal was successful.
+	budget.Deposit(fundAmt)
+	w.staticAccount.managedCommitWithdrawal(fundAmt, true)
+	return nil
+}
+
+// managedSubscriptionCleanup cleans up a subscription by signalling the host
+// that we would like to stop the subscription and resetting the subscription
+// related fields in the subscription info.
+func (w *worker) managedSubscriptionCleanup(stream siamux.Stream, subscriber string) (err error) {
+	subInfo := w.staticSubscriptionInfo
+
+	// Close the stream gracefully.
+	err = modules.RPCStopSubscription(stream)
+
+	// After signalling to shut down the subscription, we wait for a short
+	// grace period to allow for incoming streams which were already read by
+	// the siamux but did not have the handler called upon them yet. This
+	// makes sure that our bandwidth expectations don't drift apart from the
+	// host's. We want to always wait for this even upon shutdown to make
+	// sure we refund our account correctly.
+	time.Sleep(stopSubscriptionGracePeriod)
+
+	// Close the handler.
+	err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
+
+	// Clear the active subsriptions at the end of this method.
+	subInfo.mu.Lock()
+	for _, sub := range subInfo.subscriptions {
+		// Replace closed channels.
+		select {
+		case <-sub.subscribed:
+			sub.subscribed = make(chan struct{})
+		default:
+		}
+	}
+	subInfo.mu.Unlock()
+	return err
+}
+
+// managedUnsubscribeFromRVs unsubscribes the worker from multiple ongoing
+// subscriptions.
+func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe []modules.RPCRegistrySubscriptionRequest) error {
+	subInfo := w.staticSubscriptionInfo
+	// Unsubscribe.
+	err := modules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
+	if err != nil {
+		return errors.AddContext(err, "failed to unsubscribe from registry values")
+	}
+	// Reset the subscription's channel to signal that it's no longer
+	// active.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	for _, req := range toUnsubscribe {
+		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
+		sub, exists := subInfo.subscriptions[sid]
+		if !exists {
+			build.Critical("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
+		}
+		sub.subscribed = make(chan struct{})
+	}
+	return nil
+}
+
+// managedSubscribeToRVs subscribes the workers to multiple registry values.
+func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modules.RPCRegistrySubscriptionRequest, subChans []chan struct{}, budget *modules.RPCBudget, pt *modules.RPCPriceTable) error {
+	subInfo := w.staticSubscriptionInfo
+	// Subscribe.
+	rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
+	if err != nil {
+		return errors.AddContext(err, "failed to subscribe to registry values")
+	}
+	// Check that the initial values are not outdated and update the cache.
+	for _, rv := range rvs {
+		cachedRevision, exists := w.staticRegistryCache.Get(rv.PubKey, rv.Entry.Tweak)
+		if exists && rv.Entry.Revision < cachedRevision {
+			return fmt.Errorf("host returned an entry with revision %v which is smaller than cached revision %v for the same entry", rv.Entry.Revision, cachedRevision)
+		}
+		w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
+	}
+	// Withdraw from budget.
+	if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
+		return errors.New("failed to withdraw subscription payment from budget")
+	}
+	// Update the subscriptions with the received values.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	for _, rv := range rvs {
+		subInfo.subscriptions[modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
+	}
+	// Close the channels to signal that the subscription is done.
+	for _, c := range subChans {
+		close(c)
+	}
+	return nil
+}
+
 // managedSubscriptionLoop handles an existing subscription session. It will add
 // subscriptions, remove subscriptions, fund the subscription and extend it
 // indefinitely.
@@ -128,31 +305,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	// Register some cleanup.
 	subInfo := w.staticSubscriptionInfo
 	defer func() {
-		// Close the stream gracefully.
-		err = errors.Compose(err, modules.RPCStopSubscription(stream))
-
-		// After signalling to shut down the subscription, we wait for a short
-		// grace period to allow for incoming streams which were already read by
-		// the siamux but did not have the handler called upon them yet. This
-		// makes sure that our bandwidth expectations don't drift apart from the
-		// host's. We want to always wait for this even upon shutdown to make
-		// sure we refund our account correctly.
-		time.Sleep(stopSubscriptionGracePeriod)
-
-		// Close the handler.
-		err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
-
-		// Clear the active subsriptions at the end of this method.
-		subInfo.mu.Lock()
-		for _, sub := range subInfo.subscriptions {
-			// Replace closed channels.
-			select {
-			case <-sub.subscribed:
-				sub.subscribed = make(chan struct{})
-			default:
-			}
-		}
-		subInfo.mu.Unlock()
+		err = errors.Compose(err, w.managedSubscriptionCleanup(stream, subscriber))
 	}()
 
 	// Set the stream deadline to the subscription deadline.
@@ -164,144 +317,52 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	for {
 		// If the budget is half empty, fund it.
 		if budget.Remaining().Cmp(expectedBudget.Div64(2)) < 0 {
-			fundAmt := expectedBudget.Sub(budget.Remaining())
-
-			// Track the withdrawal.
-			w.staticAccount.managedTrackWithdrawal(fundAmt)
-
-			// Fund the subscription.
-			err = w.managedFundSubscription(stream, pt, fundAmt)
+			err = w.managedRefillSubscription(stream, pt, expectedBudget, budget)
 			if err != nil {
-				w.staticAccount.managedCommitWithdrawal(fundAmt, false)
-				return errors.AddContext(err, "failed to fund subscription")
+				return err
 			}
-
-			// Success. Add the funds to the budget and signal to the account
-			// that the withdrawal was successful.
-			budget.Deposit(fundAmt)
-			w.staticAccount.managedCommitWithdrawal(fundAmt, true)
 		}
 
 		// If the subscription period is halfway over, extend it.
 		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
-			// Get a pricetable that is valid until the new deadline.
-			deadline = deadline.Add(modules.SubscriptionPeriod)
-			pt = w.managedPriceTableForSubscription(time.Until(deadline))
-
-			// Try extending the subscription.
-			err = modules.RPCExtendSubscription(stream, pt)
+			pt, deadline, err = w.managedExtendSubscriptionPeriod(stream, budget, deadline, pt)
 			if err != nil {
-				return errors.AddContext(err, "failed to extend subscription")
+				return err
 			}
-
-			// Count the number of active subscriptions.
-			var nSubs uint64
-			for _, sub := range subInfo.subscriptions {
-				if sub.active() {
-					nSubs++
-				}
-			}
-			// Withdraw from budget.
-			if !budget.Withdraw(modules.MDMSubscriptionMemoryCost(pt, nSubs)) {
-				return errors.New("failed to withdraw subscription extension cost from budget")
-			}
-			// Set the stream deadline to the new subscription deadline.
-			err = stream.SetDeadline(deadline)
-			if err != nil {
-				return errors.AddContext(err, "failed to set stream deadlien to subscription deadline")
-			}
-			// Increment stats for extending the subscription.
-			atomic.AddUint64(&subInfo.atomicExtensions, 1)
 		}
 
 		// Create a diff between the active subscriptions and the desired
 		// ones.
-		subInfo.mu.Lock()
-		var toUnsubscribe []modules.RPCRegistrySubscriptionRequest
-		var toSubscribe []modules.RPCRegistrySubscriptionRequest
-		var subChans []chan struct{}
-		for sid, sub := range subInfo.subscriptions {
-			if !sub.subscribe && !sub.active() {
-				// Delete the subscription. We are neither supposed to subscribe
-				// to it nor are we subscribed to it.
-				delete(subInfo.subscriptions, sid)
-				// Close its channel.
-				close(sub.subscribed)
-			} else if sub.active() && !sub.subscribe {
-				// Unsubscribe from the entry.
-				toUnsubscribe = append(toUnsubscribe, *sub.staticRequest)
-			} else if !sub.active() && sub.subscribe {
-				// Subscribe and remember the channel to close it later.
-				toSubscribe = append(toSubscribe, *sub.staticRequest)
-				subChans = append(subChans, sub.subscribed)
-			}
-		}
-		subInfo.mu.Unlock()
+		toSubscribe, toUnsubscribe, subChans := subInfo.managedSubscriptionDiff()
 
 		// Unsubscribe from unnecessary subscriptions.
 		if len(toUnsubscribe) > 0 {
-			err = modules.RPCUnsubscribeFromRVs(stream, toUnsubscribe)
+			err = w.managedUnsubscribeFromRVs(stream, toUnsubscribe)
 			if err != nil {
-				return errors.AddContext(err, "failed to unsubscribe from registry values")
+				return err
 			}
-			// Reset the subscription's channel to signal that it's no longer
-			// active.
-			subInfo.mu.Lock()
-			for _, req := range toUnsubscribe {
-				sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
-				sub, exists := subInfo.subscriptions[sid]
-				if !exists {
-					build.Critical("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
-				}
-				sub.subscribed = make(chan struct{})
-			}
-			subInfo.mu.Unlock()
 		}
 
 		// Subscribe to any missing values.
 		if len(toSubscribe) > 0 {
-			rvs, err := modules.RPCSubscribeToRVs(stream, toSubscribe)
+			err = w.managedSubscribeToRVs(stream, toSubscribe, subChans, budget, pt)
 			if err != nil {
-				return errors.AddContext(err, "failed to subscribe to registry values")
+				return err
 			}
-			// Check that the initial values are not outdated and update the cache.
-			for _, rv := range rvs {
-				cachedRevision, exists := w.staticRegistryCache.Get(rv.PubKey, rv.Entry.Tweak)
-				if exists && rv.Entry.Revision < cachedRevision {
-					return fmt.Errorf("host returned an entry with revision %v which is smaller than cached revision %v for the same entry", rv.Entry.Revision, cachedRevision)
-				}
-				w.staticRegistryCache.Set(rv.PubKey, rv.Entry, false)
-			}
-			// Withdraw from budget.
-			if !budget.Withdraw(modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(toSubscribe)))) {
-				return errors.New("failed to withdraw subscription payment from budget")
-			}
-			// Update the subscriptions with the received values.
-			subInfo.mu.Lock()
-			for _, rv := range rvs {
-				subInfo.subscriptions[modules.RegistrySubscriptionID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
-			}
-			// Close the channels to signal that the subscription is done.
-			for _, c := range subChans {
-				close(c)
-			}
-			subInfo.mu.Unlock()
 		}
 
 		// Wait until some time passed or until there is new work.
-		t := time.NewTimer(subscriptionLoopInterval)
+		ctx, cancel := context.WithTimeout(context.Background(), subscriptionLoopInterval)
 		select {
 		case <-w.staticTG.StopChan():
+			cancel()
 			return threadgroup.ErrStopped // shutdown
-		case <-t.C:
+		case <-ctx.Done():
 			// continue right away since the timer is drained.
+			cancel()
 			continue
 		case <-subInfo.staticWakeChan:
-		}
-
-		// We didn't receive from the timer's channel. Stop it and drain it.
-		if !t.Stop() {
-			<-t.C
+			cancel()
 		}
 	}
 }
