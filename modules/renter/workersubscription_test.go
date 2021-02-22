@@ -218,7 +218,7 @@ func TestPriceTableForSubscription(t *testing.T) {
 
 	// Wait for the goroutine to finish.
 	select {
-	case <-time.After(5 * priceTableRetryInterval):
+	case <-time.After(10 * priceTableRetryInterval):
 		t.Fatal("goroutine won't stop")
 	case <-done:
 	}
