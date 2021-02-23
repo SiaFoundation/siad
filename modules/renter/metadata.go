@@ -145,7 +145,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	// Calculate the Files' bubbleMetadata first.
 	// Note: We don't need to abort on error. It's likely that only one or a few
 	// files failed and that the remaining metadatas are good to use.
-	bubbledMetadatas, err := r.managedCalculateFileMetadatas(fileSiaPaths)
+	bubbledMetadatas, err := r.managedCachedFileMetadatas(fileSiaPaths)
 	if err != nil {
 		r.log.Printf("failed to calculate file metadata: %v", err)
 	}
@@ -346,7 +346,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 // managedCalculateFileMetadata calculates and returns the necessary metadata
 // information of a siafiles that needs to be bubbled.
-func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOfflineMap, hostGoodForRenewMap map[string]bool) (bubbledSiaFileMetadata, error) {
+func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaFileMetadata, error) {
 	// Open SiaFile in a read only state so that it doesn't need to be
 	// closed
 	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
@@ -365,18 +365,13 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
 	}
 
-	// Calculate file health
-	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	// Grab the metadata to pull the cached information from
+	md := sf.Metadata()
 
-	// Calculate file Redundancy and check if local file is missing and
-	// redundancy is less than one
-	redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-	if err != nil {
-		return bubbledSiaFileMetadata{}, err
-	}
+	// Check if original file is on disk
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
-	if !onDisk && redundancy < 1 {
+	if !onDisk && md.CachedRedundancy < 1 {
 		r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 
@@ -387,17 +382,17 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 	return bubbledSiaFileMetadata{
 		sp: siaPath,
 		bm: siafile.BubbledMetadata{
-			Health:              health,
+			Health:              md.CachedHealth,
 			LastHealthCheckTime: sf.LastHealthCheckTime(),
 			ModTime:             sf.ModTime(),
 			NumSkylinks:         uint64(numSkylinks),
-			NumStuckChunks:      numStuckChunks,
+			NumStuckChunks:      md.CachedNumStuckChunks,
 			OnDisk:              onDisk,
-			Redundancy:          redundancy,
-			RepairBytes:         repairBytes,
+			Redundancy:          md.CachedRedundancy,
+			RepairBytes:         md.CachedRepariBytes,
 			Size:                sf.Size(),
-			StuckHealth:         stuckHealth,
-			StuckBytes:          stuckBytes,
+			StuckHealth:         md.CachedStuckHealth,
+			StuckBytes:          md.CahcedStuckBytes,
 			UID:                 sf.UID(),
 		},
 	}, nil
@@ -408,10 +403,10 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 // value of a method is ignored when the returned error != nil. For
 // managedCalculateFileMetadatas we make an exception. The caller can decide
 // themselves whether to use the output in case of an error or not.
-func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []bubbledSiaFileMetadata, err error) {
-	/// Get cached offline and goodforrenew maps.
-	hostOfflineMap, hostGoodForRenewMap, _, _ := r.managedRenterContractsAndUtilities()
-
+//
+// The File metadatas are updated prior to calling calculate directory metadata,
+// so just pull the cached information.
+func (r *Renter) managedCachedFileMetadatas(siaPaths []modules.SiaPath) (_ []bubbledSiaFileMetadata, err error) {
 	// Define components
 	mds := make([]bubbledSiaFileMetadata, 0, len(siaPaths))
 	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
@@ -421,7 +416,7 @@ func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []
 	// Create function for loading SiaFiles and calculating the metadata
 	metadataWorker := func() {
 		for siaPath := range siaPathChan {
-			md, err := r.managedCalculateFileMetadata(siaPath, hostOfflineMap, hostGoodForRenewMap)
+			md, err := r.managedCachedFileMetadata(siaPath)
 			if errors.Contains(err, ErrSkylinkBlocked) {
 				// If the fileNode is blocked we ignore the error and continue.
 				continue
@@ -612,10 +607,18 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 		return
 	}()
 
+	// Update the File metadatas in the directory.
+	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+	err = r.managedUpdateFileMetadatasParams(siaPath, offlineMap, goodForRenewMap, contracts, used)
+	if err != nil {
+		e := fmt.Sprintf("unable to update the file metadatas for directory '%v'", siaPath.String())
+		return errors.AddContext(err, e)
+	}
+
 	// Calculate the new metadata values of the directory
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
 	if err != nil {
-		e := fmt.Sprintf("could not calculate the metadata of directory %v", siaPath.String())
+		e := fmt.Sprintf("could not calculate the metadata of directory '%v'", siaPath.String())
 		return errors.AddContext(err, e)
 	}
 

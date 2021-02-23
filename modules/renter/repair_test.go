@@ -21,6 +21,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
+// updateFileMetadatas updates the metadata of all siafiles within a dir.
+func (rt *renterTester) updateFileMetadatas(dirSiaPath modules.SiaPath) error {
+	// Get cached offline and goodforrenew maps.
+	offlineMap, goodForRenewMap, contracts, used := rt.renter.managedRenterContractsAndUtilities()
+	return rt.renter.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
+}
+
 // timeEquals is a helper function for checking if two times are equal
 //
 // Since we can't check timestamps for equality cause they are often set to
@@ -427,7 +434,7 @@ func TestBubbleHealth(t *testing.T) {
 	f.SetStuck(0, true)
 
 	// Update the file metadata within the dir.
-	err = rt.renter.managedUpdateFileMetadatas(subDir1_2)
+	err = rt.updateFileMetadatas(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +449,7 @@ func TestBubbleHealth(t *testing.T) {
 	f.SetStuck(0, false)
 
 	// Update the file metadata within the dir.
-	err = rt.renter.managedUpdateFileMetadatas(subDir1_2)
+	err = rt.updateFileMetadatas(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1448,13 +1455,13 @@ func TestCalculateFileMetadata(t *testing.T) {
 	modTime := sf.ModTime()
 
 	// Update the file metadata.
-	err = rt.renter.managedUpdateFileMetadatas(modules.RootSiaPath())
+	err = rt.updateFileMetadatas(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check calculated metadata
-	bubbledMetadatas, err := rt.renter.managedCalculateFileMetadatas([]modules.SiaPath{up.SiaPath})
+	bubbledMetadatas, err := rt.renter.managedCachedFileMetadatas([]modules.SiaPath{up.SiaPath})
 	if err != nil {
 		t.Fatal(err)
 	}

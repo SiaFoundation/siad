@@ -602,7 +602,11 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		}
 
 		// Prepare the subtree for being bubbled
+		r.log.Debugf("Preparing subtree '%v' for bubble", siaPath)
+		start := time.Now()
 		urp, err := r.managedPrepareForBubble(siaPath, false)
+		elapse := time.Since(start)
+		r.log.Debugf("It took %v to prepare subtree '%v' for bubble", elapse, siaPath)
 		if err != nil {
 			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
@@ -638,7 +642,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
-	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+	// offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
 	// Add the rootDir to urp.
@@ -668,12 +672,12 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 			err = errors.Compose(err, addErr)
 			return
 		}
-		// Update files in the directory.
-		updateErr := r.managedUpdateFileMetadatasParams(di.SiaPath, offlineMap, goodForRenewMap, contracts, used)
-		if updateErr != nil {
-			r.log.Println("Error calling managedUpdateFileMetadatas on `", di.SiaPath, "`:", updateErr)
-			err = errors.Compose(err, updateErr)
-		}
+		// // Update files in the directory.
+		// updateErr := r.managedUpdateFileMetadatasParams(di.SiaPath, offlineMap, goodForRenewMap, contracts, used)
+		// if updateErr != nil {
+		// 	r.log.Println("Error calling managedUpdateFileMetadatas on `", di.SiaPath, "`:", updateErr)
+		// 	err = errors.Compose(err, updateErr)
+		// }
 	}
 
 	// Execute the function on the FileSystem
@@ -690,15 +694,6 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 		return urp, errors.Compose(err, openErr)
 	}
 	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
-}
-
-// managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
-// This can be very expensive for large directories and should therefore only
-// happen sparingly.
-func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
-	// Get cached offline and goodforrenew maps.
-	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
-	return r.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
 }
 
 // managedUpdateFileMetadatasParams updates the metadata of all siafiles within
