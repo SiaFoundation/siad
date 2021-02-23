@@ -1103,3 +1103,53 @@ func TestPanicOnOverwritingNewerRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestUpdateHeaderForPaymentIntent is a unit test that probes the helper
+// function 'updateHeaderForPaymentIntent'
+func TestUpdateHeaderForPaymentIntent(t *testing.T) {
+	hasting := types.NewCurrency64(1)
+
+	// verify metrics are zero
+	ch := new(contractHeader)
+	if !ch.FundAccountSpending.IsZero() || !ch.MaintenanceSpending.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// verify fund account contributes to both fields
+	rpc := modules.RPCFundAccount
+	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting.Mul64(2))
+	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting) {
+		t.Fatal("unexpected")
+	}
+
+	// verify execute program contributes to none
+	rpc = modules.RPCExecuteProgram
+	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
+	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting) {
+		t.Fatal("unexpected")
+	}
+
+	// verify account balance contributes the amount to maintenance spending
+	rpc = modules.RPCAccountBalance
+	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
+	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting.Mul64(2)) {
+		t.Fatal("unexpected")
+	}
+
+	// verify update price table contributes the amount to maintenance spending
+	rpc = modules.RPCUpdatePriceTable
+	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
+	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting.Mul64(3)) {
+		t.Fatal("unexpected")
+	}
+
+	// verify we have a sanity check on the rpc ID to ensure this function is
+	// thought of when extending the RPCs
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic when calling the helper with an RPC specifier that is currently not taken to accountin")
+		}
+	}()
+	rpc = modules.RPCFormContract
+	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
+}
