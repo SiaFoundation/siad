@@ -2971,6 +2971,43 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	zeroByteFile := 0
 	oneByteFile := 1
 
+	// Define helper function
+	checkFileInfo := func(actualRF, expectedRF modules.FileInfo) {
+		// Check redundancy and upload progress
+		if expectedRF.Redundancy != actualRF.Redundancy {
+			t.Errorf("Expected Redundancy to be %v, got %v", expectedRF.Redundancy, actualRF.Redundancy)
+		}
+		if expectedRF.UploadProgress != actualRF.UploadProgress {
+			t.Errorf("Expected UploadProgress to be %v, got %v", expectedRF.UploadProgress, actualRF.UploadProgress)
+		}
+		// Check health information
+		if expectedRF.Health != actualRF.Health {
+			t.Errorf("Expected Health to be %v, got %v", expectedRF.Health, actualRF.Health)
+		}
+		if expectedRF.MaxHealth != actualRF.MaxHealth {
+			t.Errorf("Expected MaxHealth to be %v, got %v", expectedRF.MaxHealth, actualRF.MaxHealth)
+		}
+		if expectedRF.MaxHealthPercent != actualRF.MaxHealthPercent {
+			t.Errorf("Expected MaxHealthPercent to be %v, got %v", expectedRF.MaxHealthPercent, actualRF.MaxHealthPercent)
+		}
+		if expectedRF.NumStuckChunks != actualRF.NumStuckChunks {
+			t.Errorf("Expected NumStuckChunks to be %v, got %v", expectedRF.NumStuckChunks, actualRF.NumStuckChunks)
+		}
+		if expectedRF.Stuck != actualRF.Stuck {
+			t.Errorf("Expected Stuck to be %v, got %v", expectedRF.Stuck, actualRF.Stuck)
+		}
+		if expectedRF.StuckHealth != actualRF.StuckHealth {
+			t.Errorf("Expected StuckHealth to be %v, got %v", expectedRF.StuckHealth, actualRF.StuckHealth)
+		}
+		// Check Repair information
+		if expectedRF.RepairBytes != actualRF.RepairBytes {
+			t.Errorf("Expected RepairBytes to be %v, got %v", expectedRF.RepairBytes, actualRF.RepairBytes)
+		}
+		if expectedRF.StuckBytes != actualRF.StuckBytes {
+			t.Errorf("Expected StuckBytes to be %v, got %v", expectedRF.StuckBytes, actualRF.StuckBytes)
+		}
+	}
+
 	// Test uploading 0 byte file
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
@@ -2984,32 +3021,18 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Check redundancy and upload progress
-	if rf.Redundancy != redundancy {
-		t.Fatalf("Expected redundancy to be %v, got %v", redundancy, rf.Redundancy)
+	expectedRF := modules.FileInfo{
+		Redundancy:       redundancy,
+		UploadProgress:   100,
+		Health:           0,
+		MaxHealth:        0,
+		MaxHealthPercent: 100,
+		NumStuckChunks:   0,
+		Stuck:            false,
+		StuckHealth:      0,
 	}
-	if rf.UploadProgress != 100 {
-		t.Fatalf("Expected upload progress to be 100, got %v", rf.UploadProgress)
-	}
-	// Check health information
-	if rf.Health != 0 {
-		t.Fatalf("Expected health to be 0, got %v", rf.Health)
-	}
-	if rf.MaxHealth != 0 {
-		t.Fatalf("Expected max health to be 0, got %v", rf.MaxHealth)
-	}
-	if rf.MaxHealthPercent != 100 {
-		t.Fatalf("Expected max health percentage to be 100, got %v", rf.MaxHealthPercent)
-	}
-	if rf.NumStuckChunks != 0 {
-		t.Fatalf("Expected number of stuck chunks to be 0, got %v", rf.NumStuckChunks)
-	}
-	if rf.Stuck {
-		t.Fatalf("Expected file not to be stuck")
-	}
-	if rf.StuckHealth != 0 {
-		t.Fatalf("Expected stuck health to be 0, got %v", rf.StuckHealth)
-	}
+	checkFileInfo(rf, expectedRF)
+
 	// Get the same file using the /renter/files endpoint with 'cached' set to
 	// true.
 	rfs, err := r.Files(true)
@@ -3028,31 +3051,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	if !found {
 		t.Fatal("couldn't find uploaded file using /renter/files endpoint")
 	}
-	// Compare the fields again.
-	if rf.Redundancy != rf2.Redundancy {
-		t.Fatalf("Expected redundancy to be %v, got %v", rf.Redundancy, rf2.Redundancy)
-	}
-	if rf.UploadProgress != rf2.UploadProgress {
-		t.Fatalf("Expected upload progress to be %v, got %v", rf.UploadProgress, rf2.UploadProgress)
-	}
-	if rf.Health != rf2.Health {
-		t.Fatalf("Expected health to be %v, got %v", rf.Health, rf2.Health)
-	}
-	if rf.MaxHealth != rf2.MaxHealth {
-		t.Fatalf("Expected max health to be %v, got %v", rf.MaxHealth, rf2.MaxHealth)
-	}
-	if rf.MaxHealthPercent != rf2.MaxHealthPercent {
-		t.Fatalf("Expected max health percentage to be %v, got %v", rf.MaxHealthPercent, rf2.MaxHealthPercent)
-	}
-	if rf.NumStuckChunks != rf2.NumStuckChunks {
-		t.Fatalf("Expected number of stuck chunks to be %v, got %v", rf.NumStuckChunks, rf2.NumStuckChunks)
-	}
-	if rf.Stuck != rf2.Stuck {
-		t.Fatalf("Expected stuck to be %v, got %v", rf.Stuck, rf2.Stuck)
-	}
-	if rf.StuckHealth != rf2.StuckHealth {
-		t.Fatalf("Expected stuck health to be %v, got %v", rf.StuckHealth, rf2.StuckHealth)
-	}
+	checkFileInfo(rf2, rf)
 
 	// Test uploading 1 byte file
 	_, oneRF, err := r.UploadNewFileBlocking(oneByteFile, dataPieces, parityPieces, false)
@@ -5434,7 +5433,7 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Add renter with dependency
 	renterParams := node.RenterTemplate
-	renterParams.RenterDeps = &dependencies.DependencyIgnoreFailedRepairs{}
+	renterParams.RenterDeps = &dependencies.DependencyDontUpdateStuckStatusOnCleanup{}
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal("Failed to add renter", err)
@@ -5445,7 +5444,7 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Define helper
 	m := tg.Miners()[0]
-	checkRepairSize := func(dirSiaPath modules.SiaPath, repairExpected, stuckExpected uint64) error {
+	checkDirRepairSize := func(dirSiaPath modules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(15, time.Second, func() error {
 			// Make sure the directory is being updated
 			err := r.RenterBubblePost(dirSiaPath, true, true)
@@ -5454,6 +5453,11 @@ func TestRenterRepairSize(t *testing.T) {
 			}
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
+				return err
+			}
+			// Call bubble on the directory to make sure it is being updated
+			err := r.RenterBubblePost(dirSiaPath, true, false)
+			if err != nil {
 				return err
 			}
 			// Grab renter's root directory
@@ -5507,10 +5511,31 @@ func TestRenterRepairSize(t *testing.T) {
 			return errors.Compose(rootErrs, dirErrs)
 		})
 	}
+	checkFileRepairSize := func(rf *siatest.RemoteFile, repairExpected, stuckExpected uint64) error {
+		return build.Retry(15, time.Second, func() error {
+			// Mine a block to make sure contracts are being updated for hosts.
+			if err := m.MineBlock(); err != nil {
+				return err
+			}
+			// Grab renter's File
+			fi, err := r.File(rf)
+			if err != nil {
+				return err
+			}
+			// Check RepairSize
+			var repairErr, stuckErr error
+			if fi.RepairBytes != repairExpected {
+				repairErr = fmt.Errorf("Expected RepairBytes to be %v, got %v", repairExpected, fi.RepairBytes)
+			}
+			if fi.StuckBytes != stuckExpected {
+				repairErr = fmt.Errorf("Expected StuckBytes to be %v, got %v", stuckExpected, fi.StuckBytes)
+			}
+			return errors.Compose(repairErr, stuckErr)
+		})
+	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkRepairSize(modules.RootSiaPath(), 0, 0); err != nil {
-		t.Log("Initial Check Failed")
+	if err := checkDirRepairSize(modules.RootSiaPath(), 0, 0); err != nil {
 		t.Error(err)
 	}
 
@@ -5527,8 +5552,12 @@ func TestRenterRepairSize(t *testing.T) {
 	}
 
 	// Renter root directory should show 0 repair bytes needed
-	if err := checkRepairSize(dirSiaPath, 0, 0); err != nil {
-		t.Log("After Upload Check Failed")
+	if err := checkDirRepairSize(dirSiaPath, 0, 0); err != nil {
+		t.Error(err)
+	}
+
+	// Renter file should show 0 repair bytes needed
+	if err := checkFileRepairSize(rf, 0, 0); err != nil {
 		t.Error(err)
 	}
 
@@ -5547,8 +5576,10 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Since the file is marked as stuck it should register that stuck repair
 	expected := modules.SectorSize
-	if err := checkRepairSize(dirSiaPath, 0, expected); err != nil {
-		t.Log("First host stuck check failed")
+	if err := checkDirRepairSize(dirSiaPath, 0, expected); err != nil {
+		t.Error(err)
+	}
+	if err := checkFileRepairSize(rf, 0, expected); err != nil {
 		t.Error(err)
 	}
 
@@ -5560,9 +5591,16 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// With only one host taken down there should be no repair needed since the
 	// file won't be seen as needing repair
-	if err := checkRepairSize(dirSiaPath, 0, 0); err != nil {
-		t.Log("First host check failed")
+	if err := checkDirRepairSize(dirSiaPath, 0, 0); err != nil {
 		t.Error(err)
+	}
+	if err := checkFileRepairSize(rf, 0, 0); err != nil {
+		t.Error(err)
+	}
+
+	// To save CI time, only run the remainder of the test on nightly CI
+	if !build.VLONG {
+		t.SkipNow()
 	}
 
 	// Take down the rest of the hosts one by one and verify the repair values are dropping.
@@ -5575,8 +5613,12 @@ func TestRenterRepairSize(t *testing.T) {
 
 		// Check that the aggregate repair size increases.
 		expected += modules.SectorSize
-		if err := checkRepairSize(dirSiaPath, expected, 0); err != nil {
-			t.Log("Host loop failed", i)
+		if err := checkDirRepairSize(dirSiaPath, expected, 0); err != nil {
+			t.Log("Dir: Host loop failed", i)
+			t.Error(err)
+		}
+		if err := checkFileRepairSize(rf, expected, 0); err != nil {
+			t.Log("File: Host loop failed", i)
 			t.Error(err)
 		}
 	}
@@ -5586,8 +5628,10 @@ func TestRenterRepairSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := checkRepairSize(dirSiaPath, 0, expected); err != nil {
-		t.Log("Final stuck check failed")
+	if err := checkDirRepairSize(dirSiaPath, 0, expected); err != nil {
+		t.Error(err)
+	}
+	if err := checkFileRepairSize(rf, 0, expected); err != nil {
 		t.Error(err)
 	}
 }

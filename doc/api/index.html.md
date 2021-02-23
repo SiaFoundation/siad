@@ -4101,14 +4101,22 @@ lists the status of all files.
       "maxhealth":        0.0,                  // float64  
       "maxhealthpercent": 100%,                 // float64
       "modtime":          12578940002019-02-20T17:46:20.34810935+01:00,  // timestamp
+      "mode":             640,                  // uint32
       "numstuckchunks":   0,                    // uint64
       "ondisk":           true,                 // boolean
       "recoverable":      true,                 // boolean
       "redundancy":       5,                    // float64
       "renewing":         true,                 // boolean
+      "repairbytes":      4096,                 // uint64
       "siapath":          "foo/bar.txt",        // string
+      "skylinks": [                             // []string
+        "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+        "GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"
+      ], 
       "stuck":            false,                // bool
+      "stuckbytes":       4096,                 // uint64
       "stuckhealth":      0.0,                  // float64
+      "UID":              "00112233445566778899aabbccddeeff",            // string
       "uploadedbytes":    209715200,            // total bytes uploaded
       "uploadprogress":   100,                  // percent
     }
@@ -4163,6 +4171,11 @@ understood
 **modtime** | timestamp  
 indicates the last time the siafile contents where modified
 
+**mode** | uint32\
+The file mode / permissions of the file. Users who download this file will be
+presented a file with this mode. If no mode is set, the default of 0644 will be
+used.
+
 **numstuckchunks** | uint64  
 indicates the number of stuck chunks in a file. A chunk is stuck if it cannot
 reach full redundancy
@@ -4183,8 +4196,17 @@ will be equal to the lowest redundancy of any of  the file's chunks.
 **renewing** | boolean  
 true if the file's contracts will be automatically renewed by the renter.  
 
+**repairbytes** | uint64\
+The total size in bytes that needs to be handled by the repair loop. This does
+not include anything less than 25% of the redundancy missing as the repair loop
+will ignore files until they lose more redundancy.  This also does not include
+any stuck data.
+
 **siapath** | string  
 Path to the file in the renter on the network.  
+
+**skylinks** | []string\
+All the skylinks related to the file.
 
 **stuck** | bool  
 a file is stuck if there are any stuck chunks in the file, which means the file
@@ -4192,6 +4214,14 @@ cannot reach full redundancy
 
 **stuckhealth** | float64  
 stuckhealth is the worst health of any of the stuck chunks.
+
+**stuckbytes** | uint64\
+The total size in bytes that needs to be handled by the stuck loop. This does
+include anything less than 25% of the redundancy missing as the stuck loop does
+not take into account the health of the stuck file.
+
+**UID** | string\
+A unique identifier for the file.
 
 **uploadedbytes** | bytes  
 Total number of bytes successfully uploaded via current file contracts. This
