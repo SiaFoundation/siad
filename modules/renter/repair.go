@@ -700,21 +700,22 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 // a dir with the provided parameters.  This can be very expensive for large
 // directories and should therefore only happen sparingly.
 func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, offlineMap map[string]bool, goodForRenewMap map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) error {
+	// Read the fileinfos from the directory
 	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
 		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
 	}
+
+	// Define common variables
 	var errs error
-	for _, fi := range fis {
-		ext := filepath.Ext(fi.Name())
-		if ext == modules.SiaFileExtension {
-			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
-			fileSiaPath, err := dirSiaPath.Join(fName)
-			if err != nil {
-				r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
-				continue
-			}
-			// Update the file.
+	var errMU sync.Mutex
+	fileSiaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
+
+	// Define the fileWorker
+	fileWorker := func() {
+		for fileSiaPath := range fileSiaPathChan {
+			str := fmt.Sprintf("update file metadata for '%v' %v", fileSiaPath, time.Now().Unix())
+			profile.ToggleTimer(str)
 			err = func() error {
 				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
 				if err != nil {
@@ -723,9 +724,42 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, of
 				err = r.managedUpdateFileMetadata(sf, offlineMap, goodForRenewMap, contracts, used)
 				return errors.Compose(err, sf.Close())
 			}()
+			errMU.Lock()
 			errs = errors.Compose(errs, err)
+			errMU.Unlock()
+			profile.ToggleTimer(str)
 		}
 	}
+
+	// Launch file workers
+	var wg sync.WaitGroup
+	for i := 0; i < numBubbleWorkerThreads; i++ {
+		wg.Add(1)
+		go func() {
+			fileWorker()
+			wg.Done()
+		}()
+	}
+
+	// Update the file metadatas
+	for _, fi := range fis {
+		ext := filepath.Ext(fi.Name())
+		if ext != modules.SiaFileExtension {
+			continue
+		}
+		fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
+		fileSiaPath, err := dirSiaPath.Join(fName)
+		if err != nil {
+			r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
+			continue
+		}
+		// Send fileSiaPath to the file workers
+		fileSiaPathChan <- fileSiaPath
+	}
+
+	// Close the chan and wait for the workers to finish
+	close(fileSiaPathChan)
+	wg.Wait()
 	return errs
 }
 

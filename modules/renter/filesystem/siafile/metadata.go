@@ -347,6 +347,7 @@ func (md Metadata) backup() (b Metadata) {
 	b.CachedRedundancy = md.CachedRedundancy
 	b.CachedUserRedundancy = md.CachedUserRedundancy
 	b.CachedHealth = md.CachedHealth
+	b.CachedNumStuckChunks = md.CachedNumStuckChunks
 	b.CachedStuckHealth = md.CachedStuckHealth
 	b.CachedExpiration = md.CachedExpiration
 	b.CachedUploadedBytes = md.CachedUploadedBytes
@@ -405,6 +406,7 @@ func (md *Metadata) restore(b Metadata) {
 	md.CachedRedundancy = b.CachedRedundancy
 	md.CachedUserRedundancy = b.CachedUserRedundancy
 	md.CachedHealth = b.CachedHealth
+	md.CachedNumStuckChunks = b.CachedNumStuckChunks
 	md.CachedStuckHealth = b.CachedStuckHealth
 	md.CachedExpiration = b.CachedExpiration
 	md.CachedUploadedBytes = b.CachedUploadedBytes
