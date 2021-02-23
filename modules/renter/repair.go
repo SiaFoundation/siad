@@ -606,7 +606,9 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		start := time.Now()
 		urp, err := r.managedPrepareForBubble(siaPath, false)
 		elapse := time.Since(start)
-		r.log.Debugf("It took %v to prepare subtree '%v' for bubble", elapse, siaPath)
+		if siaPath.IsRoot() {
+			r.log.Debugf("It took %v to prepare subtree '%v' for bubble", elapse, siaPath)
+		}
 		if err != nil {
 			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
@@ -714,9 +716,7 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, of
 	// Define the fileWorker
 	fileWorker := func() {
 		for fileSiaPath := range fileSiaPathChan {
-			str := fmt.Sprintf("update file metadata for '%v' %v", fileSiaPath, time.Now().Unix())
-			profile.ToggleTimer(str)
-			err = func() error {
+			err := func() error {
 				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
 				if err != nil {
 					return err
@@ -727,7 +727,6 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, of
 			errMU.Lock()
 			errs = errors.Compose(errs, err)
 			errMU.Unlock()
-			profile.ToggleTimer(str)
 		}
 	}
 

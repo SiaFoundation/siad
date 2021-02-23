@@ -609,14 +609,24 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Update the File metadatas in the directory.
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+	start := time.Now()
 	err = r.managedUpdateFileMetadatasParams(siaPath, offlineMap, goodForRenewMap, contracts, used)
+	elapse := time.Since(start)
+	if siaPath.IsRoot() {
+		r.log.Debugf("It took %v to update the file metadatas for '%v'", elapse, siaPath)
+	}
 	if err != nil {
 		e := fmt.Sprintf("unable to update the file metadatas for directory '%v'", siaPath.String())
 		return errors.AddContext(err, e)
 	}
 
 	// Calculate the new metadata values of the directory
+	start = time.Now()
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
+	elapse = time.Since(start)
+	if siaPath.IsRoot() {
+		r.log.Debugf("It took %v to calculate the directory metadata for '%v'", elapse, siaPath)
+	}
 	if err != nil {
 		e := fmt.Sprintf("could not calculate the metadata of directory '%v'", siaPath.String())
 		return errors.AddContext(err, e)
@@ -624,6 +634,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Update directory metadata with the health information. Don't return here
 	// to avoid skipping the repairNeeded and stuckChunkFound signals.
+	start = time.Now()
 	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		e := fmt.Sprintf("could not open directory %v", siaPath.String())
@@ -637,6 +648,10 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
 			err = errors.AddContext(err, e)
 		}
+	}
+	elapse = time.Since(start)
+	if siaPath.IsRoot() {
+		r.log.Debugf("It took %v to update the directory metadata for '%v'", elapse, siaPath)
 	}
 
 	// If we are at the root directory then check if any files were found in

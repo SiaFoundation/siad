@@ -122,7 +122,6 @@ func (bs *bubbleScheduler) atomicStatus() (uint64, uint64) {
 // TODO: refactor managedPerformBubbleMetadata into bubble subsystem as that is
 // the only reason this is a `call` method instead of a `managed` method
 func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
-	bs.staticRenter.log.Debugf("Completing bubble for '%v'", siaPath)
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
@@ -177,7 +176,6 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 
 // callQueueBubble adds a bubble update request to the bubbleScheduler.
 func (bs *bubbleScheduler) callQueueBubble(siaPath modules.SiaPath) chan struct{} {
-	bs.staticRenter.log.Debugf("Queuing bubble for '%v'", siaPath)
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
@@ -241,14 +239,15 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 	// Define bubble worker
 	bubbleWorker := func(siaPathChan chan modules.SiaPath) {
 		for siaPath := range siaPathChan {
-			bs.staticRenter.log.Debugf("Performing bubble for '%v'", siaPath)
 			start := time.Now()
 			err := bs.staticRenter.managedPerformBubbleMetadata(siaPath)
 			if err != nil {
 				bs.staticRenter.log.Printf("WARN: error performing bubble on '%v': %v", siaPath, err)
 			}
 			elapse := time.Since(start)
-			bs.staticRenter.log.Debugf("It took %v to perform a bubble for '%v'", elapse, siaPath)
+			if siaPath.IsRoot() {
+				bs.staticRenter.log.Debugf("It took %v to perform a bubble for '%v'", elapse, siaPath)
+			}
 		}
 	}
 	var wg sync.WaitGroup
