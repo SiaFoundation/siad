@@ -408,6 +408,13 @@ type (
 		SweepSeed(seed Seed) (coins, funds types.Currency, err error)
 	}
 
+	// SiacoinSenderMulti is the minimal interface for an object that can send
+	// money to multiple siacoin outputs at once.
+	SiacoinSenderMulti interface {
+		// SendSiacoinsMulti sends coins to multiple addresses.
+		SendSiacoinsMulti(outputs []types.SiacoinOutput) ([]types.Transaction, error)
+	}
+
 	// Wallet stores and manages siacoins and siafunds. The wallet file is
 	// encrypted using a user-specified password. Common addresses are all
 	// derived from a single address seed.
@@ -500,8 +507,7 @@ type (
 		// SendSiacoinsFeeIncluded sends siacoins with fees included.
 		SendSiacoinsFeeIncluded(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error)
 
-		// SendSiacoinsMulti sends coins to multiple addresses.
-		SendSiacoinsMulti(outputs []types.SiacoinOutput) ([]types.Transaction, error)
+		SiacoinSenderMulti
 
 		// SendSiafunds is a tool for sending siafunds from the wallet to an
 		// address. Sending money usually results in multiple transactions. The
