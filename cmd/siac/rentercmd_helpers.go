@@ -455,7 +455,7 @@ Spending:
       Storage:           %v
       Upload:            %v
       Download:          %v
-      Ephemeral Account: %v
+      FundAccount:       %v
       Maintenance:       %v
       Fees:              %v
     Unspent Funds:       %v
