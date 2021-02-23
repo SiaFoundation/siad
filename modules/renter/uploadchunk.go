@@ -769,8 +769,9 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	} else {
 		r.log.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
-	// Update chunk stuck status
-	if !r.deps.Disrupt("IgnoreFailedRepairs") || successfulRepair {
+	// Update chunk stuck status unless the dependency to skip this step is
+	// enabled.
+	if !r.deps.Disrupt("DontUpdateChunkStatus") {
 		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 			r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 		}

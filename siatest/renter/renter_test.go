@@ -5433,7 +5433,7 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Add renter with dependency
 	renterParams := node.RenterTemplate
-	renterParams.RenterDeps = &dependencies.DependencyIgnoreFailedRepairs{}
+	renterParams.RenterDeps = &dependencies.DependencyDontUpdateStuckStatusOnCleanup{}
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal("Failed to add renter", err)
@@ -5591,6 +5591,11 @@ func TestRenterRepairSize(t *testing.T) {
 	}
 	if err := checkFileRepairSize(rf, 0, 0); err != nil {
 		t.Error(err)
+	}
+
+	// To save CI time, only run the remainder of the test on nightly CI
+	if !build.VLONG {
+		t.SkipNow()
 	}
 
 	// Take down the rest of the hosts one by one and verify the repair values are dropping.
