@@ -63,8 +63,13 @@ type PaymentProcessor interface {
 // PaymentProvider is the interface implemented to provide payment for an RPC.
 type PaymentProvider interface {
 	// ProvidePayment takes a stream and various payment details and handles the
-	// payment by sending and processing payment request and response objects.
+	// payment by sending and processing payment request and response objects
 	// Returns an error in case of failure.
+	//
+	// NOTE: The rpc cost parameter is used to track spending metrics, this
+	// means that the given amount should always cover this cost. E.g. if an
+	// account has to be funded with 10H and the RPC cost is 1H, the amount that
+	// is passed in should be 11H.
 	ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, rpcCost, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
 }
 
