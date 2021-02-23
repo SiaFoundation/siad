@@ -40,7 +40,7 @@ const (
 	CurrencyUSD = "usd"
 
 	// LicenseMonetization is the first skynet monetization license.
-	LicenseMonetization = "license-placeholder"
+	LicenseMonetization = "SML1"
 )
 
 var (
