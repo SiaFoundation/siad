@@ -139,7 +139,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 			revisedRoots := []crypto.Hash{{1}}
 			fcr := revisedHeader.Transaction.FileContractRevisions[0]
 			amount := revisedHeader.FundAccountSpending.Sub(initialHeader.FundAccountSpending)
-			txn, err := sc.RecordPaymentIntent(fcr, amount, modules.RPCFundAccount)
+			txn, err := sc.RecordPaymentIntent(fcr, modules.RPCFundAccount, types.ZeroCurrency, amount)
 			return txn, revisedRoots, revisedHeader, err
 		}
 		testContractUncomittedTxn(t, initialHeader, updateFunc)
@@ -494,30 +494,72 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	}
 	sc := cs.managedMustAcquire(t, contract.ID)
 
-	// create a payment revision
+	// create a helper function that records the intent, creates the transaction
+	// containing the given revision and then commits the intent depending on
+	// whether the given flag was set to true
+	processTxnWithRevision := func(rev types.FileContractRevision, rpc types.Specifier, rpcCost, amount types.Currency, commit bool) {
+		// record the payment intent
+		walTxn, err := sc.RecordPaymentIntent(rev, rpc, rpcCost, amount)
+		if err != nil {
+			t.Fatal("Failed to record payment intent")
+		}
+
+		// create transaction containing the revision
+		signedTxn := rev.ToTransaction()
+		sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+		signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+		// only commit the intent if the flag is true
+		if !commit {
+			return
+		}
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, rpc, rpcCost, amount)
+		if err != nil {
+			t.Fatal("Failed to commit payment intent")
+		}
+	}
+
+	// create a payment revision for a FundAccount RPC
 	curr := sc.LastRevision()
-	amount := types.NewCurrency64(fastrand.Uint64n(100))
-	rev, err := curr.PaymentRevision(amount)
+	amount := types.NewCurrency64(10)
+	rpcCost := types.NewCurrency64(1)
+	rev, err := curr.PaymentRevision(amount.Add(rpcCost))
 	if err != nil {
 		t.Fatal(err)
 	}
+	processTxnWithRevision(rev, modules.RPCFundAccount, rpcCost, amount, true)
 
-	// record the payment intent
-	rpc := modules.RPCExecuteProgram
-	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	// create another payment revision, this time for an MDM RPC
+	curr = sc.LastRevision()
+	amount = types.NewCurrency64(20)
+	rpcCost = types.ZeroCurrency
+	rev, err = curr.PaymentRevision(amount.Add(rpcCost))
 	if err != nil {
-		t.Fatal("Failed to record payment intent")
+		t.Fatal(err)
 	}
+	processTxnWithRevision(rev, modules.RPCExecuteProgram, rpcCost, amount, true)
 
-	// create transaction containing the revision
-	signedTxn := rev.ToTransaction()
-	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
-	signedTxn.TransactionSignatures[0].Signature = sig[:]
-
-	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+	// create another payment revision, this time for a PT update RPC
+	curr = sc.LastRevision()
+	amount = types.NewCurrency64(3)
+	rpcCost = types.NewCurrency64(3)
+	rev, err = curr.PaymentRevision(amount.Add(rpcCost))
 	if err != nil {
-		t.Fatal("Failed to commit payment intent")
+		t.Fatal(err)
 	}
+	processTxnWithRevision(rev, modules.RPCUpdatePriceTable, rpcCost, amount, true)
+	expectedRevNumber := rev.NewRevisionNumber
+
+	// create another payment revision, for an account balance sync,
+	// but this time we don't commit it
+	curr = sc.LastRevision()
+	amount = types.NewCurrency64(4)
+	rpcCost = types.NewCurrency64(4)
+	rev, err = curr.PaymentRevision(amount.Add(rpcCost))
+	if err != nil {
+		t.Fatal(err)
+	}
+	processTxnWithRevision(rev, modules.RPCAccountBalance, rpcCost, amount, false)
 
 	// reload the contract set
 	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
@@ -526,11 +568,25 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	}
 	sc = cs.managedMustAcquire(t, contract.ID)
 
-	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
+	if sc.LastRevision().NewRevisionNumber != expectedRevNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
 	}
 
-	// TODO: extend this test when we add the spending metrics to the header
+	// we expect the `FundAccount` spending metric to reflect exactly the amount
+	// of money that should have made it into the EA
+	expectedFundAccountSpending := types.NewCurrency64(9)
+	if !sc.header.FundAccountSpending.Equals(expectedFundAccountSpending) {
+		t.Fatal("unexpected", sc.header.FundAccountSpending)
+	}
+
+	// we expect the `Maintenance` spending metric to reflect the sum of the rpc
+	// cost for the fund account, and the amount spent on updating the price
+	// table. This means that the cost of the MDM RPC and the non committed
+	// account balance sync should not be included
+	expectedMaintenanceSpending := types.NewCurrency64(1).Add(types.NewCurrency64(3))
+	if !sc.header.MaintenanceSpending.Equals(expectedMaintenanceSpending) {
+		t.Fatal("unexpected", sc.header.MaintenanceSpending)
+	}
 }
 
 // TestContractRefCounter checks if refCounter behaves as expected when called

@@ -274,7 +274,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
 	// record the payment intent
-	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc, rpcCost)
+	walTxn, err := sc.RecordPaymentIntent(rev, rpc, rpcCost, amount)
 	if err != nil {
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
@@ -326,7 +326,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 
 	// commit payment intent
 	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
-		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc, rpcCost)
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, rpc, rpcCost, amount)
 		if err != nil {
 			return errors.AddContext(err, "Failed to commit unknown spending intent")
 		}
