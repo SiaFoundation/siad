@@ -39,6 +39,14 @@ var (
 		Testing:  10 * time.Second,
 	}).(time.Duration)
 
+	// minElapsedTimeSinceLastScheduledUpdate is the minimum amount of time that
+	// between price table updates triggered by 'staticSchedulePriceTableUpdate'
+	minElapsedTimeSinceLastScheduledUpdate = build.Select(build.Var{
+		Standard: 6 * time.Hour,
+		Dev:      15 * time.Minute,
+		Testing:  1 * time.Minute,
+	}).(time.Duration)
+
 	// minInitialEstimate is the minimum job time estimate that's set on the HS
 	// and RJ queue in case we fail to update the price table successfully
 	minInitialEstimate = time.Second
@@ -58,12 +66,22 @@ var (
 type (
 	// workerPriceTable contains a price table and some information related to
 	// retrieving the next update.
+	//
+	// NOTE: the fields in this struct are manually being copied over when
+	// updating the price table, make sure to keep that into account when
+	// extending this struct.
 	workerPriceTable struct {
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
 
 		// The time at which the price table expires.
 		staticExpiryTime time.Time
+
+		// The time at which the worker scheduled a price table update manually.
+		// We limit the amount of times this can occur because the host might
+		// take advantage of this mechanism and have the renter constantly
+		// update his price table, earning the host money.
+		staticLastForcedUpdate time.Time
 
 		// The next time that the worker should try to update the price table.
 		staticUpdateTime time.Time
@@ -108,6 +126,29 @@ func (w *worker) staticPriceTable() *workerPriceTable {
 // provided price table.
 func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 	atomic.StorePointer(&w.atomicPriceTable, unsafe.Pointer(pt))
+}
+
+// staticSchedulePriceTableUpdate will update the 'staticUpdateTime' property on
+// the price table in order for it to get updated on the next iteration.
+func (w *worker) staticSchedulePriceTableUpdate() {
+	update := *w.staticPriceTable()
+	update.staticUpdateTime = time.Now()
+	update.staticLastForcedUpdate = time.Now()
+	w.staticSetPriceTable(&update)
+	w.staticWake()
+}
+
+// staticTryForcePriceTableUpdate will schedule a pricetable update, but it will
+// only succeed if enough time has passed since a pricetable update was last
+// forced. This to ensure the host is not cheating the renter and have it renew
+// its pricetable constantly.
+func (w *worker) staticTryForcePriceTableUpdate() {
+	current := w.staticPriceTable()
+	if time.Now().Before(current.staticLastForcedUpdate.Add(minElapsedTimeSinceLastScheduledUpdate)) {
+		w.renter.log.Debugf("worker for host %v tried scheduling a price table update before the minimum elapsed time", w.staticHostPubKeyStr)
+		return
+	}
+	w.staticSchedulePriceTableUpdate()
 }
 
 // staticValid will return true if the latest price table that we have is still
@@ -204,11 +245,12 @@ func (w *worker) staticUpdatePriceTable() {
 		// Because of race conditions, can't modify the existing price
 		// table, need to make a new one.
 		pt := &workerPriceTable{
-			staticPriceTable:    currentPT.staticPriceTable,
-			staticExpiryTime:    currentPT.staticExpiryTime,
-			staticUpdateTime:    cd,
-			staticRecentErr:     err,
-			staticRecentErrTime: time.Now(),
+			staticPriceTable:       currentPT.staticPriceTable,
+			staticExpiryTime:       currentPT.staticExpiryTime,
+			staticLastForcedUpdate: currentPT.staticLastForcedUpdate,
+			staticUpdateTime:       cd,
+			staticRecentErr:        err,
+			staticRecentErrTime:    time.Now(),
 		}
 		w.staticSetPriceTable(pt)
 
@@ -307,11 +349,12 @@ func (w *worker) staticUpdatePriceTable() {
 	// has not been an error for debugging purposes, if there has been an error
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
-		staticPriceTable:    pt,
-		staticExpiryTime:    expiryTime,
-		staticUpdateTime:    newUpdateTime,
-		staticRecentErr:     currentPT.staticRecentErr,
-		staticRecentErrTime: currentPT.staticRecentErrTime,
+		staticPriceTable:       pt,
+		staticExpiryTime:       expiryTime,
+		staticUpdateTime:       newUpdateTime,
+		staticLastForcedUpdate: currentPT.staticLastForcedUpdate,
+		staticRecentErr:        currentPT.staticRecentErr,
+		staticRecentErrTime:    currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
 }

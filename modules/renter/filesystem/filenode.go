@@ -36,14 +36,11 @@ func (n *FileNode) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	return n.SiaFile.AddPiece(pk, chunkIndex, pieceIndex, merkleRoot)
 }
 
-// Close calls close on the FileNode and also removes the FileNode from its
-// parent if it's no longer being used and if it doesn't have any children which
-// are currently in use. This happens iteratively for all parent as long as
-// removing a child resulted in them not having any children left.
-func (n *FileNode) Close() error {
-	// If a parent exists, we need to lock it while closing a child.
-	parent := n.node.managedLockWithParent()
-
+// close closes the file and removes it from the parent if it was the last open
+// instance.
+// NOTE: If the file has a parent, it needs to be already locked when this is
+// called.
+func (n *FileNode) close() {
 	// Mark node as closed and sanity check that it hasn't been closed before.
 	if n.closed {
 		build.Critical("close called multiple times on same FileNode")
@@ -54,9 +51,33 @@ func (n *FileNode) Close() error {
 	n.node.closeNode()
 
 	// Remove node from parent if the current thread was the last one.
+	parent := n.parent
 	if parent != nil && len(n.threads) == 0 {
 		parent.removeFile(n)
 	}
+}
+
+// close closes the file and removes it from the parent if it was the last open
+// instance.
+// NOTE: If the file has a parent, it needs to be already locked when this is
+// called.
+func (n *FileNode) managedClose() {
+	n.node.mu.Lock()
+	defer n.node.mu.Unlock()
+	n.close()
+}
+
+// Close calls close on the FileNode and also removes the FileNode from its
+// parent if it's no longer being used and if it doesn't have any children which
+// are currently in use. This happens iteratively for all parent as long as
+// removing a child resulted in them not having any children left.
+func (n *FileNode) Close() error {
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.node.managedLockWithParent()
+
+	// close the node.
+	n.close()
+
 	// Unlock child and parent.
 	n.node.mu.Unlock()
 	if parent != nil {
@@ -64,7 +85,6 @@ func (n *FileNode) Close() error {
 		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
-
 	return nil
 }
 
