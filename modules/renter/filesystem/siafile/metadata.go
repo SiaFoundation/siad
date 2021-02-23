@@ -99,6 +99,7 @@ type (
 		CachedRepairBytes    uint64            `json:"cachedrepairbytes"`
 		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
+		CachedNumStuckChunks uint64            `json:"cachednumstuckchunks"`
 		CachedStuckBytes     uint64            `json:"cachedstuckbytes"`
 		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
 		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`

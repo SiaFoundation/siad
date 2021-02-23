@@ -389,10 +389,10 @@ func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaF
 			NumStuckChunks:      md.CachedNumStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          md.CachedRedundancy,
-			RepairBytes:         md.CachedRepariBytes,
+			RepairBytes:         md.CachedRepairBytes,
 			Size:                sf.Size(),
 			StuckHealth:         md.CachedStuckHealth,
-			StuckBytes:          md.CahcedStuckBytes,
+			StuckBytes:          md.CachedStuckBytes,
 			UID:                 sf.UID(),
 		},
 	}, nil
