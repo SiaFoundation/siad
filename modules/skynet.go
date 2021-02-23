@@ -523,6 +523,60 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 	return payout
 }
 
+// PayMonetizers is a helper method for paying out monetizers.
+func PayMonetizers(w SiacoinSenderMulti, monetization []Monetizer, downloadedData, totalData uint64, conversionRates map[string]types.Currency, validLicenses map[string]struct{}, monetizationBase types.Currency) error {
+	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, validLicenses, monetizationBase, fastrand.Reader)
+}
+
+// payMonetizers is a helper method for paying out monetizers.
+func payMonetizers(w SiacoinSenderMulti, monetization []Monetizer, downloadedData, totalData uint64, conversionRates map[string]types.Currency, validLicenses map[string]struct{}, monetizationBase types.Currency, rand io.Reader) error {
+	// If no data was downloaded, there is nothing to pay for.
+	if downloadedData == 0 {
+		return nil
+	}
+	// Pay out monetizers.
+	var payouts []types.SiacoinOutput
+	for _, monetizer := range monetization {
+		// Check the license.
+		_, valid := validLicenses[monetizer.License]
+		if !valid {
+			return ErrUnknownLicense
+		}
+		// Check conversion rate.
+		conversion, valid := conversionRates[monetizer.Currency]
+		if !valid {
+			return ErrInvalidCurrency
+		}
+		// Convert money to SC.
+		sc := monetizer.Amount.Mul(conversion)
+
+		// Adjust money to percentage of downloaded content.
+		sc = sc.Mul64(downloadedData).Div64(totalData)
+
+		// Figure out how much to pay.
+		payout, err := computeMonetizationPayout(sc, monetizationBase, rand)
+		if err != nil {
+			return err
+		}
+
+		// Ignore 0 payouts.
+		if payout.IsZero() {
+			continue
+		}
+		payouts = append(payouts, types.SiacoinOutput{
+			Value:      payout,
+			UnlockHash: monetizer.Address,
+		})
+	}
+	// If no payouts remain, there is nothing to do.
+	if len(payouts) == 0 {
+		return nil
+	}
+	// Send money.
+	_, err := w.SendSiacoinsMulti(payouts)
+	return err
+}
+
 // computeMonetizationPayout is a helper function to decide how much money to
 // pay out to a monetizer depending on a given amount and base. The amount is
 // the amount the monetizer should be paid for a single access of their

@@ -2,13 +2,55 @@ package modules
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// monetizationTestReader is a helper that allows for deterministically testing
+// the monetization code.
+type monetizationTestReader struct {
+	n types.Currency
+}
+
+// newMonetizationReader creates a new monetization reader for testing.
+func newMonetizationReader(n types.Currency) io.Reader {
+	return &monetizationTestReader{n: n}
+}
+
+// Read will return bytes which when parsed as a currency result in 'n'.
+func (r *monetizationTestReader) Read(b []byte) (int, error) {
+	// Clear input.
+	for i := range b {
+		b[i] = 0
+	}
+	// Write n to b.
+	nBytes := r.n.Big().Bytes()
+	copy(b[len(b)-len(nBytes):], nBytes)
+	return len(b), nil
+}
+
+// monetizationWalletTester is a helper that mocks a wallet and let's us check
+// how SendSiacoinsMulti was called by the test.
+type monetizationWalletTester struct {
+	lastPayout []types.SiacoinOutput
+}
+
+// SendSiacoinsMulti implements the SiacoinSenderMulti interface.
+func (w *monetizationWalletTester) SendSiacoinsMulti(outputs []types.SiacoinOutput) ([]types.Transaction, error) {
+	w.lastPayout = outputs
+	return nil, nil
+}
+
+// Reset sets the lastPayout to nil.
+func (w *monetizationWalletTester) Reset() {
+	w.lastPayout = nil
+}
 
 // newTestSkyfileLayout is a helper that returns a SkyfileLayout with some
 // default settings for testing.
@@ -394,11 +436,8 @@ func TestComputeMonetizationPayout(t *testing.T) {
 	for i, test := range tests {
 		amt := types.NewCurrency64(test.amt)
 		base := types.NewCurrency64(test.base)
-		nBytes := types.NewCurrency64(test.n).Big().Bytes()
-		if len(nBytes) < monetizationLotteryEntropy {
-			nBytes = append(make([]byte, monetizationLotteryEntropy-len(nBytes)), nBytes...)
-		}
-		p, err := computeMonetizationPayout(amt, base, bytes.NewReader(nBytes))
+		rand := newMonetizationReader(types.NewCurrency64(test.n))
+		p, err := computeMonetizationPayout(amt, base, rand)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -451,4 +490,98 @@ func TestComputeMonetizationPayout(t *testing.T) {
 		}
 	}()
 	ComputeMonetizationPayout(types.NewCurrency64(1), types.ZeroCurrency)
+}
+
+// TestPayMonetizers is a unit test for payMonetizers.
+func TestPayMonetizers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create test wallet.
+	w := &monetizationWalletTester{}
+
+	// Monetization base..
+	base := types.NewCurrency64(1000)
+
+	// Declare a helper to create valid monetizers.
+	validMonetization := func() []Monetizer {
+		m := []Monetizer{
+			{
+				Amount:   types.NewCurrency64(fastrand.Uint64n(100) + 1),
+				Currency: CurrencyUSD,
+				License:  LicenseMonetization,
+			},
+		}
+		fastrand.Read(m[0].Address[:])
+		return m
+	}
+
+	// Declare valid licenses and currencies.
+	validLicenses := map[string]struct{}{
+		LicenseMonetization: {},
+	}
+	rate := types.NewCurrency64(2) // $1 is 2H
+	conversionRates := map[string]types.Currency{
+		CurrencyUSD: rate,
+	}
+
+	// no data
+	m := validMonetization()
+	err := PayMonetizers(w, m, 0, 100, conversionRates, validLicenses, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// unknown license
+	m = validMonetization()
+	m[0].License = ""
+	err = PayMonetizers(w, m, 100, 100, conversionRates, validLicenses, base)
+	if !errors.Contains(err, ErrUnknownLicense) {
+		t.Fatal(err)
+	}
+
+	// invalid currency
+	m = validMonetization()
+	m[0].Currency = ""
+	err = PayMonetizers(w, m, 100, 100, conversionRates, validLicenses, base)
+	if !errors.Contains(err, ErrInvalidCurrency) {
+		t.Fatal(err)
+	}
+
+	// Run the remaining test 1000 times to make sure the success test cases
+	// don't just pass by accident.
+	for i := 0; i < 1000; i++ {
+		// pay out base - lottery success
+		m = validMonetization()
+		n := m[0].Amount.Mul(rate).Sub64(1) // n < amt -> success
+		err = payMonetizers(w, m, 100, 100, conversionRates, validLicenses, base, newMonetizationReader(n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// there should be 1 payout of amount 'base' to the right address.
+		if len(w.lastPayout) != 1 {
+			t.Fatal("wrong number of payouts", len(w.lastPayout))
+		}
+		if !w.lastPayout[0].Value.Equals(base) {
+			t.Fatal("wrong payout amount", w.lastPayout[0].Value, base)
+		}
+		if w.lastPayout[0].UnlockHash != m[0].Address {
+			t.Fatal("wrong payout address")
+		}
+		w.Reset()
+
+		// pay out base - lottery failure
+		m = validMonetization()
+		n = m[0].Amount.Mul(rate) // n == amt -> failure
+		err = payMonetizers(w, m, 100, 100, conversionRates, validLicenses, base, newMonetizationReader(n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// there should be no payout
+		if len(w.lastPayout) != 0 {
+			t.Fatal("wrong number of payouts", len(w.lastPayout))
+		}
+		w.Reset()
+	}
 }
