@@ -903,14 +903,14 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 	if err != nil {
 		// Unable to decode the old header, try a new decode. Seek the file back
 		// to the beginning.
-		var decodeErr error
+		var v1412DecodeErr error
 		_, seekErr := f.Seek(0, 0)
 		if seekErr != nil {
 			return contractHeader{}, errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
 		}
-		header, decodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
-		if decodeErr != nil {
-			return contractHeader{}, errors.AddContext(errors.Compose(err, decodeErr), "unable to decode v1412 contract header")
+		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
+		if v1412DecodeErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode v1412 contract header")
 		}
 	}
 	if err := header.validate(); err != nil {
