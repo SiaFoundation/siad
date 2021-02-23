@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -185,5 +185,31 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 		t.Log(epr.FailureRefund)
 		t.Log(epr2.FailureRefund)
 		t.Fatal("field doesn't match")
+	}
+}
+
+// TestIsPriceTableInvalidErr is a small unit test that verifies the
+// functionality of the `IsPriceTableInvalidErr` helper.
+func TestIsPriceTableInvalidErr(t *testing.T) {
+	t.Parallel()
+
+	var tests = []struct {
+		err      error
+		expected bool
+	}{
+		{nil, false},
+		{errors.New("err"), false},
+		{ErrPriceTableExpired, true},
+		{ErrPriceTableNotFound, true},
+		{errors.Compose(ErrPriceTableNotFound, ErrPriceTableExpired), true},
+		{errors.Compose(ErrPriceTableNotFound, errors.New("err")), true},
+		{errors.Compose(ErrPriceTableExpired, errors.New("err")), true},
+		{errors.AddContext(ErrPriceTableNotFound, "err"), true},
+	}
+	for _, test := range tests {
+		actual := IsPriceTableInvalidErr(test.err)
+		if actual != test.expected {
+			t.Fatal("unexpected", test.err)
+		}
 	}
 }
