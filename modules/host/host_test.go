@@ -636,11 +636,11 @@ func (p *renterHostPair) managedPayByContract(stream siamux.Stream, amount types
 // managedPayByEphemeralAccount is a helper that makes payment using the pair's
 // EA.
 func (p *renterHostPair) managedPayByEphemeralAccount(stream siamux.Stream, amount types.Currency) error {
-	return p.ProvidePayment(stream, p.staticHT.host.publicKey, types.Specifier{}, amount, p.staticAccountID, p.pt.HostBlockHeight)
+	return p.ProvidePayment(stream, p.staticHT.host.publicKey, types.Specifier{}, types.ZeroCurrency, amount, p.staticAccountID, p.pt.HostBlockHeight)
 }
 
 // ProvidePayment implements the PaymentProvider interface.
-func (p *renterHostPair) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (p *renterHostPair) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, rpcCost, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// Send the payment request.
 	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {

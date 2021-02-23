@@ -183,7 +183,7 @@ type SafeContract struct {
 
 // CommitPaymentIntent will commit the intent to pay a host for an rpc by
 // committing the signed txn in the contract's header.
-func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier) error {
+func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier, rpcCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -195,7 +195,8 @@ func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.T
 	switch rpc {
 	// fund account
 	case modules.RPCFundAccount:
-		newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+		newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount.Sub(rpcCost))
+		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(rpcCost)
 	// maintenance spending
 	case modules.RPCAccountBalance:
 		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(amount)
@@ -283,7 +284,7 @@ func (c *SafeContract) PublicKey() crypto.PublicKey {
 
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
-func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*unappliedWalTxn, error) {
+func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier, rpcCost types.Currency) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -295,7 +296,8 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 	switch rpc {
 	// fund account
 	case modules.RPCFundAccount:
-		newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount)
+		newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(amount.Sub(rpcCost))
+		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(rpcCost)
 	// maintenance spending
 	case modules.RPCAccountBalance:
 		newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(amount)
@@ -937,10 +939,6 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 		header, decodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
 		if decodeErr != nil {
 			return contractHeader{}, errors.AddContext(errors.Compose(err, decodeErr), "unable to decode v1412 contract header")
-		}
-		header, decodeErr = contractHeaderDecodeV1420ToV156(f, decodeMaxSize)
-		if decodeErr != nil {
-			return contractHeader{}, errors.AddContext(errors.Compose(err, decodeErr), "unable to decode v142 contract header")
 		}
 	}
 	if err := header.validate(); err != nil {

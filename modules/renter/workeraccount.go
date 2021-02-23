@@ -132,7 +132,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, rpcCost, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -601,7 +601,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, pt.FundAccountCost, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
@@ -674,7 +674,7 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 	}
 
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, pt.AccountBalanceCost, w.staticAccount.staticID, pt.HostBlockHeight)
 	if err != nil {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.

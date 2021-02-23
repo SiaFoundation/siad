@@ -581,7 +581,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	// provide payment
-	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,6 +605,7 @@ func TestPayment(t *testing.T) {
 	if !contract.MaintenanceSpending.Equals(pt.UpdatePriceTableCost) {
 		t.Fatal("unexpected maintenance spending metric", contract.MaintenanceSpending)
 	}
+	prev := contract.MaintenanceSpending
 
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)
@@ -643,7 +644,7 @@ func TestPayment(t *testing.T) {
 		funding = h.InternalSettings().MaxEphemeralAccountBalance
 	}
 
-	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
+	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, pt.FundAccountCost, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,8 +674,11 @@ func TestPayment(t *testing.T) {
 
 	// check fund account metric got updated
 	contract, _ = c.ContractByPublicKey(hpk)
-	if !contract.FundAccountSpending.Equals(funding.Add(pt.FundAccountCost)) {
+	if !contract.FundAccountSpending.Equals(funding) {
 		t.Fatalf("unexpected funding spending metric %v != %v", contract.FundAccountSpending, funding)
+	}
+	if !contract.MaintenanceSpending.Equals(prev.Add(pt.FundAccountCost)) {
+		t.Fatalf("unexpected maintenance spending metric %v != %v", contract.MaintenanceSpending, prev.Add(pt.FundAccountCost))
 	}
 }
 
@@ -864,7 +868,7 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	}
 
 	// provide payment
-	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
 	if err == nil || !strings.Contains(err.Error(), "storage obligation not found") {
 		t.Fatal("expected storage obligation not found but got", err)
 	}

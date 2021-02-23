@@ -1065,7 +1065,8 @@ func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.S
 	}
 
 	// Provide payment
-	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
+	cost := types.ZeroCurrency // ignoring RPC cost on subscription RPCs
+	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, cost, initialBudget, fundAcc, bh)
 	if err != nil {
 		return err
 	}
@@ -1186,7 +1187,8 @@ func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, pp Payme
 	}
 
 	// Provide payment
-	err = pp.ProvidePayment(buf, host, RPCRegistrySubscription, fundAmt, aid, bh)
+	cost := types.ZeroCurrency // ignoring RPC cost on subscription RPCs
+	err = pp.ProvidePayment(buf, host, RPCRegistrySubscription, cost, fundAmt, aid, bh)
 	if err != nil {
 		return err
 	}

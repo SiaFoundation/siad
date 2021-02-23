@@ -242,7 +242,7 @@ func (c *Contractor) UpdateWorkerPool(wp modules.WorkerPool) {
 // Note that this implementation performs a `Read` on the stream object.
 // Therefor you should not be passing in a buffer here to optimise writes. This
 // function however does optimise its writes as much as possible.
-func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, rpcCost, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// verify we do not specify a refund account on the fund account RPC
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errRefundAccountInvalid
@@ -274,7 +274,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
 	// record the payment intent
-	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc, rpcCost)
 	if err != nil {
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
@@ -326,7 +326,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 
 	// commit payment intent
 	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
-		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc, rpcCost)
 		if err != nil {
 			return errors.AddContext(err, "Failed to commit unknown spending intent")
 		}
