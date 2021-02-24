@@ -253,21 +253,14 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Refresh the directories blocking.
-	var wg sync.WaitGroup
+	var siaPaths []modules.SiaPath
 	for _, dir := range directories {
-		wg.Add(1)
-		go func(sp modules.SiaPath) {
-			complete := rt.renter.staticBubbleScheduler.callQueueBubble(sp)
-			select {
-			case <-complete:
-			case <-time.After(bubbleWaitInTestTime):
-				t.Error("test blocked too long for bubble")
-				return
-			}
-			wg.Done()
-		}(dir.SiaPath)
+		siaPaths = append(siaPaths, dir.SiaPath)
 	}
-	wg.Wait()
+	err = rt.bubbleAll(siaPaths)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Wait for root directory to show proper number of files and subdirs.
 	err = build.Retry(100, 100*time.Millisecond, func() error {

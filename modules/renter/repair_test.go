@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -221,18 +220,10 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	var wg sync.WaitGroup
-	for _, sp := range []modules.SiaPath{modules.BackupFolder, modules.SkynetFolder, modules.UserFolder} {
-		wg.Add(1)
-		go func(siaPath modules.SiaPath) {
-			defer wg.Done()
-			if err := rt.bubble(siaPath); err != nil {
-				t.Error(err)
-				return
-			}
-		}(sp)
+	err = rt.bubbleAll([]modules.SiaPath{modules.BackupFolder, modules.SkynetFolder, modules.UserFolder})
+	if err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
 	defaultMetadata := siadir.Metadata{
 		AggregateHealth: siadir.DefaultDirHealth,
 		Health:          siadir.DefaultDirHealth,
@@ -774,18 +765,10 @@ func TestNumFiles(t *testing.T) {
 
 	// Call bubble on lowest level and skynet folder and confirm top level reports
 	// accurate number of files and aggregate number of files
-	var wg sync.WaitGroup
-	for _, sp := range []modules.SiaPath{subDir1_2, modules.SkynetFolder} {
-		wg.Add(1)
-		go func(siaPath modules.SiaPath) {
-			defer wg.Done()
-			if err := rt.bubble(siaPath); err != nil {
-				t.Error(err)
-				return
-			}
-		}(sp)
+	err = rt.bubbleAll([]modules.SiaPath{subDir1_2, modules.SkynetFolder})
+	if err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {

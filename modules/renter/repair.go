@@ -745,7 +745,7 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, of
 		case <-r.tg.StopChan():
 			close(fileSiaPathChan)
 			wg.Wait()
-			return errs
+			return errors.AddContext(errs, "renter shutdown")
 		}
 	}
 
