@@ -46,6 +46,14 @@ type programResponse struct {
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+	// Defer a function that schedules a price table update in case we received
+	// an error that indicates the host deems our price table invalid.
+	defer func() {
+		if modules.IsPriceTableInvalidErr(err) {
+			w.staticTryForcePriceTableUpdate()
+		}
+	}()
+
 	// track the withdrawal
 	// TODO: this is very naive and does not consider refunds at all
 	w.staticAccount.managedTrackWithdrawal(cost)
@@ -181,7 +189,15 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 }
 
 // managedRenew renews the contract with the worker's host.
-func (w *worker) managedRenew(fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) (modules.RenterContract, []types.Transaction, error) {
+func (w *worker) managedRenew(fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) (_ modules.RenterContract, _ []types.Transaction, err error) {
+	// Defer a function that schedules a price table update in case we received
+	// an error that indicates the host deems our price table invalid.
+	defer func() {
+		if modules.IsPriceTableInvalidErr(err) {
+			w.staticTryForcePriceTableUpdate()
+		}
+	}()
+
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {

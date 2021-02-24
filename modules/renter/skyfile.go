@@ -159,9 +159,10 @@ func (r *Renter) CreateSkylinkFromSiafile(sup modules.SkyfileUploadParameters, s
 
 	// Override the metadata with the info from the fileNode.
 	metadata := modules.SkyfileMetadata{
-		Filename: siaPath.Name(),
-		Mode:     fileNode.Mode(),
-		Length:   fileNode.Size(),
+		Filename:     siaPath.Name(),
+		Mode:         fileNode.Mode(),
+		Monetization: sup.Monetization,
+		Length:       fileNode.Size(),
 	}
 	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, nil)
 }

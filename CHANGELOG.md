@@ -10,6 +10,30 @@ Version History
 
 Latest:
 
+## Feb 18, 2021:
+### v1.5.5
+**Key Updates**
+- Add the ability to backup a skylink and restore it from disk
+- Add Skynet stats to the `.siadir` metadata.
+- Add repair information to `.siadir` metadata
+- Add `stucksize` to the directory metadata to show the amount of data being handled by the stuck loop.
+- Change http status code for blocked content from 500 to 451
+- have host send an "ok" response when unsubscribing from a registry value
+- include the public key of the signed entry in the subscription notification response
+- Add `/renter/bubble` route to be able to manually trigger bubble updates
+- siac breaks down memory consumption of the individual memory managers
+- Improve download speeds and consistency.
+- Add `siac skynet backup` and `siac skynet restore` commands for backing up and restoring skyfiles.
+- Update default redundancy to be 10-30 for Skyfiles that exceed a single sector
+  in size.
+
+**Bugs Fixed**
+- The 'siac skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+- Introduce overflow file for sectors where the location counter has reached a value of >= 2^16 to fix uploads failing for all zero sectors
+
+**Other**
+- Add deletion of files that contain blocked skylinks in the bubble code.
+
 ## Jan 12, 2021:
 ### v1.5.4
 **Key Updates**
@@ -47,7 +71,7 @@ the list cannot be visually verified.
 ### v1.5.3
 **Bugs Fixed**
 - Updated siafile snapshots to only store range of chunks needed for repair to
-  address OOM during large file repairs
+ address OOM during large file repairs
 
 ## Nov 9, 2020:
 ### v1.5.2

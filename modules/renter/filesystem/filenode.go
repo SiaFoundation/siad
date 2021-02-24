@@ -36,14 +36,11 @@ func (n *FileNode) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	return n.SiaFile.AddPiece(pk, chunkIndex, pieceIndex, merkleRoot)
 }
 
-// Close calls close on the FileNode and also removes the FileNode from its
-// parent if it's no longer being used and if it doesn't have any children which
-// are currently in use. This happens iteratively for all parent as long as
-// removing a child resulted in them not having any children left.
-func (n *FileNode) Close() error {
-	// If a parent exists, we need to lock it while closing a child.
-	parent := n.node.managedLockWithParent()
-
+// close closes the file and removes it from the parent if it was the last open
+// instance.
+// NOTE: If the file has a parent, it needs to be already locked when this is
+// called.
+func (n *FileNode) close() {
 	// Mark node as closed and sanity check that it hasn't been closed before.
 	if n.closed {
 		build.Critical("close called multiple times on same FileNode")
@@ -54,9 +51,33 @@ func (n *FileNode) Close() error {
 	n.node.closeNode()
 
 	// Remove node from parent if the current thread was the last one.
+	parent := n.parent
 	if parent != nil && len(n.threads) == 0 {
 		parent.removeFile(n)
 	}
+}
+
+// close closes the file and removes it from the parent if it was the last open
+// instance.
+// NOTE: If the file has a parent, it needs to be already locked when this is
+// called.
+func (n *FileNode) managedClose() {
+	n.node.mu.Lock()
+	defer n.node.mu.Unlock()
+	n.close()
+}
+
+// Close calls close on the FileNode and also removes the FileNode from its
+// parent if it's no longer being used and if it doesn't have any children which
+// are currently in use. This happens iteratively for all parent as long as
+// removing a child resulted in them not having any children left.
+func (n *FileNode) Close() error {
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.node.managedLockWithParent()
+
+	// close the node.
+	n.close()
+
 	// Unlock child and parent.
 	n.node.mu.Unlock()
 	if parent != nil {
@@ -64,7 +85,6 @@ func (n *FileNode) Close() error {
 		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
-
 	return nil
 }
 
@@ -107,7 +127,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		_, err := os.Stat(localPath)
 		onDisk = err == nil
 	}
-	_, _, health, stuckHealth, numStuckChunks, _, _ := n.Health(offline, goodForRenew)
+	_, _, health, stuckHealth, numStuckChunks, repairBytes, stuckBytes := n.Health(offline, goodForRenew)
 	_, redundancy, err := n.Redundancy(offline, goodForRenew)
 	if err != nil {
 		return modules.FileInfo{}, errors.AddContext(err, "failed to get n redundancy")
@@ -135,10 +155,12 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
+		RepairBytes:      repairBytes,
 		Skylinks:         n.Metadata().Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
+		StuckBytes:       stuckBytes,
 		UID:              n.staticUID,
 		UploadedBytes:    uploadedBytes,
 		UploadProgress:   uploadProgress,
@@ -218,9 +240,11 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		Recoverable:      onDisk || md.CachedUserRedundancy >= 1,
 		Redundancy:       md.CachedUserRedundancy,
 		Renewing:         true,
+		RepairBytes:      md.CachedRepairBytes,
 		Skylinks:         md.Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
+		StuckBytes:       md.CachedStuckBytes,
 		StuckHealth:      md.CachedStuckHealth,
 		UID:              n.staticUID,
 		UploadedBytes:    md.CachedUploadedBytes,

@@ -333,10 +333,12 @@ func (n *DirNode) closeDirNode() {
 // reader and add it to the directory. This will always load the file from the
 // given reader.
 func (n *DirNode) managedNewSiaFileFromExisting(sf *siafile.SiaFile, chunks siafile.Chunks) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	// Get the initial path of the siafile.
 	path := sf.SiaFilePath()
 	// Check if the path is taken.
-	currentPath, exists := n.managedUniquePrefix(path, sf.UID())
+	currentPath, exists := n.uniquePrefix(path, sf.UID())
 	if exists {
 		return nil // file already exists
 	}
@@ -387,18 +389,18 @@ func (n *DirNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.Fi
 	return fn.managedCopy(), nil
 }
 
-// managedUniquePrefix returns a new path for the siafile with the given path
+// uniquePrefix returns a new path for the siafile with the given path
 // and uid by adding a suffix to the current path and incrementing it as long as
 // the resulting path is already taken.
-func (n *DirNode) managedUniquePrefix(path string, uid siafile.SiafileUID) (string, bool) {
+func (n *DirNode) uniquePrefix(path string, uid siafile.SiafileUID) (string, bool) {
 	suffix := 0
 	currentPath := path
 	for {
 		fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
-		oldFile, err := n.managedOpenFile(fileName)
+		oldFile, err := n.openFile(fileName)
 		exists := err == nil
 		if exists && oldFile.UID() == uid {
-			oldFile.Close()
+			oldFile.managedClose()
 			return "", true // skip file since it already exists
 		} else if exists {
 			// Exists: update currentPath and fileName
@@ -406,7 +408,7 @@ func (n *DirNode) managedUniquePrefix(path string, uid siafile.SiafileUID) (stri
 			currentPath = strings.TrimSuffix(path, modules.SiaFileExtension)
 			currentPath = fmt.Sprintf("%v_%v%v", currentPath, suffix, modules.SiaFileExtension)
 			fileName = filepath.Base(currentPath)
-			oldFile.Close()
+			oldFile.managedClose()
 			continue
 		}
 		break

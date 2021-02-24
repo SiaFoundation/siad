@@ -341,14 +341,17 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
-func (r *Renter) managedUntarDir(tr *tar.Reader) error {
+func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 	// dirsToUpdate are all the directories that will need bubble to be called
 	// on them so that the renter's directory metadata from the back up is
 	// updated
 	dirsToUpdate := r.newUniqueRefreshPaths()
-	defer dirsToUpdate.callRefreshAll()
+	defer func() {
+		err = errors.Compose(err, dirsToUpdate.callRefreshAll())
+	}()
 
 	// Copy the files from the tarball to the new location.
+	dir := r.staticFileSystem.DirPath(modules.UserFolder)
 	for {
 		header, err := tr.Next()
 		if errors.Contains(err, io.EOF) {
@@ -356,7 +359,15 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if err != nil {
 			return errors.AddContext(err, "could not get next entry in the tar archive")
 		}
-		dst := filepath.Join(r.staticFileSystem.DirPath(modules.UserFolder), header.Name)
+
+		// nolint:gosec // Disable gosec for this line since directory traversal
+		// is checked below.
+		dst := filepath.Join(dir, header.Name)
+
+		// Check for directory traversal.
+		if header.Name != "" && !strings.HasPrefix(dst, filepath.Clean(dir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", dst)
+		}
 
 		// Check for dir.
 		info := header.FileInfo()
