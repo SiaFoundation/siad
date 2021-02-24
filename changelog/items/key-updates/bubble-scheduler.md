@@ -1,1 +1,1 @@
-- Add `bubbleScheduler` to the renter to managed the bubble update requests
+- Add `bubbleScheduler` to the renter to manage the bubble update requests

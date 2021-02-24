@@ -134,9 +134,9 @@ func (urp *uniqueRefreshPaths) refreshAll() {
 		select {
 		case siaPathChan <- sp:
 		case <-urp.r.tg.StopChan():
-			// Renter has shutdown, close the channel and return, no need to wait on
-			// the go routines to close.
+			// Renter has shutdown, close the channel and return.
 			close(siaPathChan)
+			wg.Wait()
 			return
 		}
 	}

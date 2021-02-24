@@ -258,7 +258,12 @@ func TestRenterListDirectory(t *testing.T) {
 		wg.Add(1)
 		go func(sp modules.SiaPath) {
 			complete := rt.renter.staticBubbleScheduler.callQueueBubble(sp)
-			<-complete
+			select {
+			case <-complete:
+			case <-time.After(bubbleWaitInTestTime):
+				t.Error("test blocked too long for bubble")
+				return
+			}
 			wg.Done()
 		}(dir.SiaPath)
 	}

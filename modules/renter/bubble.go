@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -42,10 +41,6 @@ type (
 	// for managing the number of concurrent bubble updates as well as ensuring
 	// that all bubble updates are processed.
 	bubbleScheduler struct {
-		// Atomic status fields
-		atomicFifoSize uint64
-		atomicMapSize  uint64
-
 		// bubbleNeeded is a channel used to signal the bubbleScheduler that a bubble
 		// is needed
 		bubbleNeeded chan struct{}
@@ -74,8 +69,6 @@ type (
 
 		// Current status of the bubble
 		status bubbleStatus
-
-		mu sync.Mutex
 	}
 )
 
@@ -111,11 +104,6 @@ func (bq *bubbleQueue) Push(bu *bubbleUpdate) {
 	_ = bq.List.PushBack(bu)
 }
 
-// atomicStatus returns the atomic counter values for the Fifo and Map sizes
-func (bs *bubbleScheduler) atomicStatus() (uint64, uint64) {
-	return atomic.LoadUint64(&bs.atomicFifoSize), atomic.LoadUint64(&bs.atomicMapSize)
-}
-
 // callCompleteBubbleUpdate will complete the bubble update and update the
 // status and the bubble map accordingly.
 //
@@ -133,9 +121,6 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 		return
 	}
 
-	bu.mu.Lock()
-	defer bu.mu.Unlock()
-
 	// Signal that a bubble has been completed to release any blocking calls.
 	close(bu.complete)
 
@@ -145,14 +130,12 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 		// bubbleQueue status was found, remove from map to try and clean up the error
 		str := fmt.Sprintf("bubbleQueue status for '%v' found during complete call", siaPath)
 		build.Critical(str)
-		atomic.AddUint64(&bs.atomicMapSize, ^uint64(0))
 		delete(bs.bubbleUpdates, siaPath)
 		return
 	case bubbleActive:
 		// If the status is still bubbleActive it means no other bubble requests
 		// were made while the bubble was in progress. The bubble update is complete
 		// so we can remove it from the map.
-		atomic.AddUint64(&bs.atomicMapSize, ^uint64(0))
 		delete(bs.bubbleUpdates, siaPath)
 		return
 	case bubblePending:
@@ -161,14 +144,12 @@ func (bs *bubbleScheduler) callCompleteBubbleUpdate(siaPath modules.SiaPath) {
 		// to the queue with a status of bubbleQueued and a new complete chan.
 		bu.status = bubbleQueued
 		bu.complete = make(chan struct{})
-		atomic.AddUint64(&bs.atomicFifoSize, 1)
 		bs.fifo.Push(bu)
 		return
 	default:
 		// Error was found, remove from map to try and clean up the error
 		str := fmt.Sprintf("bubbleError status for '%v' found during complete call", siaPath)
 		build.Critical(str)
-		atomic.AddUint64(&bs.atomicMapSize, ^uint64(0))
 		delete(bs.bubbleUpdates, siaPath)
 		return
 	}
@@ -199,15 +180,11 @@ func (bs *bubbleScheduler) callQueueBubble(siaPath modules.SiaPath) chan struct{
 			status:        bubbleQueued,
 		}
 		bs.bubbleUpdates[siaPath] = bu
-		atomic.AddUint64(&bs.atomicMapSize, 1)
-		atomic.AddUint64(&bs.atomicFifoSize, 1)
 		bs.fifo.Push(bu)
 		return bu.complete
 	}
 
 	// There is already a bubble update in the map, check the status
-	bu.mu.Lock()
-	defer bu.mu.Unlock()
 	switch bu.status {
 	case bubbleQueued:
 		// The update is currently queued so this new request will be satisfied when
@@ -277,6 +254,7 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 			select {
 			case <-bs.staticRenter.tg.StopChan():
 				close(bubbleChan)
+				wg.Wait()
 				return
 			case bubbleChan <- bu.staticSiaPath:
 			}
@@ -300,12 +278,6 @@ func (bs *bubbleScheduler) managedPop() *bubbleUpdate {
 	if bu == nil {
 		return nil
 	}
-	// Decrement the Fifo Size
-	atomic.AddUint64(&bs.atomicFifoSize, ^uint64(0))
-
-	// update the bubble status
-	bu.mu.Lock()
-	defer bu.mu.Unlock()
 
 	// Sanity Checks
 	if bu.status != bubbleQueued {

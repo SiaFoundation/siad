@@ -603,12 +603,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 
 		// Prepare the subtree for being bubbled
 		r.log.Debugf("Preparing subtree '%v' for bubble", siaPath)
-		start := time.Now()
 		urp, err := r.managedPrepareForBubble(siaPath, false)
-		elapse := time.Since(start)
-		if siaPath.IsRoot() {
-			r.log.Debugf("It took %v to prepare subtree '%v' for bubble", elapse, siaPath)
-		}
 		if err != nil {
 			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
@@ -633,8 +628,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 // managedPrepareForBubble prepares a directory for the Health Loop to call
 // bubble on and returns a uniqueRefreshPaths including all the paths of the
 // directories in the subtree that need to be updated. This includes updating
-// the metadatas for all the files in the subtree and updating the
-// LastHealthCheckTime for the supplied root directory.
+// the LastHealthCheckTime for the supplied root directory.
 //
 // This method will at a minimum return a uniqueRefreshPaths with the rootDir
 // added.
@@ -644,7 +638,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
-	// offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
 	// Add the rootDir to urp.
@@ -674,12 +667,6 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 			err = errors.Compose(err, addErr)
 			return
 		}
-		// // Update files in the directory.
-		// updateErr := r.managedUpdateFileMetadatasParams(di.SiaPath, offlineMap, goodForRenewMap, contracts, used)
-		// if updateErr != nil {
-		// 	r.log.Println("Error calling managedUpdateFileMetadatas on `", di.SiaPath, "`:", updateErr)
-		// 	err = errors.Compose(err, updateErr)
-		// }
 	}
 
 	// Execute the function on the FileSystem
@@ -753,7 +740,13 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, of
 			continue
 		}
 		// Send fileSiaPath to the file workers
-		fileSiaPathChan <- fileSiaPath
+		select {
+		case fileSiaPathChan <- fileSiaPath:
+		case <-r.tg.StopChan():
+			close(fileSiaPathChan)
+			wg.Wait()
+			return errs
+		}
 	}
 
 	// Close the chan and wait for the workers to finish

@@ -7,7 +7,27 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
+
+var (
+	// bubbleWaitInTestTime is the amount of time a test should wait before
+	// returning an error in test. This is a conservative value to prevent test
+	// timeouts.
+	bubbleWaitInTestTime = time.Minute
+)
+
+// bubble is a helper for the renterTester to call bubble on a directory and
+// block until the bubble has executed.
+func (rt *renterTester) bubble(siaPath modules.SiaPath) error {
+	complete := rt.renter.staticBubbleScheduler.callQueueBubble(modules.RootSiaPath())
+	select {
+	case <-complete:
+	case <-time.After(bubbleWaitInTestTime):
+		return errors.New("test blocked too long for bubble")
+	}
+	return nil
+}
 
 // TestBubble tests the bubble code.
 //
@@ -100,7 +120,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	bs := newBubbleScheduler(&Renter{})
 
 	// Check status
-	fifoSize, mapSize := bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize := bs.fifo.Len()
+	mapSize := len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 0 || mapSize != 0 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -111,7 +134,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 		t.Error("expected nil bubble update")
 	}
 
-	// check is a helper function to check the status of the bubble update
+	// checkStatus is a helper function to check the status of the bubble update
 	checkStatus := func(siaPath modules.SiaPath, status bubbleStatus, checkQueue bool) {
 		// Map and queue should both contain the same update
 		bu, ok := bs.bubbleUpdates[siaPath]
@@ -153,7 +176,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// Check status
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 1 || mapSize != 1 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -163,7 +189,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// Check status
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 1 || mapSize != 1 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -174,7 +203,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	checkStatus(siaPath, bubbleActive, false)
 
 	// Queue should be empty but map should still have update
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 0 || mapSize != 1 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -184,7 +216,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	checkStatus(siaPath, bubblePending, false)
 
 	// Queue should be empty but map should still have update
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 0 || mapSize != 1 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -194,7 +229,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	checkStatus(siaPath, bubblePending, false)
 
 	// Queue should be empty but map should still have update
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 0 || mapSize != 1 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -204,7 +242,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// Check Status
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 1 || mapSize != 1 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -215,7 +256,10 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	bs.callCompleteBubbleUpdate(siaPath)
 
 	// Check Status
-	fifoSize, mapSize = bs.atomicStatus()
+	bs.mu.Lock()
+	fifoSize = bs.fifo.Len()
+	mapSize = len(bs.bubbleUpdates)
+	bs.mu.Unlock()
 	if fifoSize != 0 || mapSize != 0 {
 		t.Error("unexpected", fifoSize, mapSize)
 	}
@@ -247,13 +291,21 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	}()
 
 	// Should be blocking until after the duration
-	<-completeChan
+	select {
+	case <-completeChan:
+	case <-time.After(bubbleWaitInTestTime):
+		t.Fatal("test blocked too long for bubble")
+	}
 	if time.Since(start) < duration {
 		t.Error("complete chan closed sooner than expected")
 	}
 
 	// Complete chan should not block anymore
-	<-completeChan
+	select {
+	case <-completeChan:
+	case <-time.After(bubbleWaitInTestTime):
+		t.Fatal("test blocked too long for bubble")
+	}
 
 	// If multiple calls are made to queue the same bubble update, they should all
 	// block on the same channel
@@ -264,7 +316,12 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			completeChan := bs.callQueueBubble(siaPath)
-			<-completeChan
+			select {
+			case <-completeChan:
+			case <-time.After(bubbleWaitInTestTime):
+				t.Error("test blocked too long for bubble")
+				return
+			}
 			if time.Since(start) < duration {
 				t.Error("complete chan closed before time duration")
 			}

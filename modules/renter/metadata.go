@@ -142,7 +142,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		}
 	}
 
-	// Calculate the Files' bubbleMetadata first.
+	// Grab the Files' bubbleMetadata from the cached metadata first.
+	//
 	// Note: We don't need to abort on error. It's likely that only one or a few
 	// files failed and that the remaining metadatas are good to use.
 	bubbledMetadatas, err := r.managedCachedFileMetadatas(fileSiaPaths)
@@ -151,6 +152,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	}
 
 	// Get all the Directory Metadata
+	//
 	// Note: We don't need to abort on error. It's likely that only one or a few
 	// directories failed and that the remaining metadatas are good to use.
 	dirMetadatas, err := r.managedDirectoryMetadatas(dirSiaPaths)
@@ -344,8 +346,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	return metadata, nil
 }
 
-// managedCalculateFileMetadata calculates and returns the necessary metadata
-// information of a siafiles that needs to be bubbled.
+// managedCachedFileMetadata returns the cached metadata information of
+// a siafiles that needs to be bubbled.
 func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaFileMetadata, error) {
 	// Open SiaFile in a read only state so that it doesn't need to be
 	// closed
@@ -398,14 +400,11 @@ func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaF
 	}, nil
 }
 
-// managedCalculateFileMetadatas calculates and returns the necessary metadata
-// information of multiple siafiles that need to be bubbled. Usually the return
-// value of a method is ignored when the returned error != nil. For
-// managedCalculateFileMetadatas we make an exception. The caller can decide
+// managedCachedFileMetadatas returns the cahced metadata information of
+// multiple siafiles that need to be bubbled. Usually the return value of
+// a method is ignored when the returned error != nil. For
+// managedCachedFileMetadatas we make an exception. The caller can decide
 // themselves whether to use the output in case of an error or not.
-//
-// The File metadatas are updated prior to calling calculate directory metadata,
-// so just pull the cached information.
 func (r *Renter) managedCachedFileMetadatas(siaPaths []modules.SiaPath) (_ []bubbledSiaFileMetadata, err error) {
 	// Define components
 	mds := make([]bubbledSiaFileMetadata, 0, len(siaPaths))
@@ -443,7 +442,13 @@ func (r *Renter) managedCachedFileMetadatas(siaPaths []modules.SiaPath) (_ []bub
 		}()
 	}
 	for _, siaPath := range siaPaths {
-		siaPathChan <- siaPath
+		select {
+		case siaPathChan <- siaPath:
+		case <-r.tg.StopChan():
+			close(siaPathChan)
+			wg.Wait()
+			return nil, errors.AddContext(errs, "renter shutdown")
+		}
 	}
 	close(siaPathChan)
 	wg.Wait()
@@ -488,7 +493,13 @@ func (r *Renter) managedDirectoryMetadatas(siaPaths []modules.SiaPath) ([]bubble
 		}()
 	}
 	for _, siaPath := range siaPaths {
-		siaPathChan <- siaPath
+		select {
+		case siaPathChan <- siaPath:
+		case <-r.tg.StopChan():
+			close(siaPathChan)
+			wg.Wait()
+			return nil, errors.AddContext(errs, "renter shutdown")
+		}
 	}
 	close(siaPathChan)
 	wg.Wait()
@@ -597,7 +608,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 		}
 		parentDir, dirErr := siaPath.Dir()
 		if dirErr != nil {
-			dirErr = errors.AddContext(dirErr, "failed to defer callThreadedBubbleMetadata on parent dir")
+			dirErr = errors.AddContext(dirErr, "failed to get parent dir")
 			err = errors.Compose(err, dirErr)
 			return
 		}
@@ -609,24 +620,14 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Update the File metadatas in the directory.
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
-	start := time.Now()
 	err = r.managedUpdateFileMetadatasParams(siaPath, offlineMap, goodForRenewMap, contracts, used)
-	elapse := time.Since(start)
-	if siaPath.IsRoot() {
-		r.log.Debugf("It took %v to update the file metadatas for '%v'", elapse, siaPath)
-	}
 	if err != nil {
 		e := fmt.Sprintf("unable to update the file metadatas for directory '%v'", siaPath.String())
 		return errors.AddContext(err, e)
 	}
 
 	// Calculate the new metadata values of the directory
-	start = time.Now()
 	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
-	elapse = time.Since(start)
-	if siaPath.IsRoot() {
-		r.log.Debugf("It took %v to calculate the directory metadata for '%v'", elapse, siaPath)
-	}
 	if err != nil {
 		e := fmt.Sprintf("could not calculate the metadata of directory '%v'", siaPath.String())
 		return errors.AddContext(err, e)
@@ -634,7 +635,6 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Update directory metadata with the health information. Don't return here
 	// to avoid skipping the repairNeeded and stuckChunkFound signals.
-	start = time.Now()
 	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		e := fmt.Sprintf("could not open directory %v", siaPath.String())
@@ -648,10 +648,6 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
 			err = errors.AddContext(err, e)
 		}
-	}
-	elapse = time.Since(start)
-	if siaPath.IsRoot() {
-		r.log.Debugf("It took %v to update the directory metadata for '%v'", elapse, siaPath)
 	}
 
 	// If we are at the root directory then check if any files were found in
