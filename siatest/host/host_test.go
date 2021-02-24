@@ -294,7 +294,7 @@ func TestHostContracts(t *testing.T) {
 	t.Parallel()
 
 	gp := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   1,
 		Renters: 0,
 		Miners:  1,
 	}
@@ -342,7 +342,13 @@ func TestHostContracts(t *testing.T) {
 
 	prevValidPayout := hc.Contracts[0].ValidProofOutputs[1].Value
 	prevMissPayout := hc.Contracts[0].MissedProofOutputs[1].Value
-	_, _, err = renterNode.UploadNewFileBlocking(4096, 1, 1, true)
+
+	// Upload a file. It will only reach 50% progress.
+	_, rf, err := renterNode.UploadNewFile(4096, 1, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renterNode.WaitForUploadProgress(rf, 0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
