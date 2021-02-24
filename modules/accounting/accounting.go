@@ -106,7 +106,7 @@ func (a *Accounting) Accounting() (modules.AccountingInfo, error) {
 // Close closes the accounting module
 //
 // NOTE: It will not call close on any of the modules it is tracking. Those
-// modules are responsible for being closed independently.
+// modules are responsible for closing themselves independently.
 func (a *Accounting) Close() error {
 	return a.staticTG.Stop()
 }

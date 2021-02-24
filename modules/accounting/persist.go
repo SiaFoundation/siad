@@ -23,15 +23,15 @@ const (
 	//
 	// 16 bytes for Currency fields
 	// 8 bytes for Timestamp field
-	// 40 bytes for overhead
+	// 48 bytes for overhead
 	//
-	// (4 x 16) + 8 + 40 = 112
-	maxPersistSize int = 112
+	// (4 x 16) + 8 + 48 = 120
+	maxPersistSize int = 120
 
 	// persistEntrySize is the size of the encoded persist entry
 	//
 	// maxPersistSize + 8 for the size
-	persistEntrySize int = 120
+	persistEntrySize int = 128
 
 	// persistFile is the name of the persist file
 	persistFile string = "accounting.dat"
@@ -98,8 +98,8 @@ func (a *Accounting) callThreadedPersistAccounting() {
 	a.mu.Lock()
 	lastPersistTime := time.Unix(a.persistence.Timestamp, 0)
 	a.mu.Unlock()
-	interval := time.Since(lastPersistTime)
-	if interval >= persistInterval {
+	interval := persistInterval - time.Since(lastPersistTime)
+	if interval <= 0 {
 		// If it has been longer than the persistInterval then persist the
 		// accounting information immediately
 		err = a.managedUpdateAndPersistAccounting()
@@ -203,7 +203,7 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 
 // marshalPersistence marshals the persistence.
 func marshalPersistence(p persistence) (rpe [persistEntrySize]byte, err error) {
-	// Marshal the persistence and ensure is is less that then max size
+	// Marshal the persistence and ensure it is less than the max size
 	data := encoding.Marshal(p)
 	if len(data) > maxPersistSize {
 		err = fmt.Errorf("Marshaled persistence is too big: persistence %v, max %v", len(data), maxPersistSize)

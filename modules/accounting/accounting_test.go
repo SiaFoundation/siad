@@ -50,8 +50,12 @@ func testAccounting(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check for a returned value
-	if reflect.DeepEqual(ai, modules.AccountingInfo{}) {
-		t.Error("accounting information is empty")
+	expected := modules.AccountingInfo{
+		Renter: ai.Renter,
+		Wallet: ai.Wallet,
+	}
+	if !reflect.DeepEqual(ai, expected) {
+		t.Error("accounting information is incorrect")
 	}
 	// Check renter explicitly
 	if reflect.DeepEqual(ai.Renter, modules.RenterAccounting{}) {
@@ -66,8 +70,14 @@ func testAccounting(t *testing.T) {
 	a.mu.Lock()
 	p = a.persistence
 	a.mu.Unlock()
-	if reflect.DeepEqual(p, persistence{}) {
-		t.Error("persistence should not be empty")
+	ep := persistence{
+		Renter: p.Renter,
+		Wallet: p.Wallet,
+
+		Timestamp: p.Timestamp,
+	}
+	if !reflect.DeepEqual(p, ep) {
+		t.Error("persistence information is incorrect")
 	}
 	if !reflect.DeepEqual(p.Renter, ai.Renter) {
 		t.Error("renter accounting persistence not updated")

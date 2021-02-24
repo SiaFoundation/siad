@@ -10,10 +10,9 @@ The Accounting module has the following subsystems
 **Key Files**
  - [accounting.go](./accounting.go)
 
-The persistence subsystem is responsible for ensuring safe and performant ACID
-operations by using the `persist` package's `AppendOnlyPersist` object. The
-latest persistence is store in the `Accounting` struct and is loaded from disk
-on startup.
+The accounting subsystem is responsible for general actions related to the
+accounting module, such as initialization and returning information about the
+module.
 
 **Exports**
  - `Accounting`
@@ -37,7 +36,7 @@ on startup.
 
 The persistence subsystem is responsible for ensuring safe and performant ACID
 operations by using the `persist` package's `AppendOnlyPersist` object. The
-latest persistence is store in the `Accounting` struct and is loaded from disk
+latest persistence is stored in the `Accounting` struct and is loaded from disk
 on startup.
 
 **Inbound Complexities**
