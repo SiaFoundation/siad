@@ -485,9 +485,11 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
+	RepairBytes      uint64            `json:"repairbytes"`
 	Skylinks         []string          `json:"skylinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
+	StuckBytes       uint64            `json:"stuckbytes"`
 	StuckHealth      float64           `json:"stuckhealth"`
 	UID              uint64            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`

@@ -145,13 +145,13 @@ func (d *DependencySkipPrepareNextChunk) Disrupt(s string) bool {
 	return s == "skipPrepareNextChunk"
 }
 
-// DependencyIgnoreFailedRepairs ignores failed repairs and does not make the
-// file as stuck.
-type DependencyIgnoreFailedRepairs struct {
+// DependencyDontUpdateStuckStatusOnCleanup will not set the chunk's stuck
+// status when cleaning up the upload chunk.
+type DependencyDontUpdateStuckStatusOnCleanup struct {
 	modules.ProductionDependencies
 }
 
 // Disrupt will ignore a failed repair.
-func (d *DependencyIgnoreFailedRepairs) Disrupt(s string) bool {
-	return s == "IgnoreFailedRepairs"
+func (d *DependencyDontUpdateStuckStatusOnCleanup) Disrupt(s string) bool {
+	return s == "DontUpdateChunkStatus"
 }
