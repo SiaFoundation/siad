@@ -704,14 +704,17 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
 // closes the fileEntry.
-func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
+func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, setStuck bool) error {
 	// Check for ignore failed repairs dependency
 	if r.deps.Disrupt("IgnoreFailedRepairs") {
-		stuck = false
+		uc.stuck = false
 	}
 
 	// Update chunk stuck status and close file.
-	errStuck := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
+	var errStuck error
+	if setStuck {
+		errStuck = uc.fileEntry.SetStuck(uc.staticIndex, uc.stuck)
+	}
 	errClose := uc.fileEntry.Close()
 
 	// Signal garbage collector to free memory.
@@ -766,8 +769,9 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 	} else {
 		r.log.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
-	// Update chunk stuck status
-	if !r.deps.Disrupt("IgnoreFailedRepairs") || successfulRepair {
+	// Update chunk stuck status unless the dependency to skip this step is
+	// enabled.
+	if !r.deps.Disrupt("DontUpdateChunkStatus") {
 		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 			r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 		}

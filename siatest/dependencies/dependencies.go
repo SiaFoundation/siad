@@ -330,6 +330,12 @@ func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostBlockRPC")
 }
 
+// NewDependencyHostLosePriceTable creates a dependency, that causes
+// the host to act is if it can not find a price table for given UID.
+func NewDependencyHostLosePriceTable() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("HostLosePriceTable")
+}
+
 // NewDependencyRegistryUpdateNoOp creates a dependency, that causes
 // RegistryUpdate to be a no-op.
 func NewDependencyRegistryUpdateNoOp() *DependencyWithDisableAndEnable {

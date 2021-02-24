@@ -22,9 +22,9 @@ const (
 
 	// lowPriorityMinThroughput is the minimum throughput as a ratio that low
 	// priority traffic will have when waiting in the queue. For example, a min
-	// throughput of 0.1 means that for every 1 GB of high priority traffic that
-	// gets queued, at least 100 MB of low priority traffic will be promoted to
-	// high priority traffic.
+	// throughput multiplier of 10 means that for every 1 GB of high priority
+	// traffic that gets queued, at least 100 MB of low priority traffic will be
+	// promoted to high priority traffic.
 	//
 	// Raising the min throughput can negatively impact the latency for real
 	// time uploads. A high rate means that users trying to upload new files
@@ -38,7 +38,7 @@ const (
 	// users upload to a fresh node that has very little need of repair traffic.
 	// Increasing the lowPriorityMinThroughput will increase the total amount of
 	// data that a node can maintain at the cost of latency for new uploads.
-	lowPriorityMinThroughput = 0.1
+	lowPriorityMinThroughputMultiplier = 10 // 10%
 
 	// workerUploadBusyThreshold is the number of jobs a worker needs to have to
 	// be considered busy. A threshold of 1 for example means the worker is
@@ -59,7 +59,7 @@ const (
 type uploadChunkDistributionQueue struct {
 	processThreadRunning bool
 
-	priorityBuildup float64
+	priorityBuildup uint64
 	priorityLane    *ucdqFifo
 	lowPriorityLane *ucdqFifo
 
@@ -87,12 +87,6 @@ func newUCDQfifo() *ucdqFifo {
 	return &ucdqFifo{
 		List: list.New(),
 	}
-}
-
-// Peek returns the first in the queue without removing that element from the
-// queue.
-func (u *ucdqFifo) Peek() *unfinishedUploadChunk {
-	return u.List.Front().Value.(*unfinishedUploadChunk)
 }
 
 // Pop removes and returns the first element in the fifo, removing that element
@@ -154,14 +148,21 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 		return
 	}
 	// Tally up the new buildup caused by this new priority chunk.
-	ucdq.priorityBuildup += lowPriorityMinThroughput * float64(uc.staticMemoryNeeded)
+	ucdq.priorityBuildup += uc.staticMemoryNeeded
 
 	// Add items from the low priority lane as long as there is enough buildup
 	// to justify bumping them.
-	for ucdq.lowPriorityLane.Len() > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane.Peek().staticMemoryNeeded) {
-		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane.Peek().staticMemoryNeeded)
-		x := ucdq.lowPriorityLane.Pop()
-		ucdq.priorityLane.PushBack(x)
+	for x := ucdq.lowPriorityLane.Pop(); x != nil; x = ucdq.lowPriorityLane.Pop() {
+		// If there is buildup, add the item.
+		needed := x.staticMemoryNeeded * lowPriorityMinThroughputMultiplier
+		if ucdq.priorityBuildup > needed {
+			ucdq.priorityBuildup -= needed
+			ucdq.priorityLane.PushBack(x)
+			continue
+		}
+		// Otherwise return the element. We are done.
+		ucdq.lowPriorityLane.PushFront(x)
+		break
 	}
 	// If all low priority items were bumped into the high priority lane, the
 	// buildup can be cleared out.
@@ -244,9 +245,11 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			// from the low priority lane, we need to subtract from the priority
 			// buildup as the low priority lane has made progress.
 			ucdq.mu.Lock()
-			ucdq.priorityBuildup -= float64(nextUC.staticMemoryNeeded)
-			if ucdq.priorityBuildup < 0 {
+			needed := nextUC.staticMemoryNeeded * lowPriorityMinThroughputMultiplier
+			if ucdq.priorityBuildup < needed {
 				ucdq.priorityBuildup = 0
+			} else {
+				ucdq.priorityBuildup -= needed
 			}
 			ucdq.mu.Unlock()
 			continue
