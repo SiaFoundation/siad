@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -96,7 +97,7 @@ type (
 	// notificationHandler is a helper type that contains some information
 	// relevant to notification pricing and updating price tables.
 	notificationHandler struct {
-		staticStream       siamux.Stream // stream of the main subscription thread
+		staticStream       io.Closer // stream of the main subscription thread
 		staticWorker       *worker
 		staticPTUpdateChan chan modules.RPCPriceTable
 
@@ -105,6 +106,15 @@ type (
 		mu               sync.Mutex
 	}
 )
+
+// newSubscription creates a new subscription.
+func newSubscription(request *modules.RPCRegistrySubscriptionRequest) *subscription {
+	return &subscription{
+		staticRequest: request,
+		subscribed:    make(chan struct{}),
+		subscribe:     true,
+	}
+}
 
 // active returns 'true' if the subscription is currently active. That means the
 // subscribed channel was closed after a successful subscription request.
@@ -171,7 +181,8 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 		// Update limit and notification cost.
 		limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
 		nh.notificationCost = pt.SubscriptionNotificationCost
-		// Since this stream uses the new costs we set the limit last.
+		// Since this stream uses the new costs we set the limit after updating
+		// the costs.
 		err = stream.SetLimit(limit)
 		if err != nil {
 			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but failed to update limit on stream")
@@ -179,7 +190,11 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 		}
 		return
 	default:
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		w.renter.log.Print("managedHandleNotification: unknown notification type")
+		if err := nh.staticStream.Close(); err != nil {
+			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		}
 		return
 	case modules.SubscriptionResponseRegistryValue:
 	}
@@ -211,8 +226,7 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	// Check if the host was trying to cheat us with an outdated entry.
 	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
 	if exists && sneu.Entry.Revision < latestRev {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown and
-		// closing the subscription session for a while.
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		w.renter.log.Printf("managedHandleNotification: %v < %v", sneu.Entry.Revision, latestRev)
 		if err := nh.staticStream.Close(); err != nil {
 			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
@@ -223,8 +237,7 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	// Verify the signature.
 	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
 	if err != nil {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown and
-		// closing the subscription session for a while.
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		w.renter.log.Printf("managedHandleNotification: failed to verify signature: %v", err)
 		if err := nh.staticStream.Close(); err != nil {
 			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
@@ -242,9 +255,12 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	defer subInfo.mu.Unlock()
 	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
 	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown and
-		// closing the subscription session for a while.
-		w.renter.log.Printf("managedHandleNotification: %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
+		if exists && sub.latestRV != nil {
+			w.renter.log.Printf("managedHandleNotification: %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
+		} else {
+			w.renter.log.Printf("managedHandleNotification: subscription not found")
+		}
 		if err := nh.staticStream.Close(); err != nil {
 			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
 		}
@@ -649,11 +665,7 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
-			sub = &subscription{
-				staticRequest: &requests[i],
-				subscribed:    make(chan struct{}),
-				subscribe:     true,
-			}
+			sub = newSubscription(&requests[i])
 			subInfo.subscriptions[sid] = sub
 		}
 		subs = append(subs, sub)
