@@ -96,6 +96,7 @@ type (
 	// notificationHandler is a helper type that contains some information
 	// relevant to notification pricing and updating price tables.
 	notificationHandler struct {
+		staticStream       siamux.Stream // stream of the main subscription thread
 		staticWorker       *worker
 		staticPTUpdateChan chan modules.RPCPriceTable
 
@@ -213,6 +214,9 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 		w.renter.log.Printf("managedHandleNotification: %v < %v", sneu.Entry.Revision, latestRev)
+		if err := nh.staticStream.Close(); err != nil {
+			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		}
 		return
 	}
 
@@ -222,6 +226,9 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 		w.renter.log.Printf("managedHandleNotification: failed to verify signature: %v", err)
+		if err := nh.staticStream.Close(); err != nil {
+			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		}
 		return
 	}
 
@@ -238,6 +245,9 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 		// TODO: (f/u) Punish the host by adding a subscription cooldown and
 		// closing the subscription session for a while.
 		w.renter.log.Printf("managedHandleNotification: %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
+		if err := nh.staticStream.Close(); err != nil {
+			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		}
 		return
 	}
 
@@ -455,6 +465,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	// Register the handler. This can happen after beginning the subscription
 	// since we are not expecting any notifications yet.
 	nh := &notificationHandler{
+		staticStream:       stream,
 		staticWorker:       w,
 		staticPTUpdateChan: make(chan modules.RPCPriceTable, 1),
 		ptUpdateDone:       make(chan struct{}),
@@ -468,7 +479,6 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	}
 
 	// Register some cleanup.
-	subInfo := w.staticSubscriptionInfo
 	defer func() {
 		err = errors.Compose(err, w.managedSubscriptionCleanup(stream, subscriber))
 	}()
@@ -498,6 +508,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// Create a diff between the active subscriptions and the desired
 		// ones.
+		subInfo := w.staticSubscriptionInfo
 		toSubscribe, toUnsubscribe, subChans := subInfo.managedSubscriptionDiff()
 
 		// Unsubscribe from unnecessary subscriptions.
