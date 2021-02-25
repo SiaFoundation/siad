@@ -4147,7 +4147,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	monetization := []modules.Monetizer{
 		{
 			Address:  types.UnlockHash{},
-			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+			Amount:   types.SiacoinPrecision,
 			Currency: modules.CurrencyUSD,
 		},
 	}
@@ -4183,23 +4183,15 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("wrong monetizers")
 	}
 
-	// Test multipart file with monetization for the whole link and monetization
-	// for a subfile.
-	fileMonetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-			Currency: modules.CurrencyUSD,
-		},
-	}
-	fastrand.Read(fileMonetization[0].Address[:])
-
-	nestedFile := siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: fileMonetization}
-	files := []siatest.TestFile{nestedFile}
+	// Test multipart file.
+	nestedFile1 := siatest.TestFile{Name: "nested/file1.html", Data: []byte("FileContents1")}
+	nestedFile2 := siatest.TestFile{Name: "nested/file2.html", Data: []byte("FileContents2")}
+	files := []siatest.TestFile{nestedFile1, nestedFile2}
 	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartMonetized", files, "", false, false, monetization)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Download the whole thing.
 	_, md, err = r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -4207,19 +4199,25 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if !reflect.DeepEqual(md.Monetization, monetization) {
 		t.Log("got", md.Monetization)
 		t.Log("want", monetization)
-		t.Error("wrong monetizeres")
+		t.Error("wrong monetizers")
 	}
-	if len(md.Subfiles) != 1 {
+	if len(md.Subfiles) != 2 {
 		t.Fatal("wrong number of subfiles")
 	}
-	var smd modules.SkyfileSubfileMetadata
-	for _, md := range md.Subfiles {
-		smd = md
-		break
+	// Download just the first subfile. It should have half the monetization
+	// since both fields have the same length.
+	_, md, err = r.SkynetSkylinkGet(skylink + "/" + nestedFile1.Name)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(smd.Monetization, fileMonetization) {
-		t.Log("got", smd.Monetization)
-		t.Log("want", fileMonetization)
+	nestedFileMonetization := monetization
+	nestedFileMonetization = append([]modules.Monetizer{}, nestedFileMonetization...)
+	for i := range nestedFileMonetization {
+		nestedFileMonetization[i].Amount = nestedFileMonetization[i].Amount.Div64(2)
+	}
+	if !reflect.DeepEqual(md.Monetization, nestedFileMonetization) {
+		t.Log("got", md.Monetization)
+		t.Log("want", nestedFileMonetization)
 		t.Error("wrong monetizers")
 	}
 
@@ -4262,9 +4260,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
 		t.Fatal("should fail", err)
 	}
-	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: zeroMonetization}
-	files = []siatest.TestFile{nestedFile}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartZeroMonetizer", files, "", false, false, monetization)
+	nestedFile1 = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents")}
+	files = []siatest.TestFile{nestedFile1}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartZeroMonetizer", files, "", false, false, zeroMonetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrZeroMonetizer.Error()) {
 		t.Fatal("should fail", err)
 	}
@@ -4284,9 +4282,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
 		t.Fatal("should fail", err)
 	}
-	nestedFile = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents"), Monetization: unknownMonetization}
-	files = []siatest.TestFile{nestedFile}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, monetization)
+	nestedFile1 = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents")}
+	files = []siatest.TestFile{nestedFile1}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, unknownMonetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
 		t.Fatal("should fail", err)
 	}
