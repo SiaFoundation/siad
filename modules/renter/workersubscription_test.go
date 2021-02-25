@@ -2,15 +2,22 @@ package renter
 
 import (
 	"context"
+	"encoding/hex"
+	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // randomRegistryValue is a helper to create a signed registry value for
@@ -115,7 +122,7 @@ func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	}
 
 	// Fund the budget a bit.
-	err = wt.managedFundSubscription(stream, initialSubscriptionBudget.Div64(2))
+	err = wt.managedFundSubscription(stream, pt, initialSubscriptionBudget.Div64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,5 +233,306 @@ func TestPriceTableForSubscription(t *testing.T) {
 	// Make sure the correct price table was returned.
 	if !reflect.DeepEqual(*pt, wptValid.staticPriceTable) {
 		t.Fatal("invalid price table returned")
+	}
+}
+
+// TestSubscriptionLoop is a unit test for managedSubscriptionLoop. This
+// includes making sure that the loop will extend the subscription if necessary
+// and fund the budget if it runs low. It also tests that a subscription which
+// is added to the subscription map will be subscribed to or unsubscribed from.
+func TestSubscriptionLoop(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker that's not running its worker loop.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// Ignore threadgroup stopped error since we are manually closing the
+		// threadgroup of the worker.
+		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get a price table and refill the account manually.
+	wt.staticUpdatePriceTable()
+	wt.managedRefillAccount()
+
+	// The fresh price table should be valid for the subscription.
+	wpt := wt.staticPriceTable()
+	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
+		t.Fatal("price table not valid for long enough")
+	}
+	pt := &wpt.staticPriceTable
+
+	// Compute the expected deadline.
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
+
+	// Set the initial budget to half the budget that the loop should maintain.
+	expectedBudget := initialSubscriptionBudget
+	initialBudget := expectedBudget.Div64(2)
+	budget := modules.NewBudget(initialBudget)
+
+	// Prepare a unique handler for the host to subscribe to.
+	var subscriber types.Specifier
+	fastrand.Read(subscriber[:])
+	subscriberStr := hex.EncodeToString(subscriber[:])
+
+	// Begin the subscription.
+	stream, err := wt.managedBeginSubscription(initialBudget, wt.staticAccount.staticID, subscriber)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the stream's bandwidth limit.
+	limit := stream.Limit()
+
+	// Remember bandwidth before subscription.
+	downloadBefore := limit.Downloaded()
+	uploadBefore := limit.Uploaded()
+
+	// Run the subscription loop in a separate goroutine.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget, subscriberStr)
+		if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Error(err)
+			return
+		}
+	}()
+
+	// Make sure the budget is funded.
+	var fundAmt types.Currency
+	err = build.Retry(10, time.Second, func() error {
+		// Fetch latest limit. managedSubscriptionLoop changes it.
+		limit := stream.Limit()
+
+		// Compute bandwidth cost before subscribing.
+		downloadBeforeCost := pt.DownloadBandwidthCost.Mul64(downloadBefore)
+		uploadBeforeCost := pt.UploadBandwidthCost.Mul64(uploadBefore)
+		bandwidthBeforeCost := downloadBeforeCost.Add(uploadBeforeCost)
+
+		balanceBeforeFund := initialBudget.Sub(bandwidthBeforeCost)
+		fundAmt = expectedBudget.Sub(balanceBeforeFund)
+
+		// Compute the total bandwidth cost.
+		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
+		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
+		bandwidthCost := downloadCost.Add(uploadCost)
+
+		// The remaining budget should be the initial budget plus the amount of money
+		// funded minus the total bandwidth cost.
+		remainingBudget := initialBudget.Add(fundAmt).Sub(bandwidthCost)
+		if !remainingBudget.Equals(budget.Remaining()) {
+			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start a goroutine that updates the price table whenever necessary.
+	wg.Add(1)
+	stopTicker := make(chan struct{})
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		for {
+			select {
+			case <-stopTicker:
+				return
+			case <-ticker.C:
+			}
+			if time.Now().Before(wpt.staticUpdateTime) {
+				continue
+			}
+			wt.staticUpdatePriceTable()
+		}
+	}()
+
+	// The subscription maps should be empty.
+	subInfo := wt.staticSubscriptionInfo
+	subInfo.mu.Lock()
+	if len(subInfo.subscriptions) != 0 {
+		subInfo.mu.Unlock()
+		t.Fatal("maps contain subscriptions")
+	}
+	// Add 2 random rvs to subscription map.
+	srv1, spk1, _ := randomRegistryValue()
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk1,
+			Tweak:  srv1.Tweak,
+		},
+		subscribed: make(chan struct{}),
+		subscribe:  true,
+	}
+
+	srv2, spk2, _ := randomRegistryValue()
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk2,
+			Tweak:  srv2.Tweak,
+		},
+		subscribed: make(chan struct{}),
+		subscribe:  true,
+	}
+	subInfo.mu.Unlock()
+
+	// Wake up worker.
+	select {
+	case subInfo.staticWakeChan <- struct{}{}:
+	default:
+	}
+
+	// Wait for the values to be subscribed to.
+	nActive := 0
+	for _, sub := range subInfo.subscriptions {
+		select {
+		case <-time.After(10 * time.Second):
+			t.Fatal("timeout")
+		case <-sub.subscribed:
+		}
+		subInfo.mu.Lock()
+		// The subscription should be active.
+		if !sub.active() {
+			t.Fatal("subscription should be active")
+		}
+		// The latest value should be nil since it doesn't exist on the host.
+		if sub.latestRV != nil {
+			t.Fatal("latest value should be nil")
+		}
+		subInfo.mu.Unlock()
+		nActive++
+	}
+
+	// There should be 2 active subscriptions.
+	if nActive != 2 {
+		t.Fatalf("wrong number of active subscriptions: %v", nActive)
+	}
+
+	// Wait for period to be extended while having active subscriptions. This
+	// time it will be extended with active subscriptions.
+	nExtensions := atomic.LoadUint64(&subInfo.atomicExtensions)
+	err = build.Retry(10, 10*time.Second, func() error {
+		n := atomic.LoadUint64(&subInfo.atomicExtensions)
+		if n <= nExtensions {
+			return fmt.Errorf("still waiting %v <= %v", n, nExtensions)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove the second subscription.
+	subInfo.mu.Lock()
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)].subscribe = false
+
+	// Add a third subscription which should be removed automatically since
+	// "subscribe" is set to false from the beginning. Make sure the channel is
+	// closed.
+	srv3, spk3, _ := randomRegistryValue()
+	sub3 := &subscription{
+		staticRequest: &modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk3,
+			Tweak:  srv3.Tweak,
+		},
+		subscribed: make(chan struct{}),
+		subscribe:  false,
+	}
+	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = sub3
+	subInfo.mu.Unlock()
+
+	// After a bit of time we should be successfully unsubscribed.
+	err = build.Retry(10, time.Second, func() error {
+		subInfo.mu.Lock()
+		defer subInfo.mu.Unlock()
+		nActive := 0
+		for _, sub := range subInfo.subscriptions {
+			if sub.active() {
+				nActive++
+			}
+		}
+		if nActive != 1 {
+			return fmt.Errorf("one subscription should be active %v", nActive)
+		}
+		if len(subInfo.subscriptions) != 1 {
+			return fmt.Errorf("there should only be one subscription in the map %v", len(subInfo.subscriptions))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop goroutines and wait for them to finish.
+	close(stopTicker)
+	err = wt.staticTG.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	// Subscription info should be reset.
+	subInfo.mu.Lock()
+	for _, sub := range subInfo.subscriptions {
+		if sub.active() {
+			t.Fatal("no subscription should be active")
+		}
+		select {
+		case <-sub.subscribed:
+			t.Fatal("channels should be reset")
+		default:
+		}
+	}
+	// The channel of sub3 should be closed.
+	select {
+	case <-sub3.subscribed:
+	default:
+		t.Fatal("sub3 channel not closed")
+	}
+	subInfo.mu.Unlock()
+
+	// Check that the budget was withdrawn from correctly.
+	err = build.Retry(10, time.Second, func() error {
+		limit := stream.Limit()
+
+		// Compute bandwidth cost.
+		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
+		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
+		bandwidthCost := downloadCost.Add(uploadCost)
+
+		// Compute subscription cost. Subscribed to 2 entries of which 0
+		// existed.
+		subscriptionCost := modules.MDMSubscribeCost(pt, 0, 2)
+
+		// Compute notification cost. There should not have been any.
+		notificationCost := types.ZeroCurrency
+
+		// Compute extension cost. We extended twice with 2 active subscriptions.
+		nExtensions := atomic.LoadUint64(&subInfo.atomicExtensions)
+		extensionCost := modules.MDMSubscriptionMemoryCost(pt, 2).Mul64(nExtensions)
+
+		// Compute the total cost.
+		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost).Add(extensionCost)
+
+		// Compute the remaining budget. Consider the fundAmt from before.
+		remainingBudget := initialBudget.Sub(totalCost).Add(fundAmt)
+		if !remainingBudget.Equals(budget.Remaining()) {
+			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
