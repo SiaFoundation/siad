@@ -110,6 +110,23 @@ type Contractor struct {
 	staticWatchdog     *watchdog
 }
 
+// PaymentDetails is a helper struct that contains extra information on a
+// payment. Most notably it includes a breakdown of the spending details for a
+// payment, the contractor uses this information to update its spending details
+// accordingly.
+type PaymentDetails struct {
+	// destination details
+	Host types.SiaPublicKey
+	RPC  types.Specifier
+
+	// payment details
+	Amount        types.Currency
+	RefundAccount modules.AccountID
+
+	// spending details
+	SpendingDetails modules.SpendingDetails
+}
+
 // Allowance returns the current allowance.
 func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
@@ -199,11 +216,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 			}
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.ContractFee).Add(contract.TxnFee).
-				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending)
+				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		} else {
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.ContractFee).Add(contract.TxnFee).
-				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending)
+				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		}
 	}
 
@@ -213,7 +230,7 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	allSpending = allSpending.Add(spending.UploadSpending)
 	allSpending = allSpending.Add(spending.StorageSpending)
 	allSpending = allSpending.Add(spending.FundAccountSpending)
-	allSpending = allSpending.Add(spending.MaintenanceSpending)
+	allSpending = allSpending.Add(spending.MaintenanceSpending.Sum())
 	if c.allowance.Funds.Cmp(allSpending) >= 0 {
 		spending.Unspent = c.allowance.Funds.Sub(allSpending)
 	}
@@ -236,13 +253,17 @@ func (c *Contractor) UpdateWorkerPool(wp modules.WorkerPool) {
 	c.workerPool = wp
 }
 
-// ProvidePayment fulfills the PaymentProvider interface. It uses the given
-// stream and necessary payment details to perform payment for an RPC call.
-//
-// Note that this implementation performs a `Read` on the stream object.
-// Therefor you should not be passing in a buffer here to optimise writes. This
-// function however does optimise its writes as much as possible.
-func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, rpcCost, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+// ProvidePayment takes a stream and a set of payment details and handles
+// the payment for an RPC by sending and processing payment request and
+// response objects to the host. It returns an error in case of failure.
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) error {
+	// convenience variables
+	rpc := details.RPC
+	host := details.Host
+	refundAccount := details.RefundAccount
+	amount := details.Amount
+	bh := pt.HostBlockHeight
+
 	// verify we do not specify a refund account on the fund account RPC
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errRefundAccountInvalid
@@ -270,11 +291,11 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 
 	// create transaction containing the revision
 	signedTxn := rev.ToTransaction()
-	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	sig := sc.Sign(signedTxn.SigHash(0, bh))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
 	// record the payment intent
-	walTxn, err := sc.RecordPaymentIntent(rev, rpc, rpcCost, amount)
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, details.SpendingDetails)
 	if err != nil {
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
@@ -326,7 +347,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 
 	// commit payment intent
 	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
-		err = sc.CommitPaymentIntent(walTxn, signedTxn, rpc, rpcCost, amount)
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, details.SpendingDetails)
 		if err != nil {
 			return errors.AddContext(err, "Failed to commit unknown spending intent")
 		}

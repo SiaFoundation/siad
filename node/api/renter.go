@@ -110,7 +110,7 @@ type (
 		// Amount of contract funds that have been spent on maintenance tasks
 		// such as updating the price table or syncing the ephemeral account
 		// balance.
-		MaintenanceSpending types.Currency `json:"maintenancespending"`
+		MaintenanceSpending modules.MaintenanceSpending `json:"maintenancespending"`
 		// Address of the host the file contract was formed with.
 		NetAddress modules.NetAddress `json:"netaddress"`
 		// Remaining funds left for the renter to spend on uploads & downloads.

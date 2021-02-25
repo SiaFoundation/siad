@@ -400,7 +400,7 @@ Contract %v
 				currencyUnits(rc.StorageSpending),
 				currencyUnits(rc.DownloadSpending),
 				currencyUnits(rc.FundAccountSpending),
-				currencyUnits(rc.MaintenanceSpending),
+				currencyUnits(rc.MaintenanceSpending.Sum()),
 				currencyUnits(rc.RenterFunds),
 				modules.FilesizeUnits(rc.Size))
 
@@ -418,7 +418,7 @@ Contract %v
 func renterallowancespendingbreakdown(rg api.RenterGET) (totalSpent, unspentAllocated, unspentUnallocated types.Currency) {
 	fm := rg.FinancialMetrics
 	totalSpent = fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending)
+		Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending.Sum())
 	// Calculate unspent allocated
 	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
 		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
@@ -466,7 +466,7 @@ Spending:
 			currencyUnitsWithExchangeRate(fm.UploadSpending, rate),
 			currencyUnitsWithExchangeRate(fm.DownloadSpending, rate),
 			currencyUnitsWithExchangeRate(fm.FundAccountSpending, rate),
-			currencyUnitsWithExchangeRate(fm.MaintenanceSpending, rate),
+			currencyUnitsWithExchangeRate(fm.MaintenanceSpending.Sum(), rate),
 			currencyUnitsWithExchangeRate(fm.ContractFees, rate),
 			currencyUnitsWithExchangeRate(fm.Unspent, rate),
 			currencyUnitsWithExchangeRate(unspentAllocated, rate),

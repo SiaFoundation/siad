@@ -742,7 +742,7 @@ type RenterContract struct {
 	// to track the various costs manually.
 	DownloadSpending    types.Currency
 	FundAccountSpending types.Currency
-	MaintenanceSpending types.Currency
+	MaintenanceSpending MaintenanceSpending
 	StorageSpending     types.Currency
 	UploadSpending      types.Currency
 
@@ -771,6 +771,45 @@ type RenterContract struct {
 	SiafundFee  types.Currency
 }
 
+// SpendingDetails is a helper struct that contains the breakdown of the
+// spending details when money from the contract has been spent on an RPC.
+// Seeing as we track the allocation of this money across various field we need
+// an object that specifies what money went where for every RPC call that made a
+// payment from a contract.
+type SpendingDetails struct {
+	DownloadSpending    types.Currency
+	FundAccountSpending types.Currency
+	MaintenanceSpending MaintenanceSpending
+	StorageSpending     types.Currency
+	UploadSpending      types.Currency
+}
+
+// MaintenanceSpending is a helper struct that contains the spending fields
+// related to the maintenance (a.k.a upkeep) of the RHP3 protocol. This includes
+// the costs to sync the account balance, update the price table, etc. These
+// metrics reflect the cost of the actual RPC
+type MaintenanceSpending struct {
+	AccountBalanceCost   types.Currency `json:"accountbalancecost"`
+	FundAccountCost      types.Currency `json:"fundaccountcost"`
+	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
+}
+
+// Add is a convenience function that sums the fields of the spending object
+// with the corresponding fields of the given object.
+func (x MaintenanceSpending) Add(y MaintenanceSpending) MaintenanceSpending {
+	return MaintenanceSpending{
+		AccountBalanceCost:   x.AccountBalanceCost.Add(y.AccountBalanceCost),
+		FundAccountCost:      x.FundAccountCost.Add(y.FundAccountCost),
+		UpdatePriceTableCost: x.UpdatePriceTableCost.Add(y.UpdatePriceTableCost),
+	}
+}
+
+// Sum is a convenience function that sums up all of the fields in the spending
+// object and returns the total as a types.Currency.
+func (x MaintenanceSpending) Sum() types.Currency {
+	return x.AccountBalanceCost.Add(x.FundAccountCost).Add(x.UpdatePriceTableCost)
+}
+
 // Size returns the contract size
 func (rc *RenterContract) Size() uint64 {
 	var size uint64
@@ -794,7 +833,7 @@ type ContractorSpending struct {
 	// MaintenanceSpending is the money spent on maintenance tasks in support of
 	// the RHP3 protocol, this includes updating the price table as well as
 	// syncing the ephemeral account balance.
-	MaintenanceSpending types.Currency `json:"maintenancespending"`
+	MaintenanceSpending MaintenanceSpending `json:"maintenancespending"`
 	// StorageSpending is the money currently spent on storage.
 	StorageSpending types.Currency `json:"storagespending"`
 	// ContractSpending is the total amount of money that the renter has put

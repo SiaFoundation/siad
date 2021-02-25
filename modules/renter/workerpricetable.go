@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -278,8 +279,21 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
+	// build payment details
+	details := contractor.PaymentDetails{
+		Host:          w.staticHostPubKey,
+		RPC:           modules.RPCUpdatePriceTable,
+		Amount:        pt.UpdatePriceTableCost,
+		RefundAccount: w.staticAccount.staticID,
+		SpendingDetails: modules.SpendingDetails{
+			MaintenanceSpending: modules.MaintenanceSpending{
+				UpdatePriceTableCost: pt.UpdatePriceTableCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, pt.UpdatePriceTableCost, w.staticAccount.staticID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		err = errors.AddContext(err, "unable to provide payment")
 		return

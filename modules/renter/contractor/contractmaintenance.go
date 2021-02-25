@@ -222,7 +222,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 	// maintenance such as updating price tables and syncing the ephemeral
 	// account balance is expected to remain identical.
 	newFundAccountCost := prevFundAccountSpending
-	newMaintenanceCost := prevMaintenanceSpending
+	newMaintenanceCost := prevMaintenanceSpending.Sum()
 
 	contractPrice := host.ContractPrice
 

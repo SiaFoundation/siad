@@ -66,7 +66,7 @@ type contractHeader struct {
 	StartHeight         types.BlockHeight
 	DownloadSpending    types.Currency
 	FundAccountSpending types.Currency
-	MaintenanceSpending types.Currency
+	MaintenanceSpending modules.MaintenanceSpending
 	StorageSpending     types.Currency
 	UploadSpending      types.Currency
 	TotalCost           types.Currency
@@ -183,14 +183,15 @@ type SafeContract struct {
 
 // CommitPaymentIntent will commit the intent to pay a host for an rpc by
 // committing the signed txn in the contract's header.
-func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, rpc types.Specifier, rpcCost, amount types.Currency) error {
+func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, details modules.SpendingDetails) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// construct new header
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
-	updateHeaderForPaymentIntent(&newHeader, rpc, rpcCost, amount)
+	newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(details.FundAccountSpending)
+	newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(details.MaintenanceSpending)
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
@@ -270,14 +271,15 @@ func (c *SafeContract) PublicKey() crypto.PublicKey {
 
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
-func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, rpc types.Specifier, rpcCost, amount types.Currency) (*unappliedWalTxn, error) {
+func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, details modules.SpendingDetails) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	newHeader := c.header
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 	newHeader.Transaction.TransactionSignatures = nil
-	updateHeaderForPaymentIntent(&newHeader, rpc, rpcCost, amount)
+	newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(details.FundAccountSpending)
+	newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(details.MaintenanceSpending)
 
 	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
@@ -1010,26 +1012,6 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[header.HostPublicKey().String()] = sc.header.ID()
 	return nil
-}
-
-// updateHeaderForPaymentIntent will make sure the payment intent is properly
-// reflected in the appropriate spending metric fields in the given header.
-// Extracted as a helper function to dedupe this logic.
-func updateHeaderForPaymentIntent(header *contractHeader, rpc types.Specifier, rpcCost, amount types.Currency) {
-	switch rpc {
-	// fund account
-	case modules.RPCFundAccount:
-		header.FundAccountSpending = header.FundAccountSpending.Add(amount.Sub(rpcCost))
-		header.MaintenanceSpending = header.MaintenanceSpending.Add(rpcCost)
-	// maintenance spending
-	case modules.RPCAccountBalance:
-		header.MaintenanceSpending = header.MaintenanceSpending.Add(amount)
-	case modules.RPCUpdatePriceTable:
-		header.MaintenanceSpending = header.MaintenanceSpending.Add(amount)
-	case modules.RPCExecuteProgram:
-	default:
-		build.Critical("unexpected rpc", rpc) // ensure we track all RPCs
-	}
 }
 
 // ConvertV130Contract creates a contract file for a v130 contract.

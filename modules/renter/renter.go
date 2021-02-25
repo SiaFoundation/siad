@@ -25,6 +25,7 @@ package renter
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -115,7 +116,10 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
-	modules.PaymentProvider
+	// ProvidePayment takes a stream and a set of payment details and handles
+	// the payment for an RPC by sending and processing payment request and
+	// response objects to the host. It returns an error in case of failure.
+	ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details contractor.PaymentDetails) error
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract

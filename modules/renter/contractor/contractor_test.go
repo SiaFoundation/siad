@@ -552,7 +552,7 @@ func TestPayment(t *testing.T) {
 	initial := contract.RenterFunds
 
 	// check spending metrics are zero
-	if !contract.FundAccountSpending.IsZero() || !contract.MaintenanceSpending.IsZero() {
+	if !contract.FundAccountSpending.IsZero() || !contract.MaintenanceSpending.Sum().IsZero() {
 		t.Fatal("unexpected spending metrics")
 	}
 
@@ -580,8 +580,21 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// build payment details
+	details := PaymentDetails{
+		Host:          contract.HostPublicKey,
+		RPC:           modules.RPCUpdatePriceTable,
+		Amount:        pt.UpdatePriceTableCost,
+		RefundAccount: aid,
+		SpendingDetails: modules.SpendingDetails{
+			MaintenanceSpending: modules.MaintenanceSpending{
+				UpdatePriceTableCost: pt.UpdatePriceTableCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
+	err = c.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,10 +615,10 @@ func TestPayment(t *testing.T) {
 	}
 
 	// check maintenance funding metric got updated
-	if !contract.MaintenanceSpending.Equals(pt.UpdatePriceTableCost) {
+	if !contract.MaintenanceSpending.UpdatePriceTableCost.Equals(pt.UpdatePriceTableCost) {
 		t.Fatal("unexpected maintenance spending metric", contract.MaintenanceSpending)
 	}
-	prev := contract.MaintenanceSpending
+	prev := contract.MaintenanceSpending.FundAccountCost
 
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)
@@ -644,7 +657,20 @@ func TestPayment(t *testing.T) {
 		funding = h.InternalSettings().MaxEphemeralAccountBalance
 	}
 
-	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, pt.FundAccountCost, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
+	// build payment details
+	details = PaymentDetails{
+		Host:          hpk,
+		RPC:           modules.RPCFundAccount,
+		Amount:        funding.Add(pt.FundAccountCost),
+		RefundAccount: modules.ZeroAccountID,
+		SpendingDetails: modules.SpendingDetails{
+			FundAccountSpending: funding,
+			MaintenanceSpending: modules.MaintenanceSpending{
+				FundAccountCost: pt.FundAccountCost,
+			},
+		},
+	}
+	err = c.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,7 +703,7 @@ func TestPayment(t *testing.T) {
 	if !contract.FundAccountSpending.Equals(funding) {
 		t.Fatalf("unexpected funding spending metric %v != %v", contract.FundAccountSpending, funding)
 	}
-	if !contract.MaintenanceSpending.Equals(prev.Add(pt.FundAccountCost)) {
+	if !contract.MaintenanceSpending.FundAccountCost.Equals(prev.Add(pt.FundAccountCost)) {
 		t.Fatalf("unexpected maintenance spending metric %v != %v", contract.MaintenanceSpending, prev.Add(pt.FundAccountCost))
 	}
 }
@@ -867,8 +893,21 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// build payment details
+	details := PaymentDetails{
+		Host:          contract.HostPublicKey,
+		RPC:           modules.RPCUpdatePriceTable,
+		Amount:        pt.UpdatePriceTableCost,
+		RefundAccount: aid,
+		SpendingDetails: modules.SpendingDetails{
+			MaintenanceSpending: modules.MaintenanceSpending{
+				UpdatePriceTableCost: pt.UpdatePriceTableCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, pt.UpdatePriceTableCost, aid, pt.HostBlockHeight)
+	err = c.ProvidePayment(stream, &pt, details)
 	if err == nil || !strings.Contains(err.Error(), "storage obligation not found") {
 		t.Fatal("expected storage obligation not found but got", err)
 	}

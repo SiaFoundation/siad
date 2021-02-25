@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -600,8 +601,22 @@ func (w *worker) managedRefillAccount() {
 		return
 	}
 
+	// build payment details
+	details := contractor.PaymentDetails{
+		Host:          w.staticHostPubKey,
+		RPC:           modules.RPCFundAccount,
+		Amount:        amount.Add(pt.FundAccountCost),
+		RefundAccount: modules.ZeroAccountID,
+		SpendingDetails: modules.SpendingDetails{
+			FundAccountSpending: amount,
+			MaintenanceSpending: modules.MaintenanceSpending{
+				FundAccountCost: pt.FundAccountCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, pt.FundAccountCost, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
@@ -673,8 +688,21 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 		return types.ZeroCurrency, err
 	}
 
+	// build payment details
+	details := contractor.PaymentDetails{
+		Host:          w.staticHostPubKey,
+		RPC:           modules.RPCAccountBalance,
+		Amount:        pt.AccountBalanceCost,
+		RefundAccount: w.staticAccount.staticID,
+		SpendingDetails: modules.SpendingDetails{
+			MaintenanceSpending: modules.MaintenanceSpending{
+				AccountBalanceCost: pt.AccountBalanceCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, pt.AccountBalanceCost, w.staticAccount.staticID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.

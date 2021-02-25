@@ -70,7 +70,7 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 
 	fm := rg.FinancialMetrics
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending)
+		Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending.Sum())
 	total := totalSpent.Add(fm.Unspent)
 	allowance := rg.Settings.Allowance
 
@@ -105,11 +105,11 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 			}
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.Fees).
-				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending)
+				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		} else {
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.Fees).
-				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending)
+				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		}
 	}
 	for _, contract := range renewedContracts {
@@ -163,11 +163,11 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 			`, fm.FundAccountSpending.HumanString(), spending.FundAccountSpending.HumanString())
 	}
 	// Compare Maintenance Spending
-	if fm.MaintenanceSpending.Cmp(spending.MaintenanceSpending) != 0 {
+	if fm.MaintenanceSpending.Sum().Cmp(spending.MaintenanceSpending.Sum()) != 0 {
 		return fmt.Errorf(`Maintenance spending not equal:
 			Financial Metrics DS: %v
 			Contract DS:          %v
-			`, fm.MaintenanceSpending.HumanString(), spending.MaintenanceSpending.HumanString())
+			`, fm.MaintenanceSpending.Sum().HumanString(), spending.MaintenanceSpending.Sum().HumanString())
 	}
 	// Compare Storage Spending
 	if fm.StorageSpending.Cmp(spending.StorageSpending) != 0 {
@@ -270,8 +270,8 @@ func CheckRenewedContractsSpending(renewedContracts []api.RenterContract) error 
 		if !c.FundAccountSpending.IsZero() {
 			return fmt.Errorf("FundAccount spending on renewed contract equal to %v, expected zero", c.DownloadSpending.HumanString())
 		}
-		if !c.MaintenanceSpending.IsZero() {
-			return fmt.Errorf("Maintenance spending on renewed contract equal to %v, expected zero", c.MaintenanceSpending.HumanString())
+		if !c.MaintenanceSpending.Sum().IsZero() {
+			return fmt.Errorf("Maintenance spending on renewed contract equal to %v, expected zero", c.MaintenanceSpending.Sum().HumanString())
 		}
 	}
 	return nil

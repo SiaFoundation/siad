@@ -139,7 +139,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 			revisedRoots := []crypto.Hash{{1}}
 			fcr := revisedHeader.Transaction.FileContractRevisions[0]
 			amount := revisedHeader.FundAccountSpending.Sub(initialHeader.FundAccountSpending)
-			txn, err := sc.RecordPaymentIntent(fcr, modules.RPCFundAccount, types.ZeroCurrency, amount)
+			txn, err := sc.RecordPaymentIntent(fcr, amount, modules.SpendingDetails{})
 			return txn, revisedRoots, revisedHeader, err
 		}
 		testContractUncomittedTxn(t, initialHeader, updateFunc)
@@ -497,9 +497,9 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	// create a helper function that records the intent, creates the transaction
 	// containing the given revision and then commits the intent depending on
 	// whether the given flag was set to true
-	processTxnWithRevision := func(rev types.FileContractRevision, rpc types.Specifier, rpcCost, amount types.Currency, commit bool) {
+	processTxnWithRevision := func(rev types.FileContractRevision, amount types.Currency, details modules.SpendingDetails, commit bool) {
 		// record the payment intent
-		walTxn, err := sc.RecordPaymentIntent(rev, rpc, rpcCost, amount)
+		walTxn, err := sc.RecordPaymentIntent(rev, amount, details)
 		if err != nil {
 			t.Fatal("Failed to record payment intent")
 		}
@@ -513,7 +513,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 		if !commit {
 			return
 		}
-		err = sc.CommitPaymentIntent(walTxn, signedTxn, rpc, rpcCost, amount)
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, details)
 		if err != nil {
 			t.Fatal("Failed to commit payment intent")
 		}
@@ -527,7 +527,10 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processTxnWithRevision(rev, modules.RPCFundAccount, rpcCost, amount, true)
+	processTxnWithRevision(rev, amount, modules.SpendingDetails{
+		FundAccountSpending: amount,
+		MaintenanceSpending: modules.MaintenanceSpending{FundAccountCost: rpcCost},
+	}, true)
 
 	// create another payment revision, this time for an MDM RPC
 	curr = sc.LastRevision()
@@ -537,7 +540,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processTxnWithRevision(rev, modules.RPCExecuteProgram, rpcCost, amount, true)
+	processTxnWithRevision(rev, amount, modules.SpendingDetails{}, true)
 
 	// create another payment revision, this time for a PT update RPC
 	curr = sc.LastRevision()
@@ -547,7 +550,9 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processTxnWithRevision(rev, modules.RPCUpdatePriceTable, rpcCost, amount, true)
+	processTxnWithRevision(rev, amount, modules.SpendingDetails{
+		MaintenanceSpending: modules.MaintenanceSpending{UpdatePriceTableCost: rpcCost},
+	}, true)
 	expectedRevNumber := rev.NewRevisionNumber
 
 	// create another payment revision, for an account balance sync,
@@ -559,7 +564,9 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processTxnWithRevision(rev, modules.RPCAccountBalance, rpcCost, amount, false)
+	processTxnWithRevision(rev, amount, modules.SpendingDetails{
+		MaintenanceSpending: modules.MaintenanceSpending{AccountBalanceCost: rpcCost},
+	}, false)
 
 	// reload the contract set
 	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
@@ -584,7 +591,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	// table. This means that the cost of the MDM RPC and the non committed
 	// account balance sync should not be included
 	expectedMaintenanceSpending := types.NewCurrency64(1).Add(types.NewCurrency64(3))
-	if !sc.header.MaintenanceSpending.Equals(expectedMaintenanceSpending) {
+	if !sc.header.MaintenanceSpending.Sum().Equals(expectedMaintenanceSpending) {
 		t.Fatal("unexpected", sc.header.MaintenanceSpending)
 	}
 }
@@ -1102,54 +1109,4 @@ func TestPanicOnOverwritingNewerRevision(t *testing.T) {
 	if err := sc.applySetHeader(header); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// TestUpdateHeaderForPaymentIntent is a unit test that probes the helper
-// function 'updateHeaderForPaymentIntent'
-func TestUpdateHeaderForPaymentIntent(t *testing.T) {
-	hasting := types.NewCurrency64(1)
-
-	// verify metrics are zero
-	ch := new(contractHeader)
-	if !ch.FundAccountSpending.IsZero() || !ch.MaintenanceSpending.IsZero() {
-		t.Fatal("unexpected")
-	}
-
-	// verify fund account contributes to both fields
-	rpc := modules.RPCFundAccount
-	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting.Mul64(2))
-	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting) {
-		t.Fatal("unexpected")
-	}
-
-	// verify execute program contributes to none
-	rpc = modules.RPCExecuteProgram
-	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
-	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting) {
-		t.Fatal("unexpected")
-	}
-
-	// verify account balance contributes the amount to maintenance spending
-	rpc = modules.RPCAccountBalance
-	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
-	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting.Mul64(2)) {
-		t.Fatal("unexpected")
-	}
-
-	// verify update price table contributes the amount to maintenance spending
-	rpc = modules.RPCUpdatePriceTable
-	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
-	if !ch.FundAccountSpending.Equals(hasting) || !ch.MaintenanceSpending.Equals(hasting.Mul64(3)) {
-		t.Fatal("unexpected")
-	}
-
-	// verify we have a sanity check on the rpc ID to ensure this function is
-	// thought of when extending the RPCs
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic when calling the helper with an RPC specifier that is currently not taken to accountin")
-		}
-	}()
-	rpc = modules.RPCFormContract
-	updateHeaderForPaymentIntent(ch, rpc, hasting, hasting)
 }

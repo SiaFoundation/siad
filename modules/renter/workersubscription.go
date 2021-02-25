@@ -78,10 +78,10 @@ func (w *worker) managedBeginSubscription(initialBudget types.Currency, fundAcc 
 			err = errors.Compose(err, stream.Close())
 		}
 	}()
-	return stream, modules.RPCBeginSubscription(stream, w.staticAccount, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, initialBudget, w.staticAccount.staticID, w.staticCache().staticBlockHeight, subscriber)
+	return stream, modules.RPCBeginSubscription(stream, w.staticHostPubKey, &w.staticPriceTable().staticPriceTable, w.staticAccount.staticID, w.staticAccount.staticSecretKey, initialBudget, w.staticCache().staticBlockHeight, subscriber)
 }
 
 // managedFundSubscription pays the host to increase the subscription budget.
 func (w *worker) managedFundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
-	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount, w.staticAccount.staticID, w.staticCache().staticBlockHeight, fundAmt)
+	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount.staticID, w.staticAccount.staticSecretKey, w.staticCache().staticBlockHeight, fundAmt)
 }
