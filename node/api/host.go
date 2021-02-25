@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,6 +42,12 @@ type (
 		Contracts []modules.StorageObligation `json:"contracts"`
 	}
 
+	// HostContractGET contains information about the storage contract returned
+	// by a GET request to /host/contracts/:id
+	HostContractGET struct {
+		Contract modules.StorageObligation `json:"contract"`
+	}
+
 	// HostGET contains the information that is returned after a GET request to
 	// /host - a bunch of information about the status of the host.
 	HostGET struct {
@@ -78,6 +85,30 @@ func folderIndex(folderPath string, storageFolders []modules.StorageFolderMetada
 		}
 	}
 	return -1, errStorageFolderNotFound
+}
+
+// hostContractGetHandler handles the API call to get information about a contract.
+func (api *API) hostContractGetHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+	var obligationID types.FileContractID
+	contractIDStr := ps.ByName("contractID")
+
+	buf, err := hex.DecodeString(contractIDStr)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing storage contract id: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	copy(obligationID[:], buf)
+
+	contract, err := api.host.StorageObligation(obligationID)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error get storage contract: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, HostContractGET{
+		Contract: contract,
+	})
 }
 
 // hostContractInfoHandler handles the API call to get the contract information of the host.
