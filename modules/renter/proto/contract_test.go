@@ -138,8 +138,10 @@ func TestContractUncommittedTxn(t *testing.T) {
 			}
 			revisedRoots := []crypto.Hash{{1}}
 			fcr := revisedHeader.Transaction.FileContractRevisions[0]
-			amount := revisedHeader.FundAccountSpending.Sub(initialHeader.FundAccountSpending)
-			txn, err := sc.RecordPaymentIntent(fcr, amount, modules.SpendingDetails{})
+			amount := revisedHeader.FundAccountSpending
+			txn, err := sc.RecordPaymentIntent(fcr, amount, modules.SpendingDetails{
+				FundAccountSpending: revisedHeader.FundAccountSpending,
+			})
 			return txn, revisedRoots, revisedHeader, err
 		}
 		testContractUncomittedTxn(t, initialHeader, updateFunc)
