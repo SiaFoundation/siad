@@ -127,8 +127,122 @@ func (sub *subscription) active() bool {
 	return false
 }
 
+// managedHandleRegistryEntry is called by managedHandleNotification to handle a
+// notification about an updated registry entry.
+func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit) (err error) {
+	w := nh.staticWorker
+	subInfo := w.staticSubscriptionInfo
+
+	// Add a limit to the stream.
+	err = stream.SetLimit(limit)
+	if err != nil {
+		return errors.AddContext(err, "failed to set limit on notification stream")
+	}
+
+	// Withdraw notification cost.
+	nh.mu.Lock()
+	ok := budget.Withdraw(nh.notificationCost)
+	nh.mu.Unlock()
+	if !ok {
+		return errors.New("failed to withdraw notification cost")
+	}
+
+	// Read the update.
+	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+	err = modules.RPCRead(stream, &sneu)
+	if err != nil {
+		return errors.AddContext(err, "failed to read entry update")
+	}
+
+	// Starting here we close the main subscription stream if an error happens
+	// because it will be the host trying to cheat us.
+	defer func() {
+		if err != nil {
+			err = errors.Compose(err, nh.staticStream.Close())
+		}
+	}()
+
+	// Check if the host was trying to cheat us with an outdated entry.
+	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
+	if exists && sneu.Entry.Revision < latestRev {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
+		return fmt.Errorf("host provided outdated entry %v < %v", sneu.Entry.Revision, latestRev)
+	}
+
+	// Verify the signature.
+	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
+	if err != nil {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
+		return errors.AddContext(err, "failed to verify signature")
+	}
+
+	// The entry is valid. Update the cache.
+	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
+
+	// Check if the host sent us an update we are not subsribed to. This might
+	// not seem bad, but the host might want to spam us with valid entries that
+	// we are not interested in simply to have us pay for bandwidth.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
+	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown.
+		if exists && sub.latestRV != nil {
+			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
+		} else {
+			return fmt.Errorf("subscription not found")
+		}
+	}
+
+	// Update the subscription.
+	sub.latestRV = &sneu.Entry
+	return nil
+}
+
+// managedHandleSubscriptionSuccess is called by managedHandleNotification to
+// handle a subscription success notification.
+func (nh *notificationHandler) managedHandleSubscriptionSuccess(stream siamux.Stream, limit *modules.BudgetLimit) error {
+	// This indicates, that the subscription was extended. We expect a new
+	// price table and have to update the notification cost.
+	nh.mu.Lock()
+	defer nh.mu.Unlock()
+
+	// Update the ptUpdateDone channel after closing the old one.
+	defer func() {
+		close(nh.ptUpdateDone)
+		nh.ptUpdateDone = make(chan struct{})
+	}()
+
+	var pt modules.RPCPriceTable
+	select {
+	case pt = <-nh.staticPTUpdateChan:
+	default:
+		// sanity check that a pt is in the pt update channel. If not, the
+		// host send this notification either without us requesting it or
+		// there was a developer mistake. Don't print it in production to
+		// avoid spam.
+		err := errors.New("extension 'ok' was received but no new price table is available")
+		if build.Release == "testing" {
+			build.Critical(err)
+		}
+		return errors.Compose(err, nh.staticStream.Close())
+	}
+	// Update limit and notification cost.
+	limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+	nh.notificationCost = pt.SubscriptionNotificationCost
+	// Since this stream uses the new costs we set the limit after updating
+	// the costs.
+	err := stream.SetLimit(limit)
+	if err != nil {
+		return errors.AddContext(err, "extension 'ok' was received but failed to update limit on stream")
+	}
+	return nil
+}
+
 // managedHandleNotification handles incoming notifications from the host. It
 // verifies notifications and updates the worker's internal state accordingly.
+// Since it's registered as a handle which is called in a separate goroutine it
+// doesn't return an error.
 func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit) {
 	w := nh.staticWorker
 	// Close the stream when done.
@@ -137,7 +251,6 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 			w.renter.log.Print("managedHandleNotification: failed to close stream: ", err)
 		}
 	}()
-	subInfo := w.staticSubscriptionInfo
 
 	// The stream should have a sane deadline.
 	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
@@ -157,118 +270,23 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	// Handle the notification.
 	switch snt.Type {
 	case modules.SubscriptionResponseSubscriptionSuccess:
-		// This indicates, that the subscription was extended. We expect a new
-		// price table and have to update the notification cost.
-		nh.mu.Lock()
-		defer nh.mu.Unlock()
-
-		// Update the ptUpdateDone channel after closing the old one.
-		defer func() {
-			close(nh.ptUpdateDone)
-			nh.ptUpdateDone = make(chan struct{})
-		}()
-
-		var pt modules.RPCPriceTable
-		select {
-		case pt = <-nh.staticPTUpdateChan:
-		default:
-			if build.Release == "testing" {
-				build.Critical("no pt on pt update chan")
-			}
-			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but no new price table is available")
-			return
-		}
-		// Update limit and notification cost.
-		limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
-		nh.notificationCost = pt.SubscriptionNotificationCost
-		// Since this stream uses the new costs we set the limit after updating
-		// the costs.
-		err = stream.SetLimit(limit)
-		if err != nil {
-			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but failed to update limit on stream")
-			return
-		}
-		return
-	default:
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
-		w.renter.log.Print("managedHandleNotification: unknown notification type")
-		if err := nh.staticStream.Close(); err != nil {
-			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		if err := nh.managedHandleSubscriptionSuccess(stream, limit); err != nil {
+			w.renter.log.Print("managedHAndleSubscriptionSuccess:", err)
 		}
 		return
 	case modules.SubscriptionResponseRegistryValue:
-	}
-
-	// Add a limit to the stream.
-	err = stream.SetLimit(limit)
-	if err != nil {
-		w.renter.log.Print("managedHandleNotification: failed to set limit on notification stream: ", err)
-		return
-	}
-
-	// Withdraw notification cost.
-	nh.mu.Lock()
-	ok := budget.Withdraw(nh.notificationCost)
-	nh.mu.Unlock()
-	if !ok {
-		w.renter.log.Print("managedHandleNotification: failed to withdraw notification cost")
-		return
-	}
-
-	// Read the update.
-	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
-	err = modules.RPCRead(stream, &sneu)
-	if err != nil {
-		w.renter.log.Print("managedHandleNotification: failed to read entry update: ", err)
-		return
-	}
-
-	// Check if the host was trying to cheat us with an outdated entry.
-	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
-	if exists && sneu.Entry.Revision < latestRev {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
-		w.renter.log.Printf("managedHandleNotification: %v < %v", sneu.Entry.Revision, latestRev)
-		if err := nh.staticStream.Close(); err != nil {
-			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
+		if err := nh.managedHandleRegistryEntry(stream, budget, limit); err != nil {
+			w.renter.log.Print("managedHandleRegistryEntry:", err)
 		}
 		return
+	default:
 	}
 
-	// Verify the signature.
-	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
-	if err != nil {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
-		w.renter.log.Printf("managedHandleNotification: failed to verify signature: %v", err)
-		if err := nh.staticStream.Close(); err != nil {
-			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
-		}
-		return
+	// TODO: (f/u) Punish the host by adding a subscription cooldown.
+	w.renter.log.Print("managedHandleNotification: unknown notification type")
+	if err := nh.staticStream.Close(); err != nil {
+		w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
 	}
-
-	// The entry is valid. Update the cache.
-	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
-
-	// Check if the host sent us an update we are not subsribed to. This might
-	// not seem bad, but the host might want to spam us with valid entries that
-	// we are not interested in simply to have us pay for bandwidth.
-	subInfo.mu.Lock()
-	defer subInfo.mu.Unlock()
-	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
-	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
-		if exists && sub.latestRV != nil {
-			w.renter.log.Printf("managedHandleNotification: %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
-		} else {
-			w.renter.log.Printf("managedHandleNotification: subscription not found")
-		}
-		if err := nh.staticStream.Close(); err != nil {
-			w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
-		}
-		return
-	}
-
-	// Update the subscription.
-	sub.latestRV = &sneu.Entry
 }
 
 // managedSubscriptionDiff returns the difference between the desired

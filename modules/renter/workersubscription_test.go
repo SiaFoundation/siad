@@ -726,7 +726,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 		// rv1 should still be the same
 		cachedRev, exists := cache.Get(spk1, rv1.Tweak)
 		if !exists {
-			return errors.New("cached entry doesn't exist")
+			return errors.New("rv1: cached entry doesn't exist")
 		}
 		if cachedRev != rv1.Revision {
 			return fmt.Errorf("rv1: wrong cached value %v != %v", cachedRev, rv1.Revision)
@@ -734,7 +734,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 		// rv2 should be updated to rv2a
 		cachedRev, exists = cache.Get(spk2, rv2.Tweak)
 		if !exists {
-			return errors.New("cached entry doesn't exist")
+			return errors.New("rv2: cached entry doesn't exist")
 		}
 		if cachedRev != rv2a.Revision {
 			return fmt.Errorf("rv2: wrong cached value %v != %v", cachedRev, rv2a.Revision)
@@ -1097,7 +1097,11 @@ func TestHandleNotification(t *testing.T) {
 		sendSuccessNotification()
 
 		// Wait for it to be handled.
-		<-done
+		select {
+		case <-time.After(time.Minute):
+			t.Fatal("success notification was never handled")
+		case <-done:
+		}
 
 		// The notification cost should be updated on the handler.
 		if !nh.notificationCost.Equals(pt.SubscriptionNotificationCost) {
