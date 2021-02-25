@@ -773,11 +773,10 @@ type RenterContract struct {
 	SiafundFee  types.Currency
 }
 
-// SpendingDetails is a helper struct that contains the breakdown of the
-// spending details when money from the contract has been spent on an RPC.
-// Seeing as we track the allocation of this money across various field we need
-// an object that specifies what money went where for every RPC call that made a
-// payment from a contract.
+// SpendingDetails is a helper struct that contains a breakdown of where exactly
+// the money was spent. The MaintenanceSpending field is an aggregate of costs
+// spent on RHP3 maintenance, this includes updating the price table, syncing
+// the account balance, etc.
 type SpendingDetails struct {
 	DownloadSpending    types.Currency
 	FundAccountSpending types.Currency
@@ -786,10 +785,9 @@ type SpendingDetails struct {
 	UploadSpending      types.Currency
 }
 
-// MaintenanceSpending is a helper struct that contains the spending fields
+// MaintenanceSpending is a helper struct that contains a breakdown of costs
 // related to the maintenance (a.k.a upkeep) of the RHP3 protocol. This includes
-// the costs to sync the account balance, update the price table, etc. These
-// metrics reflect the cost of the actual RPC
+// the costs to sync the account balance, update the price table, etc.
 type MaintenanceSpending struct {
 	AccountBalanceCost   types.Currency `json:"accountbalancecost"`
 	FundAccountCost      types.Currency `json:"fundaccountcost"`
