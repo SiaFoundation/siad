@@ -15,9 +15,8 @@ import (
 // TestFile is a small helper struct that identifies a file to be uploaded. The
 // upload helpers take a slice of these files to ensure order is maintained.
 type TestFile struct {
-	Name         string
-	Data         []byte
-	Monetization []modules.Monetizer
+	Name string
+	Data []byte
 }
 
 // UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
@@ -165,7 +164,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, 
 	// add the files
 	var offset uint64
 	for _, tf := range files {
-		_, err = modules.AddMultipartFileWithMonetization(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset, tf.Monetization)
+		_, err = modules.AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
 		if err != nil {
 			panic(err)
 		}

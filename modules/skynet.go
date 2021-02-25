@@ -268,6 +268,13 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	for _, file := range metadata.Subfiles {
 		metadata.Length += file.Len
 	}
+	// Adjust the monetization using the ratio between the previous total length
+	// and the new one.
+	metadata.Monetization = append([]Monetizer{}, sm.Monetization...)
+	for i, m := range metadata.Monetization {
+		m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
+		metadata.Monetization[i] = m
+	}
 	return metadata, isFile, offset, metadata.size()
 }
 
@@ -443,12 +450,11 @@ func (sl *SkyfileLayout) Encode() []byte {
 // as nested files and directories are allowed within a single Skyfile, but it
 // is not allowed to contain ./, ../, be empty, or start with a forward slash.
 type SkyfileSubfileMetadata struct {
-	FileMode     os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
-	Filename     string      `json:"filename,omitempty"`
-	ContentType  string      `json:"contenttype,omitempty"`
-	Offset       uint64      `json:"offset,omitempty"`
-	Len          uint64      `json:"len,omitempty"`
-	Monetization []Monetizer `json:"monetization,omitempty"`
+	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
+	Filename    string      `json:"filename,omitempty"`
+	ContentType string      `json:"contenttype,omitempty"`
+	Offset      uint64      `json:"offset,omitempty"`
+	Len         uint64      `json:"len,omitempty"`
 }
 
 // IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.
