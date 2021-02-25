@@ -901,7 +901,7 @@ func TestHandleNotification(t *testing.T) {
 	}
 	// helper to compare bandwidth and cost for every test.
 	testNotification := func(run func(), downloadCost, uploadCost, additionalCost types.Currency) {
-		// Capture used bandwidht and budget before test.
+		// Capture used bandwidth and budget before test.
 		budgetBefore := budget.Remaining()
 		downloadBefore := limit.Downloaded()
 		uploadBefore := limit.Uploaded()
