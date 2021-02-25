@@ -35,7 +35,7 @@ type (
 		filename            string
 		force               bool
 		mode                os.FileMode
-		monetization        []modules.Monetizer
+		monetization        *modules.Monetization
 		root                bool
 		siaPath             modules.SiaPath
 		skyKeyID            skykey.SkykeyID
@@ -235,14 +235,14 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 
 	// parse 'monetization'.
-	var monetization []modules.Monetizer
+	var monetization *modules.Monetization
 	monetizationStr := queryForm.Get("monetization")
 	if monetizationStr != "" {
-		err = json.Unmarshal([]byte(monetizationStr), &monetization)
+		err = json.Unmarshal([]byte(monetizationStr), monetization)
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'monetizers'")
 		}
-		if err := modules.ValidateMonetization(monetization); err != nil {
+		if err := modules.ValidateMonetization(*monetization); err != nil {
 			return nil, nil, err
 		}
 	}

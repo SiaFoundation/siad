@@ -121,7 +121,7 @@ type (
 
 		// Monetization contains a list of monetization info for the upload. It
 		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization []Monetizer
+		Monetization *Monetization
 
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
@@ -177,7 +177,7 @@ type (
 
 		// Monetization contains a list of monetization info for the upload. It
 		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization []Monetizer
+		Monetization *Monetization
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -202,7 +202,7 @@ type (
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
-		Monetization       []Monetizer     `json:"monetization,omitempty"`
+		Monetization       *Monetization   `json:"monetization,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -212,14 +212,17 @@ type (
 
 	}
 
+	// Monetization contains the monetization information for a skyfile.
+	Monetization struct {
+		Monetizers []Monetizer `json:"monetizers"`
+		License    string      `json:"license"`
+	}
+
 	// Monetizer refers to a single content provider being paid.
-	// TODO: don't merge before the license has a good name.
-	// TODO: Quersion: should the license be per monetizer or per skyfile?
 	Monetizer struct {
 		Address  types.UnlockHash `json:"address"`
 		Amount   types.Currency   `json:"amount"`
 		Currency string           `json:"currency"`
-		License  string           `json:"license"`
 	}
 )
 
@@ -270,10 +273,18 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 	// Adjust the monetization using the ratio between the previous total length
 	// and the new one.
-	metadata.Monetization = append([]Monetizer{}, sm.Monetization...)
-	for i, m := range metadata.Monetization {
-		m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
-		metadata.Monetization[i] = m
+	if sm.Monetization != nil {
+		// Deep copy parent monetization.
+		var md Monetization
+		md = *sm.Monetization
+		md.Monetizers = append([]Monetizer{}, sm.Monetization.Monetizers...)
+		// Adjust individual monetizers.
+		for i, m := range md.Monetizers {
+			m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
+			md.Monetizers[i] = m
+		}
+		// Assign to metadata.
+		metadata.Monetization = &md
 	}
 	return metadata, isFile, offset, metadata.size()
 }

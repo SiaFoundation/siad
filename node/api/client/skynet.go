@@ -500,7 +500,7 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	}
 
 	// Encode the monetizers.
-	if len(params.Monetization) > 0 {
+	if params.Monetization != nil {
 		b, err := json.Marshal(params.Monetization)
 		if err != nil {
 			return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetization")
@@ -590,7 +590,7 @@ func (c *Client) SkynetSkyfileMultiPartEncryptedPost(params modules.SkyfileMulti
 	}
 
 	// Encode the monetizers.
-	if len(params.Monetization) > 0 {
+	if params.Monetization != nil {
 		b, err := json.Marshal(params.Monetization)
 		if err != nil {
 			return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetizers")
@@ -638,7 +638,7 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	}
 
 	// Encode the monetization.
-	if len(lup.Monetization) > 0 {
+	if lup.Monetization != nil {
 		b, err := json.Marshal(lup.Monetization)
 		if err != nil {
 			return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to marshal monetizers")
