@@ -912,7 +912,7 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 		}
 		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
 		if v1412DecodeErr != nil {
-			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode v1412 contract header")
+			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
 		}
 	}
 	if err := header.validate(); err != nil {

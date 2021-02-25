@@ -3001,7 +3001,11 @@ Returns the current settings along with metrics on the renter's spending.
     "contractspending":    "1234", // hastings (deprecated, now totalallocated)
     "downloadspending":    "5678", // hastings
     "fundaccountspending": "5678", // hastings
-    "maintenancespending": "5678", // hastings
+    "maintenancespending": {
+      "accountbalancecost":   "1234", // hastings
+      "fundaccountcost":      "1234", // hastings
+      "updatepricetablecost": "1234", // hastings
+    },
     "storagespending":     "1234", // hastings
     "totalallocated":      "1234", // hastings
     "uploadspending":      "5678", // hastings
@@ -3128,7 +3132,6 @@ streaming.
 **financialmetrics**    
 Metrics about how much the Renter has spent on storage, uploads, and downloads.
 
-
 **contractfees** | hastings  
 Amount of money spent on contract fees, transaction fees and siafund fees.  
 
@@ -3140,11 +3143,25 @@ fees.
 Amount of money spent on downloads.  
 
 **fundaccountspending** | hastings  
-Amount of money spent on funding an ephemeral account on a host.  
+Amount of money spent on funding an ephemeral account on a host. This value
+reflects the exact amount that got deposited into the account, meaning it
+excludes the cost of the actual funding RPC, which is contained in the
+maintenance spending metrics.
 
-**maintenancespending** | hastings  
+**maintenancespending**  
 Amount of money spent on maintenance, such as updating price tables or syncing
 the ephemeral account balance with the host.  
+
+**accountbalancecost** | hastings  
+Amount of money spent on syncing the renter's account balance with the host.
+
+**fundaccountcost** | hastings  
+Amount of money spent on funding the ephemeral account. Note that this is only
+the cost of executing the RPC, the amount of money that is transferred into the
+account is being tracked in the `fundaccountspending` field.
+
+**updatepricetablecost** | hastings  
+Amount of money spent on updating the price table with the host.
 
 **storagespending** | hastings  
 Amount of money spend on storage.  
@@ -3449,7 +3466,11 @@ flag indicating if recoverable contracts should be returned.
       "hostversion":      "1.4.0",  // string
       "id": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // hash
       "lasttransaction": {},                // transaction
-      "maintenancespending": "1234",        // hastings
+      "maintenancespending": {
+        "accountbalancecost":   "1234", // hastings
+        "fundaccountcost":      "1234", // hastings
+        "updatepricetablecost": "1234", // hastings
+      },
       "netaddress":       "12.34.56.78:9",  // string
       "renterfunds":      "1234",           // hastings
       "size":             8192,             // bytes
@@ -3474,7 +3495,10 @@ flag indicating if recoverable contracts should be returned.
 Amount of contract funds that have been spent on downloads.  
 
 **fundaccountspending** | hastings  
-Amount of money spent on funding an ephemeral account on a host.  
+Amount of money spent on funding an ephemeral account on a host. This value
+reflects the exact amount that got deposited into the account, meaning it
+excludes the cost of the actual funding RPC, which is contained in the
+maintenance spending metrics.
 
 **endheight** | block height  
 Block height that the file contract ends on.  
@@ -3500,9 +3524,20 @@ ID of the file contract.
 **lasttransaction** | transaction  
 A signed transaction containing the most recent contract revision.  
 
-**maintenancespending** | hastings  
+**maintenancespending**  
 Amount of money spent on maintenance, such as updating price tables or syncing
 the ephemeral account balance with the host.  
+
+**accountbalancecost** | hastings  
+Amount of money spent on syncing the renter's account balance with the host.
+
+**fundaccountcost** | hastings  
+Amount of money spent on funding the ephemeral account. Note that this is only
+the cost of executing the RPC, the amount of money that is transferred into the
+account is being tracked in the `fundaccountspending` field.
+
+**updatepricetablecost** | hastings  
+Amount of money spent on updating the price table with the host.
 
 **netaddress** | string  
 Address of the host the file contract was formed with.  

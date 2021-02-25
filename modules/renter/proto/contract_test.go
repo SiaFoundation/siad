@@ -581,7 +581,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 
 	// we expect the `FundAccount` spending metric to reflect exactly the amount
 	// of money that should have made it into the EA
-	expectedFundAccountSpending := types.NewCurrency64(9)
+	expectedFundAccountSpending := types.NewCurrency64(10)
 	if !sc.header.FundAccountSpending.Equals(expectedFundAccountSpending) {
 		t.Fatal("unexpected", sc.header.FundAccountSpending)
 	}
