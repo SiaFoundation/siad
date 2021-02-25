@@ -92,6 +92,17 @@ type (
 		// the initial value should be set before closing 'subscribed'.
 		latestRV *modules.SignedRegistryValue
 	}
+
+	// notificationHandler is a helper type that contains some information
+	// relevant to notification pricing and updating price tables.
+	notificationHandler struct {
+		staticWorker       *worker
+		staticPTUpdateChan chan modules.RPCPriceTable
+
+		ptUpdateDone     chan struct{}
+		notificationCost types.Currency
+		mu               sync.Mutex
+	}
 )
 
 // active returns 'true' if the subscription is currently active. That means the
@@ -103,6 +114,135 @@ func (sub *subscription) active() bool {
 	default:
 	}
 	return false
+}
+
+// managedHandleNotification handles incoming notifications from the host. It
+// verifies notifications and updates the worker's internal state accordingly.
+func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit) {
+	w := nh.staticWorker
+	// Close the stream when done.
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Print("managedHandleNotification: failed to close stream: ", err)
+		}
+	}()
+	subInfo := w.staticSubscriptionInfo
+
+	// The stream should have a sane deadline.
+	err := stream.SetDeadline(time.Now().Add(defaultNewStreamTimeout))
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to set deadlien on stream: ", err)
+		return
+	}
+
+	// Read the notification type.
+	var snt modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &snt)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to read notification type: ", err)
+		return
+	}
+
+	// Handle the notification.
+	switch snt.Type {
+	case modules.SubscriptionResponseSubscriptionSuccess:
+		// This indicates, that the subscription was extended. We expect a new
+		// price table and have to update the notification cost.
+		nh.mu.Lock()
+		defer nh.mu.Unlock()
+
+		// Update the ptUpdateDone channel after closing the old one.
+		defer func() {
+			close(nh.ptUpdateDone)
+			nh.ptUpdateDone = make(chan struct{})
+		}()
+
+		var pt modules.RPCPriceTable
+		select {
+		case pt = <-nh.staticPTUpdateChan:
+		default:
+			if build.Release == "testing" {
+				build.Critical("no pt on pt update chan")
+			}
+			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but no new price table is available")
+			return
+		}
+		// Update limit and notification cost.
+		limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+		nh.notificationCost = pt.SubscriptionNotificationCost
+		// Since this stream uses the new costs we set the limit last.
+		err = stream.SetLimit(limit)
+		if err != nil {
+			w.renter.log.Print("managedHandleNotification: extension 'ok' was received but failed to update limit on stream")
+			return
+		}
+		return
+	default:
+		w.renter.log.Print("managedHandleNotification: unknown notification type")
+		return
+	case modules.SubscriptionResponseRegistryValue:
+	}
+
+	// Add a limit to the stream.
+	err = stream.SetLimit(limit)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to set limit on notification stream: ", err)
+		return
+	}
+
+	// Withdraw notification cost.
+	nh.mu.Lock()
+	ok := budget.Withdraw(nh.notificationCost)
+	nh.mu.Unlock()
+	if !ok {
+		w.renter.log.Print("managedHandleNotification: failed to withdraw notification cost")
+		return
+	}
+
+	// Read the update.
+	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+	err = modules.RPCRead(stream, &sneu)
+	if err != nil {
+		w.renter.log.Print("managedHandleNotification: failed to read entry update: ", err)
+		return
+	}
+
+	// Check if the host was trying to cheat us with an outdated entry.
+	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
+	if exists && sneu.Entry.Revision < latestRev {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+		w.renter.log.Printf("managedHandleNotification: %v < %v", sneu.Entry.Revision, latestRev)
+		return
+	}
+
+	// Verify the signature.
+	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
+	if err != nil {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+		w.renter.log.Printf("managedHandleNotification: failed to verify signature: %v", err)
+		return
+	}
+
+	// The entry is valid. Update the cache.
+	w.staticRegistryCache.Set(sneu.PubKey, sneu.Entry, false)
+
+	// Check if the host sent us an update we are not subsribed to. This might
+	// not seem bad, but the host might want to spam us with valid entries that
+	// we are not interested in simply to have us pay for bandwidth.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
+	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
+		// TODO: (f/u) Punish the host by adding a subscription cooldown and
+		// closing the subscription session for a while.
+		w.renter.log.Printf("managedHandleNotification: %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
+		return
+	}
+
+	// Update the subscription.
+	sub.latestRV = &sneu.Entry
 }
 
 // managedSubscriptionDiff returns the difference between the desired
@@ -133,17 +273,34 @@ func (subInfo *subscriptionInfos) managedSubscriptionDiff() (toSubscribe, toUnsu
 
 // managedExtendSubscriptionPeriod extends the ongoing subscription with a host
 // and adjusts the deadline on the stream.
-func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *modules.RPCBudget, oldDeadline time.Time, oldPT *modules.RPCPriceTable) (*modules.RPCPriceTable, time.Time, error) {
+func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *modules.RPCBudget, oldDeadline time.Time, oldPT *modules.RPCPriceTable, nh *notificationHandler) (*modules.RPCPriceTable, time.Time, error) {
 	subInfo := w.staticSubscriptionInfo
 
 	// Get a pricetable that is valid until the new deadline.
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 	newPT := w.managedPriceTableForSubscription(time.Until(newDeadline))
 
+	// Tell the notification handler about the new pt. The channel is
+	// buffered so this doesn't block. Also fetch the handler't
+	// notification channel.
+	nh.mu.Lock()
+	updateDone := nh.ptUpdateDone
+	nh.mu.Unlock()
+	nh.staticPTUpdateChan <- *newPT
+
 	// Try extending the subscription.
 	err := modules.RPCExtendSubscription(stream, newPT)
 	if err != nil {
 		return nil, time.Time{}, errors.AddContext(err, "failed to extend subscription")
+	}
+
+	// Wait for "ok".
+	select {
+	case <-w.staticTG.StopChan():
+		return nil, time.Time{}, threadgroup.ErrStopped
+	case <-time.After(time.Until(newDeadline)):
+		return nil, time.Time{}, errors.New("never received the 'ok' response for extending the subscription")
+	case <-updateDone:
 	}
 
 	// Count the number of active subscriptions.
@@ -297,8 +454,14 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 	// Register the handler. This can happen after beginning the subscription
 	// since we are not expecting any notifications yet.
+	nh := &notificationHandler{
+		staticWorker:       w,
+		staticPTUpdateChan: make(chan modules.RPCPriceTable, 1),
+		ptUpdateDone:       make(chan struct{}),
+		notificationCost:   pt.SubscriptionNotificationCost,
+	}
 	err = w.renter.staticMux.NewListener(subscriber, func(stream siamux.Stream) {
-		// TODO: Is added in f/u
+		nh.managedHandleNotification(stream, budget, limit)
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to register listener")
@@ -327,7 +490,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// If the subscription period is halfway over, extend it.
 		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
-			pt, deadline, err = w.managedExtendSubscriptionPeriod(stream, budget, deadline, pt)
+			pt, deadline, err = w.managedExtendSubscriptionPeriod(stream, budget, deadline, pt, nh)
 			if err != nil {
 				return err
 			}
