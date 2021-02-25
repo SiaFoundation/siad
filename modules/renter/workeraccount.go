@@ -556,6 +556,14 @@ func (w *worker) managedRefillAccount() {
 		return
 	}
 
+	// Defer a function that schedules a price table update in case we received
+	// an error that indicates the host deems our price table invalid.
+	defer func() {
+		if modules.IsPriceTableInvalidErr(err) {
+			w.staticTryForcePriceTableUpdate()
+		}
+	}()
+
 	// create a new stream
 	var stream net.Conn
 	stream, err = w.staticNewStream()
@@ -656,13 +664,21 @@ func (w *worker) managedRefillAccount() {
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host
-func (w *worker) staticHostAccountBalance() (types.Currency, error) {
+func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	// Sanity check - only one account balance check should be running at a
 	// time.
 	if !atomic.CompareAndSwapUint64(&w.atomicAccountBalanceCheckRunning, 0, 1) {
 		w.renter.log.Critical("account balance is being checked in two threads concurrently")
 	}
 	defer atomic.StoreUint64(&w.atomicAccountBalanceCheckRunning, 0)
+
+	// Defer a function that schedules a price table update in case we received
+	// an error that indicates the host deems our price table invalid.
+	defer func() {
+		if modules.IsPriceTableInvalidErr(err) {
+			w.staticTryForcePriceTableUpdate()
+		}
+	}()
 
 	// Get a stream.
 	stream, err := w.staticNewStream()

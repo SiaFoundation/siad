@@ -195,7 +195,7 @@ func recoverFromError(ctx context.Context, t *testing.T, pair *renterHostPair, s
 		}
 
 		// try to recover from expired PT
-		if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
+		if !recovered && modules.IsPriceTableInvalidErr(err) {
 			var payByFC bool
 			// try using an EA, but fall back to contract payment, this
 			// ensures the price table gets updated, and attempts to do

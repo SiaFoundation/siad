@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
 
@@ -120,6 +121,9 @@ type (
 		// staticSetInitialEstimates is an object that ensures the initial queue
 		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
+
+		// subscription-related fields
+		staticSubscriptionInfo *subscriptionInfos
 
 		staticTG threadgroup.ThreadGroup
 		mu       sync.Mutex
@@ -234,6 +238,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticBalanceTarget: balanceTarget,
 
 		staticRegistryCache: newRegistryCache(registryCacheSize),
+
+		staticSubscriptionInfo: &subscriptionInfos{
+			subscriptions:  make(map[modules.SubscriptionID]*subscription),
+			staticWakeChan: make(chan struct{}, 1),
+		},
 
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics

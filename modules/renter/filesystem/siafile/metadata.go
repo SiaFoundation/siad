@@ -95,11 +95,11 @@ type (
 		//
 		// CachedUploadProgress is the upload progress of the file and is updated
 		// every time a piece is added to the siafile.
-		//
-		// TODO: Should the repair info be added here?
 		CachedRedundancy     float64           `json:"cachedredundancy"`
+		CachedRepairBytes    uint64            `json:"cachedrepairbytes"`
 		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
+		CachedStuckBytes     uint64            `json:"cachedstuckbytes"`
 		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
 		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`
 		CachedUploadedBytes  uint64            `json:"cacheduploadedbytes"`
@@ -122,13 +122,13 @@ type (
 		// was checked
 		//
 		// StuckHealth is the worst health of any of the file's stuck chunks
-		//
-		// TODO: Should the repair info be added here?
 		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
 		Redundancy          float64   `json:"redundancy"`
+		RepairBytes         uint64    `json:"repairbytes"`
 		StuckHealth         float64   `json:"stuckhealth"`
+		StuckBytes          uint64    `json:"stuckbytes"`
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
@@ -341,6 +341,8 @@ func (md Metadata) backup() (b Metadata) {
 	b.ChangeTime = md.ChangeTime
 	b.AccessTime = md.AccessTime
 	b.CreateTime = md.CreateTime
+	b.CachedRepairBytes = md.CachedRepairBytes
+	b.CachedStuckBytes = md.CachedStuckBytes
 	b.CachedRedundancy = md.CachedRedundancy
 	b.CachedUserRedundancy = md.CachedUserRedundancy
 	b.CachedHealth = md.CachedHealth
@@ -351,6 +353,8 @@ func (md Metadata) backup() (b Metadata) {
 	b.Health = md.Health
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
+	b.RepairBytes = md.RepairBytes
+	b.StuckBytes = md.StuckBytes
 	b.Redundancy = md.Redundancy
 	b.StuckHealth = md.StuckHealth
 	b.Mode = md.Mode
@@ -395,6 +399,8 @@ func (md *Metadata) restore(b Metadata) {
 	md.ChangeTime = b.ChangeTime
 	md.AccessTime = b.AccessTime
 	md.CreateTime = b.CreateTime
+	md.CachedRepairBytes = b.CachedRepairBytes
+	md.CachedStuckBytes = b.CachedStuckBytes
 	md.CachedRedundancy = b.CachedRedundancy
 	md.CachedUserRedundancy = b.CachedUserRedundancy
 	md.CachedHealth = b.CachedHealth
@@ -405,6 +411,8 @@ func (md *Metadata) restore(b Metadata) {
 	md.Health = b.Health
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks
+	md.RepairBytes = b.RepairBytes
+	md.StuckBytes = b.StuckBytes
 	md.Redundancy = b.Redundancy
 	md.StuckHealth = b.StuckHealth
 	md.Mode = b.Mode

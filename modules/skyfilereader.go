@@ -3,7 +3,6 @@ package modules
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -404,26 +403,12 @@ func (sr *skyfileMultipartReader) createSubfileFromCurrPart() error {
 		return ErrEmptyFilename
 	}
 
-	// Parse the monetization header if available.
-	var monetization []Monetizer
-	monetizationStr := sr.currPart.Header.Get("Monetization")
-	if monetizationStr != "" {
-		err = json.Unmarshal([]byte(monetizationStr), &monetization)
-		if err != nil {
-			return errors.AddContext(err, "unable to parse 'Monetizers' header")
-		}
-		if err := ValidateMonetization(monetization); err != nil {
-			return err
-		}
-	}
-
 	sr.metadata.Subfiles[filename] = SkyfileSubfileMetadata{
-		FileMode:     mode,
-		Filename:     filename,
-		ContentType:  sr.currPart.Header.Get("Content-Type"),
-		Offset:       sr.currOff,
-		Len:          sr.currLen,
-		Monetization: monetization,
+		FileMode:    mode,
+		Filename:    filename,
+		ContentType: sr.currPart.Header.Get("Content-Type"),
+		Offset:      sr.currOff,
+		Len:         sr.currLen,
 	}
 	return nil
 }
