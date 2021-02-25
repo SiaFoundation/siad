@@ -515,7 +515,9 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 		sid := modules.RegistrySubscriptionID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
-			build.Critical("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
+			err = errors.New("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
+			build.Critical(err)
+			return err
 		}
 		sub.subscribed = make(chan struct{})
 	}
@@ -669,13 +671,17 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// minutes before it ends.
 		w.renter.log.Printf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
 
-		// Trigger an update by setting the update time to now.
+		// Trigger an update by setting the update time to now and calling
+		// 'staticWake'.
 		newPT := *pt
 		newPT.staticUpdateTime = time.Time{}
 		oldPT := (*workerPriceTable)(atomic.SwapPointer(&w.atomicPriceTable, unsafe.Pointer(&newPT)))
+		w.staticWake()
 
 		// The old table's UID should be the same. Otherwise we just swapped out
-		// a new table and need to try again.
+		// a new table and need to try again. This condition can be false when
+		// pricetable got updated between now and when we fetched it at the
+		// beginning of this iteration.
 		if oldPT.staticPriceTable.UID != pt.staticPriceTable.UID {
 			w.staticSetPriceTable(oldPT) // set back to the old one
 			continue

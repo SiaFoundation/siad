@@ -116,8 +116,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	if err != nil {
 		r.log.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
 	}
-	bubblePaths.callRefreshAll()
-	return nil
+	return bubblePaths.callRefreshAll()
 }
 
 // SetFileStuck sets the Stuck field of the whole siafile to stuck.

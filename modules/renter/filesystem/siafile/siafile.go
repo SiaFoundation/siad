@@ -194,7 +194,10 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
-	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
+	minPieces := erasureCode.MinPieces()
+	numPieces := erasureCode.NumPieces()
+	zeroHealth := float64(1 + minPieces/(numPieces-minPieces))
+	repairSize := fileSize * uint64(numPieces/minPieces)
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
@@ -202,6 +205,8 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 			ChangeTime:              currentTime,
 			CreateTime:              currentTime,
 			CachedHealth:            zeroHealth,
+			CachedRepairBytes:       repairSize,
+			CachedStuckBytes:        0,
 			CachedStuckHealth:       0,
 			CachedRedundancy:        0,
 			CachedUserRedundancy:    0,
@@ -241,6 +246,8 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
+		file.staticMetadata.CachedRepairBytes = 0
+		file.staticMetadata.CachedStuckBytes = 0
 		file.staticMetadata.CachedStuckHealth = 0
 		file.staticMetadata.CachedRedundancy = float64(erasureCode.NumPieces()) / float64(erasureCode.MinPieces())
 		file.staticMetadata.CachedUserRedundancy = file.staticMetadata.CachedRedundancy
@@ -639,7 +646,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
-func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h, sh, uh, ush float64, nsc, rbr, sb uint64) {
+func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h, sh, uh, ush float64, nsc, rb, sb uint64) {
 	numPieces := sf.staticMetadata.staticErasureCode.NumPieces()
 	minPieces := sf.staticMetadata.staticErasureCode.MinPieces()
 	worstHealth := CalculateHealth(0, minPieces, numPieces)
@@ -649,6 +656,8 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedHealth = h
+		sf.staticMetadata.CachedRepairBytes = rb
+		sf.staticMetadata.CachedStuckBytes = sb
 		sf.staticMetadata.CachedStuckHealth = sh
 	}()
 

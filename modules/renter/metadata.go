@@ -68,8 +68,7 @@ func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) 
 		return errors.AddContext(err, "unable to prepare subtree for bubble")
 	}
 	// Call bubble in a non blocking manner
-	urp.callRefreshAll()
-	return nil
+	return urp.callRefreshAll()
 }
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
@@ -662,6 +661,14 @@ func (r *Renter) callThreadedBubbleMetadata(siaPath modules.SiaPath) {
 // managedPerformBubbleMetadata will bubble the metadata without checking the
 // bubble preparation.
 func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err error) {
+	// Since this is an expensive method and includes disk writes, we want to make
+	// sure that regardless of how this method is called we are protecting against
+	// a shutdown that could leave disk writes in abandoned threads.
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
 	// Make sure we call callThreadedBubbleMetadata on the parent once we are
 	// done.
 	defer func() error {

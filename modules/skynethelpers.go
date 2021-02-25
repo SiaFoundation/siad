@@ -35,7 +35,10 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
 	}
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
+	partHeader, err := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
+	if err != nil {
+		return SkyfileSubfileMetadata{}, err
+	}
 	part, err := w.CreatePart(partHeader)
 	if err != nil {
 		return SkyfileSubfileMetadata{}, err
@@ -325,9 +328,22 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	return nil
 }
 
+// ValidateMonetization is a helper function to validate a list of monetizers.
+func ValidateMonetization(monetization []Monetizer) error {
+	for _, amt := range monetization {
+		if amt.Amount.IsZero() {
+			return ErrZeroMonetizer
+		}
+		if amt.Currency != CurrencyUSD {
+			return ErrInvalidCurrency
+		}
+	}
+	return nil
+}
+
 // createFormFileHeaders builds a header from the given params. These headers
 // are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
+func createFormFileHeaders(fieldname, filename, filemode, contentType string) (textproto.MIMEHeader, error) {
 	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 	fieldname = quoteEscaper.Replace(fieldname)
 	filename = quoteEscaper.Replace(filename)
@@ -336,7 +352,7 @@ func createFormFileHeaders(fieldname, filename, filemode, contentType string) te
 	h.Set("Content-Type", contentType)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
 	h.Set("mode", filemode)
-	return h
+	return h, nil
 }
 
 // fileContentType extracts the content type from a given file. If the content

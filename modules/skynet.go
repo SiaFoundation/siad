@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -27,6 +29,15 @@ const (
 
 	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
 	layoutKeyDataSize = 64
+
+	// monetizationLotteryEntropy is the number of bytes generated as entropy
+	// for drawing the lottery ticket.
+	monetizationLotteryEntropy = 32
+)
+
+const (
+	// CurrencyUSD the specifier for USD in the monetizer.
+	CurrencyUSD = "usd"
 )
 
 var (
@@ -41,6 +52,14 @@ var (
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
+
+	// ErrZeroMonetizer is returned if a caller tries to set a monetizer with 0H
+	// payout.
+	ErrZeroMonetizer = errors.New("can't provide 0 monetization")
+
+	// ErrInvalidCurrency is returned if an unknown monetization currency is
+	// specified.
+	ErrInvalidCurrency = errors.New("specified monetization currency is invalid")
 )
 
 var (
@@ -94,6 +113,10 @@ type (
 		// Mode indicates the file permissions of the skyfile.
 		Mode os.FileMode
 
+		// Monetization contains a list of monetization info for the upload. It
+		// will be added to the SkyfileMetadata of the uploaded file.
+		Monetization []Monetizer
+
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
 		// as an archive. If left empty, it will be interpreted as "index.html"
@@ -145,6 +168,10 @@ type (
 
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
+
+		// Monetization contains a list of monetization info for the upload. It
+		// will be added to the SkyfileMetadata of the uploaded file.
+		Monetization []Monetizer
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -169,6 +196,7 @@ type (
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
+		Monetization       []Monetizer     `json:"monetization,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -176,6 +204,13 @@ type (
 		Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 		Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
+	}
+
+	// Monetizer refers to a single content provider being paid.
+	Monetizer struct {
+		Address  types.UnlockHash `json:"address"`
+		Amount   types.Currency   `json:"amount"`
+		Currency string           `json:"currency"`
 	}
 )
 
@@ -188,8 +223,9 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename: path,
-		Subfiles: make(SkyfileSubfiles),
+		Filename:     path,
+		Monetization: sm.Monetization,
+		Subfiles:     make(SkyfileSubfiles),
 	}
 
 	// Try to find an exact match
@@ -222,6 +258,13 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// Set the metadata length by summing up the length of the subfiles.
 	for _, file := range metadata.Subfiles {
 		metadata.Length += file.Len
+	}
+	// Adjust the monetization using the ratio between the previous total length
+	// and the new one.
+	metadata.Monetization = append([]Monetizer{}, sm.Monetization...)
+	for i, m := range metadata.Monetization {
+		m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
+		metadata.Monetization[i] = m
 	}
 	return metadata, isFile, offset, metadata.size()
 }
@@ -463,4 +506,61 @@ func (sf SkyfileFormat) IsArchive() bool {
 	return sf == SkyfileFormatTar ||
 		sf == SkyfileFormatTarGz ||
 		sf == SkyfileFormatZip
+}
+
+// ComputeMonetizationPayout is a helper function to decide how much money to
+// pay out to a monetizer depending on a given amount and base. The amount is
+// the amount the monetizer should be paid for a single access of their
+// resource. The base is the actual amount the monetizer is paid with 1 txn. So
+// if a monetizer wants $5 and the base is $5, they will be paid out the base.
+// If they want $6 and the base is $5, they will receive $6. If the amount is $1
+// and the base is $10, the monetizer has a 10% chance of being paid $10.
+func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
+	payout, err := computeMonetizationPayout(amt, base, fastrand.Reader)
+	if err != nil {
+		panic("computeMonetizationPayout should never fail with a fastrand.Reader")
+	}
+	return payout
+}
+
+// computeMonetizationPayout is a helper function to decide how much money to
+// pay out to a monetizer depending on a given amount and base. The amount is
+// the amount the monetizer should be paid for a single access of their
+// resource. The base is the actual amount the monetizer is paid with 1 txn. So
+// if a monetizer wants $5 and the base is $5, they will be paid out the base.
+// If they want $6 and the base is $5, they will receive $6. If the amount is $1
+// and the base is $10, the monetizer has a 10% chance of being paid $10.
+func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.Currency, error) {
+	// If the amt is 0, we don't pay out.
+	if amt.IsZero() {
+		return types.ZeroCurrency, nil
+	}
+
+	// The base should never be zero.
+	if base.IsZero() {
+		build.Critical("computeMonetizationPayout called with 0 base")
+		return types.ZeroCurrency, nil
+	}
+
+	// If the amount is >= than the base, we pay out the amount.
+	if amt.Cmp(base) >= 0 {
+		return amt, nil
+	}
+
+	// We need to generate a large random number n.
+	nBytes := make([]byte, monetizationLotteryEntropy)
+	_, err := io.ReadFull(rand, nBytes)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	n := new(big.Int).SetBytes(nBytes)
+
+	// Adjust it to be in the range [0 , base).
+	n = n.Mod(n, base.Big())
+
+	// If n < amt, you get the base.
+	if n.Cmp(amt.Big()) < 0 {
+		return base, nil
+	}
+	return types.ZeroCurrency, nil
 }

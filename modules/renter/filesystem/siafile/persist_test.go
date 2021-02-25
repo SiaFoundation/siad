@@ -517,8 +517,10 @@ func TestZeroByteFileCompat(t *testing.T) {
 	// Set the cached fields to 0 like they would be if the file was already
 	// uploaded before caching was introduced.
 	sf.staticMetadata.CachedHealth = 0
-	sf.staticMetadata.CachedStuckHealth = 0
 	sf.staticMetadata.CachedRedundancy = 0
+	sf.staticMetadata.CachedRepairBytes = 0
+	sf.staticMetadata.CachedStuckBytes = 0
+	sf.staticMetadata.CachedStuckHealth = 0
 	sf.staticMetadata.CachedUserRedundancy = 0
 	sf.staticMetadata.CachedUploadProgress = 0
 	// Save the file and reload it.
@@ -533,12 +535,18 @@ func TestZeroByteFileCompat(t *testing.T) {
 	if sf.staticMetadata.CachedHealth != 0 {
 		t.Fatalf("CachedHealth should be 0 but was %v", sf.staticMetadata.CachedHealth)
 	}
-	if sf.staticMetadata.CachedStuckHealth != 0 {
-		t.Fatalf("CachedStuckHealth should be 0 but was %v", sf.staticMetadata.CachedStuckHealth)
-	}
 	expectedRedundancy := float64(rc.NumPieces()) / float64(rc.MinPieces())
 	if sf.staticMetadata.CachedRedundancy != expectedRedundancy {
 		t.Fatalf("CachedRedundancy should be %v but was %v", expectedRedundancy, sf.staticMetadata.CachedRedundancy)
+	}
+	if sf.staticMetadata.CachedRepairBytes != 0 {
+		t.Fatalf("CachedRepairBytes should be 0 but was %v", sf.staticMetadata.CachedRepairBytes)
+	}
+	if sf.staticMetadata.CachedStuckBytes != 0 {
+		t.Fatalf("CachedStuckBytes should be 0 but was %v", sf.staticMetadata.CachedStuckBytes)
+	}
+	if sf.staticMetadata.CachedStuckHealth != 0 {
+		t.Fatalf("CachedStuckHealth should be 0 but was %v", sf.staticMetadata.CachedStuckHealth)
 	}
 	if sf.staticMetadata.CachedUserRedundancy != expectedRedundancy {
 		t.Fatalf("CachedRedundancy should be %v but was %v", expectedRedundancy, sf.staticMetadata.CachedUserRedundancy)
