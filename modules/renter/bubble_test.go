@@ -273,7 +273,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	}
 
 	// Calling complete should add the update back to the queue
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// Check Status
@@ -288,7 +288,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	// calling managed pop and then calling complete should result in an empty map
 	// and queue
 	_ = bs.managedPop()
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 
 	// Check Status
 	bs.mu.Lock()
@@ -322,7 +322,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 			return
 		}
 		// calling complete should close the channel
-		bs.callCompleteBubbleUpdate(siaPath)
+		bs.managedCompleteBubbleUpdate(siaPath)
 	}()
 
 	// Should be blocking until after the duration
@@ -371,7 +371,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 		t.Fatal("no bubble update")
 	}
 	// calling complete should close the channel
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 
 	// Wait for go routines to finish
 	wg.Wait()
@@ -391,7 +391,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	completeChan2 := bs.callQueueBubble(siaPath)
 
 	// Call complete
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 
 	// Both of the original complete channels should not longer be blocking
 	select {

@@ -520,10 +520,10 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 	return offline, goodForRenew, contracts
 }
 
-// managedRenterContractsAndUtilities returns the cached contracts and utilities
+// callRenterContractsAndUtilities returns the cached contracts and utilities
 // from the renter. They can be updated by calling
 // managedUpdateRenterContractsAndUtilities.
-func (r *Renter) managedRenterContractsAndUtilities() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) {
+func (r *Renter) callRenterContractsAndUtilities() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
 	cu := r.cachedUtilities

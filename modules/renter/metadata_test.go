@@ -15,7 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
-// BenchmarkBubbleMetadata runs a benchmark on the bubble metadata method
+// BenchmarkBubbleMetadata runs a benchmark on the perform bubble metadata method
 //
 // Results (goos, goarch, CPU: Benchmark Output: date)
 //
@@ -67,7 +67,7 @@ func BenchmarkBubbleMetadata(b *testing.B) {
 
 	// Run Benchmark
 	for n := 0; n < b.N; n++ {
-		err := r.managedPerformBubbleMetadata(dirSiaPath)
+		err := r.staticBubbleScheduler.managedPerformBubbleMetadata(dirSiaPath)
 		if err != nil {
 			b.Fatal(err)
 		}

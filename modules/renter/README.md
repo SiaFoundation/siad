@@ -109,11 +109,65 @@ will be made. This process continues until the root directory is reached. This
 results in any changes in metadata being "bubbled" to the top so that the root
 directory's metadata reflects the status of the entire filesystem.
 
+If during a bubble, if a file is found that meets the threshold health for repair,
+then a signal is sent to the repair loop. If a stuck chunk is found then
+a signal is sent to the stuck loop. 
+
+Since we are updating the metadata on disk during the bubble calls we want to
+ensure that only one bubble is being called on a directory at a time. We do this
+through `callQueueBubbleUpdate` and `managedCompleteBubbleUpdate`. The
+`bubbleScheduler` has a `bubbleUpdates` field that tracks all the bubbles and
+the `bubbleStatus`.  Bubbles can either be queued, active or pending. 
+
+When bubble is called on a directory, `callQueueBubbleUpdate` will check to see
+if there are any queued, active or pending bubbles for the directory. If there
+are no bubbles being tracked for that directory then the bubble update is queued
+and added to the fifo queue. If there is a bubble currently queued or pending
+for the directory then the update is ignored. If there is a bubble update that
+is active then the status will be updated to pending. 
+
+The `bubbleScheduler` works through the queued bubble updates in
+`callThreadedProcessBubbleUpdates`. When a bubble update is popped from the
+queue its status is set to active while the bubble is being performed. When the
+bubble is complete, `managedCompleteBubbleUpdate` is called.
+
+When `managedCompleteBubbleUpdate` is called, if the status is active then the
+update is complete and it is removed from the `bubbleScheduler`. If the status
+is pending then the update is added back to the fifo queue with a status of
+queued.
+
+When a directory is bubbled, the metadata information is
+recalculated and saved to disk and then bubble is called on the parent directory
+until the top level directory is reached. During this calculation, every file in
+the directory is opened, modified, and fsync'd individually. 
+
+See benchmark results:
+
+*TODO* - add benchmark 
+
+### Exports
+ - `BubbleMetadata`
+
 #### Inbound Complexities
  - `callQueueBubbleUpdate` is used by external subsystems to trigger a bubble
      update on a directory.
  - `callThreadedProcessBubbleUpdates` is called by the Renter on startup to
      launch the background thread that processes the queued bubble updates.
+
+#### Outbound Complexities
+ - `BubbleMetadata` calls `callPrepareForBubble` on a directory when the
+     `recursive` flag is set to `true` and then calls `callRefreshAll` to
+     execute the bubble updates.
+ - `managedPerformBubbleMetadata` calls `callRenterContractsAndUtilities` to get
+    the contract and utility maps before calling `callCalculateDirectoryMetadata`
+ - The Bubble subsystem triggers the Repair Loop when unhealthy files are found. This
+   is done by `managedPerformBubbleMetadata` signaling the
+   `r.uploadHeap.repairNeeded` channel when it is at the root directory and the
+   `AggregateHealth` is above the `RepairThreshold`.
+ - The Bubble subsystem triggers the Stuck Loop when stuck files are found. This is
+   done by `managedPerformBubbleMetadata` signaling the
+   `r.uploadHeap.stuckChunkFound` channel when it is at the root directory and
+   `AggregateNumStuckChunks` is greater than zero.
 
 ### Filesystem Controllers
 **Key Files**
@@ -576,9 +630,6 @@ merkle root and the contract revision.
  - [uploadheap.go](./uploadheap.go)
 
 *TODO*
-  - Update naming of bubble methods to updateAggregateMetadata, this will more
-    closely match the file naming as well. Update the health loop description to
-    match new naming
   - Move HealthLoop and related methods out of repair.go to health.go
   - Pull out repair code from  uploadheap.go so that uploadheap.go is only heap
     related code. Put in repair.go
@@ -626,56 +677,17 @@ has no subdirectories, or the current directory  has an older
 a reasonably sized sub tree defined by the health loop constants, it returns
 that timestamp and the SiaPath of the directory.
 
-Once the health loop has found the most out of date directory or sub tree, it calls
-`managedBubbleMetadata`, to be referred to as bubble, on that directory. When a
-directory is bubbled, the metadata information is recalculated and saved to disk
-and then bubble is called on the parent directory until the top level directory
-is reached. During this calculation, every file in the directory is opened,
-modified, and fsync'd individually. See benchmark results:
+Once the health loop has found the most out of date directory or sub tree, it
+uses the Refresh Paths subsystem to trigger bubble updates that the Bubble
+subsystem manages. Once the entire renter's directory has been updated within
+the healthCheckInterval the health loop sleeps until the time interval has
+passed.
 
-*TODO* - add benchmark 
-
-If during a bubble a file is found that meets the threshold health
-for repair, then a signal is sent to the repair loop. If a stuck chunk is found
-then a signal is sent to the stuck loop. Once the entire renter's directory has
-been updated within the healthCheckInterval the health loop sleeps until the
-time interval has passed.
-
-Since we are updating the metadata on disk during the bubble calls we want to
-ensure that only one bubble is being called on a directory at a time. We do this
-through `managedPrepareBubble` and `managedCompleteBubbleUpdate`. The renter has
-a `bubbleUpdates` field that tracks all the bubbles and the `bubbleStatus`.
-Bubbles can either be active or pending. When bubble is called on a directory,
-`managedPrepareBubble` will check to see if there are any active or pending
-bubbles for the directory. If there are no bubbles being tracked for that
-directory then an active bubble update is added to the renter for the directory
-and the bubble is executed immediately. If there is a bubble currently being
-tracked for the directory then the bubble status is set to pending and the
-bubble is not executed immediately. Once a bubble is finished it will call
-`managedCompleteBubbleUpdate` which will check the status of the bubble. If the
-status is an active bubble then it is removed from the renter's tracking. If the
-status was a pending bubble then the status is set to active and bubble is
-called on the directory again. 
 
 **Inbound Complexities**  
- - The Repair loop relies on Health Loop and `callThreadedBubbleMetadata` to
+ - The Repair loop relies on Health Loop and the Bubble Subsystem to
    keep the filesystem accurately updated in order to work through the file
    system in the correct order.
- - `DeleteFile` calls `callThreadedBubbleMetadata` after the file is deleted
- - `RenameFile` calls `callThreadedBubbleMetadata` on the current and new
-   directories when a file is renamed
- - The upload subsystem calls `callThreadedBubbleMetadata` from the Health Loop
-   to update the filesystem of the new upload
-
-**Outbound Complexities**   
- - The Health Loop triggers the Repair Loop when unhealthy files are found. This
-   is done by `managedPerformBubbleMetadata` signaling the
-   `r.uploadHeap.repairNeeded` channel when it is at the root directory and the
-   `AggregateHealth` is above the `RepairThreshold`.
- - The Health Loop triggers the Stuck Loop when stuck files are found. This is
-   done by `managedPerformBubbleMetadata` signaling the
-   `r.uploadHeap.stuckChunkFound` channel when it is at the root directory and
-   `AggregateNumStuckChunks` is greater than zero.
 
 #### Repair Loop
 The repair loop is responsible for uploading new files to the renter and
@@ -752,7 +764,7 @@ at the original localpath location.
    highest priority
 
 **Outbound Complexities**  
- - The Repair loop relies on Health Loop and `callThreadedBubbleMetadata` to
+ - The Repair loop relies on the Health Loop and the Bubble subsystem to
    keep the filesystem accurately updated in order to work through the file
    system in the correct order.
  - The repair loop passes chunks on to the upload subsystem and expects that
@@ -821,7 +833,7 @@ it up by finding a stuck chunk.
 **Inbound Complexities**  
  - Chunk repair code signals the stuck loop when a stuck chunk is successfully
    repaired
- - Health loop signals the stuck loop when aggregateNumStuckChunks for the root
+ - The Bubble subsystem signals the stuck loop when `AggregateNumStuckChunks` for the root
    directory is > 0
 
 **State Complexities**  
