@@ -253,11 +253,13 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Refresh the directories blocking.
+	var siaPaths []modules.SiaPath
 	for _, dir := range directories {
-		err = rt.renter.managedBubbleMetadata(dir.SiaPath)
-		if err != nil {
-			t.Fatal(err)
-		}
+		siaPaths = append(siaPaths, dir.SiaPath)
+	}
+	err = rt.bubbleAll(siaPaths)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Wait for root directory to show proper number of files and subdirs.

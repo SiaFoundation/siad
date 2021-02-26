@@ -20,6 +20,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
+// updateFileMetadatas updates the metadata of all siafiles within a dir.
+func (rt *renterTester) updateFileMetadatas(dirSiaPath modules.SiaPath) error {
+	// Get cached offline and goodforrenew maps.
+	offlineMap, goodForRenewMap, contracts, used := rt.renter.managedRenterContractsAndUtilities()
+	return rt.renter.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
+}
+
 // timeEquals is a helper function for checking if two times are equal
 //
 // Since we can't check timestamps for equality cause they are often set to
@@ -213,10 +220,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err1 := rt.renter.managedBubbleMetadata(modules.BackupFolder)
-	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
-	err3 := rt.renter.managedBubbleMetadata(modules.UserFolder)
-	err = errors.Compose(err1, err2, err3)
+	err = rt.bubbleAll([]modules.SiaPath{modules.BackupFolder, modules.SkynetFolder, modules.UserFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,8 +326,7 @@ func TestBubbleHealth(t *testing.T) {
 	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir modules.SiaPath, anf, ansd uint64) {
 		// Bubble target directory
 		beforeBubble := time.Now()
-		err = rt.renter.managedBubbleMetadata(dirToBubble)
-		if err != nil {
+		if err := rt.bubble(dirToBubble); err != nil {
 			t.Fatal(err)
 		}
 
@@ -425,7 +428,7 @@ func TestBubbleHealth(t *testing.T) {
 	f.SetStuck(0, true)
 
 	// Update the file metadata within the dir.
-	err = rt.renter.managedUpdateFileMetadatas(subDir1_2)
+	err = rt.updateFileMetadatas(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +443,7 @@ func TestBubbleHealth(t *testing.T) {
 	f.SetStuck(0, false)
 
 	// Update the file metadata within the dir.
-	err = rt.renter.managedUpdateFileMetadatas(subDir1_2)
+	err = rt.updateFileMetadatas(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,8 +579,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
 	// SubDir1/SubDir2 gets bubbled up
 	subDir1 := newSiaPath("root/SubDir1")
-	err = rt.renter.managedBubbleMetadata(subDir1)
-	if err != nil {
+	if err := rt.bubble(subDir1); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(60, time.Second, func() error {
@@ -617,8 +619,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err = rt.renter.managedBubbleMetadata(subDir1)
-	if err != nil {
+	if err := rt.bubble(subDir1); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(60, time.Second, func() error {
@@ -764,9 +765,7 @@ func TestNumFiles(t *testing.T) {
 
 	// Call bubble on lowest level and skynet folder and confirm top level reports
 	// accurate number of files and aggregate number of files
-	err1 := rt.renter.managedBubbleMetadata(subDir1_2)
-	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
-	err = errors.Compose(err1, err2)
+	err = rt.bubbleAll([]modules.SiaPath{subDir1_2, modules.SkynetFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -890,7 +889,9 @@ func TestDirectorySize(t *testing.T) {
 	}
 
 	// Call bubble on lowest lever and confirm top level reports accurate size
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	if err := rt.bubble(subDir1_2); err != nil {
+		t.Fatal(err)
+	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
@@ -963,8 +964,7 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 
 	// Call Bubble to update filesystem ModTimes so there are no zero times
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
+	if err := rt.bubble(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	// Sleep for 1 second to allow bubbles to update filesystem. Retry doesn't
@@ -1017,8 +1017,7 @@ func TestDirectoryModTime(t *testing.T) {
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
+	if err := rt.bubble(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1147,8 +1146,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// but the repair loop could have marked the rest as stuck so we just want
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
+	if err := rt.bubble(subDir1_2); err != nil {
 		t.Fatal(err)
 	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -1263,17 +1261,15 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(modules.UserFolder)
-	if err != nil {
+	if err := rt.bubble(modules.UserFolder); err != nil {
 		t.Fatal(err)
 	}
 	i := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
-			if err != nil {
-				return err
+			if err := rt.bubble(modules.RootSiaPath()); err != nil {
+				t.Fatal(err)
 			}
 		}
 		// Get Root Directory Metadata
@@ -1328,17 +1324,15 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(dir)
-	if err != nil {
+	if err := rt.bubble(dir); err != nil {
 		t.Fatal(err)
 	}
 	i = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		i++
 		if i%10 == 0 {
-			err = rt.renter.managedBubbleMetadata(dir)
-			if err != nil {
-				return err
+			if err := rt.bubble(dir); err != nil {
+				t.Fatal(err)
 			}
 		}
 		// Get Directory Metadata
@@ -1459,13 +1453,13 @@ func TestCalculateFileMetadata(t *testing.T) {
 	modTime := sf.ModTime()
 
 	// Update the file metadata.
-	err = rt.renter.managedUpdateFileMetadatas(modules.RootSiaPath())
+	err = rt.updateFileMetadatas(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check calculated metadata
-	bubbledMetadatas, err := rt.renter.managedCalculateFileMetadatas([]modules.SiaPath{up.SiaPath})
+	bubbledMetadatas, err := rt.renter.managedCachedFileMetadatas([]modules.SiaPath{up.SiaPath})
 	if err != nil {
 		t.Fatal(err)
 	}
