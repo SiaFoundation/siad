@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"fmt"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -166,14 +165,19 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 	// Define bubble worker
 	bubbleWorker := func(siaPathChan chan modules.SiaPath) {
 		for siaPath := range siaPathChan {
-			start := time.Now()
+			// Perform the bubble update
 			err := bs.managedPerformBubbleMetadata(siaPath)
 			if err != nil {
 				bs.staticRenter.log.Printf("WARN: error performing bubble on '%v': %v", siaPath, err)
 			}
-			elapse := time.Since(start)
-			if siaPath.IsRoot() {
-				bs.staticRenter.log.Debugf("It took %v to perform a bubble for '%v'", elapse, siaPath)
+
+			// Complete the bubble
+			bs.managedCompleteBubbleUpdate(siaPath)
+
+			// Queue a bubble on the parent directory
+			err = bs.managedQueueParent(siaPath)
+			if err != nil {
+				bs.staticRenter.log.Printf("WARN: error queuing bubble for parent directory on '%v': %v", siaPath, err)
 			}
 		}
 	}
@@ -268,28 +272,6 @@ func (bs *bubbleScheduler) managedCompleteBubbleUpdate(siaPath modules.SiaPath) 
 // managedPerformBubbleMetadata will bubble the metadata without checking the
 // bubble preparation.
 func (bs *bubbleScheduler) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err error) {
-	// Make sure we call callThreadedBubbleMetadata on the parent once we are
-	// done.
-	defer func() {
-		// Complete bubble
-		bs.managedCompleteBubbleUpdate(siaPath)
-
-		// Continue with parent dir if we aren't in the root dir already.
-		if siaPath.IsRoot() {
-			return
-		}
-		parentDir, dirErr := siaPath.Dir()
-		if dirErr != nil {
-			dirErr = errors.AddContext(dirErr, "failed to get parent dir")
-			err = errors.Compose(err, dirErr)
-			return
-		}
-		// Queue a bubble to bubble the directory, ignore the return channel as we
-		// do not want to block on this update.
-		_ = bs.callQueueBubble(parentDir)
-		return
-	}()
-
 	// Grab the renter for ease
 	r := bs.staticRenter
 
@@ -371,6 +353,25 @@ func (bs *bubbleScheduler) managedPop() *bubbleUpdate {
 	// Update the status and return
 	bu.status = bubbleActive
 	return bu
+}
+
+// managedQueueParent will queue a bubble for the parent directory.
+func (bs *bubbleScheduler) managedQueueParent(siaPath modules.SiaPath) error {
+	// If we are at the root directory there is nothing to do.
+	if siaPath.IsRoot() {
+		return nil
+	}
+
+	// Grab the parent directory
+	parentDir, err := siaPath.Dir()
+	if err != nil {
+		return errors.AddContext(err, "failed to get parent dir")
+	}
+
+	// Queue a bubble to bubble the directory, ignore the return channel as we
+	// do not want to block on this update.
+	_ = bs.callQueueBubble(parentDir)
+	return nil
 }
 
 // BubbleMetadata will queue a bubble update for the directory. A bubble update

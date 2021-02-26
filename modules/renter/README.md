@@ -143,7 +143,15 @@ the directory is opened, modified, and fsync'd individually.
 
 See benchmark results:
 
-*TODO* - add benchmark 
+```
+BenchmarkBubbleMetadata runs a benchmark on the perform bubble metadata method
+
+Results (goos, goarch, CPU: Benchmark Output: date)
+
+linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz:  6 | 180163684 ns/op | 249937 B/op | 1606 allocs/op: 03/19/2020
+linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 34 |  34416443 ns/op                                 11/10/2020
+linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 15 |  75880486 ns/op                                 02/26/2021
+```
 
 ### Exports
  - `BubbleMetadata`
