@@ -794,7 +794,7 @@ func TestSkynetSlowDownload(t *testing.T) {
 	// Verify the download took longer than the default request timeout
 	elapsed := time.Since(start)
 	if elapsed < api.DefaultSkynetRequestTimeout {
-		t.Fatal("the download request should have taken ")
+		t.Fatal("the download request should have taken longer than the default request timeout")
 	}
 }
 
