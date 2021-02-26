@@ -35,9 +35,6 @@ func TestCalculateFileMetadatas(t *testing.T) {
 		siaPaths = append(siaPaths, siaPath)
 	}
 
-	// Generate host maps
-	// hostOfflineMap, hostGoodForRenewMap, _, _ := rt.renter.managedRenterContractsAndUtilities()
-
 	// calculate metadatas individually
 	var mds1 []bubbledSiaFileMetadata
 	for _, siaPath := range siaPaths {
