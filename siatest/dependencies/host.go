@@ -78,6 +78,13 @@ func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Depen
 	return newDependencyAddLatency("errMaxRiskReached", duration)
 }
 
+// NewDependencyHostSlowDownload is a dependency injection for the host that
+// will add latency to downloads. Every time the host performs a read job it
+// will sleep for the given duration.
+func NewDependencyHostSlowDownload(duration time.Duration) modules.Dependencies {
+	return newDependencyAddLatency("slowDownload", duration)
+}
+
 // Disrupt returns true if the correct string is provided.
 func (d *HostMDMProgramDelayedWrite) Disrupt(s string) bool {
 	return s == "MDMProgramOutputDelayWrite"
