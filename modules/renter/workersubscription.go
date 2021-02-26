@@ -101,7 +101,7 @@ type (
 		staticWorker *worker
 
 		staticPTUpdateChan  chan struct{} // used by notification thread to signal subscription thread to update the price table
-		staticPTUpdatedChan chan struct{} // used by subscription thread to signal notificatoin thread that price table update is done
+		staticPTUpdatedChan chan struct{} // used by subscription thread to signal notification thread that price table update is done
 
 		notificationCost types.Currency
 		mu               sync.Mutex
