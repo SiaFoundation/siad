@@ -841,11 +841,11 @@ func TestHandleNotification(t *testing.T) {
 	// Create a handler for testing.
 	closer := &dummyCloser{}
 	nh := &notificationHandler{
-		staticStream:       closer,
-		staticWorker:       wt.worker,
-		staticPTUpdateChan: make(chan modules.RPCPriceTable, 1),
-		ptUpdateDone:       make(chan struct{}),
-		notificationCost:   notificationCost,
+		staticStream:        closer,
+		staticWorker:        wt.worker,
+		staticPTUpdateChan:  make(chan struct{}),
+		staticPTUpdatedChan: make(chan struct{}),
+		notificationCost:    notificationCost,
 	}
 
 	// Register it.
@@ -1076,13 +1076,6 @@ func TestHandleNotification(t *testing.T) {
 
 	// Test - subscription extended
 	testNotification(func() {
-		// Handler should have a ptUpdateDone that's not closed.
-		select {
-		case <-nh.ptUpdateDone:
-			t.Fatal("ptUpdateDone already closed")
-		default:
-		}
-
 		// Push a new price table.
 		// It contains double of the previous specified costs.
 		pt := modules.RPCPriceTable{
@@ -1090,18 +1083,21 @@ func TestHandleNotification(t *testing.T) {
 			DownloadBandwidthCost:        downloadBandwidthCost.Mul64(2),
 			UploadBandwidthCost:          uploadBandwidthCost.Mul64(2),
 		}
-		nh.staticPTUpdateChan <- pt
 
-		// Send the success notification.
-		done := nh.ptUpdateDone
+		// Send success notification.
 		sendSuccessNotification()
 
-		// Wait for it to be handled.
-		select {
-		case <-time.After(time.Minute):
-			t.Fatal("success notification was never handled")
-		case <-done:
-		}
+		// Wait for the update signal.
+		<-nh.staticPTUpdateChan
+
+		// Update the limit.
+		limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+		nh.mu.Lock()
+		nh.notificationCost = pt.SubscriptionNotificationCost
+		nh.mu.Unlock()
+
+		// Signal update done.
+		nh.staticPTUpdatedChan <- struct{}{}
 
 		// The notification cost should be updated on the handler.
 		if !nh.notificationCost.Equals(pt.SubscriptionNotificationCost) {

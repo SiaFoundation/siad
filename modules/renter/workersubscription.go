@@ -97,11 +97,12 @@ type (
 	// notificationHandler is a helper type that contains some information
 	// relevant to notification pricing and updating price tables.
 	notificationHandler struct {
-		staticStream       io.Closer // stream of the main subscription thread
-		staticWorker       *worker
-		staticPTUpdateChan chan modules.RPCPriceTable
+		staticStream io.Closer // stream of the main subscription thread
+		staticWorker *worker
 
-		ptUpdateDone     chan struct{}
+		staticPTUpdateChan  chan struct{} // used by notification thread to signal subscription thread to update the price table
+		staticPTUpdatedChan chan struct{} // used by subscription thread to signal notificatoin thread that price table update is done
+
 		notificationCost types.Currency
 		mu               sync.Mutex
 	}
@@ -201,34 +202,19 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 // managedHandleSubscriptionSuccess is called by managedHandleNotification to
 // handle a subscription success notification.
 func (nh *notificationHandler) managedHandleSubscriptionSuccess(stream siamux.Stream, limit *modules.BudgetLimit) error {
-	// This indicates, that the subscription was extended. We expect a new
-	// price table and have to update the notification cost.
-	nh.mu.Lock()
-	defer nh.mu.Unlock()
-
-	// Update the ptUpdateDone channel after closing the old one.
-	defer func() {
-		close(nh.ptUpdateDone)
-		nh.ptUpdateDone = make(chan struct{})
-	}()
-
-	var pt modules.RPCPriceTable
+	// Tell the subscription thread to update the limits using the new price
+	// table.
 	select {
-	case pt = <-nh.staticPTUpdateChan:
-	default:
-		// sanity check that a pt is in the pt update channel. If not, the
-		// host send this notification either without us requesting it or
-		// there was a developer mistake. Don't print it in production to
-		// avoid spam.
-		err := errors.New("extension 'ok' was received but no new price table is available")
-		if build.Release == "testing" {
-			build.Critical(err)
-		}
-		return errors.Compose(err, nh.staticStream.Close())
+	case <-nh.staticWorker.staticTG.StopChan():
+		return nil // shutdown
+	case nh.staticPTUpdateChan <- struct{}{}:
 	}
-	// Update limit and notification cost.
-	limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
-	nh.notificationCost = pt.SubscriptionNotificationCost
+	// Wait for the subscription thread to be done updating the limits.
+	select {
+	case <-nh.staticWorker.staticTG.StopChan():
+		return nil // shutdown
+	case <-nh.staticPTUpdatedChan:
+	}
 	// Since this stream uses the new costs we set the limit after updating
 	// the costs.
 	err := stream.SetLimit(limit)
@@ -316,19 +302,12 @@ func (subInfo *subscriptionInfos) managedSubscriptionDiff() (toSubscribe, toUnsu
 
 // managedExtendSubscriptionPeriod extends the ongoing subscription with a host
 // and adjusts the deadline on the stream.
-func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *modules.RPCBudget, oldDeadline time.Time, oldPT *modules.RPCPriceTable, nh *notificationHandler) (*modules.RPCPriceTable, time.Time, error) {
+func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *modules.RPCBudget, limit *modules.BudgetLimit, oldDeadline time.Time, oldPT *modules.RPCPriceTable, nh *notificationHandler) (*modules.RPCPriceTable, time.Time, error) {
 	subInfo := w.staticSubscriptionInfo
 
 	// Get a pricetable that is valid until the new deadline.
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 	newPT := w.managedPriceTableForSubscription(time.Until(newDeadline))
-
-	// Tell the notification handler about the new pt. The channel is buffered
-	// so this doesn't block. Also fetch the handler's notification channel.
-	nh.mu.Lock()
-	updateDone := nh.ptUpdateDone
-	nh.mu.Unlock()
-	nh.staticPTUpdateChan <- *newPT
 
 	// Try extending the subscription.
 	err := modules.RPCExtendSubscription(stream, newPT)
@@ -342,7 +321,22 @@ func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *m
 		return nil, time.Time{}, threadgroup.ErrStopped
 	case <-time.After(time.Until(newDeadline)):
 		return nil, time.Time{}, errors.New("never received the 'ok' response for extending the subscription")
-	case <-updateDone:
+	case <-nh.staticPTUpdateChan:
+	}
+
+	// Update limit and notification cost.
+	limit.UpdateCosts(newPT.DownloadBandwidthCost, newPT.UploadBandwidthCost)
+	nh.mu.Lock()
+	nh.notificationCost = newPT.SubscriptionNotificationCost
+	nh.mu.Unlock()
+
+	// Tell the notification goroutine that the limit was updated.
+	select {
+	case <-w.staticTG.StopChan():
+		return nil, time.Time{}, threadgroup.ErrStopped
+	case <-time.After(time.Until(newDeadline)):
+		return nil, time.Time{}, errors.New("notification thread never read the update signal")
+	case nh.staticPTUpdatedChan <- struct{}{}:
 	}
 
 	// Count the number of active subscriptions.
@@ -497,11 +491,11 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 	// Register the handler. This can happen after beginning the subscription
 	// since we are not expecting any notifications yet.
 	nh := &notificationHandler{
-		staticStream:       stream,
-		staticWorker:       w,
-		staticPTUpdateChan: make(chan modules.RPCPriceTable, 1),
-		ptUpdateDone:       make(chan struct{}),
-		notificationCost:   pt.SubscriptionNotificationCost,
+		staticStream:        stream,
+		staticWorker:        w,
+		staticPTUpdateChan:  make(chan struct{}),
+		staticPTUpdatedChan: make(chan struct{}),
+		notificationCost:    pt.SubscriptionNotificationCost,
 	}
 	err = w.renter.staticMux.NewListener(subscriber, func(stream siamux.Stream) {
 		nh.managedHandleNotification(stream, budget, limit)
@@ -532,7 +526,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 
 		// If the subscription period is halfway over, extend it.
 		if time.Until(deadline) < modules.SubscriptionPeriod/2 {
-			pt, deadline, err = w.managedExtendSubscriptionPeriod(stream, budget, deadline, pt, nh)
+			pt, deadline, err = w.managedExtendSubscriptionPeriod(stream, budget, limit, deadline, pt, nh)
 			if err != nil {
 				return err
 			}
