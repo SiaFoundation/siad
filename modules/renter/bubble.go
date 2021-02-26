@@ -166,7 +166,7 @@ func (bs *bubbleScheduler) callThreadedProcessBubbleUpdates() {
 	bubbleWorker := func(siaPathChan chan modules.SiaPath) {
 		for siaPath := range siaPathChan {
 			// Perform the bubble update
-			err := bs.managedPerformBubbleMetadata(siaPath)
+			err := bs.managedPerformBubbleUpdate(siaPath)
 			if err != nil {
 				bs.staticRenter.log.Printf("WARN: error performing bubble on '%v': %v", siaPath, err)
 			}
@@ -269,9 +269,10 @@ func (bs *bubbleScheduler) managedCompleteBubbleUpdate(siaPath modules.SiaPath) 
 	}
 }
 
-// managedPerformBubbleMetadata will bubble the metadata without checking the
-// bubble preparation.
-func (bs *bubbleScheduler) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err error) {
+// managedPerformBubbleUpdate performs the bubble update by calculating the
+// metadata for the directory and saving the updates to disk. This update
+// involved updating the metadata for the files in the directory as well.
+func (bs *bubbleScheduler) managedPerformBubbleUpdate(siaPath modules.SiaPath) (err error) {
 	// Grab the renter for ease
 	r := bs.staticRenter
 

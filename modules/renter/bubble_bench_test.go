@@ -80,7 +80,7 @@ func BenchmarkBubbleMetadata(b *testing.B) {
 
 	// Run Benchmark
 	for n := 0; n < b.N; n++ {
-		err := r.staticBubbleScheduler.managedPerformBubbleMetadata(dirSiaPath)
+		err := r.staticBubbleScheduler.managedPerformBubbleUpdate(dirSiaPath)
 		if err != nil {
 			b.Fatal(err)
 		}
