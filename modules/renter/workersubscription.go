@@ -189,9 +189,8 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		if exists && sub.latestRV != nil {
 			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
-		} else {
-			return fmt.Errorf("subscription not found")
 		}
+		return fmt.Errorf("subscription not found")
 	}
 
 	// Update the subscription.
@@ -324,9 +323,8 @@ func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *m
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 	newPT := w.managedPriceTableForSubscription(time.Until(newDeadline))
 
-	// Tell the notification handler about the new pt. The channel is
-	// buffered so this doesn't block. Also fetch the handler't
-	// notification channel.
+	// Tell the notification handler about the new pt. The channel is buffered
+	// so this doesn't block. Also fetch the handler's notification channel.
 	nh.mu.Lock()
 	updateDone := nh.ptUpdateDone
 	nh.mu.Unlock()
