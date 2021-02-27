@@ -335,11 +335,11 @@ func (s *stream) Read(b []byte) (int, error) {
 
 	// Create a context.
 	ctx := s.staticContext
-	var cancel context.CancelFunc
 	if s.staticReadTimeout > 0 {
+		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, s.staticReadTimeout)
+		defer cancel()
 	}
-	defer cancel()
 
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
