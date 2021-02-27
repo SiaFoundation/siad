@@ -214,10 +214,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 
 		// Disrupt if the slow download dependency is set
-		if readInstruction {
-			// this is a delay dependency that will sleep for a preconfigured
-			// amount of time but only if the disrupt is set
-			_ = h.dependencies.Disrupt("slowDownload")
+		if readInstruction && h.dependencies.Disrupt("SlowDownload") {
+			time.Sleep(time.Second)
 		}
 
 		// Don't write contents of the buffer if the MDM recommends batching the

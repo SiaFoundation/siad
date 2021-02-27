@@ -755,7 +755,7 @@ func TestSkynetSlowDownload(t *testing.T) {
 	r := tg.Renters()[0]
 
 	// Add hosts that have the slow download dependency
-	deps := dependencies.NewDependencyHostSlowDownload(time.Second)
+	deps := &dependencies.HostSlowDownload{}
 	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
 	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
 	hostParams3 := node.Host(filepath.Join(testDir, "host3"))

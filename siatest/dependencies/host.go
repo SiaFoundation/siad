@@ -35,6 +35,17 @@ func (d *HostRejectAllSessionLocks) StartRejectingLocks() {
 	d.started = true
 }
 
+// HostSlowDownload is a dependency injection for the host that will insert a
+// sleep on every read adding a latency to downloads.
+type HostSlowDownload struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *HostSlowDownload) Disrupt(s string) bool {
+	return s == "SlowDownload"
+}
+
 // HostExpireEphemeralAccounts is a dependency injection for the host that will
 // expire ephemeral accounts as soon as they get pruned
 type HostExpireEphemeralAccounts struct {
@@ -76,13 +87,6 @@ func NewDependencyHostDiskTrouble() *DependencyInterruptOnceOnKeyword {
 // persisting with a set latency.
 func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Dependencies {
 	return newDependencyAddLatency("errMaxRiskReached", duration)
-}
-
-// NewDependencyHostSlowDownload is a dependency injection for the host that
-// will add latency to downloads. Every time the host performs a read job it
-// will sleep for the given duration.
-func NewDependencyHostSlowDownload(duration time.Duration) modules.Dependencies {
-	return newDependencyAddLatency("slowDownload", duration)
 }
 
 // Disrupt returns true if the correct string is provided.
