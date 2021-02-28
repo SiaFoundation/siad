@@ -1193,14 +1193,14 @@ func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, accID Ac
 	}
 
 	// Send the payment request.
-	err = RPCWrite(stream, PaymentRequest{Type: PayByEphemeralAccount})
+	err = RPCWrite(buf, PaymentRequest{Type: PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
 	// Send the payment details.
 	pbear := NewPayByEphemeralAccountRequest(accID, bh, fundAmt, accSK)
-	err = RPCWrite(stream, pbear)
+	err = RPCWrite(buf, pbear)
 	if err != nil {
 		return err
 	}

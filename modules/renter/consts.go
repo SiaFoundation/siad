@@ -262,7 +262,11 @@ var (
 
 	// numBubbleWorkerThreads is the number of threads used when using worker
 	// groups in various bubble methods
-	numBubbleWorkerThreads = 20
+	numBubbleWorkerThreads = build.Select(build.Var{
+		Dev:      10,
+		Standard: 20,
+		Testing:  5,
+	}).(int)
 
 	// offlineCheckFrequency is how long the renter will wait to check the
 	// online status if it is offline.

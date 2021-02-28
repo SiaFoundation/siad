@@ -482,6 +482,10 @@ type (
 		// SetInternalSettings sets the hosting parameters of the host.
 		SetInternalSettings(HostInternalSettings) error
 
+		// StorageObligation returns the storage obligation matching the id or
+		// an error if it does not exist
+		StorageObligation(obligationID types.FileContractID) (StorageObligation, error)
+
 		// StorageObligations returns the set of storage obligations held by
 		// the host.
 		StorageObligations() []StorageObligation

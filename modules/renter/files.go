@@ -33,7 +33,10 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		// metadata update operation that failed.
 		return nil
 	}
-	go r.callThreadedBubbleMetadata(dirSiaPath)
+
+	// Queue a bubble to bubble the directory, ignore the return channel as we do
+	// not want to block on this update.
+	_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
 	return nil
 }
 

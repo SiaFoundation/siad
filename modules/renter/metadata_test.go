@@ -67,7 +67,7 @@ func BenchmarkBubbleMetadata(b *testing.B) {
 
 	// Run Benchmark
 	for n := 0; n < b.N; n++ {
-		err := r.managedBubbleMetadata(dirSiaPath)
+		err := r.managedPerformBubbleMetadata(dirSiaPath)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -115,12 +115,12 @@ func TestCalculateFileMetadatas(t *testing.T) {
 	}
 
 	// Generate host maps
-	hostOfflineMap, hostGoodForRenewMap, _, _ := rt.renter.managedRenterContractsAndUtilities()
+	// hostOfflineMap, hostGoodForRenewMap, _, _ := rt.renter.managedRenterContractsAndUtilities()
 
 	// calculate metadatas individually
 	var mds1 []bubbledSiaFileMetadata
 	for _, siaPath := range siaPaths {
-		md, err := rt.renter.managedCalculateFileMetadata(siaPath, hostOfflineMap, hostGoodForRenewMap)
+		md, err := rt.renter.managedCachedFileMetadata(siaPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,7 +128,7 @@ func TestCalculateFileMetadatas(t *testing.T) {
 	}
 
 	// calculate metadatas together
-	mds2, err := rt.renter.managedCalculateFileMetadatas(siaPaths)
+	mds2, err := rt.renter.managedCachedFileMetadatas(siaPaths)
 	if err != nil {
 		t.Fatal(err)
 	}

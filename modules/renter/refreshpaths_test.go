@@ -178,10 +178,7 @@ func TestRefreshPaths(t *testing.T) {
 	}
 
 	// Have uniqueBubblePaths call bubble
-	err = dirsToRefresh.callRefreshAllBlocking()
-	if err != nil {
-		t.Fatal(err)
-	}
+	dirsToRefresh.callRefreshAllBlocking()
 
 	// Wait for root directory to show proper number of files and subdirs.
 	numSubDirs := len(dirsToRefresh.parentDirs) + len(dirsToRefresh.childDirs) - 1

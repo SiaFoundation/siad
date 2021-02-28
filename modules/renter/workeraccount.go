@@ -133,7 +133,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, rpcCost, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}

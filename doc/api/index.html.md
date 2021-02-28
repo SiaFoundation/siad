@@ -2146,6 +2146,27 @@ The payouts that the host and renter will receive if a valid proof is confirmed 
 **missedproofoutputs** | []SiacoinOutput  
 The payouts that the host and renter will receive if a proof is not confirmed on the blockchain
 
+## /host/contracts/*id* [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/host/contracts/75868cef0d7462bf8047f9ad7380ccd73a84e6c65ccf88cf237646ce240e9d6c"
+```
+
+Returns a storage obligation matching the contract id from the host's contracts. 
+If the contract does not exist in the host's database an error is returned.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "contract": {}
+}
+```
+**contract** | StorageObligation	
+The contract matching the id, if it exists. See [/host/contracts [GET]](#host-contracts-get)
+
 ## /host/storage [GET]
 > curl example  
 

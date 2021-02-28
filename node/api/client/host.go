@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // HostParam is a parameter in the host's settings that can be changed via the
@@ -87,6 +88,13 @@ func (c *Client) HostAnnounceAddrPost(address modules.NetAddress) (err error) {
 // about contracts on the host.
 func (c *Client) HostContractInfoGet() (cg api.ContractInfoGET, err error) {
 	err = c.get("/host/contracts", &cg)
+	return
+}
+
+// HostContractGet uses the /host/contracts/:id endpoint to get information
+// about a contract on the host.
+func (c *Client) HostContractGet(obligationID types.FileContractID) (cg api.HostContractGET, err error) {
+	err = c.get("/host/contracts/"+obligationID.String(), &cg)
 	return
 }
 
