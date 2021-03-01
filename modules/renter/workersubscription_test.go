@@ -17,8 +17,25 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
+
+// dummyCloser is a helper type that counts the number of times Close is called.
+type dummyCloser struct {
+	atomicClosed uint64
+}
+
+// Close implements io.Closer.
+func (dc *dummyCloser) Close() error {
+	atomic.AddUint64(&dc.atomicClosed, 1)
+	return nil
+}
+
+// staticCount returns the number of times Close was called.
+func (dc *dummyCloser) staticCount() uint64 {
+	return atomic.LoadUint64(&dc.atomicClosed)
+}
 
 // randomRegistryValue is a helper to create a signed registry value for
 // testing.
@@ -535,4 +552,581 @@ func TestSubscriptionLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestSubscriptionNotifications is a unit test that is focused on subscribing
+// and unsubscribing. It verifies that subscribed values are received correctly
+// and that they also update the worker's cache.
+func TestSubscriptionNotifications(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker that's not running its worker loop.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// Ignore threadgroup stopped error since we are manually closing the
+		// threadgroup of the worker.
+		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Fatal(err)
+		}
+	}()
+
+	// Prepare a unique handler for the host to subscribe to.
+	var subscriber types.Specifier
+	fastrand.Read(subscriber[:])
+	subscriberStr := hex.EncodeToString(subscriber[:])
+
+	// Get a price table and refill the account manually.
+	wt.staticUpdatePriceTable()
+	wt.managedRefillAccount()
+
+	// Prepare a helper to update an entry on a deactivated worker without
+	// affecting the cache.
+	update := func(spk types.SiaPublicKey, rv modules.SignedRegistryValue) error {
+		c := make(chan *jobUpdateRegistryResponse, 1)
+		j := wt.newJobUpdateRegistry(context.Background(), c, spk, rv)
+		_, err = j.managedUpdateRegistry()
+		return err
+	}
+
+	// Create 2 entries and set one of them on the host.
+	rv1, spk1, sk1 := randomRegistryValue()
+	rv2, spk2, sk2 := randomRegistryValue()
+	err = update(spk1, rv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Prepare 2 updates for the same entries for later.
+	rv1a := rv1
+	rv2a := rv2
+	rv1a.Revision++
+	rv2a.Revision++
+	rv1a = rv1a.Sign(sk1)
+	rv2a = rv2a.Sign(sk2)
+
+	// The fresh price table should be valid for the subscription.
+	wpt := wt.staticPriceTable()
+	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
+		t.Fatal("price table not valid for long enough")
+	}
+
+	// Compute the expected deadline.
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
+
+	// Set the initial budget.
+	expectedBudget := initialSubscriptionBudget
+	initialBudget := expectedBudget
+	budget := modules.NewBudget(initialBudget)
+	pt := &wpt.staticPriceTable
+
+	// Begin the subscription.
+	stream, err := wt.managedBeginSubscription(initialBudget, wt.staticAccount.staticID, subscriber)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the subscription loop in a separate goroutine.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := wt.managedSubscriptionLoop(stream, pt, deadline, budget, expectedBudget, subscriberStr)
+		if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Error(err)
+			return
+		}
+	}()
+
+	// Subscribe to both entries.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	rvs, err := wt.Subscribe(ctx, []modules.RPCRegistrySubscriptionRequest{
+		{
+			PubKey: spk1,
+			Tweak:  rv1.Tweak,
+		},
+		{
+			PubKey: spk2,
+			Tweak:  rv2.Tweak,
+		},
+	}...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only 1 value should be returned since the host only knows about 1 entry yet.
+	if len(rvs) != 1 {
+		t.Fatalf("expected len to be 1 but was %v", len(rvs))
+	}
+	if !reflect.DeepEqual(rvs[0].Entry, rv1) {
+		t.Fatal("wrong entry was returned")
+	}
+	if !rvs[0].PubKey.Equals(spk1) {
+		t.Fatal("wrong pubkey was returned")
+	}
+
+	// The worker should have updated the cache.
+	cache := wt.staticRegistryCache
+	cachedRev, exists := cache.Get(spk1, rv1.Tweak)
+	if !exists || cachedRev != rv1.Revision {
+		t.Fatal("cache wasn't updated correctyl")
+	}
+	_, exists = cache.Get(spk2, rv2.Tweak)
+	if exists {
+		t.Fatal("cache shouldn't be updated for rv2")
+	}
+
+	// The workers internal state should reflect the subscription.
+	subInfo := wt.staticSubscriptionInfo
+	subInfo.mu.Lock()
+	if len(subInfo.subscriptions) != 2 {
+		t.Fatal("should have 2 subscriptions")
+	}
+	subInfo.mu.Unlock()
+
+	// Unsubscribe from rv1.
+	wt.Unsubscribe([]modules.RPCRegistrySubscriptionRequest{
+		{
+			PubKey: spk1,
+			Tweak:  rv1.Tweak,
+		},
+	}...)
+
+	// The worker should eventually only have 1 subscription.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		subInfo.mu.Lock()
+		defer subInfo.mu.Unlock()
+		if len(subInfo.subscriptions) != 1 {
+			return errors.New("should have 1 subscriptions")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update h
+	err = update(spk1, rv1a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = update(spk2, rv2a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The worker should receive the notification for the subscribed entry and
+	// update the cache.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// rv1 should still be the same
+		cachedRev, exists := cache.Get(spk1, rv1.Tweak)
+		if !exists {
+			return errors.New("rv1: cached entry doesn't exist")
+		}
+		if cachedRev != rv1.Revision {
+			return fmt.Errorf("rv1: wrong cached value %v != %v", cachedRev, rv1.Revision)
+		}
+		// rv2 should be updated to rv2a
+		cachedRev, exists = cache.Get(spk2, rv2.Tweak)
+		if !exists {
+			return errors.New("rv2: cached entry doesn't exist")
+		}
+		if cachedRev != rv2a.Revision {
+			return fmt.Errorf("rv2: wrong cached value %v != %v", cachedRev, rv2a.Revision)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The worker should also have updated the subscription.
+	subInfo.mu.Lock()
+	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, rv2a.Tweak)]
+	if !exists {
+		t.Fatal("rv2's subscription doesn't exist")
+	}
+	if !reflect.DeepEqual(*sub.latestRV, rv2a) {
+		t.Log(sub.latestRV)
+		t.Log(rv2a)
+		t.Fatal("latestRV wasn't updated")
+	}
+	subInfo.mu.Unlock()
+
+	// Stop the loop by shutting down the worker.
+	err = wt.staticTG.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	// Check that the subscriptions are cleared.
+	subInfo.mu.Lock()
+	for _, sub := range subInfo.subscriptions {
+		if sub.active() {
+			t.Fatal("no subscription should be active")
+		}
+	}
+	subInfo.mu.Unlock()
+
+	// Check that the budget was withdrawn from correctly.
+	err = build.Retry(10, time.Second, func() error {
+		limit := stream.Limit()
+
+		// Compute bandwidth cost.
+		downloadCost := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
+		uploadCost := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
+		bandwidthCost := downloadCost.Add(uploadCost)
+
+		// Compute subscription cost. Subscribed to 2 entries of which 1
+		// existed.
+		subscriptionCost := modules.MDMSubscribeCost(pt, 1, 2)
+
+		// Compute notification cost.
+		notificationCost := pt.SubscriptionNotificationCost
+
+		// Compute extension cost. Should be zero since this test never extends.
+		extensionCost := types.ZeroCurrency
+
+		// Compute the total cost.
+		totalCost := bandwidthCost.Add(subscriptionCost).Add(notificationCost).Add(extensionCost)
+
+		// Compute the remaining budget
+		remainingBudget := initialBudget.Sub(totalCost)
+		if !remainingBudget.Equals(budget.Remaining()) {
+			return fmt.Errorf("wrong remaining budget %v != %v", remainingBudget, budget.Remaining())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestHandleNotification is a unit test for managedHandleNotification.
+func TestHandleNotification(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker that's not running its worker loop.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// Ignore threadgroup stopped error since we are manually closing the
+		// threadgroup of the worker.
+		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Fatal(err)
+		}
+	}()
+
+	// Prepare a unique handler for the host to subscribe to.
+	var subscriber types.Specifier
+	fastrand.Read(subscriber[:])
+	subscriberStr := hex.EncodeToString(subscriber[:])
+
+	// Declare some costs.
+	downloadBandwidthCost := types.NewCurrency64(1)
+	uploadBandwidthCost := types.NewCurrency64(1)
+	notificationCost := types.NewCurrency64(1)
+
+	// Create a handler for testing.
+	closer := &dummyCloser{}
+	nh := &notificationHandler{
+		staticStream:        closer,
+		staticWorker:        wt.worker,
+		staticPTUpdateChan:  make(chan struct{}),
+		staticPTUpdatedChan: make(chan struct{}),
+		notificationCost:    notificationCost,
+	}
+
+	// Register it.
+	budget := modules.NewBudget(types.SiacoinPrecision.Mul64(1000))
+	limit := modules.NewBudgetLimit(budget, downloadBandwidthCost, uploadBandwidthCost)
+	err = wt.renter.staticMux.NewListener(subscriberStr, func(stream siamux.Stream) {
+		nh.managedHandleNotification(stream, budget, limit)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Declare a helper function that creates a stream which triggers the
+	// notification handler when written to.
+	hostStream := func() siamux.Stream {
+		muxAddr := wt.renter.staticMux.Address()
+		pk := wt.renter.staticMux.PublicKey()
+		stream, err := wt.renter.staticMux.NewStream(subscriberStr, muxAddr.String(), pk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stream
+	}
+
+	// helper to send a new "subscription success" notification.
+	sendSuccessNotification := func() {
+		stream := hostStream()
+		defer stream.Close()
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+			Type: modules.SubscriptionResponseSubscriptionSuccess,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// helper to send a new "registry value" notification.
+	sendRegistryValue := func(spk types.SiaPublicKey, srv modules.SignedRegistryValue) {
+		stream := hostStream()
+		defer stream.Close()
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+			Type: modules.SubscriptionResponseRegistryValue,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+			Entry:  srv,
+			PubKey: spk,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// helper to compare bandwidth and cost for every test.
+	testNotification := func(run func(), downloadCost, uploadCost, additionalCost types.Currency) {
+		// Capture used bandwidth and budget before test.
+		budgetBefore := budget.Remaining()
+		downloadBefore := limit.Downloaded()
+		uploadBefore := limit.Uploaded()
+
+		// Run the test.
+		run()
+
+		// Compute how much bandwidth and budget was used.
+		usedBudget := budgetBefore.Sub(budget.Remaining())
+		usedDownload := limit.Downloaded() - downloadBefore
+		usedUpload := limit.Uploaded() - uploadBefore
+
+		// Assert result.
+		dc := downloadCost.Mul64(usedDownload)
+		uc := uploadCost.Mul64(usedUpload)
+		if !dc.Add(uc).Add(additionalCost).Equals(usedBudget) {
+			t.Log("usedDownload", usedDownload)
+			t.Log("usedUpload", usedUpload)
+			t.Fatalf("%v + %v + %v != %v", dc, uc, additionalCost, usedBudget)
+		}
+	}
+
+	// Vars for testing.
+	subInfo := wt.staticSubscriptionInfo
+
+	// Test - valid update
+	testNotification(func() {
+		// Subscribe to a random registry value.
+		rv, spk, _ := randomRegistryValue()
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk,
+			Tweak:  rv.Tweak,
+		})
+		// Send the notification.
+		sendRegistryValue(spk, rv)
+		// The worker cache and subscription should be updated.
+		err := build.Retry(100, 100*time.Millisecond, func() error {
+			// Check worker cache.
+			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv.Revision {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			}
+			// Check subscription.
+			subInfo.mu.Lock()
+			sub := subInfo.subscriptions[sid]
+			if !reflect.DeepEqual(*sub.latestRV, rv) {
+				subInfo.mu.Unlock()
+				return errors.New("latestRV doesn't match rv")
+			}
+			subInfo.mu.Unlock()
+			// Check if stream was closed.
+			if closer.staticCount() != 0 {
+				return errors.New("stream shouldn't have been closed")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}, downloadBandwidthCost, uploadBandwidthCost, notificationCost)
+
+	// Test - outdated entry
+	testNotification(func() {
+		// Subscribe to a random registry value.
+		rv, spk, sk := randomRegistryValue()
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk,
+			Tweak:  rv.Tweak,
+		})
+		rv2 := rv
+		rv2.Revision++
+		rv2 = rv2.Sign(sk)
+		// Send the notification for rv2 first which has a higher revision
+		// number than rv.
+		sendRegistryValue(spk, rv2)
+		// Then send rv.
+		sendRegistryValue(spk, rv)
+		// Check fields.
+		err := build.Retry(100, 100*time.Millisecond, func() error {
+			// Check worker cache. Should be set to rv2.
+			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv2.Revision {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv2.Revision, found)
+			}
+			// Check subscription. Should be set to rv2.
+			subInfo.mu.Lock()
+			sub := subInfo.subscriptions[sid]
+			if !reflect.DeepEqual(*sub.latestRV, rv2) {
+				subInfo.mu.Unlock()
+				return errors.New("latestRV doesn't match rv")
+			}
+			subInfo.mu.Unlock()
+			// Stream should have been closed.
+			if closer.staticCount() != 1 {
+				return errors.New("stream should have been closed")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}, downloadBandwidthCost, uploadBandwidthCost, notificationCost.Mul64(2))
+
+	// Test - same entry twice.
+	testNotification(func() {
+		// Subscribe to a random registry value.
+		rv, spk, _ := randomRegistryValue()
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
+			PubKey: spk,
+			Tweak:  rv.Tweak,
+		})
+		// Send the notification twice.
+		sendRegistryValue(spk, rv)
+		sendRegistryValue(spk, rv)
+		// Check fields.
+		err := build.Retry(100, 100*time.Millisecond, func() error {
+			// Check worker cache. Should be set to rv.
+			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv.Revision {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			}
+			// Check subscription. Should be set to rv.
+			subInfo.mu.Lock()
+			sub := subInfo.subscriptions[sid]
+			if !reflect.DeepEqual(*sub.latestRV, rv) {
+				subInfo.mu.Unlock()
+				return errors.New("latestRV doesn't match rv")
+			}
+			subInfo.mu.Unlock()
+			// Stream should have been closed.
+			if closer.staticCount() != 2 {
+				return errors.New("stream should have been closed")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}, downloadBandwidthCost, uploadBandwidthCost, notificationCost.Mul64(2))
+
+	// Test - not subscribed to entry
+	testNotification(func() {
+		// Create a random registry entry.
+		rv, spk, _ := randomRegistryValue()
+		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		// Send rv.
+		sendRegistryValue(spk, rv)
+		// Check fields.
+		err := build.Retry(100, 100*time.Millisecond, func() error {
+			// Check worker cache. Should be set to rv.
+			if revNum, found := wt.staticRegistryCache.Get(spk, rv.Tweak); !found || revNum != rv.Revision {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			}
+			// Check subscription. Should be set to rv.
+			subInfo.mu.Lock()
+			_, exist := subInfo.subscriptions[sid]
+			if exist {
+				subInfo.mu.Unlock()
+				return errors.New("subscription shouldn't exist")
+			}
+			subInfo.mu.Unlock()
+			// Stream should have been closed.
+			if closer.staticCount() != 3 {
+				return errors.New("stream should have been closed")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}, downloadBandwidthCost, uploadBandwidthCost, notificationCost)
+
+	// Test - subscription extended
+	testNotification(func() {
+		// Push a new price table.
+		// It contains double of the previous specified costs.
+		pt := modules.RPCPriceTable{
+			SubscriptionNotificationCost: notificationCost.Mul64(2),
+			DownloadBandwidthCost:        downloadBandwidthCost.Mul64(2),
+			UploadBandwidthCost:          uploadBandwidthCost.Mul64(2),
+		}
+
+		// Send success notification.
+		sendSuccessNotification()
+
+		// Wait for the update signal.
+		<-nh.staticPTUpdateChan
+
+		// Update the limit.
+		limit.UpdateCosts(pt.DownloadBandwidthCost, pt.UploadBandwidthCost)
+		nh.mu.Lock()
+		nh.notificationCost = pt.SubscriptionNotificationCost
+		nh.mu.Unlock()
+
+		// Signal update done.
+		nh.staticPTUpdatedChan <- struct{}{}
+
+		// The notification cost should be updated on the handler.
+		if !nh.notificationCost.Equals(pt.SubscriptionNotificationCost) {
+			t.Fatal("notification cost wasn't updated")
+		}
+
+		// Stream should not have been closed.
+		if closer.staticCount() != 3 {
+			t.Fatal("stream shouldn't have been closed")
+		}
+	}, downloadBandwidthCost.Mul64(2), uploadBandwidthCost.Mul64(2), types.ZeroCurrency)
+
+	// Test invalid notification type.
+	testNotification(func() {
+		// Send the invalid notification.
+		stream := hostStream()
+		defer stream.Close()
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			if closer.staticCount() != 4 {
+				return errors.New("stream should have been closed")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}, downloadBandwidthCost.Mul64(2), uploadBandwidthCost.Mul64(2), types.ZeroCurrency)
 }
