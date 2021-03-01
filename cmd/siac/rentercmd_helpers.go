@@ -409,29 +409,12 @@ Contract %v
 	return nil
 }
 
-// renterallowancespendingbreakdown provides a breakdown of a few fields in the
-// financial metrics.
-func renterallowancespendingbreakdown(rg api.RenterGET) (totalSpent, unspentAllocated, unspentUnallocated types.Currency) {
-	fm := rg.FinancialMetrics
-	totalSpent = fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending)
-	// Calculate unspent allocated
-	if fm.TotalAllocated.Cmp(totalSpent) >= 0 {
-		unspentAllocated = fm.TotalAllocated.Sub(totalSpent)
-	}
-	// Calculate unspent unallocated
-	if fm.Unspent.Cmp(unspentAllocated) >= 0 {
-		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
-	}
-	return totalSpent, unspentAllocated, unspentUnallocated
-}
-
 // renterallowancespending prints info about the current period spending
 // this also get called by 'siac renter -v' which is why it's in its own
 // function
 func renterallowancespending(rg api.RenterGET) {
 	// Show spending detail
-	totalSpent, unspentAllocated, unspentUnallocated := renterallowancespendingbreakdown(rg)
+	totalSpent, unspentAllocated, unspentUnallocated := rg.FinancialMetrics.SpendingBreakdown()
 
 	rate, err := types.ParseExchangeRate(build.ExchangeRate())
 	if err != nil {

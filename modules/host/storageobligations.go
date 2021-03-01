@@ -129,6 +129,9 @@ var (
 	// errObligationUnlocked is returned when a storage obligation is being
 	// removed from lock, but is already unlocked.
 	errObligationUnlocked = errors.New("storage obligation is unlocked, and should not be getting unlocked")
+
+	// ErrContractNotFound occurs when a contract id was not found in the host db
+	ErrContractNotFound = errors.New("contract not found")
 )
 
 // storageObligation contains all of the metadata related to a file contract
@@ -325,6 +328,41 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 // case of a missed storage proof.
 func (sos StorageObligationSnapshot) UnallocatedCollateral() types.Currency {
 	return sos.RecentRevision().MissedHostPayout()
+}
+
+// StorageObligation returns a storage obligation for use outside of the host
+// module
+func (so *storageObligation) StorageObligation() modules.StorageObligation {
+	valid, missed := so.payouts()
+	return modules.StorageObligation{
+		ContractCost:             so.ContractCost,
+		DataSize:                 so.fileSize(),
+		RevisionNumber:           so.revisionNumber(),
+		LockedCollateral:         so.LockedCollateral,
+		ObligationId:             so.id(),
+		PotentialAccountFunding:  so.PotentialAccountFunding,
+		PotentialDownloadRevenue: so.PotentialDownloadRevenue,
+		PotentialStorageRevenue:  so.PotentialStorageRevenue,
+		PotentialUploadRevenue:   so.PotentialUploadRevenue,
+		RiskedCollateral:         so.RiskedCollateral,
+		SectorRootsCount:         uint64(len(so.SectorRoots)),
+		TransactionFeesAdded:     so.TransactionFeesAdded,
+		TransactionID:            so.transactionID(),
+
+		ExpirationHeight:  so.expiration(),
+		NegotiationHeight: so.NegotiationHeight,
+		ProofDeadLine:     so.proofDeadline(),
+
+		ObligationStatus:    so.ObligationStatus.String(),
+		OriginConfirmed:     so.OriginConfirmed,
+		ProofConfirmed:      so.ProofConfirmed,
+		ProofConstructed:    so.ProofConstructed,
+		RevisionConfirmed:   so.RevisionConfirmed,
+		RevisionConstructed: so.RevisionConstructed,
+
+		ValidProofOutputs:  valid,
+		MissedProofOutputs: missed,
+	}
 }
 
 // Update will take a list of sector changes and update the database to account
@@ -1414,38 +1452,7 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 				return build.ExtendErr("unable to unmarshal storage obligation:", err)
 			}
 
-			valid, missed := so.payouts()
-			mso := modules.StorageObligation{
-				ContractCost:             so.ContractCost,
-				DataSize:                 so.fileSize(),
-				RevisionNumber:           so.revisionNumber(),
-				LockedCollateral:         so.LockedCollateral,
-				ObligationId:             so.id(),
-				PotentialAccountFunding:  so.PotentialAccountFunding,
-				PotentialDownloadRevenue: so.PotentialDownloadRevenue,
-				PotentialStorageRevenue:  so.PotentialStorageRevenue,
-				PotentialUploadRevenue:   so.PotentialUploadRevenue,
-				RiskedCollateral:         so.RiskedCollateral,
-				SectorRootsCount:         uint64(len(so.SectorRoots)),
-				TransactionFeesAdded:     so.TransactionFeesAdded,
-				TransactionID:            so.transactionID(),
-
-				ExpirationHeight:  so.expiration(),
-				NegotiationHeight: so.NegotiationHeight,
-				ProofDeadLine:     so.proofDeadline(),
-
-				ObligationStatus:    so.ObligationStatus.String(),
-				OriginConfirmed:     so.OriginConfirmed,
-				ProofConfirmed:      so.ProofConfirmed,
-				ProofConstructed:    so.ProofConstructed,
-				RevisionConfirmed:   so.RevisionConfirmed,
-				RevisionConstructed: so.RevisionConstructed,
-
-				ValidProofOutputs:  valid,
-				MissedProofOutputs: missed,
-			}
-
-			sos = append(sos, mso)
+			sos = append(sos, so.StorageObligation())
 			return nil
 		})
 		if err != nil {
@@ -1458,4 +1465,15 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 	}
 
 	return sos
+}
+
+// StorageObligation returns the storage obligation matching the id or
+// an error if it does not exist
+func (h *Host) StorageObligation(obligationID types.FileContractID) (modules.StorageObligation, error) {
+	so, err := h.managedGetStorageObligation(obligationID)
+	if err != nil {
+		return modules.StorageObligation{}, errors.AddContext(err, "failed to fetch storage obligation")
+	}
+
+	return so.StorageObligation(), nil
 }

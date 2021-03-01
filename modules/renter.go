@@ -813,6 +813,22 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// SpendingBreakdown provides a breakdown of a few fields in the Contractor
+// Spending
+func (cs ContractorSpending) SpendingBreakdown() (totalSpent, unspentAllocated, unspentUnallocated types.Currency) {
+	totalSpent = cs.ContractFees.Add(cs.UploadSpending).
+		Add(cs.DownloadSpending).Add(cs.StorageSpending)
+	// Calculate unspent allocated
+	if cs.TotalAllocated.Cmp(totalSpent) >= 0 {
+		unspentAllocated = cs.TotalAllocated.Sub(totalSpent)
+	}
+	// Calculate unspent unallocated
+	if cs.Unspent.Cmp(unspentAllocated) >= 0 {
+		unspentUnallocated = cs.Unspent.Sub(unspentAllocated)
+	}
+	return totalSpent, unspentAllocated, unspentUnallocated
+}
+
 // ContractorChurnStatus contains the current churn budgets for the Contractor's
 // churnLimiter and the aggregate churn for the current period.
 type ContractorChurnStatus struct {

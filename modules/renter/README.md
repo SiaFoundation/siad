@@ -78,6 +78,7 @@ and performant manner.
 The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Backup Subsystem](#backup-subsystem)
+ - [Bubble Subsystem](#bubble-subsystem)
  - [Download Project Subsystem](#download-project-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
  - [Download Subsystem](#download-subsystem)
@@ -93,6 +94,26 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Worker Subsystem](#worker-subsystem)
+
+**TODO** Subsystems need to be alphabetized below to match above list
+
+### Bubble Subsystem
+**Key Files**
+ - [bubble.go](./bubble.go)
+
+The bubble subsystem is responsible making sure the updates to the file system's
+metadata are propagated up to the root directory. A bubble is the process of
+updating the filesystem metadata for the renter. It is called bubble because
+when a directory's metadata is updated, a call to update the parent directory
+will be made. This process continues until the root directory is reached. This
+results in any changes in metadata being "bubbled" to the top so that the root
+directory's metadata reflects the status of the entire filesystem.
+
+#### Inbound Complexities
+ - `callQueueBubbleUpdate` is used by external subsystems to trigger a bubble
+     update on a directory.
+ - `callThreadedProcessBubbleUpdates` is called by the Renter on startup to
+     launch the background thread that processes the queued bubble updates.
 
 ### Filesystem Controllers
 **Key Files**
