@@ -116,13 +116,14 @@ type (
 		// registry entries.
 		staticRegistryCache *registryRevisionCache
 
-		// subscription-related fields
-		staticSubscriptionInfo *subscriptionInfos
-
 		// staticSetInitialEstimates is an object that ensures the initial queue
 		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
 
+		// subscription-related fields
+		staticSubscriptionInfo *subscriptionInfos
+
+		// Utilities.
 		staticTG threadgroup.ThreadGroup
 		mu       sync.Mutex
 		renter   *Renter

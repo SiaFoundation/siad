@@ -19,8 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-// TODO: testing for account deposits and withdrawals
-// TODO: testing for updating price table
+// TODO: (f/u) testing for account deposits and withdrawals
 
 var (
 	// initialSubscriptionBudget is the initial budget withdrawn for a
