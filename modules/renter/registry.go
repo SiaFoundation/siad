@@ -187,15 +187,15 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 			rr = resp
 			continue
 		}
-		// If the revision number is higher than the highest known one, accept
-		// it.
-		if resp.staticSignedRegistryValue.Revision > rr.staticSignedRegistryValue.Revision {
-			rr = resp
-			continue
-		}
 		// If the revision number is the same but it was faster, accept it.
 		if resp.staticSignedRegistryValue.Revision == rr.staticSignedRegistryValue.Revision &&
 			resp.staticFinishTime.Before(rr.staticFinishTime) {
+			rr = resp
+			continue
+		}
+		// If the revision number is higher than the highest known one, accept
+		// it.
+		if resp.staticSignedRegistryValue.Revision > rr.staticSignedRegistryValue.Revision {
 			rr = resp
 			continue
 		}

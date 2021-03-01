@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestReadResponseSet is a unit test for the readResponseSet.
@@ -92,5 +96,163 @@ func TestReadResponseSet(t *testing.T) {
 	resps = set.collect(ctx)
 	if len(resps) != 0 {
 		t.Fatal("resps should be empty", resps)
+	}
+}
+
+// TestReadRegistryStats is a unit test for the readRegistryStats.
+func TestReadRegistryStats(t *testing.T) {
+	// Test vars.
+	initialEstimate := time.Second
+	startTime := time.Now()
+
+	// Declare a helper to create response sets from responses.
+	testResponseSet := func(startTime time.Time, resps ...*jobReadRegistryResponse) *readRegistryStats {
+		responseChan := make(chan *jobReadRegistryResponse, len(resps))
+		for _, resp := range resps {
+			responseChan <- resp
+		}
+		rrs := newReadRegistryStats(initialEstimate)
+		rrs.threadedAddResponseSet(context.Background(), startTime, newReadResponseSet(responseChan, len(resps)))
+		return rrs
+	}
+
+	// Declare tests.
+	tests := []struct {
+		resps  []*jobReadRegistryResponse
+		result time.Duration
+	}{
+		// No responses.
+		{
+			resps:  nil,
+			result: initialEstimate,
+		},
+		// Successful response without value.
+		{
+			resps: []*jobReadRegistryResponse{
+				{
+					staticSignedRegistryValue: nil,
+					staticFinishTime:          startTime.Add(time.Second * 5),
+				},
+			},
+			result: initialEstimate,
+		},
+		// Response with error.
+		{
+			resps: []*jobReadRegistryResponse{
+				{
+					staticErr:        errors.New("error"),
+					staticFinishTime: startTime.Add(time.Second * 5),
+				},
+			},
+			result: initialEstimate,
+		},
+		// Single successful response.
+		{
+			resps: []*jobReadRegistryResponse{
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{},
+					staticErr:                 nil,
+					staticFinishTime:          startTime.Add(time.Second * 5),
+				},
+			},
+			result: time.Millisecond * 4600,
+		},
+		// Mixed responses - single valid.
+		{
+			resps: []*jobReadRegistryResponse{
+				// No response but success.
+				{
+					staticSignedRegistryValue: nil,
+					staticFinishTime:          startTime.Add(time.Second * 1),
+				},
+				// Error response.
+				{
+					staticErr:        errors.New("error"),
+					staticFinishTime: startTime.Add(time.Second * 2),
+				},
+				// Success.
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{
+						RegistryValue: modules.RegistryValue{
+							Revision: 1,
+						},
+					},
+					staticErr:        nil,
+					staticFinishTime: startTime.Add(time.Second * 5),
+				},
+			},
+			result: time.Millisecond * 4600,
+		},
+		// Mixed responses - higher revision.
+		{
+			resps: []*jobReadRegistryResponse{
+				// Success.
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{
+						RegistryValue: modules.RegistryValue{
+							Revision: 1,
+						},
+					},
+					staticErr:        nil,
+					staticFinishTime: startTime.Add(time.Second * 1),
+				},
+				// Success with higher revision but slower time.
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{
+						RegistryValue: modules.RegistryValue{
+							Revision: 2,
+						},
+					},
+					staticErr:        nil,
+					staticFinishTime: startTime.Add(time.Second * 5),
+				},
+			},
+			result: time.Millisecond * 4600,
+		},
+		// Mixed responses - faster result.
+		{
+			resps: []*jobReadRegistryResponse{
+				// Success.
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{
+						RegistryValue: modules.RegistryValue{
+							Revision: 1,
+						},
+					},
+					staticErr:        nil,
+					staticFinishTime: startTime.Add(time.Second * 1),
+				},
+				// Success with higher revision.
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{
+						RegistryValue: modules.RegistryValue{
+							Revision: 2,
+						},
+					},
+					staticErr:        nil,
+					staticFinishTime: startTime.Add(time.Second * 6),
+				},
+				// Success with same revision but faster.
+				{
+					staticSignedRegistryValue: &modules.SignedRegistryValue{
+						RegistryValue: modules.RegistryValue{
+							Revision: 2,
+						},
+					},
+					staticErr:        nil,
+					staticFinishTime: startTime.Add(time.Second * 5),
+				},
+			},
+			result: time.Millisecond * 4600,
+		},
+	}
+
+	// Run tests.
+	for i, test := range tests {
+		// Test a response set with 1 response that took 5 seconds.
+		rrs := testResponseSet(startTime, test.resps...)
+		if rrs.Estimate() != test.result {
+			t.Fatalf("%v: results don't match %v != %v", i, rrs.Estimate(), test.result)
+		}
 	}
 }

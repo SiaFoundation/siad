@@ -2722,11 +2722,11 @@ for file contracts. Typically '1' for hosts with an acceptable max duration, and
 '0' for hosts that have a max duration which is not long enough.
 
 **interactionadjustment** | float64  
-The multipler that gets applied to a host based on previous interactions with
-the host. A high ratio of successful interactions will improve this hosts score,
-and a high ratio of failed interactions will hurt this hosts score. This
-adjustment helps account for hosts that are on unstable connections, don't keep
-their wallets unlocked, ran out of funds, etc.  
+The multiplier that gets applied to a host based on previous interactions
+with the host. A high ratio of successful interactions will improve this
+hosts score, and a high ratio of failed interactions will hurt this hosts
+score. This adjustment helps account for hosts that are on unstable
+connections, don't keep their wallets unlocked, ran out of funds, etc.  
 
 **pricesmultiplier** | float64  
 The multiplier that gets applied to a host based on the host's price. Lower
