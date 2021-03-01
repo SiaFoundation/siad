@@ -213,6 +213,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			time.Sleep(modules.MDMProgramWriteResponseTime * 2)
 		}
 
+		// Disrupt if the slow download dependency is set
+		if readInstruction && h.dependencies.Disrupt("SlowDownload") {
+			time.Sleep(time.Second)
+		}
+
 		// Don't write contents of the buffer if the MDM recommends batching the
 		// output as long as the buffer stays under a threshold.
 		if output.Batch && buffer.Len() < modules.MDMMaxBatchBufferSize {
