@@ -93,6 +93,11 @@ func TestPersist(t *testing.T) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
+	// Verify persist file size
+	if err := checkNumPersistedLinks(filename, 3); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
 	// Load a new Skynet Blocklist to verify the contents from disk get loaded
 	// properly
 	sb2, err := New(testdir)
@@ -128,6 +133,11 @@ func TestPersist(t *testing.T) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
+	// Verify persist file size
+	if err := checkNumPersistedLinks(filename, 3); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
 	// Load another new Skynet Blocklist to verify the contents from disk get loaded
 	// properly
 	sb3, err := New(testdir)
@@ -137,7 +147,7 @@ func TestPersist(t *testing.T) {
 
 	// Verify that the correct number of links were persisted to verify no links
 	// are being truncated
-	if err := checkNumPersistedLinks(filename, 4); err != nil {
+	if err := checkNumPersistedLinks(filename, 3); err != nil {
 		t.Errorf("error verifying correct number of links: %v", err)
 	}
 
@@ -296,8 +306,9 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// Verify that the correct number of links were persisted to verify no links
-	// are being truncated
-	if err = checkNumPersistedLinks(filename, 4); err != nil {
+	// are being truncated. Expect 3 links for the Add, remove, Add. Then final
+	// add would not be persisted because it already existed.
+	if err = checkNumPersistedLinks(filename, 3); err != nil {
 		t.Errorf("error verifying correct number of links: %v", err)
 	}
 }
