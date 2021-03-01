@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -77,7 +78,141 @@ var (
 	// worker stays active in the background after managedUpdateRegistry returns
 	// successfully.
 	updateRegistryBackgroundTimeout = time.Minute
+
+	// readRegistryBackgroundTimeout is the amount of time a read registry job
+	// can stay active in the background before being cancelled.
+	readRegistryBackgroundTimeout = time.Minute
 )
+
+// readResponseSet is a helper type which allows for returning a set of ongoing
+// ReadRegistry responses.
+type readResponseSet struct {
+	c    <-chan *jobReadRegistryResponse
+	left int
+
+	readResps []*jobReadRegistryResponse
+}
+
+// newReadResponseSet creates a new set from a response chan and number of
+// workers which are expected to write to that chan.
+func newReadResponseSet(responseChan <-chan *jobReadRegistryResponse, numWorkers int) *readResponseSet {
+	return &readResponseSet{
+		c:         responseChan,
+		left:      numWorkers,
+		readResps: make([]*jobReadRegistryResponse, 0, numWorkers),
+	}
+}
+
+// collect will collect all responses. It will block until it has received all
+// of them or until the provided context is closed.
+func (rrs *readResponseSet) collect(ctx context.Context) []*jobReadRegistryResponse {
+	for rrs.responsesLeft() > 0 {
+		resp := rrs.next(ctx)
+		if resp == nil {
+			break
+		}
+	}
+	return rrs.readResps
+}
+
+// next returns the next available response. It will block until the response is
+// received or the provided context is closed.
+func (rrs *readResponseSet) next(ctx context.Context) *jobReadRegistryResponse {
+	select {
+	case <-ctx.Done():
+		return nil
+	case resp := <-rrs.c:
+		rrs.readResps = append(rrs.readResps, resp)
+		rrs.left--
+		return resp
+	}
+}
+
+// responsesLeft returns the number of responses that can still be fetched with
+// Next.
+func (rrs *readResponseSet) responsesLeft() int {
+	return rrs.left
+}
+
+// readRegistryStats measures stats about read registry requests.
+type readRegistryStats struct {
+	currentEstimate float64
+	mu              sync.Mutex
+}
+
+// newReadRegistryStats creates a new readRegistryStats object from an initial
+// estimate.
+func newReadRegistryStats(initialEstimate time.Duration) *readRegistryStats {
+	return &readRegistryStats{
+		currentEstimate: float64(initialEstimate),
+	}
+}
+
+// Estimate returns the current estimate for a read registry request.
+func (rs *readRegistryStats) Estimate() time.Duration {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return time.Duration(rs.currentEstimate)
+}
+
+// threadedAddResponseSet adds a response set to the stats. This includes
+// waiting for all responses to arrive and then updating the stats using the
+// fastest success response with the highest rev number.
+func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet) {
+	// Get all responses.
+	resps := rrs.collect(ctx)
+	if resps == nil {
+		return // nothing to do
+	}
+
+	// Check for shutdown since collect might have blocked for a while.
+	select {
+	case <-ctx.Done():
+		return // shutdown
+	default:
+	}
+
+	// Find the success response with the highest revision number.
+	var rr *jobReadRegistryResponse
+	for _, resp := range resps {
+		if resp.staticErr != nil {
+			continue
+		}
+		// Check if host knew registry value.
+		if resp.staticSignedRegistryValue == nil {
+			continue
+		}
+		// If this is the first successful response, accept it.
+		if rr == nil {
+			rr = resp
+			continue
+		}
+		// If the revision number is higher than the highest known one, accept
+		// it.
+		if resp.staticSignedRegistryValue.Revision > rr.staticSignedRegistryValue.Revision {
+			rr = resp
+			continue
+		}
+		// If the revision number is the same but it was faster, accept it.
+		if resp.staticSignedRegistryValue.Revision == rr.staticSignedRegistryValue.Revision &&
+			resp.staticFinishTime.Before(rr.staticFinishTime) {
+			rr = resp
+			continue
+		}
+	}
+	// If none reported a value, there is nothing we can do.
+	if rr == nil {
+		return
+	}
+
+	// Check how long it took to get the response time.
+	d := rr.staticFinishTime.Sub(startTime)
+
+	// Add the duration to the estimate.
+	rs.mu.Lock()
+	rs.currentEstimate = expMovingAvg(rs.currentEstimate, float64(d), jobReadRegistryPerformanceDecay)
+	rs.mu.Unlock()
+}
 
 // ReadRegistry starts a registry lookup on all available workers. The
 // jobs have 'timeout' amount of time to finish their jobs and return a
@@ -142,10 +277,10 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
-	// Create a context that dies when the function ends, this will cancel all
-	// of the worker jobs that get created by this function.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// Specify a sane timeout for jobs that is independent of the user specified
+	// timeout. It is the maximum time that we let a job execute in the
+	// background before cancelling it.
+	backgroundCtx, backgroundCancel := context.WithTimeout(r.tg.StopCtx(), readRegistryBackgroundTimeout)
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
@@ -173,7 +308,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 			continue
 		}
 
-		jrr := worker.newJobReadRegistry(ctx, staticResponseChan, spk, tweak)
+		jrr := worker.newJobReadRegistry(backgroundCtx, staticResponseChan, spk, tweak)
 		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -185,8 +320,30 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
+		backgroundCancel()
 		return modules.SignedRegistryValue{}, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
+
+	// Create the response set.
+	responseSet := newReadResponseSet(staticResponseChan, len(workers))
+
+	// Add the response set to the stats after this method is done.
+	startTime := time.Now()
+	defer func() {
+		go func() {
+			if err := r.tg.Add(); err != nil {
+				return
+			}
+			defer r.tg.Done()
+
+			r.staticRRS.threadedAddResponseSet(backgroundCtx, startTime, responseSet)
+			backgroundCancel()
+		}()
+	}()
+
+	// Further restrict the input timeout using historical data.
+	ctx, cancel := context.WithTimeout(ctx, r.staticRRS.Estimate())
+	defer cancel()
 
 	// Prepare a context which will be overwritten by a child context with a timeout
 	// when we receive the first response. useHighestRevDefaultTimeout after
@@ -196,29 +353,20 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 
 	var srv *modules.SignedRegistryValue
 	responses := 0
-
-LOOP:
-	for responses < len(workers) {
+	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
 		if srv != nil {
-			// If we have a successful response already, we wait on both contexts
-			// and the response chan.
-			select {
-			case <-useHighestRevCtx.Done():
-				break LOOP // using best
-			case <-ctx.Done():
-				break LOOP // timeout reached
-			case resp = <-staticResponseChan:
-			}
+			// If we have a successful response already, we wait on the highest
+			// rev ctx.
+			resp = responseSet.next(useHighestRevCtx)
 		} else {
 			// Otherwise we don't wait on the usehighestRevCtx since we need a
 			// successful response to abort.
-			select {
-			case <-ctx.Done():
-				break LOOP // timeout reached
-			case resp = <-staticResponseChan:
-			}
+			resp = responseSet.next(ctx)
+		}
+		if resp == nil {
+			break // context triggered
 		}
 
 		// When we get the first response, we initialize the highest rev

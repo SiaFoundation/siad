@@ -226,6 +226,9 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
+	// read registry stats
+	staticRRS *readRegistryStats
+
 	// Memory management
 	//
 	// registryMemoryManager is used for updating registry entries and reading
@@ -1008,6 +1011,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
+	r.staticRRS = newReadRegistryStats(readRegistryBackgroundTimeout)
 	close(r.uploadHeap.pauseChan)
 
 	// Init the statsChan and close it right away to signal that no scan is
