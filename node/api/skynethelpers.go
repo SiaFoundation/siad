@@ -238,13 +238,15 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	var monetization *modules.Monetization
 	monetizationStr := queryForm.Get("monetization")
 	if monetizationStr != "" {
-		err = json.Unmarshal([]byte(monetizationStr), monetization)
+		var m modules.Monetization
+		err = json.Unmarshal([]byte(monetizationStr), &m)
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'monetizers'")
 		}
-		if err := modules.ValidateMonetization(*monetization); err != nil {
+		if err := modules.ValidateMonetization(m); err != nil {
 			return nil, nil, err
 		}
+		monetization = &m
 	}
 
 	// validate parameter combos

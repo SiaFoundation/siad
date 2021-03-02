@@ -2701,11 +2701,11 @@ for file contracts. Typically '1' for hosts with an acceptable max duration, and
 '0' for hosts that have a max duration which is not long enough.
 
 **interactionadjustment** | float64  
-The multipler that gets applied to a host based on previous interactions with
-the host. A high ratio of successful interactions will improve this hosts score,
-and a high ratio of failed interactions will hurt this hosts score. This
-adjustment helps account for hosts that are on unstable connections, don't keep
-their wallets unlocked, ran out of funds, etc.  
+The multiplier that gets applied to a host based on previous interactions
+with the host. A high ratio of successful interactions will improve this
+hosts score, and a high ratio of failed interactions will hurt this hosts
+score. This adjustment helps account for hosts that are on unstable
+connections, don't keep their wallets unlocked, ran out of funds, etc.  
 
 **pricesmultiplier** | float64  
 The multiplier that gets applied to a host based on the host's price. Lower
@@ -5434,14 +5434,14 @@ supplied, this metadata will be relative to the given path.
 {
   "mode":     640,      // os.FileMode
   "filename": "folder", // string
-  "monetization": [
-    {
+  "monetization": {
+    "license": "AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg" // skylink
+    "monetizers": [
       "address": "e81107109496fe714a492f557c2af4b281e4913c674d10e8b3cd5cd3b7e59c582590531607c8", // hash
-      "amount": "1000000000000000000000000" // types.Currency
-      "currency": "usd"                     // string
-      "license": "SCLv1"                    // string
-    }
-  ],
+      "amount": "1000000000000000000000000"                                                      // types.Currency
+      "currency": "usd"                                                                          // string
+    ],
+  },
   "subfiles": {         // map[string]SkyfileSubfileMetadata | null
     "folder/file1.txt": {                 // string
       "mode":         640,                // os.FileMode
@@ -5449,14 +5449,6 @@ supplied, this metadata will be relative to the given path.
       "contenttype":  "text/plain",       // string
       "offset":       0,                  // uint64
       "len":          6                   // uint64
-      "monetization": [
-        {
-          "address": "284f6fe9c9c394015c04f04e112c0b571a518980fab4e7f5b4e09a592ad7e001231ddbfbc262", // hash
-          "amount": "10000000000000000000000" // types.Currency
-          "currency": "usd"                   // string
-          "license": "SCLv1"                  // string
-        }
-      ]
     }
   }
 }
@@ -5499,7 +5491,7 @@ curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filenam
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png' as before. This time with a monetizer that
 // consists of a payout address and payout amount.
-curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%5B%7B%22address%22%3A%229e0eb21aace235e3f069418e905cb7e2e35669e8dd9e367e5759854a3883fd03ebb85bc23b04%22%2C%22amount%22%3A%22527%22%2C%22currency%22%3A%22usd%22%2C%22license%22%3A%22SCLv1%22%7D%5D" -F 'file=@image.png'
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?monetization=%7B%22monetizers%22%3A%5B%7B%22address%22%3A%22cfef78babd3faecb4fb3fdd94bdf4f9385a3cc394be4ae7a21430a425606819024ea37139e36%22%2C%22amount%22%3A%221000000000000000000000000%22%2C%22currency%22%3A%22usd%22%7D%5D%2C%22license%22%3A%22AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg%22%7D" -F 'file=@image.png'
 ```
 
 Uploads a file to the network using a stream. If the upload stream POST call
@@ -5579,9 +5571,9 @@ used.
 **monetization** | string  
 A json encoded array of monetizers. Each monetizer contains an address, a
 payout amount, a license and a currency. The specified amount has to be >0,
-the only supported currency is "usd" at the moment and the only available
-license is "SCLv1". NOTE: The precision for $1 is the same as
-the siacoin precision. So `1000000000000000000000000` equals $1.
+the only supported currency is "usd" at the moment. NOTE: The precision for
+$1 is the same as the siacoin precision. So `1000000000000000000000000`
+equals $1.
 
 **root** | bool  
 Whether or not to treat the siapath as being relative to the root directory. If
