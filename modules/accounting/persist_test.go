@@ -1,6 +1,7 @@
 package accounting
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 	"time"
@@ -173,21 +174,47 @@ func testMarshal(t *testing.T) {
 	}
 
 	// Marshal persistence
-	encodedEntry, err := marshalPersistence(p)
+	data, err := marshalPersistence(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Unmarshal persistence
-	unmarshalledP, err := unmarshalPersistence(encodedEntry[:])
+	unmarshalledP, err := unmarshalPersistence(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(unmarshalledP) != 1 {
+		t.Fatal("unexpected")
+	}
 
 	// Compare
-	if !reflect.DeepEqual(p, unmarshalledP) {
+	if !reflect.DeepEqual(p, unmarshalledP[0]) {
 		t.Log("p", p)
-		t.Log("unmarshaledP", unmarshalledP)
+		t.Log("unmarshaledP", unmarshalledP[0])
 		t.Fatal("persistence mismatch")
+	}
+
+	// Append several persist elements together
+	var datas []byte
+	for i := 0; i < 5; i++ {
+		datas = append(datas, data...)
+	}
+
+	// Unmarshal
+	unmarshalledP, err = unmarshalPersistence(bytes.NewReader(datas))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unmarshalledP) != 5 {
+		t.Fatal("unexpected")
+	}
+	// Compare each element to the original persistence
+	for _, up := range unmarshalledP {
+		if !reflect.DeepEqual(p, up) {
+			t.Log("p", p)
+			t.Log("up", up)
+			t.Fatal("persistence mismatch")
+		}
 	}
 }
