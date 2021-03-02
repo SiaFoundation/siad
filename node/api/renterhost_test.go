@@ -894,7 +894,8 @@ func TestRenterUploadDownload(t *testing.T) {
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0], rf.Files[1])
 	}
 
-	// Check financial metrics; funds should have been spent on uploads/downloads
+	// Check financial metrics; funds should have been spent on
+	// uploads/downloads
 	err = st.getAPI("/renter", &rg)
 	if err != nil {
 		t.Fatal(err)
@@ -902,7 +903,7 @@ func TestRenterUploadDownload(t *testing.T) {
 	fm := rg.FinancialMetrics
 	newSpent := rg.Settings.Allowance.Funds.Sub(fm.Unspent)
 	// all new spending should be reflected in upload/download/storage spending
-	diff := fm.UploadSpending.Add(fm.DownloadSpending).Add(fm.StorageSpending)
+	diff := fm.UploadSpending.Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending.Sum())
 	if !diff.Equals(newSpent.Sub(spent)) {
 		t.Fatal("all new spending should be reflected in metrics:", diff, newSpent.Sub(spent))
 	}

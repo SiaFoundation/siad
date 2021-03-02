@@ -383,12 +383,14 @@ Contract %v
   Start Height: %v
   End Height:   %v
 
-  Total cost:        %v (Fees: %v)
-  Funds Allocated:   %v
-  Upload Spending:   %v
-  Storage Spending:  %v
-  Download Spending: %v
-  Remaining Funds:   %v
+  Total cost:           %v (Fees: %v)
+  Funds Allocated:      %v
+  Upload Spending:      %v
+  Storage Spending:     %v
+  Download Spending:    %v
+  FundAccount Spending: %v
+  Maintenance Spending: %v
+  Remaining Funds:      %v
 
   File Size: %v
 `, rc.ID, rc.NetAddress, rc.HostPublicKey.String(), rc.HostVersion, rc.StartHeight, rc.EndHeight,
@@ -397,6 +399,8 @@ Contract %v
 				currencyUnits(rc.UploadSpending),
 				currencyUnits(rc.StorageSpending),
 				currencyUnits(rc.DownloadSpending),
+				currencyUnits(rc.FundAccountSpending),
+				currencyUnits(rc.MaintenanceSpending.Sum()),
 				currencyUnits(rc.RenterFunds),
 				modules.FilesizeUnits(rc.Size))
 
@@ -430,18 +434,22 @@ Spending:
 		fmt.Printf("\n    No current period spending.\n")
 	} else {
 		fmt.Printf(`
-    Spent Funds:     %v
-      Storage:       %v
-      Upload:        %v
-      Download:      %v
-      Fees:          %v
-    Unspent Funds:   %v
-      Allocated:     %v
-      Unallocated:   %v
+    Spent Funds:         %v
+      Storage:           %v
+      Upload:            %v
+      Download:          %v
+      FundAccount:       %v
+      Maintenance:       %v
+      Fees:              %v
+    Unspent Funds:       %v
+      Allocated:         %v
+      Unallocated:       %v
 `, currencyUnitsWithExchangeRate(totalSpent, rate),
 			currencyUnitsWithExchangeRate(fm.StorageSpending, rate),
 			currencyUnitsWithExchangeRate(fm.UploadSpending, rate),
 			currencyUnitsWithExchangeRate(fm.DownloadSpending, rate),
+			currencyUnitsWithExchangeRate(fm.FundAccountSpending, rate),
+			currencyUnitsWithExchangeRate(fm.MaintenanceSpending.Sum(), rate),
 			currencyUnitsWithExchangeRate(fm.ContractFees, rate),
 			currencyUnitsWithExchangeRate(fm.Unspent, rate),
 			currencyUnitsWithExchangeRate(unspentAllocated, rate),

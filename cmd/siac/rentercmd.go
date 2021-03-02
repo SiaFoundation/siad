@@ -420,7 +420,7 @@ func rentercmd() {
 	} else {
 		fm := rg.FinancialMetrics
 		totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-			Add(fm.DownloadSpending).Add(fm.StorageSpending)
+			Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending.Sum())
 		fmt.Printf(`       %v
   Spent Funds:     %v
   Unspent Funds:   %v

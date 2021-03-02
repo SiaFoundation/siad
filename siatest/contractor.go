@@ -70,7 +70,7 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 
 	fm := rg.FinancialMetrics
 	totalSpent := fm.ContractFees.Add(fm.UploadSpending).
-		Add(fm.DownloadSpending).Add(fm.StorageSpending)
+		Add(fm.DownloadSpending).Add(fm.StorageSpending).Add(fm.FundAccountSpending).Add(fm.MaintenanceSpending.Sum())
 	total := totalSpent.Add(fm.Unspent)
 	allowance := rg.Settings.Allowance
 
@@ -92,6 +92,8 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 			spending.TotalAllocated = spending.TotalAllocated.Add(contract.TotalCost)
 			// Calculate Spending
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
+			spending.FundAccountSpending = spending.FundAccountSpending.Add(contract.FundAccountSpending)
+			spending.MaintenanceSpending = spending.MaintenanceSpending.Add(contract.MaintenanceSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
 		} else if contract.EndHeight+WindowSize+types.MaturityDelay > cg.Height {
@@ -103,11 +105,11 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 			}
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.Fees).
-				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
+				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		} else {
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.Fees).
-				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
+				Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		}
 	}
 	for _, contract := range renewedContracts {
@@ -118,6 +120,8 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 			spending.TotalAllocated = spending.TotalAllocated.Add(contract.TotalCost)
 			// Calculate Spending
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
+			spending.FundAccountSpending = spending.FundAccountSpending.Add(contract.FundAccountSpending)
+			spending.MaintenanceSpending = spending.MaintenanceSpending.Add(contract.MaintenanceSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
 		}
@@ -150,6 +154,20 @@ func CheckContractVsReportedSpending(r *TestNode, WindowSize types.BlockHeight, 
 			Financial Metrics DS: %v
 			Contract DS:          %v
 			`, fm.DownloadSpending.HumanString(), spending.DownloadSpending.HumanString())
+	}
+	// Compare FundAccount Spending
+	if fm.FundAccountSpending.Cmp(spending.FundAccountSpending) != 0 {
+		return fmt.Errorf(`FundAccount spending not equal:
+			Financial Metrics DS: %v
+			Contract DS:          %v
+			`, fm.FundAccountSpending.HumanString(), spending.FundAccountSpending.HumanString())
+	}
+	// Compare Maintenance Spending
+	if fm.MaintenanceSpending.Sum().Cmp(spending.MaintenanceSpending.Sum()) != 0 {
+		return fmt.Errorf(`Maintenance spending not equal:
+			Financial Metrics DS: %v
+			Contract DS:          %v
+			`, fm.MaintenanceSpending.Sum().HumanString(), spending.MaintenanceSpending.Sum().HumanString())
 	}
 	// Compare Storage Spending
 	if fm.StorageSpending.Cmp(spending.StorageSpending) != 0 {
@@ -238,16 +256,22 @@ func CheckRenewedContractIDs(oldContracts, renewedContracts []api.RenterContract
 	return nil
 }
 
-// CheckRenewedContractsSpending confirms that renewed contracts have zero
-// upload and download spending. Renewed contracts should be the renter's active
+// CheckRenewedContractsSpending confirms that renewed contracts show no
+// spending has occurred yet. Renewed contracts should be the renter's active
 // contracts
 func CheckRenewedContractsSpending(renewedContracts []api.RenterContract) error {
 	for _, c := range renewedContracts {
-		if c.UploadSpending.Cmp(types.ZeroCurrency) != 0 && c.GoodForUpload {
+		if !c.UploadSpending.IsZero() && c.GoodForUpload {
 			return fmt.Errorf("Upload spending on renewed contract equal to %v, expected zero", c.UploadSpending.HumanString())
 		}
-		if c.DownloadSpending.Cmp(types.ZeroCurrency) != 0 {
+		if !c.DownloadSpending.IsZero() {
 			return fmt.Errorf("Download spending on renewed contract equal to %v, expected zero", c.DownloadSpending.HumanString())
+		}
+		if !c.FundAccountSpending.IsZero() {
+			return fmt.Errorf("FundAccount spending on renewed contract equal to %v, expected zero", c.DownloadSpending.HumanString())
+		}
+		if !c.MaintenanceSpending.Sum().IsZero() {
+			return fmt.Errorf("Maintenance spending on renewed contract equal to %v, expected zero", c.MaintenanceSpending.Sum().HumanString())
 		}
 	}
 	return nil
