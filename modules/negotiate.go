@@ -1058,27 +1058,39 @@ func RPCBeginSubscription(stream siamux.Stream, host types.SiaPublicKey, pt *RPC
 		return err
 	}
 
+	// Provide the payment.
+	err = RPCProvidePayment(buf, accID, accSK, bh, initialBudget)
+	if err != nil {
+		return err
+	}
+
+	// Send subscriber.
+	err = RPCWrite(buf, subscriber)
+	if err != nil {
+		return err
+	}
+
 	// Write buffer to stream.
 	_, err = buf.WriteTo(stream)
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// RPCProvidePayment is a helper function that provides a payment by writing the
+// required payment request objects to the given stream.
+func RPCProvidePayment(stream io.Writer, accID AccountID, accSK crypto.SecretKey, blockHeight types.BlockHeight, amount types.Currency) error {
 	// Send the payment request.
-	err = RPCWrite(stream, PaymentRequest{Type: PayByEphemeralAccount})
+	err := RPCWrite(stream, PaymentRequest{Type: PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
 	// Send the payment details.
-	pbear := NewPayByEphemeralAccountRequest(accID, bh, initialBudget, accSK)
+	pbear := NewPayByEphemeralAccountRequest(accID, blockHeight, amount, accSK)
 	err = RPCWrite(stream, pbear)
-	if err != nil {
-		return err
-	}
-
-	// Send subscriber.
-	err = RPCWrite(stream, subscriber)
 	if err != nil {
 		return err
 	}
@@ -1192,18 +1204,8 @@ func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, accID Ac
 		return err
 	}
 
-	// Send the payment request.
-	err = RPCWrite(buf, PaymentRequest{Type: PayByEphemeralAccount})
-	if err != nil {
-		return err
-	}
-
-	// Send the payment details.
-	pbear := NewPayByEphemeralAccountRequest(accID, bh, fundAmt, accSK)
-	err = RPCWrite(buf, pbear)
-	if err != nil {
-		return err
-	}
+	// Provide the payment.
+	err = RPCProvidePayment(buf, accID, accSK, bh, fundAmt)
 	if err != nil {
 		return err
 	}
