@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/montanaflynn/stats"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -176,40 +177,30 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	default:
 	}
 
-	// Find the fastest success response.
-	var rr *jobReadRegistryResponse
+	// Collect all successful timings.
+	var timings stats.Float64Data
 	for _, resp := range resps {
 		if resp.staticErr != nil {
 			continue
 		}
-		// Check if host knew registry value.
-		if resp.staticSignedRegistryValue == nil {
-			continue
-		}
-		// If this is the first successful response, accept it.
-		if rr == nil {
-			rr = resp
-			continue
-		}
-		// If the revision number is the same but it was faster, accept it.
-		if resp.staticSignedRegistryValue.Revision == rr.staticSignedRegistryValue.Revision &&
-			resp.staticFinishTime.Before(rr.staticFinishTime) {
-			rr = resp
-			continue
-		}
+		timings = append(timings, float64(resp.staticFinishTime.Sub(startTime)))
 	}
-	// If none reported a value, the entry doesn't exist and we don't need to
-	// update our stats.
-	if rr == nil {
+
+	// No successful responses. We can't update the stats.
+	if len(timings) == 0 {
 		return
 	}
 
-	// Check how long it took to get the response time.
-	d := rr.staticFinishTime.Sub(startTime)
+	// Get the duration of the 90th percentile.
+	d, err := timings.Percentile(90)
+	if err != nil {
+		build.Critical("failed to get percentile", err)
+		return
+	}
 
 	// Add the duration to the estimate.
 	rs.mu.Lock()
-	rs.currentEstimate = expMovingAvg(rs.currentEstimate, float64(d), jobReadRegistryPerformanceDecay)
+	rs.currentEstimate = expMovingAvg(rs.currentEstimate, d, jobReadRegistryPerformanceDecay)
 	rs.mu.Unlock()
 }
 

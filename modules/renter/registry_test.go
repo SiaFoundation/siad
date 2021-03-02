@@ -134,7 +134,7 @@ func TestReadRegistryStats(t *testing.T) {
 					staticFinishTime:          startTime.Add(time.Second * 5),
 				},
 			},
-			result: initialEstimate,
+			result: time.Millisecond * 4600,
 		},
 		// Response with error.
 		{
@@ -163,7 +163,7 @@ func TestReadRegistryStats(t *testing.T) {
 				// No response but success.
 				{
 					staticSignedRegistryValue: nil,
-					staticFinishTime:          startTime.Add(time.Second * 1),
+					staticFinishTime:          startTime.Add(time.Second * 5),
 				},
 				// Error response.
 				{
@@ -178,10 +178,10 @@ func TestReadRegistryStats(t *testing.T) {
 						},
 					},
 					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 5),
+					staticFinishTime: startTime.Add(time.Second * 10),
 				},
 			},
-			result: time.Millisecond * 4600,
+			result: time.Millisecond * 6850,
 		},
 		// Mixed responses - faster result.
 		{
@@ -207,7 +207,7 @@ func TestReadRegistryStats(t *testing.T) {
 					staticFinishTime: startTime.Add(time.Second * 6),
 				},
 			},
-			result: time.Millisecond * 4600,
+			result: time.Millisecond * 5050,
 		},
 	}
 
