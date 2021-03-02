@@ -1044,7 +1044,7 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 
 // RPCBeginSubscription begins a subscription on a new stream and returns
 // it.
-func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.SiaPublicKey, pt *RPCPriceTable, initialBudget types.Currency, fundAcc AccountID, bh types.BlockHeight, subscriber types.Specifier) error {
+func RPCBeginSubscription(stream siamux.Stream, host types.SiaPublicKey, pt *RPCPriceTable, accID AccountID, accSK crypto.SecretKey, initialBudget types.Currency, bh types.BlockHeight, subscriber types.Specifier) error {
 	// initiate the RPC
 	buf := bytes.NewBuffer(nil)
 	err := RPCWrite(buf, RPCRegistrySubscription)
@@ -1058,20 +1058,39 @@ func RPCBeginSubscription(stream siamux.Stream, pp PaymentProvider, host types.S
 		return err
 	}
 
+	// Provide the payment.
+	err = RPCProvidePayment(buf, accID, accSK, bh, initialBudget)
+	if err != nil {
+		return err
+	}
+
+	// Send subscriber.
+	err = RPCWrite(buf, subscriber)
+	if err != nil {
+		return err
+	}
+
 	// Write buffer to stream.
 	_, err = buf.WriteTo(stream)
 	if err != nil {
 		return err
 	}
 
-	// Provide payment
-	err = pp.ProvidePayment(stream, host, RPCRegistrySubscription, initialBudget, fundAcc, bh)
+	return nil
+}
+
+// RPCProvidePayment is a helper function that provides a payment by writing the
+// required payment request objects to the given stream.
+func RPCProvidePayment(stream io.Writer, accID AccountID, accSK crypto.SecretKey, blockHeight types.BlockHeight, amount types.Currency) error {
+	// Send the payment request.
+	err := RPCWrite(stream, PaymentRequest{Type: PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
-	// Send subscriber.
-	err = RPCWrite(stream, subscriber)
+	// Send the payment details.
+	pbear := NewPayByEphemeralAccountRequest(accID, blockHeight, amount, accSK)
+	err = RPCWrite(stream, pbear)
 	if err != nil {
 		return err
 	}
@@ -1177,7 +1196,7 @@ func RPCUnsubscribeFromRVs(stream siamux.Stream, requests []RPCRegistrySubscript
 }
 
 // RPCFundSubscription pays the host to increase the subscription budget.
-func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, pp PaymentProvider, aid AccountID, bh types.BlockHeight, fundAmt types.Currency) error {
+func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, accID AccountID, accSK crypto.SecretKey, bh types.BlockHeight, fundAmt types.Currency) error {
 	// Send the type of the request.
 	buf := bytes.NewBuffer(nil)
 	err := RPCWrite(buf, SubscriptionRequestPrepay)
@@ -1185,8 +1204,8 @@ func RPCFundSubscription(stream siamux.Stream, host types.SiaPublicKey, pp Payme
 		return err
 	}
 
-	// Provide payment
-	err = pp.ProvidePayment(buf, host, RPCRegistrySubscription, fundAmt, aid, bh)
+	// Provide the payment.
+	err = RPCProvidePayment(buf, accID, accSK, bh, fundAmt)
 	if err != nil {
 		return err
 	}

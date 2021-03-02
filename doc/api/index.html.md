@@ -2722,7 +2722,7 @@ for file contracts. Typically '1' for hosts with an acceptable max duration, and
 '0' for hosts that have a max duration which is not long enough.
 
 **interactionadjustment** | float64  
-The multipler that gets applied to a host based on previous interactions with
+The multiplier that gets applied to a host based on previous interactions with
 the host. A high ratio of successful interactions will improve this hosts score,
 and a high ratio of failed interactions will hurt this hosts score. This
 adjustment helps account for hosts that are on unstable connections, don't keep
@@ -3018,13 +3018,19 @@ Returns the current settings along with metrics on the renter's spending.
     "streamcachesize":    4     // int
   },
   "financialmetrics": {
-    "contractfees":     "1234", // hastings
-    "contractspending": "1234", // hastings (deprecated, now totalallocated)
-    "downloadspending": "5678", // hastings
-    "storagespending":  "1234", // hastings
-    "totalallocated":   "1234", // hastings
-    "uploadspending":   "5678", // hastings
-    "unspent":          "1234"  // hastings
+    "contractfees":        "1234", // hastings
+    "contractspending":    "1234", // hastings (deprecated, now totalallocated)
+    "downloadspending":    "5678", // hastings
+    "fundaccountspending": "5678", // hastings
+    "maintenancespending": {
+      "accountbalancecost":   "1234", // hastings
+      "fundaccountcost":      "1234", // hastings
+      "updatepricetablecost": "1234", // hastings
+    },
+    "storagespending":     "1234", // hastings
+    "totalallocated":      "1234", // hastings
+    "uploadspending":      "5678", // hastings
+    "unspent":             "1234"  // hastings
   },
   "currentperiod":  6000  // blockheight
   "nextperiod":    12248  // blockheight
@@ -3147,7 +3153,6 @@ streaming.
 **financialmetrics**    
 Metrics about how much the Renter has spent on storage, uploads, and downloads.
 
-
 **contractfees** | hastings  
 Amount of money spent on contract fees, transaction fees and siafund fees.  
 
@@ -3157,6 +3162,27 @@ fees.
 
 **downloadspending** | hastings  
 Amount of money spent on downloads.  
+
+**fundaccountspending** | hastings  
+Amount of money spent on funding an ephemeral account on a host. This value
+reflects the exact amount that got deposited into the account, meaning it
+excludes the cost of the actual funding RPC, which is contained in the
+maintenance spending metrics.
+
+**maintenancespending**  
+Amount of money spent on maintenance, such as updating price tables or syncing
+the ephemeral account balance with the host.  
+
+**accountbalancecost** | hastings  
+Amount of money spent on syncing the renter's account balance with the host.
+
+**fundaccountcost** | hastings  
+Amount of money spent on funding the ephemeral account. Note that this is only
+the cost of executing the RPC, the amount of money that is transferred into the
+account is being tracked in the `fundaccountspending` field.
+
+**updatepricetablecost** | hastings  
+Amount of money spent on updating the price table with the host.
 
 **storagespending** | hastings  
 Amount of money spend on storage.  
@@ -3450,9 +3476,10 @@ flag indicating if recoverable contracts should be returned.
 {
   "activecontracts": [
     {
-      "downloadspending": "1234", // hastings
-      "endheight":        50000,  // block height
-      "fees":             "1234", // hastings
+      "downloadspending": "1234",    // hastings
+      "endheight":        50000,     // block height
+      "fees":             "1234",    // hastings
+      "fundaccountspending": "1234", // hastings
       "hostpublickey": {
         "algorithm": "ed25519",   // string
         "key": "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // hash
@@ -3460,6 +3487,11 @@ flag indicating if recoverable contracts should be returned.
       "hostversion":      "1.4.0",  // string
       "id": "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // hash
       "lasttransaction": {},                // transaction
+      "maintenancespending": {
+        "accountbalancecost":   "1234", // hastings
+        "fundaccountcost":      "1234", // hastings
+        "updatepricetablecost": "1234", // hastings
+      },
       "netaddress":       "12.34.56.78:9",  // string
       "renterfunds":      "1234",           // hastings
       "size":             8192,             // bytes
@@ -3482,6 +3514,12 @@ flag indicating if recoverable contracts should be returned.
 ```
 **downloadspending** | hastings  
 Amount of contract funds that have been spent on downloads.  
+
+**fundaccountspending** | hastings  
+Amount of money spent on funding an ephemeral account on a host. This value
+reflects the exact amount that got deposited into the account, meaning it
+excludes the cost of the actual funding RPC, which is contained in the
+maintenance spending metrics.
 
 **endheight** | block height  
 Block height that the file contract ends on.  
@@ -3506,6 +3544,21 @@ ID of the file contract.
 
 **lasttransaction** | transaction  
 A signed transaction containing the most recent contract revision.  
+
+**maintenancespending**  
+Amount of money spent on maintenance, such as updating price tables or syncing
+the ephemeral account balance with the host.  
+
+**accountbalancecost** | hastings  
+Amount of money spent on syncing the renter's account balance with the host.
+
+**fundaccountcost** | hastings  
+Amount of money spent on funding the ephemeral account. Note that this is only
+the cost of executing the RPC, the amount of money that is transferred into the
+account is being tracked in the `fundaccountspending` field.
+
+**updatepricetablecost** | hastings  
+Amount of money spent on updating the price table with the host.
 
 **netaddress** | string  
 Address of the host the file contract was formed with.  

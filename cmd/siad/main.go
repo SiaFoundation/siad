@@ -87,10 +87,10 @@ func modulesCmd(*cobra.Command, []string) {
 independent components of Sia. This flag should only be used by developers or
 people who want to reduce overhead from unused modules. Modules are specified by
 their first letter. If the -M or --modules flag is not specified the default
-modules are run. The default modules are:
-	gateway, consensus set, host, miner, renter, transaction pool, wallet
+modules are run. The default modules are all modules except the miner and the explorer:
+	gateway, consensus set, transaction pool, wallet, renter, host, feemanager, accounting
 This is equivalent to:
-	siad -M cghmrtw
+	siad -M gctwrhfa
 Below is a list of all the modules available.
 
 Gateway (g):
@@ -139,11 +139,17 @@ FeeManager (f):
 	The FeeManager requires the consensus set, gateway, transaction pool, and wallet.
 	Example:
 		siad -M gctwf
+Accounting (a):
+	The Accounting module provides a high level accounting summary for the Sia node.
+	The Accounting module requires the consensus set, gateway, transaction pool, wallet,
+	and any modules where accounting information is desired, i.e. the renter.
+	Example:
+		siad -M gctwra
 Explorer (e):
 	The explorer provides statistics about the blockchain and can be
 	queried for information about specific transactions or other objects on
 	the blockchain.
-	The explorer requires the consenus set.
+	The explorer requires the consensus set.
 	Example:
 		siad -M gce`)
 }
@@ -185,7 +191,7 @@ func main() {
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxTCPAddr, "siamux-addr", "", ":9983", "which port the SiaMux listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxWSAddr, "siamux-addr-ws", "", ":9984", "which port the SiaMux websocket listens on")
-	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "cghrtwf", "enabled modules, see 'siad modules' for more info")
+	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "gctwrhfa", "enabled modules, see 'siad modules' for more info")
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
 	root.Flags().BoolVarP(&globalConfig.Siad.AllowAPIBind, "disable-api-security", "", false, "allow siad to listen on a non-localhost address (DANGEROUS)")

@@ -4253,7 +4253,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 			Currency: modules.CurrencyUSD,
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(zeroMonetization[0].Address[:])
 
 	// Test zero amount monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
@@ -4275,7 +4275,7 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 			Currency: "",
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(unknownMonetization[0].Address[:])
 
 	// Test unknown currency monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownMonetizer", fastrand.Bytes(1), false, unknownMonetization)

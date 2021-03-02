@@ -123,6 +123,31 @@ type unfinishedUploadChunk struct {
 	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
 }
 
+// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
+// closes the fileEntry.
+func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
+	// Update chunk stuck status and close file.
+	var errStuck error
+	if setStuck {
+		errStuck = uc.fileEntry.SetStuck(uc.staticIndex, uc.stuck)
+	}
+	errClose := uc.fileEntry.Close()
+
+	// Signal garbage collector to free memory.
+	uc.physicalChunkData = nil
+	uc.logicalChunkData = nil
+
+	// Return potential errors.
+	err := errors.Compose(errStuck, errClose)
+	if err != nil {
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file and close it %v: %v", uc.fileEntry.SiaFilePath(), err)
+	}
+	return nil
+}
+
 // staticAvailable returns whether or not the chunk is available yet on the Sia
 // network.
 func (uc *unfinishedUploadChunk) staticAvailable() bool {
@@ -707,26 +732,12 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, setStuck bool) error {
 	// Check for ignore failed repairs dependency
 	if r.deps.Disrupt("IgnoreFailedRepairs") {
+		uc.mu.Lock()
 		uc.stuck = false
+		uc.mu.Unlock()
 	}
 
-	// Update chunk stuck status and close file.
-	var errStuck error
-	if setStuck {
-		errStuck = uc.fileEntry.SetStuck(uc.staticIndex, uc.stuck)
-	}
-	errClose := uc.fileEntry.Close()
-
-	// Signal garbage collector to free memory.
-	uc.physicalChunkData = nil
-	uc.logicalChunkData = nil
-
-	// Return potential errors.
-	err := errors.Compose(errStuck, errClose)
-	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file and close it %v: %v", uc.fileEntry.SiaFilePath(), err)
-	}
-	return nil
+	return uc.managedSetStuckAndClose(setStuck)
 }
 
 // managedUpdateUploadChunkStuckStatus checks to see if the repair was

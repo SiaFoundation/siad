@@ -38,6 +38,7 @@ variables:
     ./compatibility
     ./crypto
     ./modules
+    ./modules/accounting
     ./modules/consensus
     ./modules/explorer
     ./modules/feemanager
@@ -52,6 +53,7 @@ variables:
     ./types
   siatest_pkgs: >-
     ./siatest
+    ./siatest/accounting
     ./siatest/consensus
     ./siatest/daemon
     ./siatest/feemanager

@@ -117,14 +117,17 @@ func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash) er
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
-//
-// NOTE: this method does not check for duplicate additions or removals
 func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
 	listed := true
 	for _, hash := range additions {
+		// Check if the hash is already blocked
+		if _, ok := sb.hashes[hash]; ok {
+			continue
+		}
+
 		// Add hash to map
 		sb.hashes[hash] = struct{}{}
 
@@ -138,6 +141,11 @@ func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (by
 	}
 	listed = false
 	for _, hash := range removals {
+		// Check if the hash is already removed
+		if _, ok := sb.hashes[hash]; !ok {
+			continue
+		}
+
 		// Remove hash from map
 		delete(sb.hashes, hash)
 

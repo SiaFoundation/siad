@@ -9,14 +9,18 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -719,6 +723,78 @@ func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if header.Get("Skynet-Skylink") != skylink.String() {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestSkynetSlowDownload is a regression test that verifies a download can take
+// longer than the default skynet request timeout if data is being actively
+// downloaded from the host. This test was added after a bug was found where the
+// streambuffer context would timeout after 30s, even though a download of a
+// large file was ongoing, but just slow due to its size.
+func TestSkynetSlowDownload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Portals: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("failed to create test group", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Add hosts that have the slow download dependency
+	deps := &dependencies.HostSlowDownload{}
+	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
+	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
+	hostParams3 := node.Host(filepath.Join(testDir, "host3"))
+	hostParams1.HostDeps = deps
+	hostParams2.HostDeps = deps
+	hostParams3.HostDeps = deps
+	_, err = tg.AddNodes(hostParams1, hostParams2, hostParams3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a multi-part skyfile that consists out of multiple files, designed
+	// in such a way that the overall time to download this file exceeds the
+	// default request timeout of 30s. Keeping in mind that every read from a
+	// slow host takes at least 1 second due to our dependency.
+	sector := int(modules.SectorSize)
+	files := []siatest.TestFile{
+		{Name: "song1.flac", Data: fastrand.Bytes(sector * 3)},
+		{Name: "song2.flac", Data: fastrand.Bytes(sector * 3)},
+		{Name: "song3.flac", Data: fastrand.Bytes(sector * 3)},
+		{Name: "song4.flac", Data: fastrand.Bytes(sector * 3)},
+		{Name: "song5.flac", Data: fastrand.Bytes(sector * 3)},
+	}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(t.Name(), files, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify we can download the file
+	start := time.Now()
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the download took longer than the default request timeout
+	elapsed := time.Since(start)
+	if elapsed < api.DefaultSkynetRequestTimeout {
+		t.Fatal("the download request should have taken longer than the default request timeout")
 	}
 }
 

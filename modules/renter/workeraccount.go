@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -132,7 +133,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.ReadWriter, _ types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -608,8 +609,22 @@ func (w *worker) managedRefillAccount() {
 		return
 	}
 
+	// build payment details
+	details := contractor.PaymentDetails{
+		Host:          w.staticHostPubKey,
+		RPC:           modules.RPCFundAccount,
+		Amount:        amount.Add(pt.FundAccountCost),
+		RefundAccount: modules.ZeroAccountID,
+		SpendingDetails: modules.SpendingDetails{
+			FundAccountSpending: amount,
+			MaintenanceSpending: modules.MaintenanceSpending{
+				FundAccountCost: pt.FundAccountCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
 		// The host reporting that the balance has been exceeded suggests that
 		// the host believes that we have more money than we believe that we
@@ -689,8 +704,21 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 		return types.ZeroCurrency, err
 	}
 
+	// build payment details
+	details := contractor.PaymentDetails{
+		Host:          w.staticHostPubKey,
+		RPC:           modules.RPCAccountBalance,
+		Amount:        pt.AccountBalanceCost,
+		RefundAccount: w.staticAccount.staticID,
+		SpendingDetails: modules.SpendingDetails{
+			MaintenanceSpending: modules.MaintenanceSpending{
+				AccountBalanceCost: pt.AccountBalanceCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		// If the error could be caused by a revision number mismatch,
 		// signal it by setting the flag.

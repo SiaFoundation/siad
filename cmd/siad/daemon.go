@@ -67,7 +67,7 @@ func processNetAddr(addr string) string {
 // invalid module character.
 func processModules(modules string) (string, error) {
 	modules = strings.ToLower(modules)
-	validModules := "cghmrtwef"
+	validModules := "acghmrtwef"
 	invalidModules := modules
 	for _, m := range validModules {
 		invalidModules = strings.Replace(invalidModules, string(m), "", 1)

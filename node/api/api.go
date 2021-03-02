@@ -108,6 +108,7 @@ type (
 	// API encapsulates a collection of modules and implements a http.Handler
 	// to access their methods.
 	API struct {
+		accounting          modules.Accounting
 		cs                  modules.ConsensusSet
 		explorer            modules.Explorer
 		feemanager          modules.FeeManager
@@ -138,6 +139,7 @@ type (
 	// configModules contains booleans that indicate if a module was part of the
 	// configuration when the API was created
 	configModules struct {
+		Accounting      bool `json:"accounting"`
 		Consensus       bool `json:"consensus"`
 		Explorer        bool `json:"explorer"`
 		FeeManager      bool `json:"feemanager"`
@@ -158,10 +160,11 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetModules allows for replacing the modules in the API at runtime.
-func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) {
+func (api *API) SetModules(acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) {
 	if api.modulesSet {
 		build.Critical("can't call SetModules more than once")
 	}
+	api.accounting = acc
 	api.cs = cs
 	api.explorer = e
 	api.feemanager = fm
@@ -172,6 +175,7 @@ func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modul
 	api.tpool = tp
 	api.wallet = w
 	api.staticConfigModules = configModules{
+		Accounting:      api.accounting != nil,
 		Consensus:       api.cs != nil,
 		Explorer:        api.explorer != nil,
 		FeeManager:      api.feemanager != nil,
@@ -194,8 +198,8 @@ func (api *API) StartTime() time.Time {
 // New creates a new Sia API from the provided modules. The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
-func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
-	return NewCustom(cfg, requiredUserAgent, requiredPassword, cs, e, fm, g, h, m, r, tp, w, modules.ProdDependencies)
+func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
+	return NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, fm, g, h, m, r, tp, w, modules.ProdDependencies)
 }
 
 // NewCustom creates a new Sia API from the provided modules. The API will
@@ -203,8 +207,9 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 // supplied password is not the empty string. Usernames are ignored for
 // authentication. It is custom because it allows to inject custom dependencies
 // into the API.
-func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet, a modules.Dependencies) *API {
+func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword string, acc modules.Accounting, cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet, deps modules.Dependencies) *API {
 	api := &API{
+		accounting:        acc,
 		cs:                cs,
 		explorer:          e,
 		feemanager:        fm,
@@ -219,7 +224,7 @@ func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPasswo
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,
 
-		staticDeps:      a,
+		staticDeps:      deps,
 		staticStartTime: time.Now(),
 	}
 
