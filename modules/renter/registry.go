@@ -176,7 +176,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	default:
 	}
 
-	// Find the success response with the highest revision number.
+	// Find the fastest success response.
 	var rr *jobReadRegistryResponse
 	for _, resp := range resps {
 		if resp.staticErr != nil {
@@ -197,14 +197,9 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 			rr = resp
 			continue
 		}
-		// If the revision number is higher than the highest known one, accept
-		// it.
-		if resp.staticSignedRegistryValue.Revision > rr.staticSignedRegistryValue.Revision {
-			rr = resp
-			continue
-		}
 	}
-	// If none reported a value, there is nothing we can do.
+	// If none reported a value, the entry doesn't exist and we don't need to
+	// update our stats.
 	if rr == nil {
 		return
 	}
@@ -342,15 +337,10 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// Add the response set to the stats after this method is done.
 	startTime := time.Now()
 	defer func() {
-		go func() {
-			if err := r.tg.Add(); err != nil {
-				return
-			}
-			defer r.tg.Done()
-
+		_ = r.tg.Launch(func() {
 			r.staticRRS.threadedAddResponseSet(backgroundCtx, startTime, responseSet)
 			backgroundCancel()
-		}()
+		})
 	}()
 
 	// Further restrict the input timeout using historical data.

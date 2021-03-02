@@ -183,32 +183,6 @@ func TestReadRegistryStats(t *testing.T) {
 			},
 			result: time.Millisecond * 4600,
 		},
-		// Mixed responses - higher revision.
-		{
-			resps: []*jobReadRegistryResponse{
-				// Success.
-				{
-					staticSignedRegistryValue: &modules.SignedRegistryValue{
-						RegistryValue: modules.RegistryValue{
-							Revision: 1,
-						},
-					},
-					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 1),
-				},
-				// Success with higher revision but slower time.
-				{
-					staticSignedRegistryValue: &modules.SignedRegistryValue{
-						RegistryValue: modules.RegistryValue{
-							Revision: 2,
-						},
-					},
-					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 5),
-				},
-			},
-			result: time.Millisecond * 4600,
-		},
 		// Mixed responses - faster result.
 		{
 			resps: []*jobReadRegistryResponse{
@@ -220,9 +194,9 @@ func TestReadRegistryStats(t *testing.T) {
 						},
 					},
 					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 1),
+					staticFinishTime: startTime.Add(time.Second * 5),
 				},
-				// Success with higher revision.
+				// Success with higher revision but slower.
 				{
 					staticSignedRegistryValue: &modules.SignedRegistryValue{
 						RegistryValue: modules.RegistryValue{
@@ -231,16 +205,6 @@ func TestReadRegistryStats(t *testing.T) {
 					},
 					staticErr:        nil,
 					staticFinishTime: startTime.Add(time.Second * 6),
-				},
-				// Success with same revision but faster.
-				{
-					staticSignedRegistryValue: &modules.SignedRegistryValue{
-						RegistryValue: modules.RegistryValue{
-							Revision: 2,
-						},
-					},
-					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 5),
 				},
 			},
 			result: time.Millisecond * 4600,
