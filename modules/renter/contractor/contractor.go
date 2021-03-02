@@ -29,9 +29,8 @@ var (
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
 
-	errHostNotFound         = errors.New("host not found")
-	errContractNotFound     = errors.New("contract not found")
-	errRefundAccountInvalid = errors.New("invalid refund account")
+	errHostNotFound     = errors.New("host not found")
+	errContractNotFound = errors.New("contract not found")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -117,7 +116,6 @@ type Contractor struct {
 type PaymentDetails struct {
 	// destination details
 	Host types.SiaPublicKey
-	RPC  types.Specifier
 
 	// payment details
 	Amount        types.Currency
@@ -258,16 +256,10 @@ func (c *Contractor) UpdateWorkerPool(wp modules.WorkerPool) {
 // response objects to the host. It returns an error in case of failure.
 func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) error {
 	// convenience variables
-	rpc := details.RPC
 	host := details.Host
 	refundAccount := details.RefundAccount
 	amount := details.Amount
 	bh := pt.HostBlockHeight
-
-	// verify we do not specify a refund account on the fund account RPC
-	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
-		return errRefundAccountInvalid
-	}
 
 	// find a contract for the given host
 	contract, exists := c.ContractByPublicKey(host)

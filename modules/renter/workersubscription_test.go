@@ -37,8 +37,8 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 	return rv, spk, sk
 }
 
-// TestSubscriptionHelpersWithWorker tests the subscription helper methods against the
-// worker tester. They are already unit-tested against a host in
+// TestSubscriptionHelpersWithWorker tests the subscription helper methods
+// against the worker tester. They are already unit-tested against a host in
 // rpcsubscribe_test.go but better safe than sorry.
 func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	if testing.Short() {
