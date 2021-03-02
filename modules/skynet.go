@@ -157,9 +157,9 @@ type (
 		// Filename indicates the filename of the skyfile.
 		Filename string
 
-		// DefaultPath indicates the default file to be opened when opening skyfiles
-		// that contain directories. If set to empty string no file will be opened
-		// by default.
+		// DefaultPath indicates the default file to be opened when opening
+		// skyfiles that contain directories. If set to empty string no file
+		// will be opened by default.
 		DefaultPath string
 
 		// DisableDefaultPath prevents the usage of DefaultPath. As a result no

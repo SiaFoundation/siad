@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestMerkleRootSetCompatibility checks that the persist encoding for the
@@ -104,6 +105,61 @@ func TestMerkleRootSetCompatibility(t *testing.T) {
 				t.Error("loading failed", i, j)
 			}
 		}
+	}
+}
+
+// TestMaintenanceSpending_Add is a small unit test for the Add method on
+// MaintenanceSpending
+func TestMaintenanceSpending_Add(t *testing.T) {
+	t.Parallel()
+
+	x := MaintenanceSpending{}
+	y := MaintenanceSpending{}
+	sum := x.Add(y)
+	if !sum.AccountBalanceCost.Equals(x.AccountBalanceCost) ||
+		!sum.FundAccountCost.Equals(x.FundAccountCost) ||
+		!sum.UpdatePriceTableCost.Equals(x.UpdatePriceTableCost) {
+		t.Fatal("unexpected")
+	}
+
+	y = MaintenanceSpending{
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(2),
+		UpdatePriceTableCost: types.NewCurrency64(3),
+	}
+
+	// verify associative property
+	sum = x.Add(y)
+	if !sum.AccountBalanceCost.Equals64(1) ||
+		!sum.FundAccountCost.Equals64(2) ||
+		!sum.UpdatePriceTableCost.Equals64(3) {
+		t.Fatal("unexpected")
+	}
+	sum = y.Add(x)
+	if !sum.AccountBalanceCost.Equals64(1) ||
+		!sum.FundAccountCost.Equals64(2) ||
+		!sum.UpdatePriceTableCost.Equals64(3) {
+		t.Fatal("unexpected")
+	}
+}
+
+// TestMaintenanceSpending_Sum is a small unit test for the Sum method on
+// MaintenanceSpending
+func TestMaintenanceSpending_Sum(t *testing.T) {
+	t.Parallel()
+
+	ms := MaintenanceSpending{}
+	if !ms.Sum().IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	ms = MaintenanceSpending{
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(2),
+		UpdatePriceTableCost: types.NewCurrency64(3),
+	}
+	if !ms.Sum().Equals64(6) {
+		t.Fatal("unexpected")
 	}
 }
 
