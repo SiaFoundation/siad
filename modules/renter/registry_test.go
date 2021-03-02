@@ -40,7 +40,7 @@ func TestReadResponseSet(t *testing.T) {
 
 	// Call Next one more time and close the context while doing so.
 	ctx, cancel := context.WithCancel(context.Background())
-	go cancel()
+	cancel()
 	resp := set.next(ctx)
 	if resp != nil {
 		t.Fatal("resp should be nil")
@@ -92,7 +92,7 @@ func TestReadResponseSet(t *testing.T) {
 	// Collect a set without responses with a closed context.
 	set = newReadResponseSet(c, n)
 	ctx, cancel = context.WithCancel(context.Background())
-	go cancel()
+	cancel()
 	resps = set.collect(ctx)
 	if len(resps) != 0 {
 		t.Fatal("resps should be empty", resps)
@@ -131,7 +131,7 @@ func TestReadRegistryStats(t *testing.T) {
 			resps: []*jobReadRegistryResponse{
 				{
 					staticSignedRegistryValue: nil,
-					staticFinishTime:          startTime.Add(time.Second * 5),
+					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 			},
 			result: time.Millisecond * 4600,
@@ -140,8 +140,8 @@ func TestReadRegistryStats(t *testing.T) {
 		{
 			resps: []*jobReadRegistryResponse{
 				{
-					staticErr:        errors.New("error"),
-					staticFinishTime: startTime.Add(time.Second * 5),
+					staticErr:          errors.New("error"),
+					staticCompleteTime: startTime.Add(time.Second * 5),
 				},
 			},
 			result: initialEstimate,
@@ -152,7 +152,7 @@ func TestReadRegistryStats(t *testing.T) {
 				{
 					staticSignedRegistryValue: &modules.SignedRegistryValue{},
 					staticErr:                 nil,
-					staticFinishTime:          startTime.Add(time.Second * 5),
+					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 			},
 			result: time.Millisecond * 4600,
@@ -163,12 +163,12 @@ func TestReadRegistryStats(t *testing.T) {
 				// No response but success.
 				{
 					staticSignedRegistryValue: nil,
-					staticFinishTime:          startTime.Add(time.Second * 5),
+					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 				// Error response.
 				{
-					staticErr:        errors.New("error"),
-					staticFinishTime: startTime.Add(time.Second * 2),
+					staticErr:          errors.New("error"),
+					staticCompleteTime: startTime.Add(time.Second * 2),
 				},
 				// Success.
 				{
@@ -177,8 +177,8 @@ func TestReadRegistryStats(t *testing.T) {
 							Revision: 1,
 						},
 					},
-					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 10),
+					staticErr:          nil,
+					staticCompleteTime: startTime.Add(time.Second * 10),
 				},
 			},
 			result: time.Millisecond * 6850,
@@ -193,8 +193,8 @@ func TestReadRegistryStats(t *testing.T) {
 							Revision: 1,
 						},
 					},
-					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 5),
+					staticErr:          nil,
+					staticCompleteTime: startTime.Add(time.Second * 5),
 				},
 				// Success with higher revision but slower.
 				{
@@ -203,8 +203,8 @@ func TestReadRegistryStats(t *testing.T) {
 							Revision: 2,
 						},
 					},
-					staticErr:        nil,
-					staticFinishTime: startTime.Add(time.Second * 6),
+					staticErr:          nil,
+					staticCompleteTime: startTime.Add(time.Second * 6),
 				},
 			},
 			result: time.Millisecond * 5050,

@@ -183,7 +183,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		if resp.staticErr != nil {
 			continue
 		}
-		timings = append(timings, float64(resp.staticFinishTime.Sub(startTime)))
+		timings = append(timings, float64(resp.staticCompleteTime.Sub(startTime)))
 	}
 
 	// No successful responses. We can't update the stats.

@@ -4333,8 +4333,8 @@ func TestReadUnknownRegistryEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The time should have been <MaxRegistryReadTimeout but
-	// >readRegistryBackgroundTimeout.
+	// The time should have been less than MaxRegistryReadTimeout but greater
+	// than readRegistryBackgroundTimeout.
 	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
 		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
 	}
