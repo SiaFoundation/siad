@@ -327,9 +327,17 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		backgroundCancel()
 		return modules.SignedRegistryValue{}, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
+	numWorkers := len(workers)
+
+	// If specified, increment numWorkers. This will cause the loop to never
+	// exit without any of the context being closed since the response set won't
+	// be able to read the last response.
+	if r.deps.Disrupt("ReadRegistryBlocking") {
+		numWorkers++
+	}
 
 	// Create the response set.
-	responseSet := newReadResponseSet(staticResponseChan, len(workers))
+	responseSet := newReadResponseSet(staticResponseChan, numWorkers)
 
 	// Add the response set to the stats after this method is done.
 	startTime := time.Now()

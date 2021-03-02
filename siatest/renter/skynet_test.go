@@ -86,7 +86,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
-		{Name: "ReadUnknownRegistryEntry", Test: testReadUnknownRegistryEntry},
 	}
 
 	// Run tests
@@ -4291,10 +4290,36 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testReadUnknownRegistryEntry makes sure that reading an unknown entry takes
+// TestReadUnknownRegistryEntry makes sure that reading an unknown entry takes
 // the appropriate amount of time.
-func testReadUnknownRegistryEntry(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
+func TestReadUnknownRegistryEntry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyReadRegistryBlocking{}
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
 
 	// Get a random pubkey.
 	var spk types.SiaPublicKey
@@ -4302,7 +4327,7 @@ func testReadUnknownRegistryEntry(t *testing.T, tg *siatest.TestGroup) {
 
 	// Look it up.
 	start := time.Now()
-	_, err := r.RegistryRead(spk, crypto.Hash{})
+	_, err = r.RegistryRead(spk, crypto.Hash{})
 	passed := time.Since(start)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
 		t.Fatal(err)
