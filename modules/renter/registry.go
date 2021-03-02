@@ -20,7 +20,7 @@ var (
 	MaxRegistryReadTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  3 * time.Second,
+		Testing:  time.Minute,
 	}).(time.Duration)
 
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
@@ -60,6 +60,14 @@ var (
 		Testing:  3,
 	}).(int)
 
+	// ReadRegistryBackgroundTimeout is the amount of time a read registry job
+	// can stay active in the background before being cancelled.
+	ReadRegistryBackgroundTimeout = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 5 * time.Minute,
+		Testing:  time.Second,
+	}).(time.Duration)
+
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
 	// request from the memory manager.
 	updateRegistryMemory = uint64(20 * (1 << 10)) // 20kib
@@ -78,10 +86,6 @@ var (
 	// worker stays active in the background after managedUpdateRegistry returns
 	// successfully.
 	updateRegistryBackgroundTimeout = time.Minute
-
-	// readRegistryBackgroundTimeout is the amount of time a read registry job
-	// can stay active in the background before being cancelled.
-	readRegistryBackgroundTimeout = time.Minute
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -280,7 +284,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// Specify a sane timeout for jobs that is independent of the user specified
 	// timeout. It is the maximum time that we let a job execute in the
 	// background before cancelling it.
-	backgroundCtx, backgroundCancel := context.WithTimeout(r.tg.StopCtx(), readRegistryBackgroundTimeout)
+	backgroundCtx, backgroundCancel := context.WithTimeout(r.tg.StopCtx(), ReadRegistryBackgroundTimeout)
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per

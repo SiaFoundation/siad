@@ -1011,7 +1011,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
-	r.staticRRS = newReadRegistryStats(readRegistryBackgroundTimeout)
+	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout)
 	close(r.uploadHeap.pauseChan)
 
 	// Init the statsChan and close it right away to signal that no scan is

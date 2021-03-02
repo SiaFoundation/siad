@@ -86,6 +86,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
+		{Name: "ReadUnknownRegistryEntry", Test: testReadUnknownRegistryEntry},
 	}
 
 	// Run tests
@@ -4287,5 +4288,29 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, unknownMonetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
 		t.Fatal("should fail", err)
+	}
+}
+
+// testReadUnknownRegistryEntry makes sure that reading an unknown entry takes
+// the appropriate amount of time.
+func testReadUnknownRegistryEntry(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Get a random pubkey.
+	var spk types.SiaPublicKey
+	fastrand.Read(spk.Key)
+
+	// Look it up.
+	start := time.Now()
+	_, err := r.RegistryRead(spk, crypto.Hash{})
+	passed := time.Since(start)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+
+	// The time should have been <MaxRegistryReadTimeout but
+	// >readRegistryBackgroundTimeout.
+	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
+		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
 	}
 }
