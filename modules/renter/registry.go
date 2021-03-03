@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"sync"
@@ -69,6 +70,26 @@ var (
 		Testing:  time.Second,
 	}).(time.Duration)
 
+	// registryTimingMinAge is the minimum age a registry timing needs to have
+	// before being evicted from the queue.
+	registryTimingMinAge = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Hour,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
+
+	// registryStatsMinTimings is the minimum number of timings the queue should
+	// contain before eviction is possible.
+	registryStatsMinTimings = build.Select(build.Var{
+		Dev:      int(1e3),
+		Standard: int(10e3),
+		Testing:  int(100),
+	}).(int)
+
+	// registryStatsMaxTimings is a hard cap for the number of timing in the
+	// registry status queue. The queue will never be larger than this number.
+	registryStatsMaxTimings = 100 * registryStatsMinTimings
+
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
 	// request from the memory manager.
 	updateRegistryMemory = uint64(20 * (1 << 10)) // 20kib
@@ -97,6 +118,21 @@ type readResponseSet struct {
 
 	readResps []*jobReadRegistryResponse
 }
+
+type (
+	// readRegistryStats measures stats about read registry requests.
+	readRegistryStats struct {
+		staticMaxDataPoints int
+		timings             *list.List
+		mu                  sync.Mutex
+	}
+
+	// readRegistryTiming is a single timing within the readRegistryStats.
+	readRegistryTiming struct {
+		duration float64
+		time     time.Time
+	}
+)
 
 // newReadResponseSet creates a new set from a response chan and number of
 // workers which are expected to write to that chan.
@@ -139,25 +175,67 @@ func (rrs *readResponseSet) responsesLeft() int {
 	return rrs.left
 }
 
-// readRegistryStats measures stats about read registry requests.
-type readRegistryStats struct {
-	currentEstimate float64
-	mu              sync.Mutex
+// newReadRegistryTiming creates a new timing.
+func newReadRegistryTiming(d float64) *readRegistryTiming {
+	return &readRegistryTiming{
+		duration: d,
+		time:     time.Now(),
+	}
 }
 
 // newReadRegistryStats creates a new readRegistryStats object from an initial
 // estimate.
 func newReadRegistryStats(initialEstimate time.Duration) *readRegistryStats {
-	return &readRegistryStats{
-		currentEstimate: float64(initialEstimate),
+	rrs := &readRegistryStats{
+		timings: list.New(),
 	}
+	// Add the initial estimate directly to the queue.
+	rrs.timings.PushBack(newReadRegistryTiming(float64(initialEstimate)))
+	return rrs
 }
 
 // Estimate returns the current estimate for a read registry request.
 func (rs *readRegistryStats) Estimate() time.Duration {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
-	return time.Duration(rs.currentEstimate)
+	timings := make(stats.Float64Data, 0, rs.timings.Len())
+	for timing := rs.timings.Front(); timing != nil; timing = timing.Next() {
+		timings = append(timings, timing.Value.(*readRegistryTiming).duration)
+	}
+	d, err := timings.Percentile(99)
+	if err != nil {
+		build.Critical("Percentile should only fail for invalid inputs")
+		return time.Minute
+	}
+	return time.Duration(d)
+}
+
+// managedAddTimings adds additional timings to the registry stats.
+func (rs *readRegistryStats) managedAddTimings(timings []float64) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	// Add the timings.
+	for _, timing := range timings {
+		rs.timings.PushBack(newReadRegistryTiming(timing))
+	}
+
+	// Shrink the queue.
+	for {
+		front := rs.timings.Front()
+		if front == nil {
+			break
+		}
+		// Remove the element if there are more than enough elements in the
+		// queue and if the element has a certain age.
+		rrt := front.Value.(*readRegistryTiming)
+		if (time.Since(rrt.time) > registryTimingMinAge && rs.timings.Len() > registryStatsMinTimings) ||
+			rs.timings.Len() > registryStatsMaxTimings {
+			rs.timings.Remove(front)
+			continue
+		}
+		break
+	}
 }
 
 // threadedAddResponseSet adds a response set to the stats. This includes
@@ -191,17 +269,8 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 		return
 	}
 
-	// Get the duration of the 90th percentile.
-	d, err := timings.Percentile(90)
-	if err != nil {
-		build.Critical("failed to get percentile", err)
-		return
-	}
-
 	// Add the duration to the estimate.
-	rs.mu.Lock()
-	rs.currentEstimate = expMovingAvg(rs.currentEstimate, d, jobReadRegistryPerformanceDecay)
-	rs.mu.Unlock()
+	rs.managedAddTimings(timings)
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The

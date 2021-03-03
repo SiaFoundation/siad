@@ -99,6 +99,32 @@ func TestReadResponseSet(t *testing.T) {
 	}
 }
 
+// TestReadRegistryPruning makes sure the read registry stats object is pruned
+// correctly.
+func TestReadRegistryPruning(t *testing.T) {
+	rrs := newReadRegistryStats(time.Second)
+
+	// Add 2 times the max timings.
+	toAdd := make([]float64, 2*registryStatsMaxTimings)
+	rrs.managedAddTimings(toAdd)
+
+	// The length should be the max.
+	if rrs.timings.Len() != registryStatsMaxTimings {
+		t.Fatal("wrong length", rrs.timings.Len(), registryStatsMaxTimings)
+	}
+
+	// Wait for the min age.
+	time.Sleep(registryTimingMinAge)
+
+	// Add 1 more timing to trigger the pruning.
+	rrs.managedAddTimings([]float64{0})
+
+	// The length should be registryStatsMinTimings.
+	if rrs.timings.Len() != int(registryStatsMinTimings) {
+		t.Fatal("wrong length", rrs.timings.Len(), registryStatsMinTimings)
+	}
+}
+
 // TestReadRegistryStats is a unit test for the readRegistryStats.
 func TestReadRegistryStats(t *testing.T) {
 	// Test vars.
@@ -134,7 +160,7 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 			},
-			result: time.Millisecond * 4600,
+			result: time.Second * 3,
 		},
 		// Response with error.
 		{
@@ -155,7 +181,7 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 			},
-			result: time.Millisecond * 4600,
+			result: time.Second * 3,
 		},
 		// Mixed responses - single valid.
 		{
@@ -181,7 +207,7 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime: startTime.Add(time.Second * 10),
 				},
 			},
-			result: time.Millisecond * 6850,
+			result: time.Millisecond * 7500,
 		},
 		// Mixed responses - faster result.
 		{
@@ -207,7 +233,7 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime: startTime.Add(time.Second * 6),
 				},
 			},
-			result: time.Millisecond * 5050,
+			result: time.Millisecond * 5500,
 		},
 	}
 
