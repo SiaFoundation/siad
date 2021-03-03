@@ -302,7 +302,7 @@ func TestRenewContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+	_, err = wt.ReadOffset(context.Background(), categoryNone, 0, modules.SectorSize)
 	if err != nil {
 		t.Fatal(err)
 	}

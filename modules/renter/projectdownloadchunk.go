@@ -383,6 +383,8 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 			staticResponseChan: pdc.workerResponseChan,
 			staticLength:       pdc.pieceLength,
 
+			staticCategory: categoryDownload,
+
 			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadMetadata{
 				staticWorker:              w,
 				staticSectorRoot:          sectorRoot,

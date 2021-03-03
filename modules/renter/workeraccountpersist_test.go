@@ -2,10 +2,12 @@ package renter
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -234,6 +236,84 @@ func TestAccountCorrupted(t *testing.T) {
 	am.mu.Unlock()
 }
 
+// TestAccountCompatV150 verifies the compat code that upgrades the accounts
+// file from v150 to v156
+func TestAccountCompatV150(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a renter tester without renter
+	testdir := build.TempDir("renter", t.Name())
+	rt, err := newRenterTesterNoRenter(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rt.Close()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
+
+	// open the compat file
+	compatFile, err := os.OpenFile("../../compatibility/accounts_v1.5.0.dat", os.O_RDONLY, defaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// open the accounts file
+	renterdir := filepath.Join(testdir, modules.RenterDir)
+	accountsFilePath := filepath.Join(renterdir, accountsFilename)
+	err = os.MkdirAll(filepath.Dir(accountsFilePath), 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountsFile, err := os.OpenFile(accountsFilePath, os.O_RDWR|os.O_CREATE, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the compat file to the accounts file
+	_, err = io.Copy(accountsFile, compatFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// sync and close both files
+	err = errors.Compose(
+		compatFile.Close(),
+		accountsFile.Sync(),
+		accountsFile.Close(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a renter
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, renterdir)
+	if err := <-errChan; err != nil {
+		t.Fatal(err)
+	}
+
+	// add it to the renter tester
+	err = rt.addRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the compat file was properly read and upgraded to
+	am := r.staticAccountManager
+	am.mu.Lock()
+	numAccounts := len(am.accounts)
+	am.mu.Unlock()
+	if numAccounts != 377 {
+		t.Fatal("unexpected amount of accounts")
+	}
+}
+
 // TestAccountPersistenceToAndFromBytes verifies the functionality of the
 // `bytes` and `loadBytes` method on the accountPersistence object
 func TestAccountPersistenceToAndFromBytes(t *testing.T) {
@@ -255,14 +335,24 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	if !ap.AccountID.SPK().Equals(uMar.AccountID.SPK()) {
 		t.Fatal("Unexpected AccountID")
 	}
-	if !ap.Balance.Equals(uMar.Balance) {
-		t.Fatal("Unexpected balance")
-	}
 	if !ap.HostKey.Equals(uMar.HostKey) {
 		t.Fatal("Unexpected hostkey")
 	}
 	if !bytes.Equal(ap.SecretKey[:], uMar.SecretKey[:]) {
 		t.Fatal("Unexpected secretkey")
+	}
+	if !ap.Balance.Equals(uMar.Balance) ||
+		!ap.BalanceDriftPositive.Equals(uMar.BalanceDriftPositive) ||
+		!ap.BalanceDriftNegative.Equals(uMar.BalanceDriftNegative) {
+		t.Fatal("Unexpected balance details")
+	}
+
+	if !ap.SpendingDownloads.Equals(uMar.SpendingDownloads) ||
+		!ap.SpendingSnapshots.Equals(uMar.SpendingSnapshots) ||
+		!ap.SpendingRegistryReads.Equals(uMar.SpendingRegistryReads) ||
+		!ap.SpendingRegistryWrites.Equals(uMar.SpendingRegistryWrites) ||
+		!ap.SpendingSubscriptions.Equals(uMar.SpendingSubscriptions) {
+		t.Fatal("Unexpected spending details")
 	}
 
 	// corrupt the checksum of the account bytes

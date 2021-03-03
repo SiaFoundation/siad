@@ -56,6 +56,7 @@ func TestAccount(t *testing.T) {
 	t.Run("Constants", testAccountConstants)
 	t.Run("MinMaxExpectedBalance", testAccountMinAndMaxExpectedBalance)
 	t.Run("ResetBalance", testAccountResetBalance)
+	t.Run("TrackSpend", testAccountTrackSpend)
 
 	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
 	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
@@ -87,6 +88,10 @@ func TestWorkerAccount(t *testing.T) {
 
 	t.Run("SyncAccountBalanceToHostCritical", func(t *testing.T) {
 		testWorkerAccountSyncAccountBalanceToHostCritical(t, wt)
+	})
+
+	t.Run("SpendingDetails", func(t *testing.T) {
+		testWorkerAccountSpendingDetails(t, wt)
 	})
 }
 
@@ -218,6 +223,46 @@ func testAccountResetBalance(t *testing.T) {
 	}
 }
 
+// testAccountTrackSpend is a small unit test that verifies the functionality of
+// the method 'trackSpend' on the account
+func testAccountTrackSpend(t *testing.T) {
+	t.Parallel()
+
+	a := new(account)
+	hasting := types.NewCurrency64(1)
+
+	// verify initial state
+	if !a.spending.downloads.IsZero() ||
+		!a.spending.snapshots.IsZero() ||
+		!a.spending.registryReads.IsZero() ||
+		!a.spending.registryWrites.IsZero() ||
+		!a.spending.subscriptions.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// verify every category tracks its own field
+	a.trackSpend(categoryNone, hasting.Mul64(2), hasting)
+	a.trackSpend(categoryDownload, hasting.Mul64(2), hasting)
+	a.trackSpend(categorySnapshot, hasting.Mul64(2), hasting)
+	a.trackSpend(categoryRegistryRead, hasting.Mul64(2), hasting)
+	a.trackSpend(categoryRegistryWrite, hasting.Mul64(2), hasting)
+	a.trackSpend(categorySubscription, hasting.Mul64(2), hasting)
+	if !a.spending.downloads.Equals(hasting) ||
+		!a.spending.snapshots.Equals(hasting) ||
+		!a.spending.registryReads.Equals(hasting) ||
+		!a.spending.registryWrites.Equals(hasting) ||
+		!a.spending.subscriptions.Equals(hasting) {
+		t.Fatal("unexpected")
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic when attempting to track a spend where refund exceeds the amount")
+		}
+	}()
+	a.trackSpend(categoryNone, hasting, hasting.Mul64(2))
+}
+
 // testAccountCreation verifies newAccount returns a valid account object
 func testAccountCreation(t *testing.T, rt *renterTester) {
 	r := rt.renter
@@ -313,7 +358,7 @@ func testAccountTracking(t *testing.T, rt *renterTester) {
 	// verify committing a withdrawal decrements the pendingWithdrawals and
 	// properly adjusts the account balance depending on whether success is true
 	// or false
-	account.managedCommitWithdrawal(withdrawal, false)
+	account.managedCommitWithdrawal(categoryNone, withdrawal, types.ZeroCurrency, false)
 	if !account.pendingWithdrawals.IsZero() {
 		t.Fatal("Committing a withdrawal did not properly alter the account's state")
 	}
@@ -321,12 +366,21 @@ func testAccountTracking(t *testing.T, rt *renterTester) {
 		t.Fatal("Committing a failed withdrawal wrongfully adjusted the account balance")
 	}
 	account.managedTrackWithdrawal(withdrawal) // redo the withdrawal
-	account.managedCommitWithdrawal(withdrawal, true)
+	account.managedCommitWithdrawal(categoryNone, withdrawal, types.ZeroCurrency, true)
 	if !account.pendingWithdrawals.IsZero() {
 		t.Fatal("Committing a withdrawal did not properly alter the account's state")
 	}
 	if !account.balance.Equals(deposit.Sub(withdrawal)) {
 		t.Fatal("Committing a successful withdrawal wrongfully adjusted the account balance")
+	}
+
+	// verify committing a successful withdrawal with a spending category
+	// tracks the spend in the spending details, we only verify one category
+	// here but the others are covered in the unit test 'trackSpend'
+	account.managedTrackWithdrawal(withdrawal)
+	account.managedCommitWithdrawal(categoryDownload, withdrawal, types.ZeroCurrency, true)
+	if !account.spending.downloads.Equals(withdrawal) {
+		t.Fatal("Committing a successful withdrawal with a valid spending category should have update the appropriate field in the spending details")
 	}
 }
 
@@ -414,6 +468,40 @@ func testWorkerAccountSyncAccountBalanceToHostCritical(t *testing.T, wt *workerT
 	w.externSyncAccountBalanceToHost()
 }
 
+// testWorkerAccountSpendingDetails verifies that performing actions such as
+// downloading and reading, writing and subscribing to the registry properly
+// update the spending details in the worker account.
+func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
+	w := wt.worker
+
+	// wait until the worker is done with its maintenance tasks - this basically
+	// ensures we have a working worker, with valid PT and funded EA
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.managedMaintenanceSucceeded() {
+			return errors.New("worker not ready with maintenance")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// verify initial state
+	a := w.staticAccount
+	if !a.spending.downloads.IsZero() ||
+		!a.spending.snapshots.IsZero() ||
+		!a.spending.registryReads.IsZero() ||
+		!a.spending.registryWrites.IsZero() ||
+		!a.spending.subscriptions.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// TODO: do download
+	// TODO: do snapshot download
+	// TODO: do registry ready
+	// TODO: do registry write
+	// TODO: subscribe
+}
+
 // TestNewWithdrawalMessage verifies the newWithdrawalMessage helper
 // properly instantiates all required fields on the WithdrawalMessage
 func TestNewWithdrawalMessage(t *testing.T) {
@@ -446,6 +534,12 @@ func TestNewWithdrawalMessage(t *testing.T) {
 // openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
 func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
+	// randomBalance is a small helper function that returns a random
+	// types.Currency taking into account the given max value
+	randomBalance := func(max uint64) types.Currency {
+		return types.NewCurrency64(fastrand.Uint64n(max))
+	}
+
 	accounts := make([]*account, 0)
 	for i := 0; i < fastrand.Intn(10)+1; i++ {
 		hostKey := types.SiaPublicKey{
@@ -458,10 +552,17 @@ func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 		}
 
 		// give it a random balance state
-		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.negativeBalance = types.NewCurrency64(fastrand.Uint64n(1e2))
-		account.pendingDeposits = types.NewCurrency64(fastrand.Uint64n(1e2))
-		account.pendingWithdrawals = types.NewCurrency64(fastrand.Uint64n(1e2))
+		account.balance = randomBalance(1e3)
+		account.negativeBalance = randomBalance(1e2)
+		account.pendingDeposits = randomBalance(1e2)
+		account.pendingWithdrawals = randomBalance(1e2)
+		account.spending = spendingDetails{
+			downloads:      randomBalance(1e1),
+			snapshots:      randomBalance(1e1),
+			registryReads:  randomBalance(1e1),
+			registryWrites: randomBalance(1e1),
+			subscriptions:  randomBalance(1e1),
+		}
 		accounts = append(accounts, account)
 	}
 	return accounts, nil

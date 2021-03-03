@@ -73,6 +73,10 @@ var (
 	// MetadataVersionv150 is a common metadata version specifier to avoid
 	// types.Specifier conflicts
 	MetadataVersionv150 = types.NewSpecifier("v1.5.0\n")
+
+	// MetadataVersionv156 is a common metadata version specifier to avoid
+	// types.Specifier conflicts
+	MetadataVersionv156 = types.NewSpecifier("v1.5.6\n")
 )
 
 // Metadata contains the header and version of the data being stored.

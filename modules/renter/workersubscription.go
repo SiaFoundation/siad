@@ -373,14 +373,14 @@ func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *modules.RPC
 	// Fund the subscription.
 	err := w.managedFundSubscription(stream, pt, fundAmt)
 	if err != nil {
-		w.staticAccount.managedCommitWithdrawal(fundAmt, false)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, fundAmt, types.ZeroCurrency, false)
 		return errors.AddContext(err, "failed to fund subscription")
 	}
 
 	// Success. Add the funds to the budget and signal to the account
 	// that the withdrawal was successful.
 	budget.Deposit(fundAmt)
-	w.staticAccount.managedCommitWithdrawal(fundAmt, true)
+	w.staticAccount.managedCommitWithdrawal(categorySubscription, fundAmt, types.ZeroCurrency, true)
 	return nil
 }
 

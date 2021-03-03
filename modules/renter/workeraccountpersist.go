@@ -34,7 +34,9 @@ import (
 
 const (
 	// accountSize is the fixed account size in bytes
-	accountSize = 1 << 8 // 256 bytes
+	accountSize     = 1 << 10 // 1024 bytes
+	accountSizeV150 = 1 << 8  // 256 bytes
+	accountsOffset  = 1 << 6  // 64 bytes
 )
 
 var (
@@ -43,7 +45,7 @@ var (
 
 	// Metadata
 	metadataHeader  = types.NewSpecifier("Accounts\n")
-	metadataVersion = persist.MetadataVersionv150
+	metadataVersion = persist.MetadataVersionv156
 	metadataSize    = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
 
 	// Metadata validation errors
@@ -77,6 +79,28 @@ type (
 	// data that gets persisted for a single account.
 	accountPersistence struct {
 		AccountID modules.AccountID
+		HostKey   types.SiaPublicKey
+		SecretKey crypto.SecretKey
+
+		// balance details, aside from the balance we keep track of the balance
+		// drift, in both directions, that may occur when the renter's account
+		// balance becomes out of sync with the host's version of the balance
+		Balance              types.Currency
+		BalanceDriftPositive types.Currency
+		BalanceDriftNegative types.Currency
+
+		// spending details
+		SpendingDownloads      types.Currency
+		SpendingSnapshots      types.Currency
+		SpendingRegistryReads  types.Currency
+		SpendingRegistryWrites types.Currency
+		SpendingSubscriptions  types.Currency
+	}
+
+	// accountPersistenceV150 is the how the account persistence struct looked
+	// before adding the spending details in v156
+	accountPersistenceV150 struct {
+		AccountID modules.AccountID
 		Balance   types.Currency
 		HostKey   types.SiaPublicKey
 		SecretKey crypto.SecretKey
@@ -103,11 +127,22 @@ func (a *account) managedPersist() error {
 	a.mu.Lock()
 	accountData := accountPersistence{
 		AccountID: a.staticID,
-		Balance:   a.minExpectedBalance(),
 		HostKey:   a.staticHostKey,
 		SecretKey: a.staticSecretKey,
+
+		Balance:              a.minExpectedBalance(),
+		BalanceDriftPositive: a.balanceDriftPositive,
+		BalanceDriftNegative: a.balanceDriftNegative,
+
+		// spending details
+		SpendingDownloads:      a.spending.downloads,
+		SpendingSnapshots:      a.spending.snapshots,
+		SpendingRegistryReads:  a.spending.registryReads,
+		SpendingRegistryWrites: a.spending.registryWrites,
+		SpendingSubscriptions:  a.spending.subscriptions,
 	}
 	a.mu.Unlock()
+
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
 	return errors.AddContext(err, "unable to write the account to disk")
 }
@@ -118,7 +153,7 @@ func (ap accountPersistence) bytes() []byte {
 	accBytes := encoding.Marshal(ap)
 	accBytesMaxSize := accountSize - crypto.HashSize // leave room for checksum
 	if len(accBytes) > accBytesMaxSize {
-		build.Critical("marshaled object is larger than expected size")
+		build.Critical("marshaled object is larger than expected size", len(accBytes))
 	}
 
 	// Calculate checksum on padded account bytes. Upon load, the padding will
@@ -169,7 +204,7 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 		return nil, errors.New("account creation failed")
 	}
 	// Open a new account.
-	offset := (len(am.accounts) + 1) * accountSize // +1 because the first slot in the file is used for metadata
+	offset := accountsOffset + len(am.accounts)*accountSize
 	aid, sk := modules.NewAccountID()
 	acc = &account{
 		staticID:        aid,
@@ -273,9 +308,9 @@ func (am *accountManager) load() error {
 	}
 
 	// Read the raw account data and decode them into accounts. We start at an
-	// offset of 'accountSize' because the first slot is reserved for the
-	// metadata.
-	for offset := int64(accountSize); ; offset += accountSize {
+	// offset of 'accountsOffset' because the metadata precedes the accounts
+	// data.
+	for offset := int64(accountsOffset); ; offset += accountSize {
 		// read the account at offset
 		acc, err := am.readAccountAt(offset)
 		if errors.Contains(err, io.EOF) {
@@ -369,9 +404,23 @@ func (am *accountManager) openFile() (bool, error) {
 		// closed cleanly.
 		cleanClose = true
 	} else {
+		// If the metadata is invalid and its not due to an old version, return
+		// with an error.
 		cleanClose, err = am.checkMetadata()
-		if err != nil {
+		if err != nil && !errors.Contains(err, errWrongVersion) {
 			return false, errors.AddContext(err, "error reading account metadata")
+		}
+
+		// If the file is an old accounts file, try to upgrade accounts to the
+		// current version. This method does not return an error, if an account
+		// not be recovered for whatever reason we only log that error but
+		// consider it lost.
+		if errors.Contains(err, errWrongVersion) {
+			err = am.upgradeFromV150ToV156()
+			if err != nil {
+				return false, errors.AddContext(err, "error uprading accounts file")
+			}
+			am.staticRenter.log.Println("successfully upgraded accounts file from v150 to v156")
 		}
 	}
 
@@ -418,7 +467,19 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 		staticHostKey:   accountData.HostKey,
 		staticSecretKey: accountData.SecretKey,
 
-		balance: accountData.Balance,
+		// balance details
+		balance:              accountData.Balance,
+		balanceDriftPositive: accountData.BalanceDriftPositive,
+		balanceDriftNegative: accountData.BalanceDriftNegative,
+
+		// spending details
+		spending: spendingDetails{
+			downloads:      accountData.SpendingDownloads,
+			snapshots:      accountData.SpendingSnapshots,
+			registryReads:  accountData.SpendingRegistryReads,
+			registryWrites: accountData.SpendingRegistryWrites,
+			subscriptions:  accountData.SpendingSubscriptions,
+		},
 
 		staticReady:  make(chan struct{}),
 		externActive: true,
@@ -434,4 +495,69 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 func (am *accountManager) updateMetadata(meta accountsMetadata) error {
 	_, err := am.staticFile.WriteAt(encoding.Marshal(meta), 0)
 	return err
+}
+
+// upgradeFromV150ToV156 is compat code that upgrades the accounts file from
+// v150 to v156. The new accounts take up more space on disk, so we have to read
+// all of them, assign them new offets and rewrite them to the accounts file.
+func (am *accountManager) upgradeFromV150ToV156() error {
+	accounts := make([]*account, 0)
+
+	// the upgrade made an account larger on disk, this means that to upgrade we
+	// have to read in all accounts at the old offsets, and then save them using
+	// offsets that take into account the new account size on disk
+	//
+	// we offset the accounts with 'accountsOffset' to leave room for the
+	// metadata
+	newOffset := int64(accountsOffset)
+
+	// read the account data at offsets using the account size from v1.5.0
+	for offset := int64(accountSizeV150); ; offset += accountSizeV150 {
+		// read account bytes
+		accountBytes := make([]byte, accountSizeV150)
+		_, err := am.staticFile.ReadAt(accountBytes, offset)
+		if errors.Contains(err, io.EOF) {
+			break
+		} else if err != nil {
+			am.staticRenter.log.Println("ERROR: could not read account data", err)
+			continue
+		}
+
+		// load the account bytes onto the a persistence object
+		var accountDataV150 accountPersistenceV150
+		err = encoding.Unmarshal(accountBytes[crypto.HashSize:], &accountDataV150)
+		if err != nil {
+			am.staticRenter.log.Println("ERROR: could not load account bytes", err)
+			continue
+		}
+
+		// add the accounts, specify an offset that takes into account the new
+		// account size
+		accounts = append(accounts, &account{
+			staticID:        accountDataV150.AccountID,
+			staticHostKey:   accountDataV150.HostKey,
+			staticSecretKey: accountDataV150.SecretKey,
+
+			balance: accountDataV150.Balance,
+
+			staticOffset: newOffset,
+			staticFile:   am.staticFile,
+		})
+		newOffset += accountSize
+	}
+
+	// range over the accounts and persist
+	for _, acc := range accounts {
+		err := acc.managedPersist()
+		if err != nil {
+			am.staticRenter.log.Println("ERROR: could not upgrade account from v150 to v156", err)
+		}
+	}
+
+	// sync the accounts file
+	err := am.staticFile.Sync()
+	if err != nil {
+		return errors.AddContext(err, "failed to sync accounts file")
+	}
+	return nil
 }

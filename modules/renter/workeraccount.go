@@ -36,6 +36,18 @@ const (
 	fundAccountGougingPercentageThreshold = .01
 )
 
+// the following categories are constants used to determine the type of
+// expenditure when we increment the corresponding spending field in the
+// account, and eventually accounts persistence object.
+const (
+	categoryNone = iota
+	categoryDownload
+	categoryRegistryRead
+	categoryRegistryWrite
+	categorySnapshot
+	categorySubscription
+)
+
 var (
 	// accountIdleCheckFrequency establishes how frequently the sync function
 	// should check whether the worker is idle. A relatively high frequency is
@@ -90,10 +102,22 @@ type (
 		// Money has multiple states in an account, this is all the information
 		// we need to understand the current state of the account's balance and
 		// pending updates.
-		balance            types.Currency
-		negativeBalance    types.Currency
-		pendingWithdrawals types.Currency
-		pendingDeposits    types.Currency
+		//
+		// The two drift fields keep track of the delta between our version of
+		// the balance and the host's version of the balance. We want to keep
+		// track of this for documenting purposes, seeing as we currently sync
+		// our account balance with that of the host without question.
+		balance              types.Currency
+		balanceDriftPositive types.Currency
+		balanceDriftNegative types.Currency
+		pendingDeposits      types.Currency
+		pendingWithdrawals   types.Currency
+		negativeBalance      types.Currency
+
+		// Spending details contain a breakdown of how much money from the
+		// ephemeral account got spent on what action. Examples of such actions
+		// are downloads, registry reads, registry writes, etc.
+		spending spendingDetails
 
 		// Error tracking.
 		recentErr         error
@@ -124,6 +148,22 @@ type (
 		staticOffset int64
 		staticRenter *Renter
 	}
+
+	// spendingDetails contains a breakdown of all spending metrics, all money
+	// that is being spent from an ephemeral account is accounted for in one of
+	// these categories. Every field of this struct should have a corresponding
+	// 'spendingCategory'.
+	spendingDetails struct {
+		downloads      types.Currency
+		snapshots      types.Currency
+		registryReads  types.Currency
+		registryWrites types.Currency
+		subscriptions  types.Currency
+	}
+
+	// spendingCategory defines an enum that represent a category in the
+	// spending details
+	spendingCategory uint64
 )
 
 // ProvidePayment takes a stream and various payment details and handles the
@@ -271,7 +311,7 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 // failure. Depending on the outcome the given amount will be deducted from the
 // balance or not. If the pending delta is zero, and we altered the account
 // balance, we update the account.
-func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
+func (a *account) managedCommitWithdrawal(category spendingCategory, amount, refund types.Currency, success bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -287,6 +327,9 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 			a.balance = types.ZeroCurrency
 			a.negativeBalance = a.negativeBalance.Add(amount)
 		}
+
+		// only in case of success we track the spend and what it was spent on
+		a.trackSpend(category, amount, refund)
 	}
 }
 
@@ -343,6 +386,33 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
+}
+
+// trackSpend will keep track of the amount spent, taking into account the given
+// refund as well, within the given spend category
+func (a *account) trackSpend(category spendingCategory, amount, refund types.Currency) {
+	// sanity check the refund is less than the amount
+	if refund.Cmp(amount) > 0 {
+		build.Critical("committed a withdrawal where the refund is larger than the withdrawal itself, this should not be possible")
+	}
+
+	moneySpent := amount.Sub(refund)
+	switch category {
+	case categoryDownload:
+		a.spending.downloads = a.spending.downloads.Add(moneySpent)
+	case categorySnapshot:
+		a.spending.snapshots = a.spending.snapshots.Add(moneySpent)
+	case categoryRegistryRead:
+		a.spending.registryReads = a.spending.registryReads.Add(moneySpent)
+	case categoryRegistryWrite:
+		a.spending.registryWrites = a.spending.registryWrites.Add(moneySpent)
+	case categorySubscription:
+		a.spending.subscriptions = a.spending.subscriptions.Add(moneySpent)
+	default:
+		if build.Release != "testing" {
+			a.staticRenter.log.Println("money spent from account on a category that is not tracked, this should not happen in a production environment as we want to track all types of expenditures")
+		}
+	}
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
@@ -428,6 +498,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
+	w.managedHandleAccountBalanceSync(balance)
 
 	// If our account balance is lower than the balance indicated by the host,
 	// we want to sync our balance by resetting it.
@@ -447,6 +518,26 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
 	// accordingly. Perform this check at startup and periodically.
+}
+
+// managedHandleAccountBalanceSync updates the account's drift fields using the
+// account's current available balance and the given balance, which is the one
+// received from the host.
+func (w *worker) managedHandleAccountBalanceSync(balance types.Currency) {
+	currBalance := w.staticAccount.managedAvailableBalance()
+	if currBalance.Equals(balance) {
+		return
+	}
+
+	if currBalance.Cmp(balance) < 0 {
+		delta := balance.Sub(currBalance)
+		w.staticAccount.balanceDriftPositive = w.staticAccount.balanceDriftPositive.Add(delta)
+		return
+	}
+
+	delta := currBalance.Sub(balance)
+	w.staticAccount.balanceDriftNegative = w.staticAccount.balanceDriftNegative.Add(delta)
+	return
 }
 
 // managedNeedsToRefillAccount will check whether the worker's account needs to
