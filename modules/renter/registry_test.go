@@ -12,6 +12,8 @@ import (
 
 // TestReadResponseSet is a unit test for the readResponseSet.
 func TestReadResponseSet(t *testing.T) {
+	t.Parallel()
+
 	// Get a set and fill it up completely.
 	n := 10
 	c := make(chan *jobReadRegistryResponse)
@@ -102,6 +104,11 @@ func TestReadResponseSet(t *testing.T) {
 // TestReadRegistryPruning makes sure the read registry stats object is pruned
 // correctly.
 func TestReadRegistryPruning(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	rrs := newReadRegistryStats(time.Second)
 
 	// Add 2 times the max timings.
@@ -127,6 +134,8 @@ func TestReadRegistryPruning(t *testing.T) {
 
 // TestReadRegistryStats is a unit test for the readRegistryStats.
 func TestReadRegistryStats(t *testing.T) {
+	t.Parallel()
+
 	// Test vars.
 	initialEstimate := time.Second
 	startTime := time.Now()

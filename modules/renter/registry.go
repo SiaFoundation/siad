@@ -122,9 +122,8 @@ type readResponseSet struct {
 type (
 	// readRegistryStats measures stats about read registry requests.
 	readRegistryStats struct {
-		staticMaxDataPoints int
-		timings             *list.List
-		mu                  sync.Mutex
+		timings *list.List
+		mu      sync.Mutex
 	}
 
 	// readRegistryTiming is a single timing within the readRegistryStats.
