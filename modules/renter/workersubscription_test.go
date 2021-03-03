@@ -1138,7 +1138,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a worker that's not running its worker loop.
+	// Create a worker.
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -1170,9 +1170,7 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		PubKey: spk,
 		Tweak:  rv.Tweak,
 	}
-	println("subscribe")
 	resps, err := wt.Subscribe(context.Background(), req)
-	println("subscribe2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1217,7 +1215,6 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Second)
 
 	// Do it again. This should return the new value.
 	err = build.Retry(100, 100*time.Millisecond, func() error {

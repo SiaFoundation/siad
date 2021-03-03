@@ -301,9 +301,9 @@ func (subInfo *subscriptionInfos) managedClearSubscriptions() {
 	for _, sub := range subInfo.subscriptions {
 		// Replace channels.
 		select {
+		case <-sub.subscribed:
 		default:
 			close(sub.subscribed)
-		case <-sub.subscribed:
 		}
 		sub.subscribed = make(chan struct{})
 	}
