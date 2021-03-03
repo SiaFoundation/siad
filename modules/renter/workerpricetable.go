@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -130,10 +131,12 @@ func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 
 // staticSchedulePriceTableUpdate will update the 'staticUpdateTime' property on
 // the price table in order for it to get updated on the next iteration.
-func (w *worker) staticSchedulePriceTableUpdate() {
+func (w *worker) staticSchedulePriceTableUpdate(forced bool) {
 	update := *w.staticPriceTable()
-	update.staticUpdateTime = time.Now()
-	update.staticLastForcedUpdate = time.Now()
+	update.staticUpdateTime = time.Time{}
+	if forced {
+		update.staticLastForcedUpdate = time.Now()
+	}
 	w.staticSetPriceTable(&update)
 	w.staticWake()
 }
@@ -148,7 +151,7 @@ func (w *worker) staticTryForcePriceTableUpdate() {
 		w.renter.log.Debugf("worker for host %v tried scheduling a price table update before the minimum elapsed time", w.staticHostPubKeyStr)
 		return
 	}
-	w.staticSchedulePriceTableUpdate()
+	w.staticSchedulePriceTableUpdate(true)
 }
 
 // staticValid will return true if the latest price table that we have is still
@@ -320,8 +323,21 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
+	// build payment details
+	details := contractor.PaymentDetails{
+		Host:          w.staticHostPubKey,
+		RPC:           modules.RPCUpdatePriceTable,
+		Amount:        pt.UpdatePriceTableCost,
+		RefundAccount: w.staticAccount.staticID,
+		SpendingDetails: modules.SpendingDetails{
+			MaintenanceSpending: modules.MaintenanceSpending{
+				UpdatePriceTableCost: pt.UpdatePriceTableCost,
+			},
+		},
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, pt.HostBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, &pt, details)
 	if err != nil {
 		err = errors.AddContext(err, "unable to provide payment")
 		return

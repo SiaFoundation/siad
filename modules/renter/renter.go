@@ -25,6 +25,7 @@ package renter
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -115,7 +116,10 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
-	modules.PaymentProvider
+	// ProvidePayment takes a stream and a set of payment details and handles
+	// the payment for an RPC by sending and processing payment request and
+	// response objects to the host. It returns an error in case of failure.
+	ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details contractor.PaymentDetails) error
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
@@ -209,18 +213,13 @@ type Renter struct {
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []modules.HostDBEntry
 
-	// bubbleUpdates are active and pending bubbles that need to be executed on
-	// directories in order to keep the renter's directory tree metadata up to
-	// date
-	//
-	// A bubble is the process of updating a directory's metadata and then
-	// moving on to its parent directory so that any changes in metadata are
-	// properly reflected throughout the filesystem.
-	//
-	// cachedUtilities contain contract information used when bubbling. These
-	// values are cached to prevent recomputing them too often.
-	bubbleUpdates   map[string]bubbleStatus
-	bubbleUpdatesMu sync.Mutex
+	// staticBubbleScheduler manages the bubble requests for the renter
+	staticBubbleScheduler *bubbleScheduler
+
+	// cachedUtilities contain contract information used when calculating metadata
+	// information about the filesystem, such as health. This information is used
+	// in various functions such as listing filesystem information and bubble.
+	// These values are cached to prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
 	// The renter's bandwidth ratelimit.
@@ -995,7 +994,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
 
-		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
 		cs:             cs,
@@ -1011,6 +1009,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
+	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.uploadHeap.pauseChan)
@@ -1104,6 +1103,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 		go r.threadedUpdateRenterHealth()
 	}
+	// We do not group the staticBubbleScheduler's background thread with the
+	// threads disabled by "DisableRepairAndHealthLoops" so that manual calls to
+	// for bubble updates are processed.
+	go r.staticBubbleScheduler.callThreadedProcessBubbleUpdates()
+
 	// Unsubscribe on shutdown.
 	err = r.tg.OnStop(func() error {
 		cs.Unsubscribe(r)

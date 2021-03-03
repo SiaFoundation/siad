@@ -18,7 +18,7 @@ var (
 	httpServerTimeout = build.Select(build.Var{
 		Standard: 24 * time.Hour,
 		Dev:      1 * time.Hour,
-		Testing:  1 * time.Minute,
+		Testing:  5 * time.Minute,
 	}).(time.Duration)
 )
 
@@ -92,6 +92,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/host", RequirePassword(api.hostHandlerPOST, requiredPassword))              // Change the settings of the host.
 		router.POST("/host/announce", RequirePassword(api.hostAnnounceHandler, requiredPassword)) // Announce the host to the network.
 		router.GET("/host/contracts", api.hostContractInfoHandler)                                // Get info about contracts.
+		router.GET("/host/contracts/:contractID", api.hostContractGetHandler)                     // Get info about a contract.
 		router.GET("/host/estimatescore", api.hostEstimateScoreGET)
 		router.GET("/host/bandwidth", api.hostBandwidthHandlerGET)
 

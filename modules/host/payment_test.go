@@ -448,7 +448,7 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	renterFunc := func() error {
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-		pbcRequest := newPayByEphemeralAccountRequest(accountID, host.blockHeight+6, amount, sk)
+		pbcRequest := modules.NewPayByEphemeralAccountRequest(accountID, host.blockHeight+6, amount, sk)
 		return modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 	}
 	hostFunc := func() error {
@@ -536,29 +536,6 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 	req.Signature = sig[:]
 
 	return req
-}
-
-// newPayByEphemeralAccountRequest uses the given parameters to create a
-// PayByEphemeralAccountRequest
-func newPayByEphemeralAccountRequest(account modules.AccountID, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) modules.PayByEphemeralAccountRequest {
-	// generate a nonce
-	var nonce [modules.WithdrawalNonceSize]byte
-	fastrand.Read(nonce[:])
-
-	// create a new WithdrawalMessage
-	wm := modules.WithdrawalMessage{
-		Account: account,
-		Expiry:  expiry,
-		Amount:  amount,
-		Nonce:   nonce,
-	}
-
-	// sign it
-	sig := crypto.SignHash(crypto.HashObject(wm), sk)
-	return modules.PayByEphemeralAccountRequest{
-		Message:   wm,
-		Signature: sig,
-	}
 }
 
 // addNoOpRevision is a helper method that adds a revision to the given

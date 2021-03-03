@@ -356,9 +356,11 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	numFiles := metadata.NumFiles
 	if aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0 {
 		// If the number of stuck chunks or number of files is zero then this
-		// directory should not have been used to find a stuck file. Call bubble
-		// to make sure that the metadata is updated
-		go r.callThreadedBubbleMetadata(dirSiaPath)
+		// directory should not have been used to find a stuck file.
+		//
+		// Queue a bubble to bubble the directory, ignore the return channel as we
+		// do not want to block on this update.
+		_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
 		err = fmt.Errorf("managedStuckFile should not have been called on %v, AggregateNumStuckChunks: %v, NumStuckChunks: %v, NumFiles: %v", dirSiaPath.String(), aggregateNumStuckChunks, numStuckChunks, numFiles)
 		return modules.SiaPath{}, err
 	}
@@ -411,9 +413,11 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	}
 	if siapath.IsEmpty() {
 		// If no files were selected from the directory than there is a mismatch
-		// between the file metadata and the directory metadata. Call bubble to
-		// update the directory metadata
-		go r.callThreadedBubbleMetadata(dirSiaPath)
+		// between the file metadata and the directory metadata.
+		//
+		// Queue a bubble to bubble the directory, ignore the return channel as we
+		// do not want to block on this update.
+		_ = r.staticBubbleScheduler.callQueueBubble(dirSiaPath)
 		return modules.SiaPath{}, errors.New("no files selected from directory " + dirSiaPath.String())
 	}
 	return siapath, nil
@@ -542,15 +546,7 @@ func (r *Renter) threadedStuckFileLoop() {
 				r.repairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
 			}
 		}
-		err = bubblePaths.callRefreshAllBlocking()
-		if err != nil {
-			r.repairLog.Print("Error bubbling dirSiaPaths", err)
-			select {
-			case <-time.After(stuckLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-		}
+		bubblePaths.callRefreshAllBlocking()
 	}
 }
 
@@ -606,11 +602,27 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		}
 
 		// Prepare the subtree for being bubbled
+		r.log.Debugf("Preparing subtree '%v' for bubble", siaPath)
 		urp, err := r.managedPrepareForBubble(siaPath, false)
 		if err != nil {
 			// Log the error
-			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
+			r.log.Println("Error calling managedPrepareForBubble on `", siaPath.String(), "`:", err)
+
+			// Check if urp is nil. This should only happen if the first call to Add
+			// the Root dir fails.
+			if urp == nil {
+				// Sleep and continue
+				select {
+				case <-time.After(healthLoopErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+				continue
+			}
 		}
+
+		// Sanity check that we have both a urp and it has directories listed in its
+		// childDir map.
 		if urp == nil || urp.callNumChildDirs() == 0 {
 			// This should never happen, build.Critical and sleep to prevent potential
 			// rapid cycling.
@@ -623,24 +635,15 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 			continue
 		}
-		r.log.Println("Calling bubble on the subtree", siaPath)
-		err = urp.callRefreshAllBlocking()
-		if err != nil {
-			r.log.Println("Error calling managedBubbleMetadata on subtree`", siaPath.String(), "`:", err)
-			select {
-			case <-time.After(healthLoopErrorSleepDuration):
-			case <-r.tg.StopChan():
-				return
-			}
-		}
+		r.log.Printf("Calling bubble on the subtree '%v', # bubbles %v", siaPath, urp.callNumChildDirs())
+		urp.callRefreshAllBlocking()
 	}
 }
 
 // managedPrepareForBubble prepares a directory for the Health Loop to call
 // bubble on and returns a uniqueRefreshPaths including all the paths of the
 // directories in the subtree that need to be updated. This includes updating
-// the metadatas for all the files in the subtree and updating the
-// LastHealthCheckTime for the supplied root directory.
+// the LastHealthCheckTime for the supplied root directory.
 //
 // This method will at a minimum return a uniqueRefreshPaths with the rootDir
 // added.
@@ -650,7 +653,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
-	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
 	// Add the rootDir to urp.
@@ -680,19 +682,15 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 			err = errors.Compose(err, addErr)
 			return
 		}
-		// Update files in the directory.
-		updateErr := r.managedUpdateFileMetadatasParams(di.SiaPath, offlineMap, goodForRenewMap, contracts, used)
-		if updateErr != nil {
-			r.log.Println("Error calling managedUpdateFileMetadatas on `", di.SiaPath, "`:", updateErr)
-			err = errors.Compose(err, updateErr)
-		}
 	}
 
 	// Execute the function on the FileSystem
 	errList := r.staticFileSystem.CachedList(rootDir, true, func(modules.FileInfo) {}, dlf)
 	if errList != nil {
 		err = errors.Compose(err, errList)
-		return nil, errors.AddContext(err, "unable to get cached list of sub directories")
+		// Still return the uniqueRefreshPaths as we added at least the root dir and
+		// we should return.
+		return urp, errors.AddContext(err, "unable to get cached list of sub directories")
 	}
 
 	// Update the root directory's LastHealthCheckTime to signal that this sub
@@ -704,35 +702,25 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
 }
 
-// managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
-// This can be very expensive for large directories and should therefore only
-// happen sparingly.
-func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
-	// Get cached offline and goodforrenew maps.
-	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
-	return r.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
-}
-
 // managedUpdateFileMetadatasParams updates the metadata of all siafiles within
 // a dir with the provided parameters.  This can be very expensive for large
 // directories and should therefore only happen sparingly.
 func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, offlineMap map[string]bool, goodForRenewMap map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) error {
+	// Read the fileinfos from the directory
 	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
 		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
 	}
+
+	// Define common variables
 	var errs error
-	for _, fi := range fis {
-		ext := filepath.Ext(fi.Name())
-		if ext == modules.SiaFileExtension {
-			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
-			fileSiaPath, err := dirSiaPath.Join(fName)
-			if err != nil {
-				r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
-				continue
-			}
-			// Update the file.
-			err = func() error {
+	var errMU sync.Mutex
+	fileSiaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
+
+	// Define the fileWorker
+	fileWorker := func() {
+		for fileSiaPath := range fileSiaPathChan {
+			err := func() error {
 				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
 				if err != nil {
 					return err
@@ -740,9 +728,47 @@ func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, of
 				err = r.managedUpdateFileMetadata(sf, offlineMap, goodForRenewMap, contracts, used)
 				return errors.Compose(err, sf.Close())
 			}()
+			errMU.Lock()
 			errs = errors.Compose(errs, err)
+			errMU.Unlock()
 		}
 	}
+
+	// Launch file workers
+	var wg sync.WaitGroup
+	for i := 0; i < numBubbleWorkerThreads; i++ {
+		wg.Add(1)
+		go func() {
+			fileWorker()
+			wg.Done()
+		}()
+	}
+
+	// Update the file metadatas
+	for _, fi := range fis {
+		ext := filepath.Ext(fi.Name())
+		if ext != modules.SiaFileExtension {
+			continue
+		}
+		fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
+		fileSiaPath, err := dirSiaPath.Join(fName)
+		if err != nil {
+			r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
+			continue
+		}
+		// Send fileSiaPath to the file workers
+		select {
+		case fileSiaPathChan <- fileSiaPath:
+		case <-r.tg.StopChan():
+			close(fileSiaPathChan)
+			wg.Wait()
+			return errors.AddContext(errs, "renter shutdown")
+		}
+	}
+
+	// Close the chan and wait for the workers to finish
+	close(fileSiaPathChan)
+	wg.Wait()
 	return errs
 }
 

@@ -95,7 +95,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// provide payment, note that we use the host's block height if we are
 	// making ephemeral account payments
 	bh := pt.HostBlockHeight
-	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
+	err = w.staticAccount.ProvidePayment(buffer, modules.RPCExecuteProgram, cost, w.staticAccount.staticID, bh)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{

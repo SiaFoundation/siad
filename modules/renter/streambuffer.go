@@ -173,8 +173,9 @@ type stream struct {
 
 	mu                 sync.Mutex
 	staticStreamBuffer *streamBuffer
-	staticCtx          context.Context
-	staticCancel       context.CancelFunc
+
+	staticContext     context.Context
+	staticReadTimeout time.Duration
 }
 
 // streamBuffer is a buffer for a single dataSource.
@@ -311,11 +312,6 @@ func (s *stream) Close() error {
 
 		// Remove the stream from the streamBuffer.
 		sbs.managedRemoveStream(sb)
-
-		// Cancel the stream's context
-		if s.staticCancel != nil {
-			s.staticCancel()
-		}
 	})
 	return nil
 }
@@ -336,6 +332,14 @@ func (s *stream) Layout() modules.SkyfileLayout {
 func (s *stream) Read(b []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Create a context.
+	ctx := s.staticContext
+	if s.staticReadTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.staticReadTimeout)
+		defer cancel()
+	}
 
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
@@ -379,7 +383,7 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Block until the data is available.
-	data, err := dataSection.managedData(s.staticCtx)
+	data, err := dataSection.managedData(ctx)
 	if err != nil {
 		return 0, errors.AddContext(err, "read call failed because data section fetch failed")
 	}
@@ -507,20 +511,13 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64, timeout ti
 		dataSectionsToCache = minimumDataSections
 	}
 
-	// Create a context for the stream
-	ctx := sb.staticTG.StopCtx()
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(sb.staticTG.StopCtx(), timeout)
-	}
-
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
 		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
 		offset: initialOffset,
 
-		staticCtx:          ctx,
-		staticCancel:       cancel,
+		staticContext:      sb.staticTG.StopCtx(),
+		staticReadTimeout:  timeout,
 		staticStreamBuffer: sb,
 	}
 	stream.prepareOffset()

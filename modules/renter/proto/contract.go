@@ -63,15 +63,17 @@ type contractHeader struct {
 	SecretKey crypto.SecretKey
 
 	// Same as modules.RenterContract.
-	StartHeight      types.BlockHeight
-	DownloadSpending types.Currency
-	StorageSpending  types.Currency
-	UploadSpending   types.Currency
-	TotalCost        types.Currency
-	ContractFee      types.Currency
-	TxnFee           types.Currency
-	SiafundFee       types.Currency
-	Utility          modules.ContractUtility
+	StartHeight         types.BlockHeight
+	DownloadSpending    types.Currency
+	FundAccountSpending types.Currency
+	MaintenanceSpending modules.MaintenanceSpending
+	StorageSpending     types.Currency
+	UploadSpending      types.Currency
+	TotalCost           types.Currency
+	ContractFee         types.Currency
+	TxnFee              types.Currency
+	SiafundFee          types.Currency
+	Utility             modules.ContractUtility
 }
 
 // validate returns an error if the contractHeader is invalid.
@@ -181,16 +183,15 @@ type SafeContract struct {
 
 // CommitPaymentIntent will commit the intent to pay a host for an rpc by
 // committing the signed txn in the contract's header.
-func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier) error {
+func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, details modules.SpendingDetails) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// construct new header
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
-
-	// TODO update contract header to support 'FundAccountSpending' or
-	// 'UnknownSpending', depending on the RPC
+	newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(details.FundAccountSpending)
+	newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(details.MaintenanceSpending)
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
@@ -241,20 +242,22 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 	defer c.mu.Unlock()
 	h := c.header
 	return modules.RenterContract{
-		ID:               h.ID(),
-		Transaction:      h.copyTransaction(),
-		HostPublicKey:    h.HostPublicKey(),
-		StartHeight:      h.StartHeight,
-		EndHeight:        h.EndHeight(),
-		RenterFunds:      h.RenterFunds(),
-		DownloadSpending: h.DownloadSpending,
-		StorageSpending:  h.StorageSpending,
-		UploadSpending:   h.UploadSpending,
-		TotalCost:        h.TotalCost,
-		ContractFee:      h.ContractFee,
-		TxnFee:           h.TxnFee,
-		SiafundFee:       h.SiafundFee,
-		Utility:          h.Utility,
+		ID:                  h.ID(),
+		Transaction:         h.copyTransaction(),
+		HostPublicKey:       h.HostPublicKey(),
+		StartHeight:         h.StartHeight,
+		EndHeight:           h.EndHeight(),
+		RenterFunds:         h.RenterFunds(),
+		DownloadSpending:    h.DownloadSpending,
+		FundAccountSpending: h.FundAccountSpending,
+		MaintenanceSpending: h.MaintenanceSpending,
+		StorageSpending:     h.StorageSpending,
+		UploadSpending:      h.UploadSpending,
+		TotalCost:           h.TotalCost,
+		ContractFee:         h.ContractFee,
+		TxnFee:              h.TxnFee,
+		SiafundFee:          h.SiafundFee,
+		Utility:             h.Utility,
 	}
 }
 
@@ -268,16 +271,15 @@ func (c *SafeContract) PublicKey() crypto.PublicKey {
 
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
-func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*unappliedWalTxn, error) {
+func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, details modules.SpendingDetails) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	newHeader := c.header
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 	newHeader.Transaction.TransactionSignatures = nil
-
-	// TODO update contract header to support 'FundAccountSpending' or
-	// 'UnknownSpending', depending on the RPC
+	newHeader.FundAccountSpending = newHeader.FundAccountSpending.Add(details.FundAccountSpending)
+	newHeader.MaintenanceSpending = newHeader.MaintenanceSpending.Add(details.MaintenanceSpending)
 
 	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),

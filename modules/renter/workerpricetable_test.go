@@ -38,6 +38,9 @@ func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
 	}()
 	w := wt.worker
 
+	// prevent cache updates.
+	atomic.StoreUint64(&w.atomicCacheUpdating, 1)
+
 	// verify recent err is nil
 	if w.staticPriceTable().staticRecentErr != nil {
 		t.Fatal("unexpected")
@@ -46,8 +49,13 @@ func TestUpdatePriceTableHostHeightLeeway(t *testing.T) {
 	// get the host's blockheight
 	hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
 
-	// corrupt the synced property on the worker's cache
+	// sleep until the cache is supposed to be updated again to flush any
+	// goroutines which snuck in after setting the cache update to "in
+	// progress".
 	wc := w.staticCache()
+	time.Sleep(time.Until(wc.staticLastUpdate.Add(2 * workerCacheUpdateFrequency)))
+
+	// corrupt the synced property on the worker's cache
 	ptr := unsafe.Pointer(&workerCache{
 		staticBlockHeight:     hbh + 2*priceTableHostBlockHeightLeeWay,
 		staticContractID:      wc.staticContractID,

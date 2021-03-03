@@ -1,0 +1,1 @@
+- adds a new endpoint /host/contracts/*contractID* that returns a single contract from the host's database

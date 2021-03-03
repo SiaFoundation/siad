@@ -7,8 +7,24 @@ var (
 	// AllModulesTemplate is a template for a Sia node that has all modules
 	// enabled.
 	AllModulesTemplate = NodeParams{
+		CreateAccounting:      true,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false, // TODO: Implement explorer.
+		CreateFeeManager:      true,
+		CreateGateway:         true,
+		CreateHost:            true,
+		CreateMiner:           true,
+		CreateRenter:          true,
+		CreateTransactionPool: true,
+		CreateWallet:          true,
+	}
+	// AccountingTemplate is a template for a Sia node that has a functioning
+	// Accounting module. The node has an Accounting module and all dependencies,
+	// but no other modules.
+	AccountingTemplate = NodeParams{
+		CreateAccounting:      true,
+		CreateConsensusSet:    true,
+		CreateExplorer:        false,
 		CreateFeeManager:      true,
 		CreateGateway:         true,
 		CreateHost:            true,
@@ -21,6 +37,7 @@ var (
 	// FeeManager. The node has a FeeManager and all dependencies, but no other
 	// modules.
 	FeeManagerTemplate = NodeParams{
+		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
 		CreateFeeManager:      true,
@@ -34,6 +51,7 @@ var (
 	// GatewayTemplate is a template for a Sia node that has a functioning
 	// Gateway. The node has a Gateway but no other modules.
 	GatewayTemplate = NodeParams{
+		CreateAccounting:      false,
 		CreateConsensusSet:    false,
 		CreateExplorer:        false,
 		CreateFeeManager:      false,
@@ -47,6 +65,7 @@ var (
 	// HostTemplate is a template for a Sia node that has a functioning host.
 	// The node has a host and all dependencies, but no other modules.
 	HostTemplate = NodeParams{
+		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
 		CreateFeeManager:      false,
@@ -60,6 +79,7 @@ var (
 	// MinerTemplate is a template for a Sia node that has a functioning miner.
 	// The node has a miner and all dependencies, but no other modules.
 	MinerTemplate = NodeParams{
+		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
 		CreateFeeManager:      false,
@@ -74,6 +94,7 @@ var (
 	// renter. The node has a renter and all dependencies, but no other
 	// modules.
 	RenterTemplate = NodeParams{
+		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
 		CreateFeeManager:      false,
@@ -88,6 +109,7 @@ var (
 	// wallet. The node has a wallet and all dependencies, but no other
 	// modules.
 	WalletTemplate = NodeParams{
+		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
 		CreateFeeManager:      false,
@@ -103,6 +125,13 @@ var (
 // AllModules returns an AllModulesTemplate filled out with the provided dir.
 func AllModules(dir string) NodeParams {
 	template := AllModulesTemplate
+	template.Dir = dir
+	return template
+}
+
+// Accounting returns an AccountingTemplate filled out with the provided dir.
+func Accounting(dir string) NodeParams {
+	template := AccountingTemplate
 	template.Dir = dir
 	return template
 }
