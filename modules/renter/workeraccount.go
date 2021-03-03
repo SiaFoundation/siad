@@ -40,7 +40,7 @@ const (
 // spending field in the account's spending details whenever we pay for an rpc
 // request using the ephemeral account as payment method.
 const (
-	categoryNone = iota
+	categoryNone spendingCategory = iota
 	categoryDownload
 	categoryRegistryRead
 	categoryRegistryWrite
