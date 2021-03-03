@@ -64,9 +64,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
-		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
-		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Stats", Test: testSkynetStats},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
@@ -2068,21 +2065,69 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// TestSkynetBlocklist verifies the functionality of the Skynet blocklist.
+func TestSkynetBlocklist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define a portal with dependency
+	portalDir := filepath.Join(groupDir, "portal")
+	portalParams := node.Renter(portalDir)
+	portalParams.CreatePortal = true
+	deps := &dependencies.DependencyToggleDisableDeleteBlockedFiles{}
+	portalParams.RenterDeps = deps
+	_, err = tg.AddNodes(portalParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run subtests
+	t.Run("BlocklistHash", func(t *testing.T) {
+		testSkynetBlocklistHash(t, tg, deps)
+	})
+	t.Run("BlocklistSkylink", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps)
+	})
+	t.Run("BlocklistUpgrade", func(t *testing.T) {
+		testSkynetBlocklistUpgrade(t, tg)
+	})
+}
+
 // testSkynetBlocklistHash tests the skynet blocklist module when submitting
 // hashes of the skylink's merkleroot
-func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetBlocklist(t, tg, true)
+func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
+	testSkynetBlocklist(t, tg, deps, true)
 }
 
 // testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
-func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetBlocklist(t, tg, false)
+func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
+	testSkynetBlocklist(t, tg, deps, false)
 }
 
 // testSkynetBlocklist tests the skynet blocklist module
-func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
+func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash bool) {
 	r := tg.Renters()[0]
+	deps.DisableDeleteBlockedFiles(true)
+
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
 	size := modules.SectorSize + uint64(100+siatest.Fuzz())
@@ -2398,6 +2443,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 			t.Error(err)
 		}
 	}
+
+	// Disable the dependency
+	deps.DisableDeleteBlockedFiles(false)
 
 	// Add both skylinks back to the blocklist
 	remove = []string{}
