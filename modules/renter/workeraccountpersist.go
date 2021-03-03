@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -54,6 +55,14 @@ var (
 
 	// Persistence data validation errors
 	errInvalidChecksum = errors.New("invalid checksum")
+
+	// syncAccountsFileFrequency is the frequency at which the account
+	// manager will sync the accounts file to disk.
+	syncAccountsFileFrequency = build.Select(build.Var{
+		Standard: 5 * time.Minute,
+		Dev:      5 * time.Minute,
+		Testing:  1 * time.Minute,
+	}).(time.Duration)
 )
 
 type (
@@ -118,13 +127,27 @@ func (r *Renter) newAccountManager() error {
 
 		staticRenter: r,
 	}
-	return r.staticAccountManager.load()
+
+	err := r.staticAccountManager.load()
+	if err != nil {
+		return err
+	}
+
+	go r.staticAccountManager.threadedSyncAccountsFile()
+	return nil
 }
 
 // managedPersist will write the account to the given file at the account's
 // offset, without syncing the file.
 func (a *account) managedPersist() error {
 	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.persist()
+}
+
+// persist will write the account to the given file at the account's offset,
+// without syncing the file.
+func (a *account) persist() error {
 	accountData := accountPersistence{
 		AccountID: a.staticID,
 		HostKey:   a.staticHostKey,
@@ -141,7 +164,6 @@ func (a *account) managedPersist() error {
 		SpendingRegistryWrites: a.spending.registryWrites,
 		SpendingSubscriptions:  a.spending.subscriptions,
 	}
-	a.mu.Unlock()
 
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
 	return errors.AddContext(err, "unable to write the account to disk")
@@ -489,6 +511,37 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 	}
 	close(acc.staticReady)
 	return acc, nil
+}
+
+// threadedSyncAccountsFile will periodically fsync the accounts file, ensuring
+// that the a recent snapshot of the spending details are saved on disk, and are
+// not lost should the renter experience an unclean shutdown.
+//
+// NOTE: on unclean shutdown the renter will discard the account balance, but
+// keep the spending details providing the account's checksum is valid.
+func (am *accountManager) threadedSyncAccountsFile() {
+	for {
+		func() {
+			err := am.staticRenter.tg.Add()
+			if err != nil {
+				return
+			}
+			defer am.staticRenter.tg.Done()
+
+			err = am.staticFile.Sync()
+			if err != nil {
+				am.staticRenter.log.Printf("failed to sync accounts file, err: %v\n", err)
+			}
+		}()
+
+		// Block until next cycle.
+		select {
+		case <-am.staticRenter.tg.StopChan():
+			return
+		case <-time.After(syncAccountsFileFrequency):
+			continue
+		}
+	}
 }
 
 // updateMetadata writes the given metadata to the accounts file.

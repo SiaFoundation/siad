@@ -414,6 +414,12 @@ func (a *account) trackSpend(category spendingCategory, amount, refund types.Cur
 			a.staticRenter.log.Println("money spent from account on a category that is not tracked, this should not happen in a production environment as we want to track all types of expenditures")
 		}
 	}
+
+	// every time we update the spending metrics we write the account to disk
+	err := a.persist()
+	if err != nil {
+		a.staticRenter.log.Printf("failed to persist account, err: %v\n", err)
+	}
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
