@@ -32,7 +32,7 @@ type (
 		// this is necessary to pass along as the generic MDM executor needs to
 		// be update spending details and read jobs can be used for downloads
 		// but might also be used for snapshots for example
-		staticCategory spendingCategory
+		staticSpendingCategory spendingCategory
 
 		*jobGeneric
 	}
@@ -157,7 +157,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticCategory, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticSpendingCategory, cost)
 	if err != nil {
 		return []programResponse{}, err
 	}

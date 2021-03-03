@@ -176,6 +176,7 @@ func (ap accountPersistence) bytes() []byte {
 	accBytesMaxSize := accountSize - crypto.HashSize // leave room for checksum
 	if len(accBytes) > accBytesMaxSize {
 		build.Critical("marshaled object is larger than expected size", len(accBytes))
+		return nil
 	}
 
 	// Calculate checksum on padded account bytes. Upon load, the padding will
@@ -554,7 +555,7 @@ func (am *accountManager) updateMetadata(meta accountsMetadata) error {
 // v150 to v156. The new accounts take up more space on disk, so we have to read
 // all of them, assign them new offets and rewrite them to the accounts file.
 func (am *accountManager) upgradeFromV150ToV156() error {
-	accounts := make([]*account, 0)
+	var accounts []*account
 
 	// the upgrade made an account larger on disk, this means that to upgrade we
 	// have to read in all accounts at the old offsets, and then save them using

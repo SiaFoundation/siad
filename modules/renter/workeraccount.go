@@ -106,8 +106,8 @@ type (
 		// The two drift fields keep track of the delta between our version of
 		// the balance and the host's version of the balance. We want to keep
 		// track of this drift as in the future we might add code that acts upon
-		// it and penalizes the host if we find he is cheating us, or behaving
-		// sub-optimally.
+		// it and penalizes the host if we find they are cheating us, or
+		// behaving sub-optimally.
 		balance              types.Currency
 		balanceDriftPositive types.Currency
 		balanceDriftNegative types.Currency
@@ -330,7 +330,7 @@ func (a *account) managedCommitWithdrawal(category spendingCategory, amount, ref
 		}
 
 		// only in case of success we track the spend and what it was spent on
-		a.trackSpend(category, amount, refund)
+		a.trackSpending(category, amount, refund)
 	}
 }
 
@@ -389,12 +389,13 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
 }
 
-// trackSpend will keep track of the amount spent, taking into account the given
-// refund as well, within the given spend category
-func (a *account) trackSpend(category spendingCategory, amount, refund types.Currency) {
+// trackSpending will keep track of the amount spent, taking into account the
+// given refund as well, within the given spend category
+func (a *account) trackSpending(category spendingCategory, amount, refund types.Currency) {
 	// sanity check the refund is less than the amount
 	if refund.Cmp(amount) > 0 {
 		build.Critical("committed a withdrawal where the refund is larger than the withdrawal itself, this should not be possible")
+		return
 	}
 
 	moneySpent := amount.Sub(refund)

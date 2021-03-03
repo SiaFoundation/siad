@@ -105,7 +105,7 @@ func (w *worker) ReadOffset(ctx context.Context, category spendingCategory, offs
 			staticResponseChan: readOffsetRespChan,
 			staticLength:       length,
 
-			staticCategory: category,
+			staticSpendingCategory: category,
 
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, nil),
 		},

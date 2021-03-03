@@ -224,7 +224,7 @@ func testAccountResetBalance(t *testing.T) {
 }
 
 // testAccountTrackSpend is a small unit test that verifies the functionality of
-// the method 'trackSpend' on the account
+// the method 'trackSpending' on the account
 func testAccountTrackSpend(t *testing.T) {
 	t.Parallel()
 
@@ -241,12 +241,12 @@ func testAccountTrackSpend(t *testing.T) {
 	}
 
 	// verify every category tracks its own field
-	a.trackSpend(categoryNone, hasting.Mul64(2), hasting)
-	a.trackSpend(categoryDownload, hasting.Mul64(2), hasting)
-	a.trackSpend(categorySnapshot, hasting.Mul64(2), hasting)
-	a.trackSpend(categoryRegistryRead, hasting.Mul64(2), hasting)
-	a.trackSpend(categoryRegistryWrite, hasting.Mul64(2), hasting)
-	a.trackSpend(categorySubscription, hasting.Mul64(2), hasting)
+	a.trackSpending(categoryNone, hasting.Mul64(2), hasting)
+	a.trackSpending(categoryDownload, hasting.Mul64(2), hasting)
+	a.trackSpending(categorySnapshot, hasting.Mul64(2), hasting)
+	a.trackSpending(categoryRegistryRead, hasting.Mul64(2), hasting)
+	a.trackSpending(categoryRegistryWrite, hasting.Mul64(2), hasting)
+	a.trackSpending(categorySubscription, hasting.Mul64(2), hasting)
 	if !a.spending.downloads.Equals(hasting) ||
 		!a.spending.snapshots.Equals(hasting) ||
 		!a.spending.registryReads.Equals(hasting) ||
@@ -260,7 +260,7 @@ func testAccountTrackSpend(t *testing.T) {
 			t.Fatalf("expected panic when attempting to track a spend where refund exceeds the amount")
 		}
 	}()
-	a.trackSpend(categoryNone, hasting, hasting.Mul64(2))
+	a.trackSpending(categoryNone, hasting, hasting.Mul64(2))
 }
 
 // testAccountCreation verifies newAccount returns a valid account object
@@ -376,7 +376,7 @@ func testAccountTracking(t *testing.T, rt *renterTester) {
 
 	// verify committing a successful withdrawal with a spending category
 	// tracks the spend in the spending details, we only verify one category
-	// here but the others are covered in the unit test 'trackSpend'
+	// here but the others are covered in the unit test 'trackSpending'
 	account.managedTrackWithdrawal(withdrawal)
 	account.managedCommitWithdrawal(categoryDownload, withdrawal, types.ZeroCurrency, true)
 	if !account.spending.downloads.Equals(withdrawal) {
@@ -540,7 +540,7 @@ func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 		return types.NewCurrency64(fastrand.Uint64n(max))
 	}
 
-	accounts := make([]*account, 0)
+	var accounts []*account
 	for i := 0; i < fastrand.Intn(10)+1; i++ {
 		hostKey := types.SiaPublicKey{
 			Algorithm: types.SignatureEd25519,
