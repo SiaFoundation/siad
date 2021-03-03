@@ -184,6 +184,34 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected outcome")
 	}
+
+	// verify invalid 0 length
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      1,
+		},
+	}
+	invalid.Length = 0
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify valid 0 length
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      0,
+		},
+	}
+	invalid.Length = 0
+	err = ValidateSkyfileMetadata(invalid)
+	if err != nil {
+		t.Fatal("unexpected outcome")
+	}
 }
 
 // testEnsurePrefix ensures EnsurePrefix is properly adding prefixes.

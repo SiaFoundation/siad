@@ -312,9 +312,16 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 	}
 
-	// check length
+	// allow length to be zero only if there are no subfiles, or if all subfiles
+	// are also of zero length
 	if metadata.Length == 0 {
-		return errors.New("'Length' property not set on metadata")
+		if metadata.Subfiles != nil {
+			for _, md := range metadata.Subfiles {
+				if md.Len != 0 {
+					return errors.New("invalid length set on metadata")
+				}
+			}
+		}
 	}
 
 	// validate default path (only if default path was not explicitly disabled)
@@ -363,10 +370,12 @@ func fileContentType(filename string, file io.Reader) (string, error) {
 	if contentType != "" {
 		return contentType, nil
 	}
-	// Only the first 512 bytes are used to sniff the content type.
+	// Only the first 512 bytes are used to sniff the content type. Ignore EOF
+	// so we properly fall back to the fallback defined in the http library for
+	// empty file uploads.
 	buffer := make([]byte, 512)
 	_, err := file.Read(buffer)
-	if err != nil {
+	if err != nil && !errors.Contains(err, io.EOF) {
 		return "", err
 	}
 	// Always returns a valid content-type by returning

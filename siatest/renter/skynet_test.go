@@ -689,6 +689,24 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
 	}
 
+	// TEST EMPTY FILE
+	fileName = "TestEmptyFileUpload"
+	emptyFile := siatest.TestFile{Name: "file", Data: []byte{}}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, []siatest.TestFile{emptyFile}, "", false, false)
+	if err != nil {
+		t.Fatal("Expected upload of empty file to succeed")
+	}
+	data, md, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal("Expected download of empty file to succeed")
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if md.Length != 0 {
+		t.Fatal("Unexpected metadata")
+	}
+
 	// TEST SMALL SUBFILE
 	//
 	// Define test func
