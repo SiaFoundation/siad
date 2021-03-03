@@ -36,9 +36,9 @@ const (
 	fundAccountGougingPercentageThreshold = .01
 )
 
-// the following categories are constants used to determine the type of
-// expenditure when we increment the corresponding spending field in the
-// account, and eventually accounts persistence object.
+// the following categories are constants used to determine the corresponding
+// spending field in the account's spending details whenever we pay for an rpc
+// request using the ephemeral account as payment method.
 const (
 	categoryNone = iota
 	categoryDownload
@@ -105,8 +105,9 @@ type (
 		//
 		// The two drift fields keep track of the delta between our version of
 		// the balance and the host's version of the balance. We want to keep
-		// track of this for documenting purposes, seeing as we currently sync
-		// our account balance with that of the host without question.
+		// track of this drift as in the future we might add code that acts upon
+		// it and penalizes the host if we find he is cheating us, or behaving
+		// sub-optimally.
 		balance              types.Currency
 		balanceDriftPositive types.Currency
 		balanceDriftNegative types.Currency
@@ -115,8 +116,8 @@ type (
 		negativeBalance      types.Currency
 
 		// Spending details contain a breakdown of how much money from the
-		// ephemeral account got spent on what action. Examples of such actions
-		// are downloads, registry reads, registry writes, etc.
+		// ephemeral account got spent on what type of action. Examples of such
+		// actions are downloads, registry reads, registry writes, etc.
 		spending spendingDetails
 
 		// Error tracking.
