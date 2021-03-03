@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -237,20 +236,13 @@ func (tn *TestNode) Files(cached bool) ([]modules.FileInfo, error) {
 // KnowsHost checks if tn has a certain host in its hostdb. This check is
 // performed using the host's public key.
 func (tn *TestNode) KnowsHost(host *TestNode) error {
-	hdag, err := tn.HostDbActiveGet()
+	// Get host key.
+	pk, err := host.HostPublicKey()
 	if err != nil {
 		return err
 	}
-	for _, h := range hdag.Hosts {
-		pk, err := host.HostPublicKey()
-		if err != nil {
-			return err
-		}
-		if reflect.DeepEqual(h.PublicKey, pk) {
-			return nil
-		}
-	}
-	return errors.New("host is unknown")
+	_, err = tn.HostDbHostsGet(pk)
+	return err
 }
 
 // Rename renames a remoteFile with the root parameter set to false and returns
