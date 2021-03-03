@@ -144,13 +144,30 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 		dir: groupDir,
 	}
 
+	// Create nodes in parallel.
+	nodes := make([]*TestNode, len(nodeParams))
+	errs := make([]error, len(nodeParams))
+	var wg sync.WaitGroup
+	for i, np := range nodeParams {
+		wg.Add(1)
+		go func(i int, np node.NodeParams) {
+			defer wg.Done()
+			node, err := NewCleanNode(np)
+			nodes[i] = node
+			errs[i] = err
+		}(i, np)
+	}
+	wg.Wait()
+
+	// Check errors.
+	if err := errors.Compose(errs...); err != nil {
+		return nil, errors.AddContext(err, "failed to create clean nodes")
+	}
+
 	// Create node and add it to the correct groups
-	nodes := make([]*TestNode, 0, len(nodeParams))
-	for _, np := range nodeParams {
-		node, err := NewCleanNode(np)
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to create clean node")
-		}
+	for i, node := range nodes {
+		np := nodeParams[i]
+
 		// Add node to nodes
 		tg.nodes[node] = struct{}{}
 		nodes = append(nodes, node)
@@ -550,19 +567,36 @@ func (tg *TestGroup) AddNodeN(np node.NodeParams, n int) ([]*TestNode, error) {
 }
 
 // AddNodes creates a node and adds it to the group.
-func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
+func (tg *TestGroup) AddNodes(nodeParams ...node.NodeParams) ([]*TestNode, error) {
 	newNodes := make(map[*TestNode]struct{})
 	newHosts := make(map[*TestNode]struct{})
 	newRenters := make(map[*TestNode]struct{})
 	newMiners := make(map[*TestNode]struct{})
-	for i := range nps {
-		np := nps[i]
-		// Create the nodes and add them to the group.
-		randomNodeDir(tg.dir, &np)
-		node, err := NewCleanNode(np)
-		if err != nil {
-			return mapToSlice(newNodes), build.ExtendErr("failed to create new clean node", err)
-		}
+
+	// Create nodes in parallel.
+	nodes := make([]*TestNode, len(nodeParams))
+	errs := make([]error, len(nodeParams))
+	var wg sync.WaitGroup
+	for i, np := range nodeParams {
+		wg.Add(1)
+		go func(i int, np node.NodeParams) {
+			defer wg.Done()
+			randomNodeDir(tg.dir, &np)
+			node, err := NewCleanNode(np)
+			nodes[i] = node
+			errs[i] = err
+		}(i, np)
+	}
+	wg.Wait()
+
+	// Check errors.
+	if err := errors.Compose(errs...); err != nil {
+		return nil, errors.AddContext(err, "failed to create clean nodes")
+	}
+
+	for i, node := range nodes {
+		np := nodeParams[i]
+
 		// Add node to nodes
 		tg.nodes[node] = struct{}{}
 		newNodes[node] = struct{}{}
