@@ -497,7 +497,7 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 		staticPTUpdatedChan: make(chan struct{}),
 		notificationCost:    pt.SubscriptionNotificationCost,
 	}
-	err = w.renter.staticMux.NewListener(subscriber, func(stream siamux.Stream) {
+	err = w.renter.staticMux.NewListenerSerial(subscriber, func(stream siamux.Stream) {
 		nh.managedHandleNotification(stream, budget, limit)
 	})
 	if err != nil {
