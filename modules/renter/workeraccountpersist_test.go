@@ -2,7 +2,6 @@ package renter
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -236,14 +235,82 @@ func TestAccountCorrupted(t *testing.T) {
 	am.mu.Unlock()
 }
 
-// TestAccountCompatV150 verifies the compat code that upgrades the accounts
-// file from v150 to v156
 func TestAccountCompatV150(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
+	// create a renter tester
+	testdir := build.TempDir("renter", t.Name())
+	rt, err := newRenterTester(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rt.Close()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
+
+	t.Run("Basic", func(t *testing.T) {
+		testAccountCompatV150Basic(t, rt)
+	})
+	t.Run("FailedUpgradeEdge1", func(t *testing.T) {
+		testAccountCompatV150FailedUpgradeEdge1(t, rt)
+	})
+	t.Run("FailedUpgradeEdge2", func(t *testing.T) {
+		testAccountCompatV150FailedUpgradeEdge2(t, rt)
+	})
+}
+
+// testAccountCompatV150Basic verifies the accounts compat code successfully
+// upgrades the accounts file from v150 to v156.
+func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
+	// create the renter dir
+	testdir := build.TempDir("renter", t.Name())
+	renterDir := filepath.Join(testdir, modules.RenterDir)
+	err := os.MkdirAll(renterDir, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the compat file to the accounts file
+	src := "../../compatibility/accounts_v1.5.0.dat"
+	dst := filepath.Join(renterDir, accountsFilename)
+	err = build.CopyFile(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a renter
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir), &modules.ProductionDependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add it to the renter tester
+	err = rt.addRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the compat file was properly read and upgraded to
+	am := r.staticAccountManager
+	am.mu.Lock()
+	numAccounts := len(am.accounts)
+	am.mu.Unlock()
+	if numAccounts != 377 {
+		t.Fatal("unexpected amount of accounts")
+	}
+}
+
+// testAccountCompatV150FailedUpgradeEdge1 verifies an edge in the accounts
+// compat code where an earlier attempt failed and left behind a tmp accounts
+// file. It should recover from that and successfully upgrades the accounts file
+// from v150 to v156.
+func testAccountCompatV150FailedUpgradeEdge1(t *testing.T, rt *renterTester) {
 	// create a renter tester without renter
 	testdir := build.TempDir("renter", t.Name())
 	rt, err := newRenterTesterNoRenter(testdir)
@@ -257,44 +324,87 @@ func TestAccountCompatV150(t *testing.T) {
 		}
 	}()
 
-	// open the compat file
-	compatFile, err := os.OpenFile("../../compatibility/accounts_v1.5.0.dat", os.O_RDONLY, defaultFilePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// open the accounts file
-	renterdir := filepath.Join(testdir, modules.RenterDir)
-	accountsFilePath := filepath.Join(renterdir, accountsFilename)
-	err = os.MkdirAll(filepath.Dir(accountsFilePath), 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountsFile, err := os.OpenFile(accountsFilePath, os.O_RDWR|os.O_CREATE, 0700)
+	// create the renter dir
+	renterDir := filepath.Join(testdir, modules.RenterDir)
+	err = os.MkdirAll(renterDir, 0700)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// copy the compat file to the accounts file
-	_, err = io.Copy(accountsFile, compatFile)
+	src := "../../compatibility/accounts_v1.5.0.dat"
+	dst := filepath.Join(renterDir, accountsFilename)
+	err = build.CopyFile(src, dst)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// sync and close both files
-	err = errors.Compose(
-		compatFile.Close(),
-		accountsFile.Sync(),
-		accountsFile.Close(),
-	)
+	// copy the tmp file to the tmp accounts file
+	src = "../../compatibility/accounts_v1.5.6.tmp.dat"
+	dst = filepath.Join(renterDir, accountsTmpFilename)
+	err = build.CopyFile(src, dst)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create a renter
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, renterdir)
-	if err := <-errChan; err != nil {
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir), &modules.ProductionDependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add it to the renter tester
+	err = rt.addRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the compat file was properly read and upgraded to
+	am := r.staticAccountManager
+	am.mu.Lock()
+	numAccounts := len(am.accounts)
+	am.mu.Unlock()
+	if numAccounts != 377 {
+		t.Fatal("unexpected amount of accounts")
+	}
+}
+
+// testAccountCompatV150FailedUpgradeEdge2 verifies an edge in the accounts
+// compat code where an earlier attempt failed and left behind only the tmp
+// accounts file and deleted the actual accounts file. It should recover from
+// that and successfully upgrades the accounts file from v150 to v156.
+func testAccountCompatV150FailedUpgradeEdge2(t *testing.T, rt *renterTester) {
+	// create a renter tester without renter
+	testdir := build.TempDir("renter", t.Name())
+	rt, err := newRenterTesterNoRenter(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rt.Close()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
+
+	// create the renter dir
+	renterDir := filepath.Join(testdir, modules.RenterDir)
+	err = os.MkdirAll(renterDir, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the tmp file to the tmp accounts file
+	src := "../../compatibility/accounts_v1.5.6.tmp.dat"
+	dst := filepath.Join(renterDir, accountsTmpFilename)
+	err = build.CopyFile(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a renter
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir), &modules.ProductionDependencies{})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -370,4 +480,8 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
+}
+
+func copyFile(src, dst string) {
+
 }

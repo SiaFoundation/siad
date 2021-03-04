@@ -44,6 +44,10 @@ var (
 	// accountsFilename is the filename of the accounts persistence file
 	accountsFilename = "accounts.dat"
 
+	// accountsTmpFilename is the filename of the temporary account file created
+	// when upgrading the account's persistence file.
+	accountsTmpFilename = "accounts.tmp.dat"
+
 	// Metadata
 	metadataHeader  = types.NewSpecifier("Accounts\n")
 	metadataVersion = persist.MetadataVersionv156
@@ -400,30 +404,58 @@ func (am *accountManager) checkMetadata() (bool, error) {
 // openFile will return 'true' if the previous shutdown was clean, and 'false'
 // if the previous shutdown was not clean.
 func (am *accountManager) openFile() (bool, error) {
+	r := am.staticRenter
+
 	// Sanity check that the file isn't already opened.
 	if am.staticFile != nil {
-		am.staticRenter.log.Critical("double open detected on account manager")
-		return false, errors.New("file already open")
+		r.log.Critical("double open detected on account manager")
+		return false, errors.New("accounts file already open")
 	}
 
-	// Check the file health.
-	path := filepath.Join(am.staticRenter.persistDir, accountsFilename)
-	_, statErr := os.Stat(path)
-	if statErr != nil && !os.IsNotExist(statErr) {
-		return false, errors.AddContext(statErr, "error calling stat on file")
+	// Check for the existence of the accounts files
+	accountsFilePath := filepath.Join(r.persistDir, accountsFilename)
+	accountsFileExists, err := fileExists(accountsFilePath)
+	if err != nil {
+		return false, err
 	}
 
-	// Open the file, create it if it does not exist yet.
-	file, err := am.staticRenter.deps.OpenFile(path, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	accountsTmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
+	accountsTmpFileExists, err := fileExists(accountsTmpFilePath)
+	if err != nil {
+		return false, err
+	}
+
+	// Open the accounts file, create it if it does not exist yet.
+	am.staticFile, err = r.deps.OpenFile(accountsFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return false, errors.AddContext(err, "error opening account file")
 	}
-	am.staticFile = file
+
+	// If both files exists, we want to remove the temporary file and try the
+	// upgrade again.
+	if accountsTmpFileExists && accountsFileExists {
+		err = r.deps.RemoveFile(accountsTmpFilePath)
+		if err != nil {
+			return false, errors.AddContext(err, "error removing temporary accounts file")
+		}
+	}
+
+	// If only the temporary file exists, we are trying to recover from a failed
+	// upgrade. This means we try and copy over the temporary file to the
+	// accounts file.
+	if accountsTmpFileExists && !accountsFileExists {
+		err = am.upgradeFromV150ToV156_Continue()
+		if err != nil {
+			return false, errors.AddContext(err, "error copying temporary accounts file to the account file location")
+		}
+
+		// from here we can just continue the flow as normal
+	}
 
 	// If the stat err was nil, a header already exists. Check that the header
 	// matches what we are expecting.
 	var cleanClose bool
-	if os.IsNotExist(statErr) {
+	if !accountsTmpFileExists && !accountsFileExists {
 		// If the file didn't previously exist, represent that the file was
 		// closed cleanly.
 		cleanClose = true
@@ -442,7 +474,7 @@ func (am *accountManager) openFile() (bool, error) {
 		if errors.Contains(err, errWrongVersion) {
 			err = am.upgradeFromV150ToV156()
 			if err != nil {
-				return false, errors.AddContext(err, "error uprading accounts file")
+				return false, errors.AddContext(err, "error upgrading accounts file")
 			}
 			am.staticRenter.log.Println("successfully upgraded accounts file from v150 to v156")
 		}
@@ -460,12 +492,14 @@ func (am *accountManager) openFile() (bool, error) {
 	if err != nil {
 		return false, errors.AddContext(err, "unable to update the account metadata")
 	}
+
 	// Sync the metadata to ensure the acounts will load as dirty before any
 	// accounts are created.
 	err = am.staticFile.Sync()
 	if err != nil {
 		return false, errors.AddContext(err, "failed to sync accounts file")
 	}
+
 	return cleanClose, nil
 }
 
@@ -557,25 +591,114 @@ func (am *accountManager) updateMetadata(meta accountsMetadata) error {
 // v150 to v156. The new accounts take up more space on disk, so we have to read
 // all of them, assign them new offets and rewrite them to the accounts file.
 func (am *accountManager) upgradeFromV150ToV156() error {
-	var accounts []*account
+	// convenience variables
+	r := am.staticRenter
+	accFilePath := filepath.Join(r.persistDir, accountsFilename)
+	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
 
-	// the upgrade made an account larger on disk, this means that to upgrade we
-	// have to read in all accounts at the old offsets, and then save them using
-	// offsets that take into account the new account size on disk
-	//
-	// we offset the accounts with 'accountsOffset' to leave room for the
-	// metadata
+	// open the tmp file
+	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "failed to open tmp file")
+	}
+
+	// write the header
+	_, err = tmpFile.WriteAt(encoding.Marshal(accountsMetadata{
+		Header:  metadataHeader,
+		Version: metadataVersion,
+		Clean:   false,
+	}), 0)
+	if err != nil {
+		return errors.AddContext(err, "failed to write header to tmp file")
+	}
+
+	// collect all accounts from the current accounts file and call persist on
+	// each one, the accounts were created referencing the tmp file so this
+	// process will write the accounts to the tmp file
+	accounts := compatV150ReadAccounts(r.log, am.staticFile, tmpFile)
+	for _, acc := range accounts {
+		err := acc.managedPersist()
+		if err != nil {
+			r.log.Println("failed to upgrade account persistence from v150 to v156", err)
+		}
+	}
+
+	// sync the tmp file
+	err = tmpFile.Sync()
+	if err != nil {
+		return errors.AddContext(err, "failed to sync tmp file")
+	}
+
+	// delete the accounts file
+	err = errors.Compose(am.staticFile.Close(), r.deps.RemoveFile(accFilePath))
+	if err != nil {
+		return errors.AddContext(err, "failed to delete accounts file")
+	}
+
+	// re-open the accounts file
+	am.staticFile, err = r.deps.OpenFile(accFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "error opening account file")
+	}
+
+	// copy the tmp file to the accounts file
+	_, err = io.Copy(am.staticFile, tmpFile)
+	if err != nil {
+		return errors.AddContext(err, "failed to copy the temporary accounts file to the actual accounts file location")
+	}
+
+	// delete the tmp file
+	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
+}
+
+// upgradeFromV150ToV156_Continue is a function that is called when the upgrade
+// was unsuccessful and only the temporary accounts file is present on disk, in
+// which case we want to try and complete the process by copying the tmp file to
+// the location of the accounts file.
+func (am *accountManager) upgradeFromV150ToV156_Continue() (err error) {
+	// convenience variables
+	r := am.staticRenter
+	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
+
+	// open the tmp file
+	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "error opening temporary account file")
+	}
+
+	// copy the tmp file to the accounts file
+	_, err = io.Copy(am.staticFile, tmpFile)
+	if err != nil {
+		return errors.AddContext(err, "failed to copy the temporary accounts file to the actual accounts file location")
+	}
+
+	// seek to the beginning of the file
+	_, err = am.staticFile.Seek(0, io.SeekStart)
+	if err != nil {
+		return errors.AddContext(err, "failed to seek to the beginning of the accounts file")
+	}
+
+	// delete the tmp file
+	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
+}
+
+// compatV150ReadAccounts is a helper function that reads the accounts from the
+// accounts file assuming they are persisted using the v150 persistence object
+// and parameters. Extracted to keep the compat code clean.
+func compatV150ReadAccounts(log *persist.Logger, accountsFile modules.File, tmpFile modules.File) []*account {
+	// the offset needs to be the new accountsOffset
 	newOffset := int64(accountsOffset)
 
-	// read the account data at offsets using the account size from v1.5.0
+	// collect all accounts from the current accounts file
+	var accounts []*account
 	for offset := int64(accountSizeV150); ; offset += accountSizeV150 {
 		// read account bytes
 		accountBytes := make([]byte, accountSizeV150)
-		_, err := am.staticFile.ReadAt(accountBytes, offset)
+		_, err := accountsFile.ReadAt(accountBytes, offset)
 		if errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
-			am.staticRenter.log.Println("ERROR: could not read account data", err)
+			log.Println("ERROR: could not read account data", err)
 			continue
 		}
 
@@ -583,12 +706,10 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 		var accountDataV150 accountPersistenceV150
 		err = encoding.Unmarshal(accountBytes[crypto.HashSize:], &accountDataV150)
 		if err != nil {
-			am.staticRenter.log.Println("ERROR: could not load account bytes", err)
+			log.Println("ERROR: could not load account bytes", err)
 			continue
 		}
 
-		// add the accounts, specify an offset that takes into account the new
-		// account size
 		accounts = append(accounts, &account{
 			staticID:        accountDataV150.AccountID,
 			staticHostKey:   accountDataV150.HostKey,
@@ -597,23 +718,24 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 			balance: accountDataV150.Balance,
 
 			staticOffset: newOffset,
-			staticFile:   am.staticFile,
+			staticFile:   tmpFile,
 		})
 		newOffset += accountSize
 	}
 
-	// range over the accounts and persist
-	for _, acc := range accounts {
-		err := acc.managedPersist()
-		if err != nil {
-			am.staticRenter.log.Println("ERROR: could not upgrade account from v150 to v156", err)
-		}
-	}
+	return accounts
+}
 
-	// sync the accounts file
-	err := am.staticFile.Sync()
-	if err != nil {
-		return errors.AddContext(err, "failed to sync accounts file")
+// fileExists is a small helper function that checks whether a file at given
+// path exists, it abstracts checking whether the error from the stat is an
+// `IsNotExists` error or not.
+func fileExists(path string) (bool, error) {
+	_, statErr := os.Stat(path)
+	if statErr == nil {
+		return true, nil
 	}
-	return nil
+	if os.IsNotExist(statErr) {
+		return false, nil
+	}
+	return false, errors.AddContext(statErr, "error calling stat on file")
 }
