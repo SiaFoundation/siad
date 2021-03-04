@@ -505,15 +505,17 @@ func TestPayMonetizers(t *testing.T) {
 	base := types.NewCurrency64(1000)
 
 	// Declare a helper to create valid monetizers.
-	validMonetization := func() []Monetizer {
-		m := []Monetizer{
-			{
-				Amount:   types.NewCurrency64(fastrand.Uint64n(100) + 1),
-				Currency: CurrencyUSD,
-				License:  LicenseMonetization,
+	validMonetization := func() *Monetization {
+		m := &Monetization{
+			License: LicenseMonetization,
+			Monetizers: []Monetizer{
+				{
+					Amount:   types.NewCurrency64(fastrand.Uint64n(100) + 1),
+					Currency: CurrencyUSD,
+				},
 			},
 		}
-		fastrand.Read(m[0].Address[:])
+		fastrand.Read(m.Monetizers[0].Address[:])
 		return m
 	}
 
@@ -535,7 +537,7 @@ func TestPayMonetizers(t *testing.T) {
 
 	// unknown license
 	m = validMonetization()
-	m[0].License = ""
+	m.License = ""
 	err = PayMonetizers(w, m, 100, 100, conversionRates, validLicenses, base)
 	if !errors.Contains(err, ErrUnknownLicense) {
 		t.Fatal(err)
@@ -543,7 +545,7 @@ func TestPayMonetizers(t *testing.T) {
 
 	// invalid currency
 	m = validMonetization()
-	m[0].Currency = ""
+	m.Monetizers[0].Currency = ""
 	err = PayMonetizers(w, m, 100, 100, conversionRates, validLicenses, base)
 	if !errors.Contains(err, ErrInvalidCurrency) {
 		t.Fatal(err)
@@ -554,7 +556,7 @@ func TestPayMonetizers(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		// pay out base - lottery success
 		m = validMonetization()
-		n := m[0].Amount.Mul(rate).Sub64(1) // n < amt -> success
+		n := m.Monetizers[0].Amount.Mul(rate).Sub64(1) // n < amt -> success
 		err = payMonetizers(w, m, 100, 100, conversionRates, validLicenses, base, newMonetizationReader(n))
 		if err != nil {
 			t.Fatal(err)
@@ -566,14 +568,14 @@ func TestPayMonetizers(t *testing.T) {
 		if !w.lastPayout[0].Value.Equals(base) {
 			t.Fatal("wrong payout amount", w.lastPayout[0].Value, base)
 		}
-		if w.lastPayout[0].UnlockHash != m[0].Address {
+		if w.lastPayout[0].UnlockHash != m.Monetizers[0].Address {
 			t.Fatal("wrong payout address")
 		}
 		w.Reset()
 
 		// pay out base - lottery failure
 		m = validMonetization()
-		n = m[0].Amount.Mul(rate) // n == amt -> failure
+		n = m.Monetizers[0].Amount.Mul(rate) // n == amt -> failure
 		err = payMonetizers(w, m, 100, 100, conversionRates, validLicenses, base, newMonetizationReader(n))
 		if err != nil {
 			t.Fatal(err)
