@@ -152,9 +152,7 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 		wg.Add(1)
 		go func(i int, np node.NodeParams) {
 			defer wg.Done()
-			node, err := NewCleanNode(np)
-			nodes[i] = node
-			errs[i] = err
+			nodes[i], errs[i] = NewCleanNode(np)
 		}(i, np)
 	}
 	wg.Wait()
@@ -582,9 +580,7 @@ func (tg *TestGroup) AddNodes(nodeParams ...node.NodeParams) ([]*TestNode, error
 		go func(i int, np node.NodeParams) {
 			defer wg.Done()
 			randomNodeDir(tg.dir, &np)
-			node, err := NewCleanNode(np)
-			nodes[i] = node
-			errs[i] = err
+			nodes[i], errs[i] = NewCleanNode(np)
 		}(i, np)
 	}
 	wg.Wait()
