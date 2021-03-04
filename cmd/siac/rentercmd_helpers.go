@@ -434,22 +434,28 @@ Spending:
 		fmt.Printf("\n    No current period spending.\n")
 	} else {
 		fmt.Printf(`
-    Spent Funds:         %v
-      Storage:           %v
-      Upload:            %v
-      Download:          %v
-      FundAccount:       %v
-      Maintenance:       %v
-      Fees:              %v
-    Unspent Funds:       %v
-      Allocated:         %v
-      Unallocated:       %v
+    Spent Funds:              %v
+      Storage:                %v
+      Upload:                 %v
+      Download:               %v
+      FundAccount:            %v
+      Maintenance:            %v
+        AccountBalanceCost:   %v
+        FundAccountCost:      %v
+        UpdatePriceTableCost: %v
+      Fees:                   %v
+    Unspent Funds:            %v
+      Allocated:              %v
+      Unallocated:            %v
 `, currencyUnitsWithExchangeRate(totalSpent, rate),
 			currencyUnitsWithExchangeRate(fm.StorageSpending, rate),
 			currencyUnitsWithExchangeRate(fm.UploadSpending, rate),
 			currencyUnitsWithExchangeRate(fm.DownloadSpending, rate),
 			currencyUnitsWithExchangeRate(fm.FundAccountSpending, rate),
 			currencyUnitsWithExchangeRate(fm.MaintenanceSpending.Sum(), rate),
+			currencyUnitsWithExchangeRate(fm.MaintenanceSpending.AccountBalanceCost, rate),
+			currencyUnitsWithExchangeRate(fm.MaintenanceSpending.FundAccountCost, rate),
+			currencyUnitsWithExchangeRate(fm.MaintenanceSpending.UpdatePriceTableCost, rate),
 			currencyUnitsWithExchangeRate(fm.ContractFees, rate),
 			currencyUnitsWithExchangeRate(fm.Unspent, rate),
 			currencyUnitsWithExchangeRate(unspentAllocated, rate),

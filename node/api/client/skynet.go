@@ -55,7 +55,11 @@ func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*
 // skyfile.  This function is unsafe as it returns the raw response alongside
 // the http headers.
 func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(sup modules.SkyfileUploadParameters) (http.Header, []byte, error) {
-	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), urlEncodeSkyfileUploadParameters(sup))
+	encodedValues, err := urlEncodeSkyfileUploadParameters(sup)
+	if err != nil {
+		return http.Header{}, nil, err
+	}
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), encodedValues)
 	return uc.postRawResponse(query, sup.Reader)
 }
 
@@ -445,7 +449,11 @@ func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, spp modules.Sky
 // resulting skylink is returned along with an error.
 func (c *Client) SkynetSkyfilePost(sup modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Make the call to upload the file.
-	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), urlEncodeSkyfileUploadParameters(sup))
+	encodedValues, err := urlEncodeSkyfileUploadParameters(sup)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to encode url values")
+	}
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), encodedValues)
 	_, resp, err := c.postRawResponse(query, sup.Reader)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
@@ -471,7 +479,11 @@ func (c *Client) SkynetSkyfilePostDisableForce(sup modules.SkyfileUploadParamete
 	}
 
 	// Make the call to upload the file.
-	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), urlEncodeSkyfileUploadParameters(sup))
+	encodedValues, err := urlEncodeSkyfileUploadParameters(sup)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to encode url values")
+	}
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), encodedValues)
 	_, resp, err := c.postRawResponseWithHeaders(query, sup.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
@@ -498,7 +510,11 @@ func (c *Client) SkynetSkyfileMultiPartPost(smup modules.SkyfileMultipartUploadP
 // skylink is returned along with an error.
 func (c *Client) SkynetSkyfileMultiPartEncryptedPost(smup modules.SkyfileMultipartUploadParameters, skykeyName string, skykeyID skykey.SkykeyID) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Make the call to upload the file.
-	query := fmt.Sprintf("/skynet/skyfile/%s?%s", smup.SiaPath.String(), urlValuesFromSkyfileMultipartUploadParameters(smup).Encode())
+	values, err := urlValuesFromSkyfileMultipartUploadParameters(smup)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "failed to get url values")
+	}
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", smup.SiaPath.String(), values.Encode())
 
 	headers := http.Header{"Content-Type": []string{smup.ContentType}}
 	_, resp, err := c.postRawResponseWithHeaders(query, smup.Reader, headers)
@@ -521,7 +537,10 @@ func (c *Client) SkynetSkyfileMultiPartEncryptedPost(smup modules.SkyfileMultipa
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
 func (c *Client) SkynetConvertSiafileToSkyfilePost(sup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
-	values := urlValuesFromSkyfileUploadParameters(sup)
+	values, err := urlValuesFromSkyfileUploadParameters(sup)
+	if err != nil {
+		return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to get url values")
+	}
 	values.Add("convertpath", convert.String())
 
 	// Make the call to upload the file.
@@ -776,7 +795,7 @@ func skylinkQueryWithValues(skylink string, values url.Values) string {
 // urlValuesFromSkyfileMultipartUploadParameters is a helper function that
 // transforms the given SkyfileMultipartUploadParameters into a url values
 // object.
-func urlValuesFromSkyfileMultipartUploadParameters(sup modules.SkyfileMultipartUploadParameters) url.Values {
+func urlValuesFromSkyfileMultipartUploadParameters(sup modules.SkyfileMultipartUploadParameters) (url.Values, error) {
 	values := url.Values{}
 	values.Set("siapath", sup.SiaPath.String())
 	values.Set("force", fmt.Sprintf("%t", sup.Force))
@@ -785,17 +804,17 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup modules.SkyfileMultipartU
 	values.Set("filename", sup.Filename)
 
 	// encode monetizers
-	if len(sup.Monetization) > 0 {
+	if sup.Monetization != nil {
 		b, err := json.Marshal(sup.Monetization)
 		if err != nil {
-			panic("failed to marshal monetization")
+			return url.Values{}, err
 		}
 		values.Set("monetization", string(b))
 	}
 
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
-	return values
+	return values, nil
 }
 
 // urlValuesFromSkyfilePinParameters is a helper function that transforms the
@@ -811,7 +830,7 @@ func urlValuesFromSkyfilePinParameters(sup modules.SkyfilePinParameters) url.Val
 
 // urlEncodeSkyfileUploadParameters is a helper function that transforms the
 // given SkyfileUploadParameters into a url values object.
-func urlValuesFromSkyfileUploadParameters(sup modules.SkyfileUploadParameters) url.Values {
+func urlValuesFromSkyfileUploadParameters(sup modules.SkyfileUploadParameters) (url.Values, error) {
 	values := url.Values{}
 	values.Set("siapath", sup.SiaPath.String())
 	values.Set("dryrun", fmt.Sprintf("%t", sup.DryRun))
@@ -822,10 +841,10 @@ func urlValuesFromSkyfileUploadParameters(sup modules.SkyfileUploadParameters) u
 	values.Set("mode", fmt.Sprintf("%o", sup.Mode))
 
 	// encode monetizers
-	if len(sup.Monetization) > 0 {
+	if sup.Monetization != nil {
 		b, err := json.Marshal(sup.Monetization)
 		if err != nil {
-			panic("failed to marshal monetization")
+			return url.Values{}, err
 		}
 		values.Set("monetization", string(b))
 	}
@@ -840,11 +859,15 @@ func urlValuesFromSkyfileUploadParameters(sup modules.SkyfileUploadParameters) u
 	if sup.SkykeyID != (skykey.SkykeyID{}) {
 		values.Set("skykeyid", sup.SkykeyID.ToString())
 	}
-	return values
+	return values, nil
 }
 
 // urlEncodeSkyfileUploadParameters is a helper function that url encodes the
 // given SkyfileUploadParameters
-func urlEncodeSkyfileUploadParameters(sup modules.SkyfileUploadParameters) string {
-	return urlValuesFromSkyfileUploadParameters(sup).Encode()
+func urlEncodeSkyfileUploadParameters(sup modules.SkyfileUploadParameters) (string, error) {
+	values, err := urlValuesFromSkyfileUploadParameters(sup)
+	if err != nil {
+		return "", err
+	}
+	return values.Encode(), nil
 }

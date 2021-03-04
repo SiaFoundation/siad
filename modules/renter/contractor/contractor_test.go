@@ -583,7 +583,6 @@ func TestPayment(t *testing.T) {
 	// build payment details
 	details := PaymentDetails{
 		Host:          contract.HostPublicKey,
-		RPC:           modules.RPCUpdatePriceTable,
 		Amount:        pt.UpdatePriceTableCost,
 		RefundAccount: aid,
 		SpendingDetails: modules.SpendingDetails{
@@ -660,7 +659,6 @@ func TestPayment(t *testing.T) {
 	// build payment details
 	details = PaymentDetails{
 		Host:          hpk,
-		RPC:           modules.RPCFundAccount,
 		Amount:        funding.Add(pt.FundAccountCost),
 		RefundAccount: modules.ZeroAccountID,
 		SpendingDetails: modules.SpendingDetails{
@@ -896,7 +894,6 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	// build payment details
 	details := PaymentDetails{
 		Host:          contract.HostPublicKey,
-		RPC:           modules.RPCUpdatePriceTable,
 		Amount:        pt.UpdatePriceTableCost,
 		RefundAccount: aid,
 		SpendingDetails: modules.SpendingDetails{

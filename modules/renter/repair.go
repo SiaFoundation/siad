@@ -606,8 +606,23 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		urp, err := r.managedPrepareForBubble(siaPath, false)
 		if err != nil {
 			// Log the error
-			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
+			r.log.Println("Error calling managedPrepareForBubble on `", siaPath.String(), "`:", err)
+
+			// Check if urp is nil. This should only happen if the first call to Add
+			// the Root dir fails.
+			if urp == nil {
+				// Sleep and continue
+				select {
+				case <-time.After(healthLoopErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+				continue
+			}
 		}
+
+		// Sanity check that we have both a urp and it has directories listed in its
+		// childDir map.
 		if urp == nil || urp.callNumChildDirs() == 0 {
 			// This should never happen, build.Critical and sleep to prevent potential
 			// rapid cycling.
@@ -673,7 +688,9 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 	errList := r.staticFileSystem.CachedList(rootDir, true, func(modules.FileInfo) {}, dlf)
 	if errList != nil {
 		err = errors.Compose(err, errList)
-		return nil, errors.AddContext(err, "unable to get cached list of sub directories")
+		// Still return the uniqueRefreshPaths as we added at least the root dir and
+		// we should return.
+		return urp, errors.AddContext(err, "unable to get cached list of sub directories")
 	}
 
 	// Update the root directory's LastHealthCheckTime to signal that this sub
