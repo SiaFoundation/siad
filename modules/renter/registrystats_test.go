@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestReadRegistryStats is a unit test for the registry stats.
-func TestReadRegistryStats(t *testing.T) {
+// TestReadRegistryStatsNoDecay is a unit test for the registry stats without
+// decay.
+func TestReadRegistryStatsNoDecay(t *testing.T) {
 	decay := 1.0
 	percentile := 0.5
 	interval := time.Millisecond
@@ -104,5 +107,85 @@ func TestReadRegistryStats(t *testing.T) {
 	}
 	if bs.currentPosition != 3 {
 		t.Fatal("wrong position", bs.currentPosition)
+	}
+}
+
+// TestReadRegistryStatsDecay tests the decay of the read registry stats object.
+func TestReadRegistryStatsDecay(t *testing.T) {
+	decay := 0.5
+	percentile := 0.5
+	interval := time.Millisecond
+
+	// Add 10 datapoints to 10 buckets.
+	bs := newReadRegistryStats(interval, decay, percentile)
+	for i := 0; i < 10; i++ {
+		for j := 0; j < 10; j++ {
+			bs.AddDatum(time.Millisecond * time.Duration(i))
+		}
+	}
+
+	// Expect 10 buckets.
+	if len(bs.buckets) != 10 {
+		t.Fatal("wrong number of buckets", len(bs.buckets))
+	}
+
+	// Expect a total of 100.
+	if bs.total != 100 {
+		t.Fatal("wrong total", bs.total)
+	}
+
+	// Sleep for the decay interval.
+	time.Sleep(readRegistryStatsDecayInterval)
+
+	// Add one more datapoint to bucket 11.
+	bs.AddDatum(time.Millisecond * time.Duration(10))
+
+	// Expect 11 buckets.
+	if len(bs.buckets) != 11 {
+		t.Fatal("wrong number of buckets", len(bs.buckets))
+	}
+
+	// Total should be 100*0.5 + 1 == 51
+	if bs.total != 51 {
+		t.Fatal("wrong total", bs.total)
+	}
+	if bs.Estimate() != 6*time.Millisecond {
+		t.Fatal("wrong estimate", bs.Estimate())
+	}
+}
+
+// BenchmarkAddDatum benchmarks AddDatum.
+//
+// maxTime | interval |   ops |                    cpu
+//   5 min |      1ms |  3222 | i9-9880H CPU @ 2.30GHz
+//   5 min |     10ms | 32263 | i9-9880H CPU @ 2.30GHz
+func BenchmarkAddDatum(b *testing.B) {
+	// Create stats with at most 5 minute measurements.
+	// Add n datapoints to 5000 buckets.
+	maxTime := 5 * time.Minute        // 5 minutes
+	interval := 10 * time.Millisecond // 300,000 buckets
+	bs := newReadRegistryStats(interval, 0.95, 0.999)
+
+	// Add one entry in the last bucket to allocate the slice.
+	bs.AddDatum(5*time.Minute - time.Millisecond) // off-by-one
+
+	// Sanity check buckets.
+	if time.Duration(len(bs.buckets)) != (maxTime / interval) {
+		b.Fatal("wrong number of buckets", len(bs.buckets))
+	}
+
+	// Pregenerate n datapoints to add.
+	datapoints := make([]time.Duration, b.N)
+	for i := range datapoints {
+		datapoints[i] = time.Duration(fastrand.Intn(len(bs.buckets))) * interval
+	}
+
+	// Reset the timer.
+	b.ResetTimer()
+
+	// Run AddDatum.
+	for _, dp := range datapoints {
+		bs.AddDatum(dp)
+		_ = bs.Estimate()
 	}
 }

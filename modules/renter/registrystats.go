@@ -7,6 +7,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 
+// readRegistryStatsDecayInterval is the interval after which the registry stats
+// are decayed.
+var readRegistryStatsDecayInterval = build.Select(build.Var{
+	Dev:      time.Minute,
+	Standard: time.Minute,
+	Testing:  time.Second * 5,
+}).(time.Duration)
+
 // readRegistryStats collects stats about read registry jobs. each bucket has a
 // number of items, this amount decays over time so we focus on recent event
 // timings. We only update a bucket's decay when we visit it to save on
@@ -32,7 +40,7 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) {
 	// Figure out if we need to decay this time. We need the bucket set to
 	// sample at least 10k events so we don't decay more than one seconds worth
 	// even if more than one second has passed.
-	decay := time.Since(rrs.lastDecay) > time.Second
+	decay := time.Since(rrs.lastDecay) > readRegistryStatsDecayInterval
 	if decay {
 		rrs.lastDecay = time.Now()
 	}
