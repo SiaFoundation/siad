@@ -38,6 +38,9 @@ const (
 const (
 	// CurrencyUSD the specifier for USD in the monetizer.
 	CurrencyUSD = "usd"
+
+	// LicenseMonetization is the first skynet monetization license.
+	LicenseMonetization = "license-placeholder"
 )
 
 var (
@@ -60,6 +63,9 @@ var (
 	// ErrInvalidCurrency is returned if an unknown monetization currency is
 	// specified.
 	ErrInvalidCurrency = errors.New("specified monetization currency is invalid")
+
+	// ErrUnknownLicense is returned if an unknown license is specified.
+	ErrUnknownLicense = errors.New("specified license is unknown")
 )
 
 var (
@@ -207,10 +213,13 @@ type (
 	}
 
 	// Monetizer refers to a single content provider being paid.
+	// TODO: don't merge before the license has a good name.
+	// TODO: Quersion: should the license be per monetizer or per skyfile?
 	Monetizer struct {
 		Address  types.UnlockHash `json:"address"`
 		Amount   types.Currency   `json:"amount"`
 		Currency string           `json:"currency"`
+		License  string           `json:"license"`
 	}
 )
 
