@@ -235,6 +235,8 @@ func TestAccountCorrupted(t *testing.T) {
 	am.mu.Unlock()
 }
 
+// TestAccountCompatV150 is a unit test that verifies the compatibily code added
+// to ensure the accounts file is properly upgraded from v1.5.0 to v1.5.6
 func TestAccountCompatV150(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
