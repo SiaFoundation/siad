@@ -112,8 +112,9 @@ func TestReadRegistryPruning(t *testing.T) {
 	rrs := newReadRegistryStats(time.Second)
 
 	// Add 2 times the max timings.
-	toAdd := make([]float64, 2*registryStatsMaxTimings)
-	rrs.managedAddTimings(toAdd)
+	for i := 0; i < 2*registryStatsMaxTimings; i++ {
+		rrs.managedAddTiming(0)
+	}
 
 	// The length should be the max.
 	if rrs.timings.Len() != registryStatsMaxTimings {
@@ -124,7 +125,7 @@ func TestReadRegistryPruning(t *testing.T) {
 	time.Sleep(registryTimingMinAge)
 
 	// Add 1 more timing to trigger the pruning.
-	rrs.managedAddTimings([]float64{0})
+	rrs.managedAddTiming(0)
 
 	// The length should be registryStatsMinTimings.
 	if rrs.timings.Len() != int(registryStatsMinTimings) {
@@ -156,12 +157,12 @@ func TestReadRegistryStats(t *testing.T) {
 		resps  []*jobReadRegistryResponse
 		result time.Duration
 	}{
-		// No responses.
+		// 1. No responses.
 		{
 			resps:  nil,
 			result: initialEstimate,
 		},
-		// Successful response without value.
+		// 2. Successful response without value.
 		{
 			resps: []*jobReadRegistryResponse{
 				{
@@ -169,9 +170,9 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 			},
-			result: time.Second * 3,
+			result: time.Second * 5,
 		},
-		// Response with error.
+		// 3. Response with error.
 		{
 			resps: []*jobReadRegistryResponse{
 				{
@@ -181,7 +182,7 @@ func TestReadRegistryStats(t *testing.T) {
 			},
 			result: initialEstimate,
 		},
-		// Single successful response.
+		// 4. Single successful response.
 		{
 			resps: []*jobReadRegistryResponse{
 				{
@@ -190,9 +191,25 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime:        startTime.Add(time.Second * 5),
 				},
 			},
-			result: time.Second * 3,
+			result: time.Second * 5,
 		},
-		// Mixed responses - single valid.
+		// 5. Mixed responses - empty + empty
+		{
+			resps: []*jobReadRegistryResponse{
+				{
+					staticSignedRegistryValue: nil,
+					staticErr:                 nil,
+					staticCompleteTime:        startTime.Add(time.Second * 10),
+				},
+				{
+					staticSignedRegistryValue: nil,
+					staticErr:                 nil,
+					staticCompleteTime:        startTime.Add(time.Second * 5),
+				},
+			},
+			result: time.Second * 5,
+		},
+		// 6. Mixed responses - empty + error + success
 		{
 			resps: []*jobReadRegistryResponse{
 				// No response but success.
@@ -216,9 +233,9 @@ func TestReadRegistryStats(t *testing.T) {
 					staticCompleteTime: startTime.Add(time.Second * 10),
 				},
 			},
-			result: time.Millisecond * 7500,
+			result: time.Second * 10,
 		},
-		// Mixed responses - faster result.
+		// 7. Mixed responses - faster result.
 		{
 			resps: []*jobReadRegistryResponse{
 				// Success.
@@ -239,19 +256,18 @@ func TestReadRegistryStats(t *testing.T) {
 						},
 					},
 					staticErr:          nil,
-					staticCompleteTime: startTime.Add(time.Second * 6),
+					staticCompleteTime: startTime.Add(time.Second * 10),
 				},
 			},
-			result: time.Millisecond * 5500,
+			result: time.Millisecond * 10000,
 		},
 	}
 
 	// Run tests.
 	for i, test := range tests {
-		// Test a response set with 1 response that took 5 seconds.
 		rrs := testResponseSet(startTime, test.resps...)
 		if rrs.Estimate() != test.result {
-			t.Fatalf("%v: results don't match %v != %v", i, rrs.Estimate(), test.result)
+			t.Fatalf("%v: results don't match %v != %v", i+1, rrs.Estimate(), test.result)
 		}
 	}
 }

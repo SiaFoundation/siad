@@ -86,7 +86,7 @@ var (
 		Testing:  int(100),
 	}).(int)
 
-	// registryStatsMaxTimings is a hard cap for the number of timing in the
+	// registryStatsMaxTimings is a hard cap for the number of timings in the
 	// registry status queue. The queue will never be larger than this number.
 	registryStatsMaxTimings = 100 * registryStatsMinTimings
 
@@ -201,7 +201,7 @@ func (rs *readRegistryStats) Estimate() time.Duration {
 	for timing := rs.timings.Front(); timing != nil; timing = timing.Next() {
 		timings = append(timings, timing.Value.(*readRegistryTiming).duration)
 	}
-	d, err := timings.Percentile(99)
+	d, err := timings.PercentileNearestRank(99)
 	if err != nil {
 		build.Critical("Percentile should only fail for invalid inputs")
 		return time.Minute
@@ -210,14 +210,12 @@ func (rs *readRegistryStats) Estimate() time.Duration {
 }
 
 // managedAddTimings adds additional timings to the registry stats.
-func (rs *readRegistryStats) managedAddTimings(timings []float64) {
+func (rs *readRegistryStats) managedAddTiming(timing float64) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
-	// Add the timings.
-	for _, timing := range timings {
-		rs.timings.PushBack(newReadRegistryTiming(timing))
-	}
+	// Add the timing.
+	rs.timings.PushBack(newReadRegistryTiming(timing))
 
 	// Shrink the queue.
 	for {
@@ -254,22 +252,49 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 	default:
 	}
 
-	// Collect all successful timings.
-	var timings stats.Float64Data
+	// Find the fastest timing with the highest revision number.
+	var best *jobReadRegistryResponse
 	for _, resp := range resps {
 		if resp.staticErr != nil {
 			continue
 		}
-		timings = append(timings, float64(resp.staticCompleteTime.Sub(startTime)))
+
+		// If there is no best yet, always set it.
+		if best == nil {
+			best = resp
+			continue
+		}
+		// If there is no rv yet, always set it.
+		bestRV := best.staticSignedRegistryValue
+		respRV := resp.staticSignedRegistryValue
+		if bestRV == nil && respRV != nil {
+			best = resp
+			continue
+		}
+		// If there is an rv but the new response doesn't have one, ignore it.
+		if bestRV != nil && respRV == nil {
+			continue
+		}
+		// The one with the higher revision gets priority if both have an rv.
+		if bestRV != nil && respRV != nil && respRV.Revision > bestRV.Revision {
+			best = resp
+			continue
+		}
+		// Otherwise the faster one wins.
+		if resp.staticCompleteTime.Before(best.staticCompleteTime) {
+			best = resp
+			continue
+		}
 	}
 
 	// No successful responses. We can't update the stats.
-	if len(timings) == 0 {
+	if best == nil {
 		return
 	}
 
 	// Add the duration to the estimate.
-	rs.managedAddTimings(timings)
+	d := best.staticCompleteTime.Sub(startTime)
+	rs.managedAddTiming(float64(d))
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The
