@@ -298,7 +298,9 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 
 	// check filename of every subfile
 	if metadata.Subfiles != nil {
+		var totalLength uint64
 		for filename, md := range metadata.Subfiles {
+			totalLength += md.Len
 			if filename != md.Filename {
 				return errors.New("subfile name did not match metadata filename")
 			}
@@ -309,6 +311,9 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
+		}
+		if metadata.Length != totalLength {
+			return errors.New("invalid length set on metadata")
 		}
 	}
 
