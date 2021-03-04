@@ -100,10 +100,11 @@ type (
 
 		// spending details
 		SpendingDownloads      types.Currency
-		SpendingSnapshots      types.Currency
 		SpendingRegistryReads  types.Currency
 		SpendingRegistryWrites types.Currency
+		SpendingSnapshots      types.Currency
 		SpendingSubscriptions  types.Currency
+		SpendingUploads        types.Currency
 	}
 
 	// accountPersistenceV150 is the how the account persistence struct looked
@@ -498,10 +499,11 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 		// spending details
 		spending: spendingDetails{
 			downloads:      accountData.SpendingDownloads,
-			snapshots:      accountData.SpendingSnapshots,
 			registryReads:  accountData.SpendingRegistryReads,
 			registryWrites: accountData.SpendingRegistryWrites,
+			snapshots:      accountData.SpendingSnapshots,
 			subscriptions:  accountData.SpendingSubscriptions,
+			uploads:        accountData.SpendingUploads,
 		},
 
 		staticReady:  make(chan struct{}),

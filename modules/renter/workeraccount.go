@@ -46,6 +46,7 @@ const (
 	categoryRegistryWrite
 	categorySnapshot
 	categorySubscription
+	categoryUpload
 )
 
 var (
@@ -156,10 +157,11 @@ type (
 	// 'spendingCategory'.
 	spendingDetails struct {
 		downloads      types.Currency
-		snapshots      types.Currency
 		registryReads  types.Currency
 		registryWrites types.Currency
+		snapshots      types.Currency
 		subscriptions  types.Currency
+		uploads        types.Currency
 	}
 
 	// spendingCategory defines an enum that represent a category in the
@@ -508,12 +510,6 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	}
 	w.managedHandleAccountBalanceSync(balance)
 
-	// If our account balance is lower than the balance indicated by the host,
-	// we want to sync our balance by resetting it.
-	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
-		w.staticAccount.managedResetBalance(balance)
-	}
-
 	// Determine how long to wait before attempting to sync again, and then
 	// update the syncAt time. There is significant randomness in the waiting
 	// because syncing with the host requires freezing up the worker. We do not
@@ -532,20 +528,24 @@ func (w *worker) externSyncAccountBalanceToHost() {
 // account's current available balance and the given balance, which is the one
 // received from the host.
 func (w *worker) managedHandleAccountBalanceSync(balance types.Currency) {
+	// If our balance is equal to what the host communicated, we're done.
 	currBalance := w.staticAccount.managedAvailableBalance()
 	if currBalance.Equals(balance) {
 		return
 	}
 
+	// However, if it is lower we want to reset our account balance and track
+	// the amount we drifted.
 	if currBalance.Cmp(balance) < 0 {
+		w.staticAccount.managedResetBalance(balance)
 		delta := balance.Sub(currBalance)
 		w.staticAccount.balanceDriftPositive = w.staticAccount.balanceDriftPositive.Add(delta)
 		return
 	}
 
+	// If it's higher we only track the amount we drifted.
 	delta := currBalance.Sub(balance)
 	w.staticAccount.balanceDriftNegative = w.staticAccount.balanceDriftNegative.Add(delta)
-	return
 }
 
 // managedNeedsToRefillAccount will check whether the worker's account needs to

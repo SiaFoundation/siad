@@ -558,10 +558,11 @@ func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 		account.pendingWithdrawals = randomBalance(1e2)
 		account.spending = spendingDetails{
 			downloads:      randomBalance(1e1),
-			snapshots:      randomBalance(1e1),
 			registryReads:  randomBalance(1e1),
 			registryWrites: randomBalance(1e1),
+			snapshots:      randomBalance(1e1),
 			subscriptions:  randomBalance(1e1),
+			uploads:        randomBalance(1e1),
 		}
 		accounts = append(accounts, account)
 	}
