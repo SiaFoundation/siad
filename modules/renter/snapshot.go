@@ -333,7 +333,7 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 	}
 
 	// Download the table of snapshots that the host is storing.
-	tableSector, err := host.ReadOffset(r.tg.StopCtx(), categorySnapshot, 0, modules.SectorSize)
+	tableSector, err := host.ReadOffset(r.tg.StopCtx(), categorySnapshotDownload, 0, modules.SectorSize)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}

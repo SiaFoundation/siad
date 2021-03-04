@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -233,7 +234,7 @@ func testAccountTrackSpend(t *testing.T) {
 
 	// verify initial state
 	if !a.spending.downloads.IsZero() ||
-		!a.spending.snapshots.IsZero() ||
+		!a.spending.snapshotDownloads.IsZero() ||
 		!a.spending.registryReads.IsZero() ||
 		!a.spending.registryWrites.IsZero() ||
 		!a.spending.subscriptions.IsZero() {
@@ -243,12 +244,12 @@ func testAccountTrackSpend(t *testing.T) {
 	// verify every category tracks its own field
 	a.trackSpending(categoryNone, hasting.Mul64(2), hasting)
 	a.trackSpending(categoryDownload, hasting.Mul64(2), hasting)
-	a.trackSpending(categorySnapshot, hasting.Mul64(2), hasting)
+	a.trackSpending(categorySnapshotDownload, hasting.Mul64(2), hasting)
 	a.trackSpending(categoryRegistryRead, hasting.Mul64(2), hasting)
 	a.trackSpending(categoryRegistryWrite, hasting.Mul64(2), hasting)
 	a.trackSpending(categorySubscription, hasting.Mul64(2), hasting)
 	if !a.spending.downloads.Equals(hasting) ||
-		!a.spending.snapshots.Equals(hasting) ||
+		!a.spending.snapshotDownloads.Equals(hasting) ||
 		!a.spending.registryReads.Equals(hasting) ||
 		!a.spending.registryWrites.Equals(hasting) ||
 		!a.spending.subscriptions.Equals(hasting) {
@@ -488,18 +489,86 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	// verify initial state
 	a := w.staticAccount
 	if !a.spending.downloads.IsZero() ||
-		!a.spending.snapshots.IsZero() ||
+		!a.spending.snapshotDownloads.IsZero() ||
 		!a.spending.registryReads.IsZero() ||
 		!a.spending.registryWrites.IsZero() ||
 		!a.spending.subscriptions.IsZero() {
 		t.Fatal("unexpected")
 	}
 
-	// TODO: do download
-	// TODO: do snapshot download
-	// TODO: do registry ready
-	// TODO: do registry write
-	// TODO: subscribe
+	// create a registry value
+	sk, pk := crypto.GenerateKeyPair()
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), fastrand.Uint64n(1000)).Sign(sk)
+
+	// update the registry
+	err := wt.UpdateRegistry(context.Background(), spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.spending.registryWrites.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// read from the registry
+	_, err = wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.spending.registryReads.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// upload a snapshot to fill the first sector of the contract.
+	backup := modules.UploadedBackup{
+		Name:           "foo",
+		CreationDate:   types.CurrentTimestamp(),
+		Size:           10,
+		UploadProgress: 0,
+	}
+	err = wt.UploadSnapshot(context.Background(), backup, fastrand.Bytes(int(backup.Size)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download snapshot
+	_, err = wt.DownloadSnapshotTable(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.spending.snapshotDownloads.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// verify executing a program with specifying the spending category results
+	// in an update to the spending details for that category
+	pt := wt.staticPriceTable().staticPriceTable
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	p, data := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
+	jhs := new(jobHasSector)
+	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
+	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
+
+	// execute it
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.spending.downloads.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// TODO: subscriptions
 }
 
 // TestNewWithdrawalMessage verifies the newWithdrawalMessage helper
@@ -557,12 +626,12 @@ func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 		account.pendingDeposits = randomBalance(1e2)
 		account.pendingWithdrawals = randomBalance(1e2)
 		account.spending = spendingDetails{
-			downloads:      randomBalance(1e1),
-			registryReads:  randomBalance(1e1),
-			registryWrites: randomBalance(1e1),
-			snapshots:      randomBalance(1e1),
-			subscriptions:  randomBalance(1e1),
-			uploads:        randomBalance(1e1),
+			downloads:         randomBalance(1e1),
+			registryReads:     randomBalance(1e1),
+			registryWrites:    randomBalance(1e1),
+			snapshotDownloads: randomBalance(1e1),
+			subscriptions:     randomBalance(1e1),
+			uploads:           randomBalance(1e1),
 		}
 		accounts = append(accounts, account)
 	}

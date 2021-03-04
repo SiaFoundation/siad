@@ -44,7 +44,7 @@ const (
 	categoryDownload
 	categoryRegistryRead
 	categoryRegistryWrite
-	categorySnapshot
+	categorySnapshotDownload
 	categorySubscription
 	categoryUpload
 )
@@ -156,12 +156,12 @@ type (
 	// these categories. Every field of this struct should have a corresponding
 	// 'spendingCategory'.
 	spendingDetails struct {
-		downloads      types.Currency
-		registryReads  types.Currency
-		registryWrites types.Currency
-		snapshots      types.Currency
-		subscriptions  types.Currency
-		uploads        types.Currency
+		downloads         types.Currency
+		registryReads     types.Currency
+		registryWrites    types.Currency
+		snapshotDownloads types.Currency
+		subscriptions     types.Currency
+		uploads           types.Currency
 	}
 
 	// spendingCategory defines an enum that represent a category in the
@@ -404,8 +404,8 @@ func (a *account) trackSpending(category spendingCategory, amount, refund types.
 	switch category {
 	case categoryDownload:
 		a.spending.downloads = a.spending.downloads.Add(moneySpent)
-	case categorySnapshot:
-		a.spending.snapshots = a.spending.snapshots.Add(moneySpent)
+	case categorySnapshotDownload:
+		a.spending.snapshotDownloads = a.spending.snapshotDownloads.Add(moneySpent)
 	case categoryRegistryRead:
 		a.spending.registryReads = a.spending.registryReads.Add(moneySpent)
 	case categoryRegistryWrite:

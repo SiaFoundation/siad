@@ -103,12 +103,12 @@ type (
 		BalanceDriftNegative types.Currency
 
 		// spending details
-		SpendingDownloads      types.Currency
-		SpendingRegistryReads  types.Currency
-		SpendingRegistryWrites types.Currency
-		SpendingSnapshots      types.Currency
-		SpendingSubscriptions  types.Currency
-		SpendingUploads        types.Currency
+		SpendingDownloads         types.Currency
+		SpendingRegistryReads     types.Currency
+		SpendingRegistryWrites    types.Currency
+		SpendingSnapshotDownloads types.Currency
+		SpendingSubscriptions     types.Currency
+		SpendingUploads           types.Currency
 	}
 
 	// accountPersistenceV150 is the how the account persistence struct looked
@@ -163,11 +163,11 @@ func (a *account) persist() error {
 		BalanceDriftNegative: a.balanceDriftNegative,
 
 		// spending details
-		SpendingDownloads:      a.spending.downloads,
-		SpendingSnapshots:      a.spending.snapshots,
-		SpendingRegistryReads:  a.spending.registryReads,
-		SpendingRegistryWrites: a.spending.registryWrites,
-		SpendingSubscriptions:  a.spending.subscriptions,
+		SpendingDownloads:         a.spending.downloads,
+		SpendingSnapshotDownloads: a.spending.snapshotDownloads,
+		SpendingRegistryReads:     a.spending.registryReads,
+		SpendingRegistryWrites:    a.spending.registryWrites,
+		SpendingSubscriptions:     a.spending.subscriptions,
 	}
 
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
@@ -532,12 +532,12 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 
 		// spending details
 		spending: spendingDetails{
-			downloads:      accountData.SpendingDownloads,
-			registryReads:  accountData.SpendingRegistryReads,
-			registryWrites: accountData.SpendingRegistryWrites,
-			snapshots:      accountData.SpendingSnapshots,
-			subscriptions:  accountData.SpendingSubscriptions,
-			uploads:        accountData.SpendingUploads,
+			downloads:         accountData.SpendingDownloads,
+			registryReads:     accountData.SpendingRegistryReads,
+			registryWrites:    accountData.SpendingRegistryWrites,
+			snapshotDownloads: accountData.SpendingSnapshotDownloads,
+			subscriptions:     accountData.SpendingSubscriptions,
+			uploads:           accountData.SpendingUploads,
 		},
 
 		staticReady:  make(chan struct{}),

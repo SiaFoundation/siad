@@ -458,7 +458,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	}
 
 	if !ap.SpendingDownloads.Equals(uMar.SpendingDownloads) ||
-		!ap.SpendingSnapshots.Equals(uMar.SpendingSnapshots) ||
+		!ap.SpendingSnapshotDownloads.Equals(uMar.SpendingSnapshotDownloads) ||
 		!ap.SpendingRegistryReads.Equals(uMar.SpendingRegistryReads) ||
 		!ap.SpendingRegistryWrites.Equals(uMar.SpendingRegistryWrites) ||
 		!ap.SpendingSubscriptions.Equals(uMar.SpendingSubscriptions) {
