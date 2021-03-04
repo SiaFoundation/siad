@@ -73,8 +73,8 @@ type (
 		// to subscribe to. The worker might not be subscribed to these values
 		// at all times due to interruptions but it will try to resubscribe as
 		// soon as possible.
-		// The worker will also try to unsubscribe from all subsriptions that it
-		// currently has which it is not supposed to be subscribed to.
+		// The worker will also try to unsubscribe from all subscriptions that
+		// it currently has which it is not supposed to be subscribed to.
 		subscriptions map[modules.SubscriptionID]*subscription
 
 		// staticWakeChan is a channel to tell the subscription loop that more
@@ -463,7 +463,7 @@ func (w *worker) managedSubscriptionCleanup(stream siamux.Stream, subscriber str
 	// Close the handler.
 	err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
 
-	// Clear the active subsriptions at the end of this method.
+	// Clear the active subscriptions at the end of this method.
 	subInfo.managedClearSubscriptions()
 	return err
 }
