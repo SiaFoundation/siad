@@ -413,5 +413,5 @@ func saveDir(path string, md Metadata, deps modules.Dependencies) error {
 	if err != nil {
 		return errors.AddContext(err, "unable to write data to disk")
 	}
-	return f.Sync()
+	return nil
 }
