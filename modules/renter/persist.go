@@ -61,6 +61,9 @@ type (
 		MaxUploadSpeed   int64
 		UploadedBackups  []modules.UploadedBackup
 		SyncedContracts  []types.FileContractID
+
+		ConversionRates  map[string]types.Currency
+		MonetizationBase types.Currency
 	}
 )
 
@@ -108,6 +111,10 @@ func (r *Renter) managedLoadSettings() error {
 	} else if err != nil {
 		return err
 	}
+
+	// Set the monetization info.
+	usdConversionRate := r.persist.ConversionRates[modules.CurrencyUSD]
+	r.staticMonetizationInfo.Update(r.persist.MonetizationBase, usdConversionRate)
 
 	// Set the bandwidth limits on the contractor, which was already initialized
 	// without bandwidth limits.

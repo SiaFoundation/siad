@@ -243,7 +243,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'monetizers'")
 		}
-		if err := modules.ValidateMonetization(m); err != nil {
+		if err := modules.ValidateMonetization(&m); err != nil {
 			return nil, nil, err
 		}
 		monetization = &m

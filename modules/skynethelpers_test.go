@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"
@@ -261,6 +262,27 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	randData = fastrand.Bytes(int(SectorSize))
 	copy(randData, layoutBytes)
 	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+	// Make sure monetization is validated.
+	sm := SkyfileMetadata{
+		Monetization: &Monetization{
+			License: "", // invalid license
+		},
+	}
+	smBytes, err := json.Marshal(sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout = SkyfileLayout{Version: 1, MetadataSize: uint64(len(smBytes))}
+	layoutBytes = layout.Encode()
+	copy(randData, layoutBytes)
+	baseSector, _ := BuildBaseSector(layoutBytes, nil, smBytes, []byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, _, err = ParseSkyfileMetadata(baseSector)
+	if !errors.Contains(err, ErrUnknownLicense) {
+		t.Fatal("wrong error:", err)
+	}
 
 	// Try a bunch of random data.
 	for i := 0; i < 10e3; i++ {

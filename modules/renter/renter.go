@@ -184,6 +184,32 @@ type cachedUtilities struct {
 	used         []types.SiaPublicKey
 }
 
+// monetizationInfo is a helper struct to pass down monetization information to
+// the stream while still allowing the renter to update it.
+type monetizationInfo struct {
+	usdConversionRate types.Currency
+	base              types.Currency
+	mu                sync.Mutex
+}
+
+// newMonetizationInfo creates new monetization infos.
+func newMonetizationInfo() *monetizationInfo {
+	return &monetizationInfo{}
+}
+
+// Update updates the monetization infos.
+func (mi *monetizationInfo) Update(base, usdConversionRate types.Currency) {
+	mi.mu.Lock()
+	defer mi.mu.Lock()
+	mi.base = base
+	mi.usdConversionRate = usdConversionRate
+}
+
+// Info returns the information in the monetizationInfo object.
+func (mi *monetizationInfo) Info() (base, usdConversionRate types.Currency) {
+	return mi.base, mi.usdConversionRate
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -262,6 +288,7 @@ type Renter struct {
 	staticAlerter                      *modules.GenericAlerter
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
+	staticMonetizationInfo             *monetizationInfo
 	staticSkykeyManager                *skykey.SkykeyManager
 	staticStreamBufferSet              *streamBufferSet
 	tg                                 threadgroup.ThreadGroup
@@ -1010,7 +1037,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:          tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
-	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
+	r.staticMonetizationInfo = newMonetizationInfo()
+	r.staticStreamBufferSet = newStreamBufferSet(&r.tg, w, r.staticMonetizationInfo)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.uploadHeap.pauseChan)
 

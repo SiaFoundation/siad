@@ -119,7 +119,7 @@ func TestStreamSmoke(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
-	sbs := newStreamBufferSet(&tg)
+	sbs := newStreamBufferSet(&tg, nil, newMonetizationInfo())
 	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
 
 	// Check that there is one reference in the stream buffer.

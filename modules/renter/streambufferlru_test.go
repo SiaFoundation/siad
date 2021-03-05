@@ -22,7 +22,7 @@ func TestStreamLRU(t *testing.T) {
 	var tg threadgroup.ThreadGroup
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
-	sbs := newStreamBufferSet(&tg)
+	sbs := newStreamBufferSet(&tg, nil, newMonetizationInfo())
 	stream := sbs.callNewStream(dataSource, 0, 0, types.ZeroCurrency)
 
 	// Extract the LRU from the stream to test it directly.

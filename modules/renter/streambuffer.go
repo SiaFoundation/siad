@@ -190,14 +190,16 @@ type streamBuffer struct {
 	// creation and deletion of the streamBuffer.
 	externRefCount uint64
 
-	mu                    sync.Mutex
-	staticTG              threadgroup.ThreadGroup
-	staticDataSize        uint64
-	staticDataSource      streamBufferDataSource
-	staticDataSectionSize uint64
-	staticStreamBufferSet *streamBufferSet
-	staticStreamID        modules.DataSourceID
-	staticPricePerMS      types.Currency
+	mu                     sync.Mutex
+	staticTG               threadgroup.ThreadGroup
+	staticDataSize         uint64
+	staticDataSource       streamBufferDataSource
+	staticDataSectionSize  uint64
+	staticMonetizationInfo *monetizationInfo
+	staticStreamBufferSet  *streamBufferSet
+	staticStreamID         modules.DataSourceID
+	staticPricePerMS       types.Currency
+	staticWallet           modules.SiacoinSenderMulti
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
@@ -206,16 +208,20 @@ type streamBuffer struct {
 type streamBufferSet struct {
 	streams map[modules.DataSourceID]*streamBuffer
 
-	staticTG *threadgroup.ThreadGroup
-	mu       sync.Mutex
+	staticMonetizationInfo *monetizationInfo
+	staticTG               *threadgroup.ThreadGroup
+	staticWallet           modules.SiacoinSenderMulti
+	mu                     sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
-func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
+func newStreamBufferSet(tg *threadgroup.ThreadGroup, w modules.SiacoinSenderMulti, mi *monetizationInfo) *streamBufferSet {
 	return &streamBufferSet{
 		streams: make(map[modules.DataSourceID]*streamBuffer),
 
-		staticTG: tg,
+		staticMonetizationInfo: mi,
+		staticTG:               tg,
+		staticWallet:           w,
 	}
 }
 
@@ -243,12 +249,14 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 		streamBuf = &streamBuffer{
 			dataSections: make(map[uint64]*dataSection),
 
-			staticDataSize:        dataSource.DataSize(),
-			staticDataSource:      dataSource,
-			staticDataSectionSize: dataSource.RequestSize(),
-			staticPricePerMS:      pricePerMS,
-			staticStreamBufferSet: sbs,
-			staticStreamID:        sourceID,
+			staticDataSize:         dataSource.DataSize(),
+			staticDataSource:       dataSource,
+			staticDataSectionSize:  dataSource.RequestSize(),
+			staticMonetizationInfo: sbs.staticMonetizationInfo,
+			staticPricePerMS:       pricePerMS,
+			staticStreamBufferSet:  sbs,
+			staticStreamID:         sourceID,
+			staticWallet:           sbs.staticWallet,
 		}
 		sbs.streams[sourceID] = streamBuf
 	} else {
@@ -393,7 +401,9 @@ func (s *stream) Read(b []byte) (int, error) {
 
 	// Send the call to prepare the next data section.
 	s.prepareOffset()
-	return n, nil
+
+	// Pay the monetizers if any.
+	return n, s.payMonetizers(uint64(n))
 }
 
 // Seek will move the read head of the stream to the provided offset.
@@ -428,6 +438,17 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	// Prepare the fetch of the updated offset.
 	s.prepareOffset()
 	return int64(s.offset), nil
+}
+
+// payMonetizers is a convenience method on the stream to pay for monetization.
+func (s *stream) payMonetizers(downloaded uint64) error {
+	sb := s.staticStreamBuffer
+	ds := sb.staticDataSource
+	monetizationBase, usdConversionRate := sb.staticMonetizationInfo.Info()
+	conversionRates := map[string]types.Currency{
+		modules.CurrencyUSD: usdConversionRate,
+	}
+	return modules.PayMonetizers(sb.staticWallet, s.Metadata().Monetization, downloaded, ds.DataSize(), conversionRates, monetizationBase)
 }
 
 // prepareOffset will ensure that the dataSection containing the offset is made
