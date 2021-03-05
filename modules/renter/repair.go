@@ -603,10 +603,10 @@ func (r *Renter) threadedUpdateRenterHealth() {
 
 		// Prepare the subtree for being bubbled
 		r.log.Debugf("Preparing subtree '%v' for bubble", siaPath)
-		urp, err := r.managedPrepareForBubble(siaPath, false)
+		urp, err := r.callPrepareForBubble(siaPath, false)
 		if err != nil {
 			// Log the error
-			r.log.Println("Error calling managedPrepareForBubble on `", siaPath.String(), "`:", err)
+			r.log.Println("Error calling callPrepareForBubble on `", siaPath.String(), "`:", err)
 
 			// Check if urp is nil. This should only happen if the first call to Add
 			// the Root dir fails.
@@ -640,8 +640,8 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 }
 
-// managedPrepareForBubble prepares a directory for the Health Loop to call
-// bubble on and returns a uniqueRefreshPaths including all the paths of the
+// callPrepareForBubble prepares a directory for the Health Loop to call bubble
+// on and returns a uniqueRefreshPaths including all the paths of the
 // directories in the subtree that need to be updated. This includes updating
 // the LastHealthCheckTime for the supplied root directory.
 //
@@ -650,7 +650,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 //
 // If the force boolean is supplied, the LastHealthCheckTime of the directories
 // will be ignored so all directories will be considered.
-func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
+func (r *Renter) callPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
 	aggregateLastHealthCheckTime := time.Now()
