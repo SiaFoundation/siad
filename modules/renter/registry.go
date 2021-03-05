@@ -1,13 +1,10 @@
 package renter
 
 import (
-	"container/list"
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/montanaflynn/stats"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -70,26 +67,6 @@ var (
 		Testing:  time.Second,
 	}).(time.Duration)
 
-	// registryTimingMinAge is the minimum age a registry timing needs to have
-	// before being evicted from the queue.
-	registryTimingMinAge = build.Select(build.Var{
-		Dev:      time.Minute,
-		Standard: time.Hour,
-		Testing:  5 * time.Second,
-	}).(time.Duration)
-
-	// registryStatsMinTimings is the minimum number of timings the queue should
-	// contain before eviction is possible.
-	registryStatsMinTimings = build.Select(build.Var{
-		Dev:      int(1e3),
-		Standard: int(10e3),
-		Testing:  int(100),
-	}).(int)
-
-	// registryStatsMaxTimings is a hard cap for the number of timings in the
-	// registry status queue. The queue will never be larger than this number.
-	registryStatsMaxTimings = 100 * registryStatsMinTimings
-
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
 	// request from the memory manager.
 	updateRegistryMemory = uint64(20 * (1 << 10)) // 20kib
@@ -108,6 +85,18 @@ var (
 	// worker stays active in the background after managedUpdateRegistry returns
 	// successfully.
 	updateRegistryBackgroundTimeout = time.Minute
+
+	// readRegistryStatsInterval is the granularity with which read registry
+	// stats are collected. The smaller the number the faster updating the stats
+	// is but the less accurate the estimate.
+	readRegistryStatsInterval = 10 * time.Millisecond
+
+	// readRegistryStatsDecay is the decay applied to the registry stats.
+	readRegistryStatsDecay = 0.95
+
+	// readRegistryStatsPercentile is the percentile returned by the read
+	// registry stats Estimate method.
+	readRegistryStatsPercentile = 0.999
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -118,20 +107,6 @@ type readResponseSet struct {
 
 	readResps []*jobReadRegistryResponse
 }
-
-type (
-	// readRegistryStats measures stats about read registry requests.
-	readRegistryStats struct {
-		timings *list.List
-		mu      sync.Mutex
-	}
-
-	// readRegistryTiming is a single timing within the readRegistryStats.
-	readRegistryTiming struct {
-		duration float64
-		time     time.Time
-	}
-)
 
 // newReadResponseSet creates a new set from a response chan and number of
 // workers which are expected to write to that chan.
@@ -172,67 +147,6 @@ func (rrs *readResponseSet) next(ctx context.Context) *jobReadRegistryResponse {
 // Next.
 func (rrs *readResponseSet) responsesLeft() int {
 	return rrs.left
-}
-
-// newReadRegistryTiming creates a new timing.
-func newReadRegistryTiming(d float64) *readRegistryTiming {
-	return &readRegistryTiming{
-		duration: d,
-		time:     time.Now(),
-	}
-}
-
-// newReadRegistryStats creates a new readRegistryStats object from an initial
-// estimate.
-func newReadRegistryStats(initialEstimate time.Duration) *readRegistryStats {
-	rrs := &readRegistryStats{
-		timings: list.New(),
-	}
-	// Add the initial estimate directly to the queue.
-	rrs.timings.PushBack(newReadRegistryTiming(float64(initialEstimate)))
-	return rrs
-}
-
-// Estimate returns the current estimate for a read registry request.
-func (rs *readRegistryStats) Estimate() time.Duration {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
-	timings := make(stats.Float64Data, 0, rs.timings.Len())
-	for timing := rs.timings.Front(); timing != nil; timing = timing.Next() {
-		timings = append(timings, timing.Value.(*readRegistryTiming).duration)
-	}
-	d, err := timings.PercentileNearestRank(99)
-	if err != nil {
-		build.Critical("Percentile should only fail for invalid inputs")
-		return time.Minute
-	}
-	return time.Duration(d)
-}
-
-// managedAddTimings adds additional timings to the registry stats.
-func (rs *readRegistryStats) managedAddTiming(timing float64) {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
-
-	// Add the timing.
-	rs.timings.PushBack(newReadRegistryTiming(timing))
-
-	// Shrink the queue.
-	for {
-		front := rs.timings.Front()
-		if front == nil {
-			break
-		}
-		// Remove the element if there are more than enough elements in the
-		// queue and if the element has a certain age.
-		rrt := front.Value.(*readRegistryTiming)
-		if (time.Since(rrt.time) > registryTimingMinAge && rs.timings.Len() > registryStatsMinTimings) ||
-			rs.timings.Len() > registryStatsMaxTimings {
-			rs.timings.Remove(front)
-			continue
-		}
-		break
-	}
 }
 
 // threadedAddResponseSet adds a response set to the stats. This includes
@@ -294,7 +208,7 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 
 	// Add the duration to the estimate.
 	d := best.staticCompleteTime.Sub(startTime)
-	rs.managedAddTiming(float64(d))
+	rs.AddDatum(d)
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The
