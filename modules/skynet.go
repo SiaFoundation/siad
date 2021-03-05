@@ -544,12 +544,12 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 }
 
 // PayMonetizers is a helper method for paying out monetizers.
-func PayMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, validLicenses map[string]struct{}, monetizationBase types.Currency) error {
-	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, validLicenses, monetizationBase, fastrand.Reader)
+func PayMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
+	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
 }
 
 // payMonetizers is a helper method for paying out monetizers.
-func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, validLicenses map[string]struct{}, monetizationBase types.Currency, rand io.Reader) error {
+func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
 	// If there is no monetization, there is nothing for us to do.
 	if monetization == nil {
 		return nil
@@ -557,11 +557,6 @@ func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedD
 	// If no data was downloaded, there is nothing to pay for.
 	if downloadedData == 0 {
 		return nil
-	}
-	// Check the license.
-	_, valid := validLicenses[monetization.License]
-	if !valid {
-		return ErrUnknownLicense
 	}
 	// Pay out monetizers.
 	var payouts []types.SiacoinOutput

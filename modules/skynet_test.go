@@ -497,6 +497,7 @@ func TestPayMonetizers(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create test wallet.
 	w := &monetizationWalletTester{}
@@ -519,10 +520,7 @@ func TestPayMonetizers(t *testing.T) {
 		return m
 	}
 
-	// Declare valid licenses and currencies.
-	validLicenses := map[string]struct{}{
-		LicenseMonetization: {},
-	}
+	// Declare valid currencies.
 	rate := types.NewCurrency64(2) // $1 is 2H
 	conversionRates := map[string]types.Currency{
 		CurrencyUSD: rate,
@@ -530,23 +528,15 @@ func TestPayMonetizers(t *testing.T) {
 
 	// no data
 	m := validMonetization()
-	err := PayMonetizers(w, m, 0, 100, conversionRates, validLicenses, base)
+	err := PayMonetizers(w, m, 0, 100, conversionRates, base)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	// unknown license
-	m = validMonetization()
-	m.License = ""
-	err = PayMonetizers(w, m, 100, 100, conversionRates, validLicenses, base)
-	if !errors.Contains(err, ErrUnknownLicense) {
 		t.Fatal(err)
 	}
 
 	// invalid currency
 	m = validMonetization()
 	m.Monetizers[0].Currency = ""
-	err = PayMonetizers(w, m, 100, 100, conversionRates, validLicenses, base)
+	err = PayMonetizers(w, m, 100, 100, conversionRates, base)
 	if !errors.Contains(err, ErrInvalidCurrency) {
 		t.Fatal(err)
 	}
@@ -557,7 +547,7 @@ func TestPayMonetizers(t *testing.T) {
 		// pay out base - lottery success
 		m = validMonetization()
 		n := m.Monetizers[0].Amount.Mul(rate).Sub64(1) // n < amt -> success
-		err = payMonetizers(w, m, 100, 100, conversionRates, validLicenses, base, newMonetizationReader(n))
+		err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -576,7 +566,7 @@ func TestPayMonetizers(t *testing.T) {
 		// pay out base - lottery failure
 		m = validMonetization()
 		n = m.Monetizers[0].Amount.Mul(rate) // n == amt -> failure
-		err = payMonetizers(w, m, 100, 100, conversionRates, validLicenses, base, newMonetizationReader(n))
+		err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
 		if err != nil {
 			t.Fatal(err)
 		}
