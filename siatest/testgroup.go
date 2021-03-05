@@ -144,47 +144,11 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 		dir: groupDir,
 	}
 
-	// Create nodes in parallel.
-	nodes := make([]*TestNode, len(nodeParams))
-	errs := make([]error, len(nodeParams))
-	var wg sync.WaitGroup
-	for i, np := range nodeParams {
-		wg.Add(1)
-		go func(i int, np node.NodeParams) {
-			defer wg.Done()
-			nodes[i], errs[i] = NewCleanNode(np)
-		}(i, np)
-	}
-	wg.Wait()
-
-	// Check errors.
-	if err := errors.Compose(errs...); err != nil {
-		return nil, errors.AddContext(err, "failed to create clean nodes")
-	}
-
-	// Create node and add it to the correct groups
-	for i, node := range nodes {
-		np := nodeParams[i]
-
-		// Add node to nodes
-		tg.nodes[node] = struct{}{}
-		nodes = append(nodes, node)
-		// Add node to hosts
-		if np.Host != nil || np.CreateHost {
-			tg.hosts[node] = struct{}{}
-		}
-		// Add node to portals
-		if np.CreatePortal {
-			tg.portals[node] = struct{}{}
-		}
-		// Add node to renters
-		if np.Renter != nil || np.CreateRenter {
-			tg.renters[node] = struct{}{}
-		}
-		// Add node to miners
-		if np.Miner != nil || np.CreateMiner {
-			tg.miners[node] = struct{}{}
-		}
+	// Add nodes. Ignore the return vars since all nodex in the group are new
+	// nodes.
+	_, _, _, err := tg.addNodes(nodeParams...)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get a miner and mine some blocks to generate coins
@@ -218,7 +182,6 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 	// Create host params
 	for i := 0; i < groupParams.Hosts; i++ {
 		params = append(params, node.HostTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
 	}
 	// Create portal params
 	for i := 0; i < groupParams.Portals; i++ {
@@ -226,19 +189,72 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 		portalTemplate := node.RenterTemplate
 		portalTemplate.CreatePortal = true
 		params = append(params, portalTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
 	}
 	// Create renter params
 	for i := 0; i < groupParams.Renters; i++ {
 		params = append(params, node.RenterTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
 	}
 	// Create miner params
 	for i := 0; i < groupParams.Miners; i++ {
 		params = append(params, node.MinerTemplate)
-		randomNodeDir(groupDir, &params[len(params)-1])
 	}
 	return NewGroup(groupDir, params...)
+}
+
+// addNodes adds new nodes to a group and returns the newly added nodes. The
+// nodes aren't funded or synced.
+func (tg *TestGroup) addNodes(nodeParams ...node.NodeParams) (newNodes, newHosts, newRenters map[*TestNode]struct{}, err error) {
+	newNodes = make(map[*TestNode]struct{})
+	newHosts = make(map[*TestNode]struct{})
+	newRenters = make(map[*TestNode]struct{})
+
+	// Create nodes in parallel.
+	nodes := make([]*TestNode, len(nodeParams))
+	errs := make([]error, len(nodeParams))
+	var wg sync.WaitGroup
+	for i, np := range nodeParams {
+		wg.Add(1)
+		go func(i int, np node.NodeParams) {
+			defer wg.Done()
+			randomNodeDir(tg.dir, &np)
+			nodes[i], errs[i] = NewCleanNode(np)
+		}(i, np)
+	}
+	wg.Wait()
+
+	// Check errors.
+	if err := errors.Compose(errs...); err != nil {
+		return nil, nil, nil, errors.AddContext(err, "failed to create clean nodes")
+	}
+
+	for i, node := range nodes {
+		np := nodeParams[i]
+
+		// Add node to nodes
+		tg.nodes[node] = struct{}{}
+		newNodes[node] = struct{}{}
+		// Add node to hosts
+		if np.Host != nil || np.CreateHost {
+			tg.hosts[node] = struct{}{}
+			newHosts[node] = struct{}{}
+		}
+		// Add node to renters
+		if np.Renter != nil || np.CreateRenter {
+			tg.renters[node] = struct{}{}
+			newRenters[node] = struct{}{}
+			// Add node to portals. No need to create a newPortals as the node is
+			// a renter and the set up will be handled by newRenters
+			if np.CreatePortal {
+				tg.portals[node] = struct{}{}
+			}
+		}
+
+		// Add node to miners
+		if np.Miner != nil || np.CreateMiner {
+			tg.miners[node] = struct{}{}
+		}
+	}
+	return
 }
 
 // addStorageFolderToHosts adds a single storage folder to each host.
@@ -566,59 +582,12 @@ func (tg *TestGroup) AddNodeN(np node.NodeParams, n int) ([]*TestNode, error) {
 
 // AddNodes creates a node and adds it to the group.
 func (tg *TestGroup) AddNodes(nodeParams ...node.NodeParams) ([]*TestNode, error) {
-	newNodes := make(map[*TestNode]struct{})
-	newHosts := make(map[*TestNode]struct{})
-	newRenters := make(map[*TestNode]struct{})
-	newMiners := make(map[*TestNode]struct{})
-
-	// Create nodes in parallel.
-	nodes := make([]*TestNode, len(nodeParams))
-	errs := make([]error, len(nodeParams))
-	var wg sync.WaitGroup
-	for i, np := range nodeParams {
-		wg.Add(1)
-		go func(i int, np node.NodeParams) {
-			defer wg.Done()
-			randomNodeDir(tg.dir, &np)
-			nodes[i], errs[i] = NewCleanNode(np)
-		}(i, np)
+	// Add nodes.
+	newNodes, newHosts, newRenters, err := tg.addNodes(nodeParams...)
+	if err != nil {
+		return nil, err
 	}
-	wg.Wait()
-
-	// Check errors.
-	if err := errors.Compose(errs...); err != nil {
-		return nil, errors.AddContext(err, "failed to create clean nodes")
-	}
-
-	for i, node := range nodes {
-		np := nodeParams[i]
-
-		// Add node to nodes
-		tg.nodes[node] = struct{}{}
-		newNodes[node] = struct{}{}
-		// Add node to hosts
-		if np.Host != nil || np.CreateHost {
-			tg.hosts[node] = struct{}{}
-			newHosts[node] = struct{}{}
-		}
-		// Add node to renters
-		if np.Renter != nil || np.CreateRenter {
-			tg.renters[node] = struct{}{}
-			newRenters[node] = struct{}{}
-			// Add node to portals. No need to create a newPortals as the node is
-			// a renter and the set up will be handled by newRenters
-			if np.CreatePortal {
-				tg.portals[node] = struct{}{}
-			}
-		}
-
-		// Add node to miners
-		if np.Miner != nil || np.CreateMiner {
-			tg.miners[node] = struct{}{}
-			newMiners[node] = struct{}{}
-		}
-	}
-
+	// Fully connect nodes
 	return mapToSlice(newNodes), tg.setupNodes(newHosts, newNodes, newRenters)
 }
 
