@@ -173,6 +173,36 @@ type (
 	spendingCategory uint64
 )
 
+// update will add the the spend of given amount to the appropriate field
+// depending on the given category
+func (s spendingDetails) update(category spendingCategory, amount types.Currency) {
+	if category == categoryErr {
+		build.Critical("category is not set, developer error")
+		return
+	}
+
+	switch category {
+	case categoryDownload:
+		s.downloads = s.downloads.Add(amount)
+	case categorySnapshotDownload:
+		s.snapshotDownloads = s.snapshotDownloads.Add(amount)
+	case categoryRegistryRead:
+		s.registryReads = s.registryReads.Add(amount)
+	case categoryRegistryWrite:
+		s.registryWrites = s.registryWrites.Add(amount)
+	case categoryRepairDownload:
+		s.repairDownloads = s.repairDownloads.Add(amount)
+	case categoryRepairUpload:
+		s.repairUploads = s.repairUploads.Add(amount)
+	case categorySubscription:
+		s.subscriptions = s.subscriptions.Add(amount)
+	case categoryUpload:
+		s.uploads = s.uploads.Add(amount)
+	default:
+		build.Critical("category is not handled, developer error")
+	}
+}
+
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
@@ -410,31 +440,10 @@ func (a *account) trackSpending(category spendingCategory, amount, refund types.
 		return
 	}
 
-	moneySpent := amount.Sub(refund)
-	switch category {
-	case categoryDownload:
-		a.spending.downloads = a.spending.downloads.Add(moneySpent)
-	case categorySnapshotDownload:
-		a.spending.snapshotDownloads = a.spending.snapshotDownloads.Add(moneySpent)
-	case categoryRegistryRead:
-		a.spending.registryReads = a.spending.registryReads.Add(moneySpent)
-	case categoryRegistryWrite:
-		a.spending.registryWrites = a.spending.registryWrites.Add(moneySpent)
-	case categoryRepairDownload:
-		a.spending.repairDownloads = a.spending.repairDownloads.Add(moneySpent)
-	case categoryRepairUpload:
-		a.spending.repairUploads = a.spending.repairUploads.Add(moneySpent)
-	case categorySubscription:
-		a.spending.subscriptions = a.spending.subscriptions.Add(moneySpent)
-	case categoryUpload:
-		a.spending.uploads = a.spending.uploads.Add(moneySpent)
-	default:
-		if build.Release != "testing" {
-			a.staticRenter.log.Println("money spent from account on a category that is not tracked, this should not happen in a production environment as we want to track all types of expenditures")
-		}
-	}
+	// update the spending metrics
+	a.spending.update(category, amount.Sub(refund))
 
-	// every time we update the spending metrics we write the account to disk
+	// every time we update we write the account to disk
 	err := a.persist()
 	if err != nil {
 		a.staticRenter.log.Printf("failed to persist account, err: %v\n", err)
