@@ -1018,6 +1018,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentile)
 	close(r.uploadHeap.pauseChan)
 
+	// Seed the rrs.
+	err := r.staticRRS.AddDatum(readRegistryStatsSeed)
+	if err != nil {
+		return nil, err
+	}
+
 	// Init the statsChan and close it right away to signal that no scan is
 	// going on.
 	r.statsChan = make(chan struct{})
@@ -1025,7 +1031,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
-	var err error
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {
 		return nil, err

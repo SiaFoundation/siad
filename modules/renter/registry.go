@@ -64,7 +64,7 @@ var (
 	ReadRegistryBackgroundTimeout = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: 5 * time.Minute,
-		Testing:  time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
@@ -96,7 +96,16 @@ var (
 
 	// readRegistryStatsPercentile is the percentile returned by the read
 	// registry stats Estimate method.
-	readRegistryStatsPercentile = 0.999
+	readRegistryStatsPercentile = 0.99
+
+	// readRegistrySeed is the first duration added to the registry stats after
+	// creating it.
+	// NOTE: This needs to be <= readRegistryBackgroundTimeout
+	readRegistryStatsSeed = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -208,7 +217,10 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 
 	// Add the duration to the estimate.
 	d := best.staticCompleteTime.Sub(startTime)
-	rs.AddDatum(d)
+
+	// The error is ignored since it only returns an error if the measurement is
+	// outside of the 5 minute bounds the stats were created with.
+	_ = rs.AddDatum(d)
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The
