@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// TestSiaDir probes the SiaDir subsystem
 func TestSiaDir(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -18,7 +19,6 @@ func TestSiaDir(t *testing.T) {
 
 	t.Run("Basic", testSiaDirBasic)
 	t.Run("Delete", testSiaDirDelete)
-	t.Run("Rename", testSiaDirRename)
 	t.Run("UpdatedMetadata", testUpdateMetadata)
 }
 
@@ -160,11 +160,6 @@ func testSiaDirDelete(t *testing.T) {
 		t.Error("updateMetadata should return with and error for SiaDir deleted")
 	}
 	siaDir.mu.Unlock()
-}
-
-// testSiaDirRename tests the renaming of a siadir
-func testSiaDirRename(t *testing.T) {
-	t.Skip("not implemented")
 }
 
 // testUpdateMetadata probes the UpdateMetadata methods

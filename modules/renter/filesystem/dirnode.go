@@ -685,7 +685,7 @@ func (n *DirNode) managedNewSiaDir(dirName string, rootPath string, mode os.File
 		return ErrExists
 	}
 	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode)
-	if os.IsExist(err) {
+	if errors.Contains(err, os.ErrExist) {
 		return nil
 	}
 	return err
