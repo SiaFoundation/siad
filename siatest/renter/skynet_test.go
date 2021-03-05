@@ -64,9 +64,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
-		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
-		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Stats", Test: testSkynetStats},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
@@ -373,6 +370,34 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Upload another skyfile, this time make it an empty file
+	var noData []byte
+	emptySiaPath, err := modules.NewSiaPath("testEmptyPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptySkylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             emptySiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Filename:            "testEmpty",
+		Reader:              bytes.NewReader(noData),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, metadata, err = r.SkynetSkylinkGet(emptySkylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if metadata.Length != 0 {
+		t.Fatal("Unexpected metadata")
 	}
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
@@ -687,6 +712,24 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(fileName, nil, "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
+	}
+
+	// TEST EMPTY FILE
+	fileName = "TestEmptyFileUpload"
+	emptyFile := siatest.TestFile{Name: "file", Data: []byte{}}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, []siatest.TestFile{emptyFile}, "", false, false)
+	if err != nil {
+		t.Fatal("Expected upload of empty file to succeed")
+	}
+	data, md, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal("Expected download of empty file to succeed")
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if md.Length != 0 {
+		t.Fatal("Unexpected metadata")
 	}
 
 	// TEST SMALL SUBFILE
@@ -2068,21 +2111,69 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// TestSkynetBlocklist verifies the functionality of the Skynet blocklist.
+func TestSkynetBlocklist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define a portal with dependency
+	portalDir := filepath.Join(groupDir, "portal")
+	portalParams := node.Renter(portalDir)
+	portalParams.CreatePortal = true
+	deps := &dependencies.DependencyToggleDisableDeleteBlockedFiles{}
+	portalParams.RenterDeps = deps
+	_, err = tg.AddNodes(portalParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run subtests
+	t.Run("BlocklistHash", func(t *testing.T) {
+		testSkynetBlocklistHash(t, tg, deps)
+	})
+	t.Run("BlocklistSkylink", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps)
+	})
+	t.Run("BlocklistUpgrade", func(t *testing.T) {
+		testSkynetBlocklistUpgrade(t, tg)
+	})
+}
+
 // testSkynetBlocklistHash tests the skynet blocklist module when submitting
 // hashes of the skylink's merkleroot
-func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetBlocklist(t, tg, true)
+func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
+	testSkynetBlocklist(t, tg, deps, true)
 }
 
 // testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
-func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetBlocklist(t, tg, false)
+func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
+	testSkynetBlocklist(t, tg, deps, false)
 }
 
 // testSkynetBlocklist tests the skynet blocklist module
-func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
+func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash bool) {
 	r := tg.Renters()[0]
+	deps.DisableDeleteBlockedFiles(true)
+
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
 	size := modules.SectorSize + uint64(100+siatest.Fuzz())
@@ -2398,6 +2489,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 			t.Error(err)
 		}
 	}
+
+	// Disable the dependency
+	deps.DisableDeleteBlockedFiles(false)
 
 	// Add both skylinks back to the blocklist
 	remove = []string{}
@@ -4144,14 +4238,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create monetization.
-	monetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.SiacoinPrecision,
-			Currency: modules.CurrencyUSD,
+	monetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.SiacoinPrecision,
+				Currency: modules.CurrencyUSD,
+			},
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(monetization.Monetizers[0].Address[:])
 
 	// Test regular small file.
 	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
@@ -4211,9 +4308,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	nestedFileMonetization := monetization
-	nestedFileMonetization = append([]modules.Monetizer{}, nestedFileMonetization...)
-	for i := range nestedFileMonetization {
-		nestedFileMonetization[i].Amount = nestedFileMonetization[i].Amount.Div64(2)
+	nestedFileMonetization.Monetizers = append([]modules.Monetizer{}, nestedFileMonetization.Monetizers...)
+	for i := range nestedFileMonetization.Monetizers {
+		nestedFileMonetization.Monetizers[i].Amount = nestedFileMonetization.Monetizers[i].Amount.Div64(2)
 	}
 	if !reflect.DeepEqual(md.Monetization, nestedFileMonetization) {
 		t.Log("got", md.Monetization)
@@ -4246,14 +4343,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create zero amount monetization.
-	zeroMonetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.ZeroCurrency,
-			Currency: modules.CurrencyUSD,
+	zeroMonetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.ZeroCurrency,
+				Currency: modules.CurrencyUSD,
+			},
 		},
 	}
-	fastrand.Read(zeroMonetization[0].Address[:])
+	fastrand.Read(zeroMonetization.Monetizers[0].Address[:])
 
 	// Test zero amount monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
@@ -4268,14 +4368,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create zero amount monetization.
-	unknownMonetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-			Currency: "",
+	unknownMonetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+				Currency: "",
+			},
 		},
 	}
-	fastrand.Read(unknownMonetization[0].Address[:])
+	fastrand.Read(unknownMonetization.Monetizers[0].Address[:])
 
 	// Test unknown currency monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownMonetizer", fastrand.Bytes(1), false, unknownMonetization)
@@ -4286,6 +4389,25 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	files = []siatest.TestFile{nestedFile1}
 	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, unknownMonetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
+		t.Fatal("should fail", err)
+	}
+
+	// Unknown license.
+	unknownLicense := &modules.Monetization{
+		License: "",
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+				Currency: modules.CurrencyUSD,
+			},
+		},
+	}
+	fastrand.Read(monetization.Monetizers[0].Address[:])
+
+	// Test unknown license.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownLicense", fastrand.Bytes(1), false, unknownLicense)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrUnknownLicense.Error()) {
 		t.Fatal("should fail", err)
 	}
 }

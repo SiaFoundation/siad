@@ -104,6 +104,11 @@ func (wp *workerPool) callUpdate() {
 		if err != nil {
 			return
 		}
+		// Start the subscription loop in a separate goroutine.
+		err = wp.renter.tg.Launch(w.threadedSubscriptionLoop)
+		if err != nil {
+			return
+		}
 	}
 
 	// Remove a worker for any worker that is not in the set of new contracts.

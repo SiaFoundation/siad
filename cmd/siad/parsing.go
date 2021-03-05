@@ -11,8 +11,8 @@ import (
 func parseModules(config Config) node.NodeParams {
 	params := node.NodeParams{}
 	// Parse the modules.
-	if strings.Contains(config.Siad.Modules, "g") {
-		params.CreateGateway = true
+	if strings.Contains(config.Siad.Modules, "a") {
+		params.CreateAccounting = true
 	}
 	if strings.Contains(config.Siad.Modules, "c") {
 		params.CreateConsensusSet = true
@@ -23,20 +23,27 @@ func parseModules(config Config) node.NodeParams {
 	if strings.Contains(config.Siad.Modules, "f") {
 		params.CreateFeeManager = true
 	}
+	if strings.Contains(config.Siad.Modules, "g") {
+		params.CreateGateway = true
+	}
+	if strings.Contains(config.Siad.Modules, "h") {
+		params.CreateHost = true
+	}
+	if strings.Contains(config.Siad.Modules, "m") {
+		params.CreateMiner = true
+	}
+	if strings.Contains(config.Siad.Modules, "r") {
+		params.CreateRenter = true
+	}
 	if strings.Contains(config.Siad.Modules, "t") {
 		params.CreateTransactionPool = true
 	}
 	if strings.Contains(config.Siad.Modules, "w") {
 		params.CreateWallet = true
-	}
-	if strings.Contains(config.Siad.Modules, "m") {
-		params.CreateMiner = true
-	}
-	if strings.Contains(config.Siad.Modules, "h") {
-		params.CreateHost = true
-	}
-	if strings.Contains(config.Siad.Modules, "r") {
-		params.CreateRenter = true
+		// Add Accounting and FeeManager modules to all nodes that have at least
+		// a wallet
+		params.CreateAccounting = true
+		params.CreateFeeManager = true
 	}
 	// Parse remaining fields.
 	params.Bootstrap = !config.Siad.NoBootstrap

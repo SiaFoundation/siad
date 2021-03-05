@@ -102,7 +102,7 @@ func (api *API) hostContractGetHandler(w http.ResponseWriter, _ *http.Request, p
 
 	contract, err := api.host.StorageObligation(obligationID)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("error get storage contract: %v", err)}, http.StatusBadRequest)
+		WriteError(w, Error{fmt.Sprintf("error get storage contract: %v", err)}, http.StatusNotFound)
 		return
 	}
 

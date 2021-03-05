@@ -29,7 +29,7 @@ var (
 
 	// ErrBalanceMaxExceeded occurs when a deposit would push the account's
 	// balance over the maximum allowed ephemeral account balance.
-	ErrBalanceMaxExceeded = errors.New("ephemeral account maximam balance exceeded")
+	ErrBalanceMaxExceeded = errors.New("ephemeral account maximum balance exceeded")
 
 	// ErrDepositCancelled occurs when the host was willingly or unwillingly
 	// stopped in the midst of a deposit process.

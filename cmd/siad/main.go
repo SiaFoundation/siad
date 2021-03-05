@@ -91,6 +91,11 @@ modules are run. The default modules are all modules except the miner and the ex
 	gateway, consensus set, transaction pool, wallet, renter, host, feemanager, accounting
 This is equivalent to:
 	siad -M gctwrhfa
+Additionally, names of modules are supported. If a name is provided, all required modules
+needed for the provided named module will be enabled.
+The following two commands are equivalent:
+	siad -M wallet
+	siad -M gctw
 Below is a list of all the modules available.
 
 Gateway (g):
@@ -99,27 +104,32 @@ Gateway (g):
 	The gateway is required by all other modules.
 	Example:
 		siad -M g
+		siad -M gateway
 Consensus Set (c):
 	The consensus set manages everything related to consensus and keeps the
 	blockchain in sync with the rest of the network.
 	The consensus set requires the gateway.
 	Example:
 		siad -M gc
+		siad -M consensus
 Transaction Pool (t):
 	The transaction pool manages unconfirmed transactions.
 	The transaction pool requires the consensus set.
 	Example:
 		siad -M gct
+		siad -M tpool
 Wallet (w):
 	The wallet stores and manages siacoins and siafunds.
 	The wallet requires the consensus set and transaction pool.
 	Example:
 		siad -M gctw
+		siad -M wallet
 Renter (r):
 	The renter manages the user's files on the network.
 	The renter requires the consensus set, transaction pool, and wallet.
 	Example:
 		siad -M gctwr
+		siad -M renter
 Host (h):
 	The host provides storage from local disks to the network. The host
 	negotiates file contracts with remote renters to earn money for storing
@@ -127,31 +137,40 @@ Host (h):
 	The host requires the consensus set, transaction pool, and wallet.
 	Example:
 		siad -M gctwh
+		siad -M host
 Miner (m):
 	The miner provides a basic CPU mining implementation as well as an API
 	for external miners to use.
 	The miner requires the consensus set, transaction pool, and wallet.
 	Example:
 		siad -M gctwm
+		siad -M miner
 FeeManager (f):
 	The FeeManager provides a means for application developers to charge
 	users for the user of their application.
 	The FeeManager requires the consensus set, gateway, transaction pool, and wallet.
+	NOTE: While not required, the FeeManager module will be automatically added to
+	the manual list of modules if the Wallet is included.
 	Example:
 		siad -M gctwf
+		siad -M feemanager
 Accounting (a):
 	The Accounting module provides a high level accounting summary for the Sia node.
 	The Accounting module requires the consensus set, gateway, transaction pool, wallet,
 	and any modules where accounting information is desired, i.e. the renter.
+	NOTE: While not required, the Accounting module will be automatically added to
+	the manual list of modules if the Wallet is included.
 	Example:
 		siad -M gctwra
+		siad -M accounting
 Explorer (e):
 	The explorer provides statistics about the blockchain and can be
 	queried for information about specific transactions or other objects on
 	the blockchain.
 	The explorer requires the consensus set.
 	Example:
-		siad -M gce`)
+		siad -M gce
+		siad -M explorer`)
 }
 
 // main establishes a set of commands and flags using the cobra package.

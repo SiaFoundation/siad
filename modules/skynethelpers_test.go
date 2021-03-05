@@ -127,10 +127,11 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	// happy case
 	metadata := SkyfileMetadata{
 		Filename: t.Name(),
-		Length:   fastrand.Uint64n(10) + 1,
+		Length:   1,
 		Subfiles: SkyfileSubfiles{
 			"validkey": SkyfileSubfileMetadata{
 				Filename: "validkey",
+				Len:      1,
 			},
 		},
 	}
@@ -180,6 +181,53 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	}
 
 	invalid.DisableDefaultPath = true
+	err = ValidateSkyfileMetadata(invalid)
+	if err != nil {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify invalid length
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      1,
+		},
+		"validkey2": SkyfileSubfileMetadata{
+			Filename: "validkey2",
+			Len:      1,
+			Offset:   1,
+		},
+	}
+	invalid.Length = 1
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify invalid 0 length
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      1,
+		},
+	}
+	invalid.Length = 0
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify valid 0 length
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      0,
+		},
+	}
+	invalid.Length = 0
 	err = ValidateSkyfileMetadata(invalid)
 	if err != nil {
 		t.Fatal("unexpected outcome")

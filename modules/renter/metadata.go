@@ -361,7 +361,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaF
 
 	// First check if the fileNode is blocked. Blocking a file does not remove the
 	// file so this is required to ensuring the node is purging blocked files.
-	if r.isFileNodeBlocked(sf) {
+	if r.isFileNodeBlocked(sf) && !r.deps.Disrupt("DisableDeleteBlockedFiles") {
 		// Delete the file
 		r.log.Println("Deleting blocked fileNode at:", siaPath)
 		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)

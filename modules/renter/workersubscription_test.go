@@ -54,8 +54,8 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 	return rv, spk, sk
 }
 
-// TestSubscriptionHelpersWithWorker tests the subscription helper methods against the
-// worker tester. They are already unit-tested against a host in
+// TestSubscriptionHelpersWithWorker tests the subscription helper methods
+// against the worker tester. They are already unit-tested against a host in
 // rpcsubscribe_test.go but better safe than sorry.
 func TestSubscriptionHelpersWithWorker(t *testing.T) {
 	if testing.Short() {
@@ -1129,4 +1129,142 @@ func TestHandleNotification(t *testing.T) {
 			t.Fatal(err)
 		}
 	}, downloadBandwidthCost.Mul64(2), uploadBandwidthCost.Mul64(2), types.ZeroCurrency)
+}
+
+// TestThreadedSubscriptionLoop tests threadedSubscriptionLoop.
+func TestThreadedSubscriptionLoop(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker.
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// Ignore threadgroup stopped error since we are manually closing the
+		// threadgroup of the worker.
+		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Fatal(err)
+		}
+	}()
+
+	// Start the loop.
+	loopDone := make(chan struct{})
+	go func() {
+		wt.threadedSubscriptionLoop()
+		close(loopDone)
+	}()
+
+	// Set a random entry on the host.
+	rv, spk, sk := randomRegistryValue()
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe to that entry.
+	req := modules.RPCRegistrySubscriptionRequest{
+		PubKey: spk,
+		Tweak:  rv.Tweak,
+	}
+	resps, err := wt.Subscribe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resps) != 1 {
+		t.Fatal("invalid length", len(resps))
+	}
+	if !spk.Equals(resps[0].PubKey) {
+		t.Fatal("pubkeys don't match")
+	}
+	if !reflect.DeepEqual(resps[0].Entry, rv) {
+		t.Fatal("entries don't match")
+	}
+
+	// Check that the subscription info has 1 subscription.
+	subInfo := wt.staticSubscriptionInfo
+	subInfo.mu.Lock()
+	if len(subInfo.subscriptions) != 1 {
+		t.Error("subInfo has wrong length", len(subInfo.subscriptions))
+	}
+	subInfo.mu.Unlock()
+
+	// Do it again. This should return the same value. Since we are subscribed
+	// already this will not establish a new subscription.
+	resps, err = wt.Subscribe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resps) != 1 {
+		t.Fatal("invalid length", len(resps))
+	}
+	if !spk.Equals(resps[0].PubKey) {
+		t.Fatal("pubkeys don't match")
+	}
+	if !reflect.DeepEqual(resps[0].Entry, rv) {
+		t.Fatal("entries don't match")
+	}
+
+	// Update the entry on the host.
+	rv.Revision++
+	rv = rv.Sign(sk)
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Do it again. This should return the new value.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		resps, err = wt.Subscribe(context.Background(), req)
+		if err != nil {
+			return err
+		}
+		if len(resps) != 1 {
+			return fmt.Errorf("invalid length %v", len(resps))
+		}
+		if !spk.Equals(resps[0].PubKey) {
+			return errors.New("pubkeys don't match")
+		}
+		if !reflect.DeepEqual(resps[0].Entry, rv) {
+			return errors.New("entries don't match")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsubscribe from the entry.
+	wt.Unsubscribe(req)
+
+	// There should be 0 subscriptions.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		subInfo.mu.Lock()
+		defer subInfo.mu.Unlock()
+		if len(subInfo.subscriptions) != 0 {
+			return fmt.Errorf("subInfo has wrong length %v", len(subInfo.subscriptions))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the entry on the host.
+	rv.Revision++
+	rv = rv.Sign(sk)
+
+	// Stop the loop by shutting down the worker.
+	err = wt.staticTG.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-time.After(time.Minute):
+		t.Fatal("loop didn't finish")
+	case <-loopDone:
+	}
 }
