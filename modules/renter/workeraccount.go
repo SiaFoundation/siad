@@ -36,14 +36,16 @@ const (
 	fundAccountGougingPercentageThreshold = .01
 )
 
-// the following categories are constants used to determine the corresponding
-// spending field in the account's spending details whenever we pay for an rpc
-// request using the ephemeral account as payment method.
 const (
-	categoryNone spendingCategory = iota
+	// the following categories are constants used to determine the
+	// corresponding spending field in the account's spending details whenever
+	// we pay for an rpc request using the ephemeral account as payment method.
+	categoryErr spendingCategory = iota
 	categoryDownload
 	categoryRegistryRead
 	categoryRegistryWrite
+	categoryRepairDownload
+	categoryRepairUpload
 	categorySnapshotDownload
 	categorySubscription
 	categoryUpload
@@ -159,6 +161,8 @@ type (
 		downloads         types.Currency
 		registryReads     types.Currency
 		registryWrites    types.Currency
+		repairDownloads   types.Currency
+		repairUploads     types.Currency
 		snapshotDownloads types.Currency
 		subscriptions     types.Currency
 		uploads           types.Currency
@@ -400,6 +404,12 @@ func (a *account) trackSpending(category spendingCategory, amount, refund types.
 		return
 	}
 
+	// sanity check the category was set
+	if category == categoryErr {
+		build.Critical("tracked a spend using an unitiliased category, this is prevented as we want to track all money that is being spent without exception")
+		return
+	}
+
 	moneySpent := amount.Sub(refund)
 	switch category {
 	case categoryDownload:
@@ -410,8 +420,14 @@ func (a *account) trackSpending(category spendingCategory, amount, refund types.
 		a.spending.registryReads = a.spending.registryReads.Add(moneySpent)
 	case categoryRegistryWrite:
 		a.spending.registryWrites = a.spending.registryWrites.Add(moneySpent)
+	case categoryRepairDownload:
+		a.spending.repairDownloads = a.spending.repairDownloads.Add(moneySpent)
+	case categoryRepairUpload:
+		a.spending.repairUploads = a.spending.repairUploads.Add(moneySpent)
 	case categorySubscription:
 		a.spending.subscriptions = a.spending.subscriptions.Add(moneySpent)
+	case categoryUpload:
+		a.spending.uploads = a.spending.uploads.Add(moneySpent)
 	default:
 		if build.Release != "testing" {
 			a.staticRenter.log.Println("money spent from account on a category that is not tracked, this should not happen in a production environment as we want to track all types of expenditures")

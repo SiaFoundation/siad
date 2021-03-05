@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -37,7 +36,7 @@ const (
 	// accountSize is the fixed account size in bytes
 	accountSize     = 1 << 10 // 1024 bytes
 	accountSizeV150 = 1 << 8  // 256 bytes
-	accountsOffset  = 1 << 6  // 64 bytes
+	accountsOffset  = 1 << 12 // 4kib to sector align
 )
 
 var (
@@ -59,14 +58,6 @@ var (
 
 	// Persistence data validation errors
 	errInvalidChecksum = errors.New("invalid checksum")
-
-	// syncAccountsFileFrequency is the frequency at which the account
-	// manager will sync the accounts file to disk.
-	syncAccountsFileFrequency = build.Select(build.Var{
-		Standard: 5 * time.Minute,
-		Dev:      5 * time.Minute,
-		Testing:  1 * time.Minute,
-	}).(time.Duration)
 )
 
 type (
@@ -106,6 +97,8 @@ type (
 		SpendingDownloads         types.Currency
 		SpendingRegistryReads     types.Currency
 		SpendingRegistryWrites    types.Currency
+		SpendingRepairDownloads   types.Currency
+		SpendingRepairUploads     types.Currency
 		SpendingSnapshotDownloads types.Currency
 		SpendingSubscriptions     types.Currency
 		SpendingUploads           types.Currency
@@ -133,13 +126,7 @@ func (r *Renter) newAccountManager() error {
 		staticRenter: r,
 	}
 
-	err := r.staticAccountManager.load()
-	if err != nil {
-		return err
-	}
-
-	go r.staticAccountManager.threadedSyncAccountsFile()
-	return nil
+	return r.staticAccountManager.load()
 }
 
 // managedPersist will write the account to the given file at the account's
@@ -167,7 +154,10 @@ func (a *account) persist() error {
 		SpendingSnapshotDownloads: a.spending.snapshotDownloads,
 		SpendingRegistryReads:     a.spending.registryReads,
 		SpendingRegistryWrites:    a.spending.registryWrites,
+		SpendingRepairDownloads:   a.spending.repairDownloads,
+		SpendingRepairUploads:     a.spending.repairUploads,
 		SpendingSubscriptions:     a.spending.subscriptions,
+		SpendingUploads:           a.spending.uploads,
 	}
 
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
@@ -535,6 +525,8 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 			downloads:         accountData.SpendingDownloads,
 			registryReads:     accountData.SpendingRegistryReads,
 			registryWrites:    accountData.SpendingRegistryWrites,
+			repairDownloads:   accountData.SpendingRepairDownloads,
+			repairUploads:     accountData.SpendingRepairUploads,
 			snapshotDownloads: accountData.SpendingSnapshotDownloads,
 			subscriptions:     accountData.SpendingSubscriptions,
 			uploads:           accountData.SpendingUploads,
@@ -548,37 +540,6 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 	}
 	close(acc.staticReady)
 	return acc, nil
-}
-
-// threadedSyncAccountsFile will periodically fsync the accounts file, ensuring
-// that the a recent snapshot of the spending details are saved on disk, and are
-// not lost should the renter experience an unclean shutdown.
-//
-// NOTE: on unclean shutdown the renter will discard the account balance, but
-// keep the spending details providing the account's checksum is valid.
-func (am *accountManager) threadedSyncAccountsFile() {
-	for {
-		func() {
-			err := am.staticRenter.tg.Add()
-			if err != nil {
-				return
-			}
-			defer am.staticRenter.tg.Done()
-
-			err = am.staticFile.Sync()
-			if err != nil {
-				am.staticRenter.log.Printf("failed to sync accounts file, err: %v\n", err)
-			}
-		}()
-
-		// Block until next cycle.
-		select {
-		case <-am.staticRenter.tg.StopChan():
-			return
-		case <-time.After(syncAccountsFileFrequency):
-			continue
-		}
-	}
 }
 
 // updateMetadata writes the given metadata to the accounts file.
@@ -647,6 +608,18 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 		return errors.AddContext(err, "failed to copy the temporary accounts file to the actual accounts file location")
 	}
 
+	// sync the accounts file
+	err = am.staticFile.Sync()
+	if err != nil {
+		return errors.AddContext(err, "failed to sync accounts file")
+	}
+
+	// seek to the beginning of the file
+	_, err = am.staticFile.Seek(0, io.SeekStart)
+	if err != nil {
+		return errors.AddContext(err, "failed to seek to the beginning of the accounts file")
+	}
+
 	// delete the tmp file
 	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
 }
@@ -670,6 +643,12 @@ func (am *accountManager) upgradeFromV150ToV156_Continue() (err error) {
 	_, err = io.Copy(am.staticFile, tmpFile)
 	if err != nil {
 		return errors.AddContext(err, "failed to copy the temporary accounts file to the actual accounts file location")
+	}
+
+	// sync the accounts file
+	err = am.staticFile.Sync()
+	if err != nil {
+		return errors.AddContext(err, "failed to sync accounts file")
 	}
 
 	// seek to the beginning of the file

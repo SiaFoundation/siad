@@ -59,7 +59,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute the program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryNone, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err == nil || !strings.Contains(err.Error(), "ephemeral account withdrawal message expires too far into the future") {
 		t.Fatal("Unexpected error", err)
 	}
@@ -79,7 +79,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 	w.staticSetPriceTable(wptc)
 
 	// execute the program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryNone, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -134,7 +134,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryNone, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryNone, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal(err)
 	}

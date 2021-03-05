@@ -216,7 +216,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryNone, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if !modules.IsPriceTableInvalidErr(err) {
 		t.Fatal("unexpected")
 	}
@@ -241,7 +241,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	deps.Disable()
 
 	// execute the same program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryNone, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal("unexpected")
 	}

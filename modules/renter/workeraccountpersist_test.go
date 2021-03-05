@@ -235,8 +235,8 @@ func TestAccountCorrupted(t *testing.T) {
 	am.mu.Unlock()
 }
 
-// TestAccountCompatV150 is a unit test that verifies the compatibily code added
-// to ensure the accounts file is properly upgraded from v1.5.0 to v1.5.6
+// TestAccountCompatV150 is a unit test that verifies the compatibility code
+// added to ensure the accounts file is properly upgraded from v1.5.0 to v1.5.6
 func TestAccountCompatV150(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -422,7 +422,7 @@ func testAccountCompatV150FailedUpgradeEdge2(t *testing.T, rt *renterTester) {
 	numAccounts := len(am.accounts)
 	am.mu.Unlock()
 	if numAccounts != 377 {
-		t.Fatal("unexpected amount of accounts")
+		t.Fatal("unexpected amount of accounts", numAccounts)
 	}
 }
 

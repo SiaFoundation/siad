@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +59,7 @@ func TestAccount(t *testing.T) {
 	t.Run("Constants", testAccountConstants)
 	t.Run("MinMaxExpectedBalance", testAccountMinAndMaxExpectedBalance)
 	t.Run("ResetBalance", testAccountResetBalance)
-	t.Run("TrackSpend", testAccountTrackSpend)
+	t.Run("TrackSpending", testAccountTrackSpending)
 
 	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
 	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
@@ -224,44 +226,81 @@ func testAccountResetBalance(t *testing.T) {
 	}
 }
 
-// testAccountTrackSpend is a small unit test that verifies the functionality of
-// the method 'trackSpending' on the account
-func testAccountTrackSpend(t *testing.T) {
+// testAccountTrackSpending is a small unit test that verifies the functionality
+// of the method 'trackSpending' on the account
+func testAccountTrackSpending(t *testing.T) {
 	t.Parallel()
 
+	// create a mock of the accounts file, tracking a spend needs a file to
+	// write to
+	deps := modules.ProductionDependencies{}
+	f, err := deps.OpenFile(filepath.Join(t.TempDir(), accountsFilename), os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = f.Close()
+		if err != nil {
+			t.Fatal("err")
+		}
+	}()
+
+	// create an account
 	a := new(account)
-	hasting := types.NewCurrency64(1)
+	a.staticFile = f
 
 	// verify initial state
+	hasting := types.NewCurrency64(1)
 	if !a.spending.downloads.IsZero() ||
 		!a.spending.snapshotDownloads.IsZero() ||
 		!a.spending.registryReads.IsZero() ||
 		!a.spending.registryWrites.IsZero() ||
-		!a.spending.subscriptions.IsZero() {
+		!a.spending.repairDownloads.IsZero() ||
+		!a.spending.repairUploads.IsZero() ||
+		!a.spending.subscriptions.IsZero() ||
+		!a.spending.uploads.IsZero() {
 		t.Fatal("unexpected")
 	}
 
 	// verify every category tracks its own field
-	a.trackSpending(categoryNone, hasting.Mul64(2), hasting)
 	a.trackSpending(categoryDownload, hasting.Mul64(2), hasting)
-	a.trackSpending(categorySnapshotDownload, hasting.Mul64(2), hasting)
-	a.trackSpending(categoryRegistryRead, hasting.Mul64(2), hasting)
-	a.trackSpending(categoryRegistryWrite, hasting.Mul64(2), hasting)
-	a.trackSpending(categorySubscription, hasting.Mul64(2), hasting)
+	a.trackSpending(categorySnapshotDownload, hasting.Mul64(3), hasting)
+	a.trackSpending(categoryRegistryRead, hasting.Mul64(4), hasting)
+	a.trackSpending(categoryRegistryWrite, hasting.Mul64(5), hasting)
+	a.trackSpending(categoryRepairDownload, hasting.Mul64(6), hasting)
+	a.trackSpending(categoryRepairUpload, hasting.Mul64(7), hasting)
+	a.trackSpending(categorySubscription, hasting.Mul64(8), hasting)
+	a.trackSpending(categoryUpload, hasting.Mul64(9), hasting)
 	if !a.spending.downloads.Equals(hasting) ||
-		!a.spending.snapshotDownloads.Equals(hasting) ||
-		!a.spending.registryReads.Equals(hasting) ||
-		!a.spending.registryWrites.Equals(hasting) ||
-		!a.spending.subscriptions.Equals(hasting) {
+		!a.spending.snapshotDownloads.Equals(hasting.Mul64(2)) ||
+		!a.spending.registryReads.Equals(hasting.Mul64(3)) ||
+		!a.spending.registryWrites.Equals(hasting.Mul64(4)) ||
+		!a.spending.repairDownloads.Equals(hasting.Mul64(5)) ||
+		!a.spending.repairUploads.Equals(hasting.Mul64(6)) ||
+		!a.spending.subscriptions.Equals(hasting.Mul64(7)) ||
+		!a.spending.uploads.Equals(hasting.Mul64(8)) {
 		t.Fatal("unexpected")
 	}
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic when attempting to track a spend where refund exceeds the amount")
-		}
+	// check refund sanity check
+	func() {
+		defer func() {
+			if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "refund is larger") {
+				t.Fatalf("expected panic when attempting to track a spend where refund exceeds the amount, instead we recovered %v", r)
+			}
+		}()
+		a.trackSpending(categoryDownload, hasting, hasting.Mul64(2))
 	}()
-	a.trackSpending(categoryNone, hasting, hasting.Mul64(2))
+
+	// check category sanity check
+	func() {
+		defer func() {
+			if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "unitiliased category") {
+				t.Fatalf("expected panic when attempting to track a spend where the category is not initialised, instead we recovered %v", r)
+			}
+		}()
+		a.trackSpending(categoryErr, hasting.Mul64(2), hasting)
+	}()
 }
 
 // testAccountCreation verifies newAccount returns a valid account object
@@ -359,7 +398,7 @@ func testAccountTracking(t *testing.T, rt *renterTester) {
 	// verify committing a withdrawal decrements the pendingWithdrawals and
 	// properly adjusts the account balance depending on whether success is true
 	// or false
-	account.managedCommitWithdrawal(categoryNone, withdrawal, types.ZeroCurrency, false)
+	account.managedCommitWithdrawal(categoryUpload, withdrawal, types.ZeroCurrency, false)
 	if !account.pendingWithdrawals.IsZero() {
 		t.Fatal("Committing a withdrawal did not properly alter the account's state")
 	}
@@ -367,7 +406,7 @@ func testAccountTracking(t *testing.T, rt *renterTester) {
 		t.Fatal("Committing a failed withdrawal wrongfully adjusted the account balance")
 	}
 	account.managedTrackWithdrawal(withdrawal) // redo the withdrawal
-	account.managedCommitWithdrawal(categoryNone, withdrawal, types.ZeroCurrency, true)
+	account.managedCommitWithdrawal(categoryUpload, withdrawal, types.ZeroCurrency, true)
 	if !account.pendingWithdrawals.IsZero() {
 		t.Fatal("Committing a withdrawal did not properly alter the account's state")
 	}
