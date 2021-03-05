@@ -19,7 +19,7 @@ const (
 	logFile string = modules.AccountingDir + ".log"
 
 	// persistFile is the name of the persist file
-	persistFile string = "accounting.json"
+	persistFile string = "accounting"
 )
 
 var (
