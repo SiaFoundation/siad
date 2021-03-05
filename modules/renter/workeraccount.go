@@ -175,7 +175,7 @@ type (
 
 // update will add the the spend of given amount to the appropriate field
 // depending on the given category
-func (s spendingDetails) update(category spendingCategory, amount types.Currency) {
+func (s *spendingDetails) update(category spendingCategory, amount types.Currency) {
 	if category == categoryErr {
 		build.Critical("category is not set, developer error")
 		return

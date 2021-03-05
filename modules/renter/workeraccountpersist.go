@@ -145,6 +145,7 @@ func (a *account) persist() error {
 		HostKey:   a.staticHostKey,
 		SecretKey: a.staticSecretKey,
 
+		// balance details
 		Balance:              a.minExpectedBalance(),
 		BalanceDriftPositive: a.balanceDriftPositive,
 		BalanceDriftNegative: a.balanceDriftNegative,
