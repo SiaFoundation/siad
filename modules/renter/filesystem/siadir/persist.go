@@ -82,15 +82,14 @@ func LoadSiaDir(path string, deps modules.Dependencies) (sd *SiaDir, err error) 
 		deps: deps,
 		path: path,
 	}
-	filename := filepath.Join(path, modules.SiaDirExtension)
-	sd.metadata, err = callLoadSiaDirMetadata(filename, modules.ProdDependencies)
+	sd.metadata, err = callLoadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
 	if errors.Contains(err, errInvalidChecksum) || errors.Contains(err, errCorruptFile) {
 		// If there was an error on load related to the checksum or a corrupt file,
-		// return a newly initialized metadata and delete the corrupt file. This is
-		// OK because siadir persistence is not ACID and all metadata information
-		// can be recalculated.
-		err = os.Remove(filename)
+		// return a newly initialized metadata and try and fix the corruption by
+		// re-saving the metadata. This is OK because siadir persistence is not ACID
+		// and all metadata information can be recalculated.
 		sd.metadata = newMetadata()
+		err = sd.saveDir()
 	}
 	return sd, err
 }
@@ -337,13 +336,15 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode, deps modul
 			dirPath = rootPath
 		}
 		md, err := createDirMetadata(dirPath, mode)
-		if err != nil && !os.IsExist(err) {
+		if err != nil && !errors.Contains(err, os.ErrExist) {
 			return errors.AddContext(err, "unable to create metadata")
 		}
-		// Save metadata
-		err = saveDir(dirPath, md, deps)
-		if err != nil {
-			return errors.AddContext(err, "unable to saveDir")
+		if !errors.Contains(err, os.ErrExist) {
+			// Save metadata if the file doesn't already exist
+			err = saveDir(dirPath, md, deps)
+			if err != nil {
+				return errors.AddContext(err, "unable to saveDir")
+			}
 		}
 		if dirPath == rootPath {
 			break
@@ -399,8 +400,16 @@ func saveDir(path string, md Metadata, deps modules.Dependencies) error {
 		return errors.AddContext(err, "unable to write checksum")
 	}
 
+	// Truncate the file before writing the file to disk to prevent checksums
+	// failing on load
+	checksumLen := int64(len(checksum))
+	err = f.Truncate(checksumLen)
+	if err != nil {
+		return errors.AddContext(err, "unable to truncate file")
+	}
+
 	// Write the metadata to disk
-	_, err = f.WriteAt(data, int64(len(checksum)))
+	_, err = f.WriteAt(data, checksumLen)
 	if err != nil {
 		return errors.AddContext(err, "unable to write data to disk")
 	}

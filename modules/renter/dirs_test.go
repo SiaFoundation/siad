@@ -42,6 +42,9 @@ func TestRenterCreateDirectories(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
+	// Create renterTester
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
@@ -63,29 +66,18 @@ func TestRenterCreateDirectories(t *testing.T) {
 	}
 
 	// Confirm that directory metadata files were created in all directories
-	if err := rt.checkDirInitialized(modules.RootSiaPath()); err != nil {
-		t.Fatal(err)
-	}
-	siaPath, err = modules.NewSiaPath("foo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.checkDirInitialized(siaPath); err != nil {
-		t.Fatal(err)
-	}
-	siaPath, err = modules.NewSiaPath("foo/bar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.checkDirInitialized(siaPath); err != nil {
-		t.Fatal(err)
-	}
-	siaPath, err = modules.NewSiaPath("foo/bar/baz")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.checkDirInitialized(siaPath); err != nil {
-		t.Fatal(err)
+	for {
+		if err := rt.checkDirInitialized(siaPath); err != nil {
+			t.Logf("check for '%v'", siaPath)
+			t.Fatal(err)
+		}
+		if siaPath.IsRoot() {
+			break
+		}
+		siaPath, err = siaPath.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -157,6 +149,9 @@ func TestDirInfo(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
+	// Create renterTester
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +171,7 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Check that DirInfo returns the same information as stored in the metadata
 	fooDirInfo, err := rt.renter.staticFileSystem.DirInfo(siaPath)
 	if err != nil {
@@ -209,6 +205,9 @@ func TestRenterListDirectory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
+	// Create renterTester
 	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
