@@ -1,27 +1,28 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // readRegistryStatsDecayInterval is the interval after which the registry stats
 // are decayed.
 var readRegistryStatsDecayInterval = build.Select(build.Var{
-	Dev:      time.Minute,
-	Standard: time.Minute,
-	Testing:  time.Second * 5,
+	Dev:      time.Second,
+	Standard: time.Second * 5,
+	Testing:  time.Second,
 }).(time.Duration)
 
 // readRegistryStats collects stats about read registry jobs. each bucket has a
 // number of items, this amount decays over time so we focus on recent event
-// timings. We only update a bucket's decay when we visit it to save on
-// performance, so we need to track the cumulative amount of decay so far, such
-// that we can add the appropriate amount of additional decay on the next visit.
+// timings. We decay all buckets every time a new datum is added to any of them
+// and if the time since the last decay is larger than the decay interval.
 type readRegistryStats struct {
-	buckets          []float64
+	staticBuckets    []float64
 	currentPosition  int
 	interval         time.Duration
 	lastDecay        time.Time
@@ -33,13 +34,12 @@ type readRegistryStats struct {
 }
 
 // AddDatum adds a new datapoint to the stats.
-func (rrs *readRegistryStats) AddDatum(duration time.Duration) {
+func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 	rrs.mu.Lock()
 	defer rrs.mu.Unlock()
 
-	// Figure out if we need to decay this time. We need the bucket set to
-	// sample at least 10k events so we don't decay more than one seconds worth
-	// even if more than one second has passed.
+	// Figure out if we need to decay this time by checking the time since the
+	// last decay against the interval.
 	decay := time.Since(rrs.lastDecay) > readRegistryStatsDecayInterval
 	if decay {
 		rrs.lastDecay = time.Now()
@@ -47,8 +47,8 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) {
 
 	// Check if the buckets need to be extended.
 	bi := int(duration / rrs.interval)
-	if bi >= len(rrs.buckets) {
-		rrs.buckets = append(rrs.buckets, make([]float64, bi-len(rrs.buckets)+1)...)
+	if bi >= len(rrs.staticBuckets) {
+		return fmt.Errorf("bucket index out-of-bounds %v >= %v", bi, len(rrs.staticBuckets))
 	}
 
 	// Add the new data to the total and decay it if necessary before doing so.
@@ -62,18 +62,18 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) {
 	smaller := 0.0
 	larger := rrs.total
 	rrs.currentPosition = -1
-	for i := range rrs.buckets {
+	for i := range rrs.staticBuckets {
 		// Decay the bucket if necessary.
 		if decay {
-			rrs.buckets[i] *= rrs.staticDecay
+			rrs.staticBuckets[i] *= rrs.staticDecay
 		}
 		// Add to the bucket if necessary.
 		if i == bi {
-			rrs.buckets[i]++
+			rrs.staticBuckets[i]++
 		}
 		// Increment smaller and decrement larger as we continue.
-		larger -= rrs.buckets[i]
-		smaller += rrs.buckets[i]
+		larger -= rrs.staticBuckets[i]
+		smaller += rrs.staticBuckets[i]
 		// If the condition is met for the current position, set it.
 		if rrs.currentPosition == -1 && smaller/rrs.total >= rrs.staticPercentile {
 			rrs.currentPosition = i
@@ -81,10 +81,12 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) {
 	}
 	// Sanity check position. It should always be set at this point.
 	if rrs.currentPosition == -1 {
-		build.Critical("current position wasn't set")
+		err := errors.New("current position wasn't set")
+		build.Critical(err)
 		rrs.currentPosition = 0
-		return
+		return err
 	}
+	return nil
 }
 
 // Estimate returns the current estimate.
@@ -95,9 +97,10 @@ func (rrs *readRegistryStats) Estimate() time.Duration {
 }
 
 // newReadRegistryStats creates new stats from a given decay and percentile.
-func newReadRegistryStats(interval time.Duration, decay, percentile float64) *readRegistryStats {
+func newReadRegistryStats(maxTime, interval time.Duration, decay, percentile float64) *readRegistryStats {
 	return &readRegistryStats{
 		interval:         interval,
+		staticBuckets:    make([]float64, (maxTime/interval)+1),
 		staticDecay:      decay,
 		staticPercentile: percentile,
 	}

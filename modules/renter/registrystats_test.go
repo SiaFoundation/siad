@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -20,13 +19,16 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	// est:   [1]
 	// count: [1]
 	// The 50th percentile should be 1.
-	bs := newReadRegistryStats(interval, decay, percentile)
-	bs.AddDatum(0)
+	bs := newReadRegistryStats(0, interval, decay, percentile)
+	err := bs.AddDatum(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bs.Estimate() != time.Millisecond {
 		t.Fatal("wrong measurement", bs.Estimate())
 	}
-	if len(bs.buckets) != 1 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	if len(bs.staticBuckets) != 1 {
+		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 	if bs.currentPosition != 0 {
 		t.Fatal("wrong position", bs.currentPosition)
@@ -37,13 +39,16 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	// est:   [1, 2]
 	// count: [0, 1]
 	// The 50th percentile should be 2.
-	bs = newReadRegistryStats(interval, decay, percentile)
-	bs.AddDatum(interval)
+	bs = newReadRegistryStats(interval, interval, decay, percentile)
+	err = bs.AddDatum(interval)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bs.Estimate() != 2*time.Millisecond {
 		t.Fatal("wrong measurement", bs.Estimate())
 	}
-	if len(bs.buckets) != 2 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	if len(bs.staticBuckets) != 2 {
+		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 	if bs.currentPosition != 1 {
 		t.Fatal("wrong position", bs.currentPosition)
@@ -54,13 +59,16 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	// est:   [1, 2, 3]
 	// count: [0, 0, 1]
 	// The 50th percentile should be 3.
-	bs = newReadRegistryStats(interval, decay, percentile)
-	bs.AddDatum(2 * interval)
+	bs = newReadRegistryStats(2*interval, interval, decay, percentile)
+	err = bs.AddDatum(2 * interval)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bs.Estimate() != 3*interval {
 		t.Fatal("wrong measurement", bs.Estimate())
 	}
-	if len(bs.buckets) != 3 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	if len(bs.staticBuckets) != 3 {
+		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 	if bs.currentPosition != 2 {
 		t.Fatal("wrong position", bs.currentPosition)
@@ -71,15 +79,18 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	// est:   [1, 2, ..., 100]
 	// count: [1, 1, ...,   1]
 	// The 50th percentile should be 50ms.
-	bs = newReadRegistryStats(interval, decay, percentile)
+	bs = newReadRegistryStats(99*time.Millisecond, interval, decay, percentile)
 	for i := 0; i <= 99; i++ {
-		bs.AddDatum(time.Duration(i) * time.Millisecond)
+		err = bs.AddDatum(time.Duration(i) * time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if bs.Estimate() != 50*time.Millisecond {
 		t.Fatal("wrong measurement", bs.Estimate())
 	}
-	if len(bs.buckets) != 100 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	if len(bs.staticBuckets) != 100 {
+		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 	if bs.currentPosition != 49 {
 		t.Fatal("wrong position", bs.currentPosition)
@@ -92,18 +103,20 @@ func TestReadRegistryStatsNoDecay(t *testing.T) {
 	// The total is 45 and 50% of that is 22.5. So the smallest number where 50%
 	// of values are smaller than us is at index 3 where the smaller items sum
 	// up to 35. Index 2 means we are in the 3-4ms bucket. So the result is 4ms.
-	bs = newReadRegistryStats(interval, decay, percentile)
+	bs = newReadRegistryStats(9*time.Millisecond, interval, decay, percentile)
 	for i := 0; i < 10; i++ {
 		for j := 0; j < 10-i; j++ {
-			fmt.Println("adding", time.Duration(i)*time.Millisecond)
-			bs.AddDatum(time.Duration(i) * time.Millisecond)
+			err = bs.AddDatum(time.Duration(i) * time.Millisecond)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	if bs.Estimate() != 4*time.Millisecond {
 		t.Fatal("wrong measurement", bs.Estimate())
 	}
-	if len(bs.buckets) != 10 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	if len(bs.staticBuckets) != 10 {
+		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 	if bs.currentPosition != 3 {
 		t.Fatal("wrong position", bs.currentPosition)
@@ -117,16 +130,19 @@ func TestReadRegistryStatsDecay(t *testing.T) {
 	interval := time.Millisecond
 
 	// Add 10 datapoints to 10 buckets.
-	bs := newReadRegistryStats(interval, decay, percentile)
+	bs := newReadRegistryStats(10*time.Millisecond, interval, decay, percentile)
 	for i := 0; i < 10; i++ {
 		for j := 0; j < 10; j++ {
-			bs.AddDatum(time.Millisecond * time.Duration(i))
+			err := bs.AddDatum(time.Millisecond * time.Duration(i))
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
-	// Expect 10 buckets.
-	if len(bs.buckets) != 10 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	// Expect 11 buckets.
+	if len(bs.staticBuckets) != 11 {
+		t.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 
 	// Expect a total of 100.
@@ -138,11 +154,9 @@ func TestReadRegistryStatsDecay(t *testing.T) {
 	time.Sleep(readRegistryStatsDecayInterval)
 
 	// Add one more datapoint to bucket 11.
-	bs.AddDatum(time.Millisecond * time.Duration(10))
-
-	// Expect 11 buckets.
-	if len(bs.buckets) != 11 {
-		t.Fatal("wrong number of buckets", len(bs.buckets))
+	err := bs.AddDatum(time.Millisecond * time.Duration(10))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Total should be 100*0.5 + 1 == 51
@@ -164,20 +178,20 @@ func BenchmarkAddDatum(b *testing.B) {
 	// Add n datapoints to 5000 buckets.
 	maxTime := 5 * time.Minute        // 5 minutes
 	interval := 10 * time.Millisecond // 300,000 buckets
-	bs := newReadRegistryStats(interval, 0.95, 0.999)
+	bs := newReadRegistryStats(maxTime, interval, 0.95, 0.999)
 
 	// Add one entry in the last bucket to allocate the slice.
-	bs.AddDatum(5*time.Minute - time.Millisecond) // off-by-one
+	bs.AddDatum(maxTime - interval) // off-by-one
 
 	// Sanity check buckets.
-	if time.Duration(len(bs.buckets)) != (maxTime / interval) {
-		b.Fatal("wrong number of buckets", len(bs.buckets))
+	if time.Duration(len(bs.staticBuckets)) != (maxTime/interval)+1 {
+		b.Fatal("wrong number of buckets", len(bs.staticBuckets))
 	}
 
 	// Pregenerate n datapoints to add.
 	datapoints := make([]time.Duration, b.N)
 	for i := range datapoints {
-		datapoints[i] = time.Duration(fastrand.Intn(len(bs.buckets))) * interval
+		datapoints[i] = time.Duration(fastrand.Intn(len(bs.staticBuckets))) * interval
 	}
 
 	// Reset the timer.
@@ -185,7 +199,10 @@ func BenchmarkAddDatum(b *testing.B) {
 
 	// Run AddDatum.
 	for _, dp := range datapoints {
-		bs.AddDatum(dp)
+		err := bs.AddDatum(dp)
+		if err != nil {
+			b.Fatal(err)
+		}
 		_ = bs.Estimate()
 	}
 }
