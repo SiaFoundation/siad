@@ -296,7 +296,8 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		return errors.AddContext(err, fmt.Sprintf("invalid filename provided '%v'", metadata.Filename))
 	}
 
-	// check filename of every subfile
+	// check filename of every subfile and ensure the length equals the sum of
+	// all individual lengths.
 	if metadata.Subfiles != nil {
 		var totalLength uint64
 		for filename, md := range metadata.Subfiles {
@@ -314,18 +315,6 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 		if metadata.Length != totalLength {
 			return errors.New("invalid length set on metadata")
-		}
-	}
-
-	// allow length to be zero only if there are no subfiles, or if all subfiles
-	// are also of zero length
-	if metadata.Length == 0 {
-		if metadata.Subfiles != nil {
-			for _, md := range metadata.Subfiles {
-				if md.Len != 0 {
-					return errors.New("invalid length set on metadata")
-				}
-			}
 		}
 	}
 
