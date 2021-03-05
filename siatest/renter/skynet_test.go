@@ -4144,14 +4144,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create monetization.
-	monetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.SiacoinPrecision,
-			Currency: modules.CurrencyUSD,
+	monetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.SiacoinPrecision,
+				Currency: modules.CurrencyUSD,
+			},
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(monetization.Monetizers[0].Address[:])
 
 	// Test regular small file.
 	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
@@ -4211,9 +4214,9 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	nestedFileMonetization := monetization
-	nestedFileMonetization = append([]modules.Monetizer{}, nestedFileMonetization...)
-	for i := range nestedFileMonetization {
-		nestedFileMonetization[i].Amount = nestedFileMonetization[i].Amount.Div64(2)
+	nestedFileMonetization.Monetizers = append([]modules.Monetizer{}, nestedFileMonetization.Monetizers...)
+	for i := range nestedFileMonetization.Monetizers {
+		nestedFileMonetization.Monetizers[i].Amount = nestedFileMonetization.Monetizers[i].Amount.Div64(2)
 	}
 	if !reflect.DeepEqual(md.Monetization, nestedFileMonetization) {
 		t.Log("got", md.Monetization)
@@ -4246,14 +4249,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create zero amount monetization.
-	zeroMonetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.ZeroCurrency,
-			Currency: modules.CurrencyUSD,
+	zeroMonetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.ZeroCurrency,
+				Currency: modules.CurrencyUSD,
+			},
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(zeroMonetization.Monetizers[0].Address[:])
 
 	// Test zero amount monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
@@ -4268,14 +4274,17 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create zero amount monetization.
-	unknownMonetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-			Currency: "",
+	unknownMonetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+				Currency: "",
+			},
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(unknownMonetization.Monetizers[0].Address[:])
 
 	// Test unknown currency monetization.
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownMonetizer", fastrand.Bytes(1), false, unknownMonetization)
@@ -4286,6 +4295,25 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	files = []siatest.TestFile{nestedFile1}
 	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, unknownMonetization)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidCurrency.Error()) {
+		t.Fatal("should fail", err)
+	}
+
+	// Unknown license.
+	unknownLicense := &modules.Monetization{
+		License: "",
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+				Currency: modules.CurrencyUSD,
+			},
+		},
+	}
+	fastrand.Read(monetization.Monetizers[0].Address[:])
+
+	// Test unknown license.
+	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownLicense", fastrand.Bytes(1), false, unknownLicense)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrUnknownLicense.Error()) {
 		t.Fatal("should fail", err)
 	}
 }

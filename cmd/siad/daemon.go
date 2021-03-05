@@ -67,6 +67,33 @@ func processNetAddr(addr string) string {
 // invalid module character.
 func processModules(modules string) (string, error) {
 	modules = strings.ToLower(modules)
+	// Check for module names
+	switch modules {
+	case "gateway":
+		return "g", nil
+	case "consensus":
+		return "gc", nil
+	case "tpool":
+		return "gct", nil
+	case "wallet":
+		// Add Accounting and FeeManager modules to all nodes that have at least
+		// a wallet
+		return "gctwaf", nil
+	case "renter":
+		return "gctwafr", nil
+	case "host":
+		return "gctwafh", nil
+	case "miner":
+		return "gctwafm", nil
+	case "feemanager":
+		return "gctwaf", nil
+	case "accounting":
+		return "gctwaf", nil
+	case "explorer":
+		return "gce", nil
+	}
+
+	// Check module letters provided
 	validModules := "acghmrtwef"
 	invalidModules := modules
 	for _, m := range validModules {

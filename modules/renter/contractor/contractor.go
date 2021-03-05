@@ -29,9 +29,8 @@ var (
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
 
-	errHostNotFound         = errors.New("host not found")
-	errContractNotFound     = errors.New("contract not found")
-	errRefundAccountInvalid = errors.New("invalid refund account")
+	errHostNotFound     = errors.New("host not found")
+	errContractNotFound = errors.New("contract not found")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -110,6 +109,22 @@ type Contractor struct {
 	staticWatchdog     *watchdog
 }
 
+// PaymentDetails is a helper struct that contains extra information on a
+// payment. Most notably it includes a breakdown of the spending details for a
+// payment, the contractor uses this information to update its spending details
+// accordingly.
+type PaymentDetails struct {
+	// destination details
+	Host types.SiaPublicKey
+
+	// payment details
+	Amount        types.Currency
+	RefundAccount modules.AccountID
+
+	// spending details
+	SpendingDetails modules.SpendingDetails
+}
+
 // Allowance returns the current allowance.
 func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
@@ -162,6 +177,8 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 		spending.ContractSpendingDeprecated = spending.TotalAllocated
 		// Calculate Spending
 		spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
+		spending.FundAccountSpending = spending.FundAccountSpending.Add(contract.FundAccountSpending)
+		spending.MaintenanceSpending = spending.MaintenanceSpending.Add(contract.MaintenanceSpending)
 		spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 		spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
 	}
@@ -184,6 +201,8 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 			spending.TotalAllocated = spending.TotalAllocated.Add(contract.TotalCost)
 			// Calculate Spending
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
+			spending.FundAccountSpending = spending.FundAccountSpending.Add(contract.FundAccountSpending)
+			spending.MaintenanceSpending = spending.MaintenanceSpending.Add(contract.MaintenanceSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
 		} else if err != nil && exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
@@ -195,11 +214,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 			}
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.ContractFee).Add(contract.TxnFee).
-				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
+				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		} else {
 			// Calculate Previous spending
 			spending.PreviousSpending = spending.PreviousSpending.Add(contract.ContractFee).Add(contract.TxnFee).
-				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending)
+				Add(contract.SiafundFee).Add(contract.DownloadSpending).Add(contract.UploadSpending).Add(contract.StorageSpending).Add(contract.FundAccountSpending).Add(contract.MaintenanceSpending.Sum())
 		}
 	}
 
@@ -208,6 +227,8 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	allSpending = allSpending.Add(spending.DownloadSpending)
 	allSpending = allSpending.Add(spending.UploadSpending)
 	allSpending = allSpending.Add(spending.StorageSpending)
+	allSpending = allSpending.Add(spending.FundAccountSpending)
+	allSpending = allSpending.Add(spending.MaintenanceSpending.Sum())
 	if c.allowance.Funds.Cmp(allSpending) >= 0 {
 		spending.Unspent = c.allowance.Funds.Sub(allSpending)
 	}
@@ -230,17 +251,15 @@ func (c *Contractor) UpdateWorkerPool(wp modules.WorkerPool) {
 	c.workerPool = wp
 }
 
-// ProvidePayment fulfills the PaymentProvider interface. It uses the given
-// stream and necessary payment details to perform payment for an RPC call.
-//
-// Note that this implementation performs a `Read` on the stream object.
-// Therefor you should not be passing in a buffer here to optimise writes. This
-// function however does optimise its writes as much as possible.
-func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
-	// verify we do not specify a refund account on the fund account RPC
-	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
-		return errRefundAccountInvalid
-	}
+// ProvidePayment takes a stream and a set of payment details and handles
+// the payment for an RPC by sending and processing payment request and
+// response objects to the host. It returns an error in case of failure.
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) error {
+	// convenience variables
+	host := details.Host
+	refundAccount := details.RefundAccount
+	amount := details.Amount
+	bh := pt.HostBlockHeight
 
 	// find a contract for the given host
 	contract, exists := c.ContractByPublicKey(host)
@@ -264,11 +283,11 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 
 	// create transaction containing the revision
 	signedTxn := rev.ToTransaction()
-	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	sig := sc.Sign(signedTxn.SigHash(0, bh))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
 	// record the payment intent
-	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, details.SpendingDetails)
 	if err != nil {
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
@@ -320,7 +339,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 
 	// commit payment intent
 	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
-		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, details.SpendingDetails)
 		if err != nil {
 			return errors.AddContext(err, "Failed to commit unknown spending intent")
 		}

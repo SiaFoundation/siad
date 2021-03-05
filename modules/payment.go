@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -58,14 +59,6 @@ type PaymentProcessor interface {
 	// sent by the caller. Returns an object that implements the PaymentDetails
 	// interface, or an error in case of failure.
 	ProcessPayment(stream siamux.Stream, bh types.BlockHeight) (PaymentDetails, error)
-}
-
-// PaymentProvider is the interface implemented to provide payment for an RPC.
-type PaymentProvider interface {
-	// ProvidePayment takes a stream and various payment details and handles the
-	// payment by sending and processing payment request and response objects.
-	// Returns an error in case of failure.
-	ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
 }
 
 // PaymentDetails is an interface that defines method that give more information
@@ -251,4 +244,27 @@ func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Sign
 		return errors.Compose(err, ErrWithdrawalInvalidSignature)
 	}
 	return nil
+}
+
+// NewPayByEphemeralAccountRequest uses the given parameters to create a
+// PayByEphemeralAccountRequest
+func NewPayByEphemeralAccountRequest(account AccountID, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) PayByEphemeralAccountRequest {
+	// generate a nonce
+	var nonce [WithdrawalNonceSize]byte
+	fastrand.Read(nonce[:])
+
+	// create a new WithdrawalMessage
+	wm := WithdrawalMessage{
+		Account: account,
+		Expiry:  expiry,
+		Amount:  amount,
+		Nonce:   nonce,
+	}
+
+	// sign it
+	sig := crypto.SignHash(crypto.HashObject(wm), sk)
+	return PayByEphemeralAccountRequest{
+		Message:   wm,
+		Signature: sig,
+	}
 }

@@ -18,7 +18,7 @@ var (
 	httpServerTimeout = build.Select(build.Var{
 		Standard: 24 * time.Hour,
 		Dev:      1 * time.Hour,
-		Testing:  1 * time.Minute,
+		Testing:  5 * time.Minute,
 	}).(time.Duration)
 )
 

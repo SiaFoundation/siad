@@ -329,12 +329,15 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 }
 
 // ValidateMonetization is a helper function to validate a list of monetizers.
-func ValidateMonetization(monetization []Monetizer) error {
-	for _, amt := range monetization {
-		if amt.Amount.IsZero() {
+func ValidateMonetization(m Monetization) error {
+	if m.License != LicenseMonetization {
+		return ErrUnknownLicense
+	}
+	for _, m := range m.Monetizers {
+		if m.Amount.IsZero() {
 			return ErrZeroMonetizer
 		}
-		if amt.Currency != CurrencyUSD {
+		if m.Currency != CurrencyUSD {
 			return ErrInvalidCurrency
 		}
 	}

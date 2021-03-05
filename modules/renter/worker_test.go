@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // workerTester is a helper type which contains a renter, host and worker that
@@ -252,6 +253,95 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
+		t.Fatal("unexpected")
+	}
+}
+
+// TestWorkerSpending is a unit test that verifies several actions and whether
+// or not those actions 's spending is properly reflected in the contract
+// header.
+func TestWorkerSpending(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a worker that's not running its worker loop.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorker{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		// Ignore threadgroup stopped error since we are manually closing the
+		// threadgroup of the worker.
+		if err := wt.Close(); err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// getRenterContract is a helper function that fetches the contract
+	getRenterContract := func() modules.RenterContract {
+		host := w.staticHostPubKey
+		rc, found := w.renter.hostContractor.ContractByPublicKey(host)
+		if !found {
+			t.Fatal("unexpected")
+		}
+		return rc
+	}
+	rc := getRenterContract()
+
+	// Assert the initial spending metrics are all zero
+	if !rc.FundAccountSpending.IsZero() || !rc.MaintenanceSpending.Sum().IsZero() || !rc.UploadSpending.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// Get a price table and verify whether the spending cost is reflected in
+	// the spending metrics.
+	wt.staticUpdatePriceTable()
+	rc = getRenterContract()
+	pt := wt.staticPriceTable().staticPriceTable
+	if !rc.MaintenanceSpending.UpdatePriceTableCost.Equals(pt.UpdatePriceTableCost) {
+		t.Fatal("unexpected")
+	}
+
+	// Manually refill the account and verify whether the spending costs are
+	// reflected in the spending metrics.
+	w.managedRefillAccount()
+	rc = getRenterContract()
+	if !rc.MaintenanceSpending.FundAccountCost.Equals(pt.FundAccountCost) || rc.FundAccountSpending.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// Manually sync the account balance and verify whether the spending costs
+	// are reflected in the spending metrics.
+	w.externSyncAccountBalanceToHost()
+	rc = getRenterContract()
+	if !rc.MaintenanceSpending.FundAccountCost.Equals(pt.AccountBalanceCost) {
+		t.Fatal("unexpected")
+	}
+
+	// Verify the sum is equal to the cost of the 3 RPCs we've just performed.
+	if !rc.MaintenanceSpending.Sum().Equals(pt.AccountBalanceCost.Add(pt.UpdatePriceTableCost).Add(pt.FundAccountCost)) {
+		t.Fatal("unexpected")
+	}
+
+	// Upload a snapshot and verify whether the spending metrics reflect the
+	// upload.
+	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
+	jus := &jobUploadSnapshot{
+		staticSiaFileData:  fastrand.Bytes(100),
+		staticResponseChan: uploadSnapshotRespChan,
+		jobGeneric:         newJobGeneric(context.Background(), w.staticJobUploadSnapshotQueue, modules.UploadedBackup{UID: [16]byte{3, 2, 1}}),
+	}
+	w.externLaunchSerialJob(jus.callExecute)
+	select {
+	case <-uploadSnapshotRespChan:
+	case <-time.After(time.Minute):
+		t.Fatal("unexpected timeout")
+	}
+	rc = getRenterContract()
+	if rc.UploadSpending.IsZero() {
 		t.Fatal("unexpected")
 	}
 }
