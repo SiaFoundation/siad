@@ -478,6 +478,8 @@ func (d *download) Start() error {
 			staticChunkSize:  params.file.ChunkSize(),
 			staticPieceSize:  params.file.PieceSize(),
 
+			staticSpendingCategory: categoryDownload,
+
 			// TODO: 25ms is just a guess for a good default. Really, we want to
 			// set the latency target such that slower workers will pick up the
 			// later chunks, but only if there's a very strong chance that

@@ -133,7 +133,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	// unregistered with the chunk.
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := w.ReadSectorLowPrio(w.renter.tg.StopCtx(), root, fetchOffset, fetchLength)
+	pieceData, err := w.ReadSectorLowPrio(w.renter.tg.StopCtx(), udc.staticSpendingCategory, root, fetchOffset, fetchLength)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		udc.managedUnregisterWorker(w)

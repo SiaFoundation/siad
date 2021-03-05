@@ -436,7 +436,7 @@ func (a *account) trackSpending(category spendingCategory, amount, refund types.
 
 	// sanity check the category was set
 	if category == categoryErr {
-		build.Critical("tracked a spend using an unitiliased category, this is prevented as we want to track all money that is being spent without exception")
+		build.Critical("tracked a spend using an uninitialized category, this is prevented as we want to track all money that is being spent without exception")
 		return
 	}
 

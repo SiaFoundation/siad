@@ -503,7 +503,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
+				data, err := w.ReadSector(r.tg.StopCtx(), categorySnapshotDownload, root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}
