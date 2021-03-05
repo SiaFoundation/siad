@@ -136,6 +136,7 @@ func testNewMetadata(t *testing.T) {
 		Mode:          modules.DefaultDirPerm,
 		RemoteHealth:  DefaultDirHealth,
 		StuckHealth:   DefaultDirHealth,
+		Version:       metadataVersion,
 	}
 	mdNew := newMetadata()
 

@@ -30,6 +30,9 @@ const (
 	// fall back value when there is an error. This is to protect against
 	// falsely trying to repair directories that had a read error
 	DefaultDirRedundancy = float64(-1)
+
+	// metadataVersion is the version of the metadata
+	metadataVersion = "1.0"
 )
 
 var (
@@ -106,7 +109,7 @@ func (sd *SiaDir) Delete() error {
 		return nil
 	}
 
-	// Create and apply the delete update
+	// Delete the siadir
 	err := os.RemoveAll(sd.path)
 	if err != nil {
 		return errors.AddContext(err, "unable to delete siadir")
@@ -296,7 +299,7 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 	// gets persisted then.
 	if md.Version == "" && md.Mode == 0 {
 		md.Mode = modules.DefaultDirPerm
-		md.Version = "1.0"
+		md.Version = metadataVersion
 	}
 	return
 }
@@ -372,6 +375,7 @@ func newMetadata() Metadata {
 		ModTime:       now,
 		RemoteHealth:  DefaultDirHealth,
 		StuckHealth:   DefaultDirHealth,
+		Version:       metadataVersion,
 	}
 }
 
