@@ -296,9 +296,12 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		return errors.AddContext(err, fmt.Sprintf("invalid filename provided '%v'", metadata.Filename))
 	}
 
-	// check filename of every subfile
+	// check filename of every subfile and ensure the length equals the sum of
+	// all individual lengths.
 	if metadata.Subfiles != nil {
+		var totalLength uint64
 		for filename, md := range metadata.Subfiles {
+			totalLength += md.Len
 			if filename != md.Filename {
 				return errors.New("subfile name did not match metadata filename")
 			}
@@ -310,11 +313,9 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
 		}
-	}
-
-	// check length
-	if metadata.Length == 0 {
-		return errors.New("'Length' property not set on metadata")
+		if metadata.Length != totalLength {
+			return errors.New("invalid length set on metadata")
+		}
 	}
 
 	// validate default path (only if default path was not explicitly disabled)
@@ -366,10 +367,12 @@ func fileContentType(filename string, file io.Reader) (string, error) {
 	if contentType != "" {
 		return contentType, nil
 	}
-	// Only the first 512 bytes are used to sniff the content type.
+	// Only the first 512 bytes are used to sniff the content type. Ignore EOF
+	// so we properly fall back to the fallback defined in the http library for
+	// empty file uploads.
 	buffer := make([]byte, 512)
 	_, err := file.Read(buffer)
-	if err != nil {
+	if err != nil && !errors.Contains(err, io.EOF) {
 		return "", err
 	}
 	// Always returns a valid content-type by returning

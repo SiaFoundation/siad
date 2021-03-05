@@ -372,6 +372,34 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Upload another skyfile, this time make it an empty file
+	var noData []byte
+	emptySiaPath, err := modules.NewSiaPath("testEmptyPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptySkylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             emptySiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Filename:            "testEmpty",
+		Reader:              bytes.NewReader(noData),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, metadata, err = r.SkynetSkylinkGet(emptySkylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if metadata.Length != 0 {
+		t.Fatal("Unexpected metadata")
+	}
+
 	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
 	largeData := fastrand.Bytes(int(modules.SectorSize*2) + siatest.Fuzz())
@@ -684,6 +712,24 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(fileName, nil, "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
+	}
+
+	// TEST EMPTY FILE
+	fileName = "TestEmptyFileUpload"
+	emptyFile := siatest.TestFile{Name: "file", Data: []byte{}}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, []siatest.TestFile{emptyFile}, "", false, false)
+	if err != nil {
+		t.Fatal("Expected upload of empty file to succeed")
+	}
+	data, md, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal("Expected download of empty file to succeed")
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if md.Length != 0 {
+		t.Fatal("Unexpected metadata")
 	}
 
 	// TEST SMALL SUBFILE
