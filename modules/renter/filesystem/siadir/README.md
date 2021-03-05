@@ -22,24 +22,14 @@ The following subsystems help the SiaDir module execute its responsibilities:
  ### Persistence Subsystem
  **Key Files**
 - [persist.go](./persist.go)
-- [persistwal.go](./persistwal.go)
 
 The Persistence subsystem is responsible for the disk interaction with the
-`.siadir` files and ensuring safe and performant ACID operations by using the
-[writeaheadlog](https://gitlab.com/NebulousLabs/writeaheadlog) package. There
-are two WAL updates that are used, deletion and metadata updates.
-
-The WAL deletion update removes all the contents of the directory including the
-directory itself.
-
-The WAL metadata update re-writes the entire metadata, which is stored as JSON.
-This is used whenever the metadata changes and needs to be saved as well as when
-a new siadir is created.
+`.siadir` files. All the information stored in the `.siadir` file is metadata
+that can be recalculated on the fly. Because of this, the persistence is not
+ACID. The persistence relies on a checksum at the beginning of the file to know
+whether or not the file is corrupt.
 
 **Exports**
- - `ApplyUpdates`
- - `CreateAndApplyTransaction`
- - `IsSiaDirUpdate`
  - `New`
  - `LoadSiaDir`
  - `UpdateMetadata`

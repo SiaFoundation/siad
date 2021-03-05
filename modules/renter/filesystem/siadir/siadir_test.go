@@ -104,11 +104,10 @@ func TestNewSiaDir(t *testing.T) {
 	}
 
 	// Create New SiaDir that is two levels deep
-	wal, _ := newTestWAL()
 	topDir := filepath.Join(testDir, "TestDir")
 	subDir := "SubDir"
 	path := filepath.Join(topDir, subDir)
-	siaDir, err := New(path, testDir, persist.DefaultDiskPermissionsTest, wal)
+	siaDir, err := New(path, testDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +141,7 @@ func TestNewSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Get SiaDir
-	topSiaDir, err := LoadSiaDir(topDir, modules.ProdDependencies, wal)
+	topSiaDir, err := LoadSiaDir(topDir, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +154,7 @@ func TestNewSiaDir(t *testing.T) {
 	// Check Root Directory
 	//
 	// Get SiaDir
-	rootSiaDir, err := LoadSiaDir(testDir, modules.ProdDependencies, wal)
+	rootSiaDir, err := LoadSiaDir(testDir, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +192,7 @@ func TestUpdateMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaDirSysPath := siaPath.SiaDirSysPath(rootDir)
-	wal, _ := newTestWAL()
-	siaDir, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm, wal)
+	siaDir, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +202,7 @@ func TestUpdateMetadata(t *testing.T) {
 	if err = checkMetadataInit(md); err != nil {
 		t.Fatal(err)
 	}
-	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies, wal)
+	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +225,7 @@ func TestUpdateMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies, wal)
+	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,8 +271,7 @@ func TestSiaDirDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaDirSysPath := siaPath.SiaDirSysPath(rootDir)
-	wal, _ := newTestWAL()
-	siaDir, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm, wal)
+	siaDir, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
