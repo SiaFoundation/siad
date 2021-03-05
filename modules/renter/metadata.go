@@ -30,45 +30,10 @@ type bubbledSiaFileMetadata struct {
 	bm siafile.BubbledMetadata
 }
 
-// BubbleMetadata will queue a bubble update for the directory. A bubble update
-// includes calculating the updated values of a directory's metadata, updating
-// the siadir metadata on disk, and then queuing a bubble update for the parent
-// directory. This process will continue until the root directory is reached.
-//
-// This method is only blocking for the queuing of the bubble, or the
-// preparation of the subtree if recursive is true.
-//
-// If the recursive boolean is supplied, all sub directories will be queued.
-//
-// If the force boolean is supplied, the LastHealthCheckTime of the directories
-// will be ignored so all directories will be considered.
-func (r *Renter) BubbleMetadata(siaPath modules.SiaPath, force, recursive bool) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-
-	// If this is not a recursive call then call bubble
-	if !recursive {
-		// Queue a bubble to bubble the directory, ignore the return channel as we
-		// do not want to block on this update.
-		_ = r.staticBubbleScheduler.callQueueBubble(siaPath)
-		return nil
-	}
-
-	// Prepare the subtree for bubble
-	urp, err := r.managedPrepareForBubble(siaPath, force)
-	if err != nil {
-		return errors.AddContext(err, "unable to prepare subtree for bubble")
-	}
-	// Call bubble in a non blocking manner
-	return urp.callRefreshAll()
-}
-
-// managedCalculateDirectoryMetadata calculates the new values for the
+// callCalculateDirectoryMetadata calculates the new values for the
 // directory's metadata and tracks the value, either worst or best, for each to
 // be bubbled up
-func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
+func (r *Renter) callCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
 	// Set default metadata values to start
 	now := time.Now()
 	metadata := siadir.Metadata{
@@ -580,94 +545,4 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	}
 	err = entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
 	return errors.Compose(err, entry.Close())
-}
-
-// managedPerformBubbleMetadata will bubble the metadata without checking the
-// bubble preparation.
-func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err error) {
-	// Since this is an expensive method and includes disk writes, we want to make
-	// sure that regardless of how this method is called we are protecting against
-	// a shutdown that could leave disk writes in abandoned threads.
-	//
-	// TODO: This should only ever be called from the bubble thread which has
-	// a thread group add already so this can probably be removed.
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-
-	// Make sure we call callThreadedBubbleMetadata on the parent once we are
-	// done.
-	defer func() {
-		// Complete bubble
-		r.staticBubbleScheduler.callCompleteBubbleUpdate(siaPath)
-
-		// Continue with parent dir if we aren't in the root dir already.
-		if siaPath.IsRoot() {
-			return
-		}
-		parentDir, dirErr := siaPath.Dir()
-		if dirErr != nil {
-			dirErr = errors.AddContext(dirErr, "failed to get parent dir")
-			err = errors.Compose(err, dirErr)
-			return
-		}
-		// Queue a bubble to bubble the directory, ignore the return channel as we
-		// do not want to block on this update.
-		_ = r.staticBubbleScheduler.callQueueBubble(parentDir)
-		return
-	}()
-
-	// Update the File metadatas in the directory.
-	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
-	err = r.managedUpdateFileMetadatasParams(siaPath, offlineMap, goodForRenewMap, contracts, used)
-	if err != nil {
-		e := fmt.Sprintf("unable to update the file metadatas for directory '%v'", siaPath.String())
-		return errors.AddContext(err, e)
-	}
-
-	// Calculate the new metadata values of the directory
-	metadata, err := r.managedCalculateDirectoryMetadata(siaPath)
-	if err != nil {
-		e := fmt.Sprintf("could not calculate the metadata of directory '%v'", siaPath.String())
-		return errors.AddContext(err, e)
-	}
-
-	// Update directory metadata with the health information. Don't return here
-	// to avoid skipping the repairNeeded and stuckChunkFound signals.
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil {
-		e := fmt.Sprintf("could not open directory %v", siaPath.String())
-		err = errors.AddContext(err, e)
-	} else {
-		defer func() {
-			err = errors.Compose(err, siaDir.Close())
-		}()
-		err = siaDir.UpdateBubbledMetadata(metadata)
-		if err != nil {
-			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
-			err = errors.AddContext(err, e)
-		}
-	}
-
-	// If we are at the root directory then check if any files were found in
-	// need of repair or and stuck chunks and trigger the appropriate repair
-	// loop. This is only done at the root directory as the repair and stuck
-	// loops start at the root directory so there is no point triggering them
-	// until the root directory is updated
-	if siaPath.IsRoot() {
-		if modules.NeedsRepair(metadata.AggregateHealth) {
-			select {
-			case r.uploadHeap.repairNeeded <- struct{}{}:
-			default:
-			}
-		}
-		if metadata.AggregateNumStuckChunks > 0 {
-			select {
-			case r.uploadHeap.stuckChunkFound <- struct{}{}:
-			default:
-			}
-		}
-	}
-	return err
 }

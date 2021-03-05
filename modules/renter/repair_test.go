@@ -23,7 +23,7 @@ import (
 // updateFileMetadatas updates the metadata of all siafiles within a dir.
 func (rt *renterTester) updateFileMetadatas(dirSiaPath modules.SiaPath) error {
 	// Get cached offline and goodforrenew maps.
-	offlineMap, goodForRenewMap, contracts, used := rt.renter.managedRenterContractsAndUtilities()
+	offlineMap, goodForRenewMap, contracts, used := rt.renter.callRenterContractsAndUtilities()
 	return rt.renter.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
 }
 
@@ -418,7 +418,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
 	rt.renter.managedUpdateRenterContractsAndUtilities()
-	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
+	offline, goodForRenew, _, _ := rt.renter.callRenterContractsAndUtilities()
 	fileHealth, _, _, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
@@ -1443,7 +1443,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 
 	// Grab initial metadata values
 	rt.renter.managedUpdateRenterContractsAndUtilities()
-	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
+	offline, goodForRenew, _, _ := rt.renter.callRenterContractsAndUtilities()
 	health, stuckHealth, _, _, numStuckChunks, repairBytes, stuckBytes := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
@@ -1719,7 +1719,7 @@ func TestPrepareForBubble(t *testing.T) {
 	}
 
 	// call prepare for bubble
-	urp, err := rt.renter.managedPrepareForBubble(emptyDir, false)
+	urp, err := rt.renter.callPrepareForBubble(emptyDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1787,7 +1787,7 @@ func TestPrepareForBubble(t *testing.T) {
 	resetTimes()
 
 	// call prepare for bubble on root
-	urp, err = rt.renter.managedPrepareForBubble(modules.RootSiaPath(), false)
+	urp, err = rt.renter.callPrepareForBubble(modules.RootSiaPath(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1819,7 +1819,7 @@ func TestPrepareForBubble(t *testing.T) {
 	resetTimes()
 
 	// call prepare for bubble on root
-	urp, err = rt.renter.managedPrepareForBubble(modules.RootSiaPath(), true)
+	urp, err = rt.renter.callPrepareForBubble(modules.RootSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
