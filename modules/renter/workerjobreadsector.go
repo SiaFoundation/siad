@@ -68,11 +68,10 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 			staticResponseChan: respChan,
 			staticLength:       length,
 
-			staticSpendingCategory: category,
-
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadMetadata{
-				staticSectorRoot: root,
-				staticWorker:     w,
+				staticSectorRoot:       root,
+				staticSpendingCategory: category,
+				staticWorker:           w,
 			}),
 		},
 		staticOffset: offset,

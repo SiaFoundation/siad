@@ -94,8 +94,6 @@ func TestJobReadMetadata(t *testing.T) {
 			staticResponseChan: responseChan,
 			staticLength:       modules.SectorSize,
 
-			staticSpendingCategory: categoryDownload,
-
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
@@ -103,8 +101,9 @@ func TestJobReadMetadata(t *testing.T) {
 					// set metadata, set it to something different than the
 					// sector root to ensure the response contains the sector
 					// given in the metadata
-					staticSectorRoot: crypto.Hash{1, 2, 3},
-					staticWorker:     w,
+					staticSectorRoot:       crypto.Hash{1, 2, 3},
+					staticSpendingCategory: categoryDownload,
+					staticWorker:           w,
 				},
 			},
 		},

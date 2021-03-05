@@ -220,11 +220,13 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticLength:       modules.SectorSize,
 			staticResponseChan: rc,
 
-			staticSpendingCategory: categoryDownload,
-
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
+				staticMetadata: jobReadMetadata{
+					staticSpendingCategory: categoryDownload,
+					staticWorker:           w,
+				},
 			},
 		},
 		staticOffset: 0,

@@ -28,12 +28,6 @@ type (
 		staticLength       uint64
 		staticResponseChan chan *jobReadResponse
 
-		// the category specifies what type of function the read job fulfils,
-		// this is necessary to pass along as the generic MDM executor needs to
-		// be update spending details and read jobs can be used for downloads
-		// but might also be used for snapshots for example
-		staticSpendingCategory spendingCategory
-
 		*jobGeneric
 	}
 
@@ -69,7 +63,14 @@ type (
 		staticSectorRoot          crypto.Hash
 		staticPieceRootIndex      uint64
 		staticLaunchedWorkerIndex uint64
-		staticWorker              *worker
+
+		// the category specifies what type of function the read job fulfils,
+		// this is necessary to pass along as the generic MDM executor needs to
+		// be update spending details and read jobs can be used for downloads
+		// but might also be used for snapshots for example
+		staticSpendingCategory spendingCategory
+
+		staticWorker *worker
 	}
 )
 
@@ -157,7 +158,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticSpendingCategory, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
 	if err != nil {
 		return []programResponse{}, err
 	}
