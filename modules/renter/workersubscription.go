@@ -768,7 +768,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		stream, err := w.managedBeginSubscription(initialBudget, w.staticAccount.staticID, subscriber)
 		if err != nil {
 			// Mark withdrawal as failed.
-			w.staticAccount.managedCommitWithdrawal(initialBudget, false)
+			w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
 
 			// Log error and increment cooldown.
 			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
@@ -777,13 +777,15 @@ func (w *worker) threadedSubscriptionLoop() {
 		}
 
 		// Commit the withdrawal.
-		w.staticAccount.managedCommitWithdrawal(initialBudget, true)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, true)
 
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
 		// Deposit refund. This happens in any case.
+		// TODO @chris do you think it's an issue this refund is not being
+		// taken into account by the EA tracking?
 		refund := budget.Remaining()
 		w.staticAccount.managedTrackDeposit(refund)
 		w.staticAccount.managedCommitDeposit(refund, true)
