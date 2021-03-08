@@ -295,7 +295,7 @@ func testAccountTrackSpending(t *testing.T) {
 	// check category sanity check
 	func() {
 		defer func() {
-			if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "unitiliased category") {
+			if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "uninitialized category") {
 				t.Fatalf("expected panic when attempting to track a spend where the category is not initialised, instead we recovered %v", r)
 			}
 		}()

@@ -174,6 +174,7 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	cost, _, _ := pb.Cost(true)
 
 	jrs := new(jobReadSector)
+	jrs.staticMetadata = jobReadMetadata{staticSpendingCategory: categoryDownload}
 	jrs.staticLength = modules.SectorSize
 	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
