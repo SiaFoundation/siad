@@ -85,7 +85,8 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-		{Name: "MetadataMonetization", Test: testSkynetMonetizers},
+		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
+		{Name: "Monetization", Test: testSkynetMonetization},
 	}
 
 	// Run tests
@@ -4138,9 +4139,9 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 }
 
-// testSkynetMonetizers verifies that skynet uploads correctly set the
+// testSkynetMetadataMonetizers verifies that skynet uploads correctly set the
 // monetizers in the skyfile's metadata.
-func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
+func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create monetization.
@@ -4315,5 +4316,111 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownLicense", fastrand.Bytes(1), false, unknownLicense)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrUnknownLicense.Error()) {
 		t.Fatal("should fail", err)
+	}
+}
+
+// testSkynetMonetization tests the payout mechanism of the monetization code.
+func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Prepare a base of 1SC and a usd conversion rate of USD 1 == 100SC.
+	mb := types.SiacoinPrecision
+	cr := types.SiacoinPrecision.Mul64(100)
+	err := r.RenterSetMonetizationBase(mb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterSetUSDConversionRate(cr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare a clean node.
+	testDir := renterTestDir(t.Name())
+	monetizer, err := siatest.NewCleanNode(node.Wallet(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Connect it to the renter.
+	err = monetizer.GatewayConnectPost(r.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get an address from the monetizer.
+	wag, err := monetizer.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := wag.Address
+
+	// Create monetization with a $1 price to guarantee a 100% chance of payment
+	// since that's equal to 100SC which is greater than the base.
+	monetization := &modules.Monetization{
+		License: modules.LicenseMonetization,
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  addr,
+				Amount:   types.SiacoinPrecision, // $1
+				Currency: modules.CurrencyUSD,
+			},
+		},
+	}
+
+	// Upload a file.
+	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("Test", fastrand.Bytes(100), false, monetization)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download it.
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the miner to become aware of the txn.
+	m := tg.Miners()[0]
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		tgtg, err := m.TransactionPoolTransactionsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, txn := range tgtg.Transactions {
+			for _, sco := range txn.SiacoinOutputs {
+				if sco.UnlockHash == addr {
+					return nil // found
+				}
+			}
+		}
+		return errors.New("txn not found")
+	})
+
+	// Wait a bit more just to be safe. This catches the case where we try to
+	// pay the same monetizer multiple times.
+	time.Sleep(time.Second)
+
+	// Mine a block to confirm the txn.
+	err = tg.Miners()[0].MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the balance to be updated.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get balance.
+		wg, err := monetizer.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The balance should be $1 == 100SC
+		if !wg.ConfirmedSiacoinBalance.Equals(types.SiacoinPrecision.Mul64(100)) {
+			return fmt.Errorf("wrong balance: %v != %v", wg.ConfirmedSiacoinBalance, types.SiacoinPrecision.Mul64(100))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

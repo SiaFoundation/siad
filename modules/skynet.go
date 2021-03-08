@@ -558,6 +558,10 @@ func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedD
 	if downloadedData == 0 {
 		return nil
 	}
+	// If there are no monetizers, there is nothing to do.
+	if len(monetization.Monetizers) == 0 {
+		return nil
+	}
 	// Pay out monetizers.
 	var payouts []types.SiacoinOutput
 	for _, monetizer := range monetization.Monetizers {
@@ -567,7 +571,7 @@ func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedD
 			return ErrInvalidCurrency
 		}
 		// Convert money to SC.
-		sc := monetizer.Amount.Mul(conversion)
+		sc := monetizer.Amount.Mul(conversion).Div(types.SiacoinPrecision)
 
 		// Adjust money to percentage of downloaded content.
 		sc = sc.Mul64(downloadedData).Div64(totalData)

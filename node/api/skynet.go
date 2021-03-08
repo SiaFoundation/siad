@@ -879,6 +879,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Get the renter's settings.
+	settings, err := api.renter.Settings()
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch renter settings: %v", err)}, http.StatusInternalServerError)
+	}
+
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
@@ -886,7 +892,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", responseContentType)
 	}
 
-	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+	// Monetize the response if necessary by wrapping the response writer in a
+	// monetized one.
+	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
+
+	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring

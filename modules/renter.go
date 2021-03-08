@@ -1356,6 +1356,15 @@ type Streamer interface {
 	io.Closer
 }
 
+// SkyfileStreamer is the interface implemented by the Renter's skyfile type
+// which allows for streaming files uploaded to the Sia network.
+type SkyfileStreamer interface {
+	io.ReadSeeker
+	io.Closer
+
+	Metadata() SkyfileMetadata
+}
+
 // RenterDownloadParameters defines the parameters passed to the Renter's
 // Download method.
 type RenterDownloadParameters struct {

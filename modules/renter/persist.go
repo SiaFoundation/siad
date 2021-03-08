@@ -112,8 +112,13 @@ func (r *Renter) managedLoadSettings() error {
 		return err
 	}
 
-	// Set the monetization info.
-	r.staticMonetizationInfo.Update(r.persist.MonetizationBase, r.persist.ConversionRates)
+	// Make sure the usd conversion rate is set to 0 if it isn't set yet.
+	if r.persist.ConversionRates == nil {
+		r.persist.ConversionRates = make(map[string]types.Currency)
+	}
+	if _, exists := r.persist.ConversionRates[modules.CurrencyUSD]; !exists {
+		r.persist.ConversionRates[modules.CurrencyUSD] = types.ZeroCurrency
+	}
 
 	// Set the bandwidth limits on the contractor, which was already initialized
 	// without bandwidth limits.

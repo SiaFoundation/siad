@@ -86,15 +86,6 @@ func TestRenterSaveLoad(t *testing.T) {
 		t.Error("currency conversion shouldn't be set")
 	}
 
-	// Check in-memory monetization info.
-	base, ccr := rt.renter.staticMonetizationInfo.Info()
-	if !base.IsZero() {
-		t.Error("monetization base should default to zero")
-	}
-	if len(ccr) != 0 {
-		t.Error("currency converesion shouldn't be set")
-	}
-
 	// Update the settings of the renter to have a new stream cache size and
 	// download speed.
 	newDownSpeed := int64(300e3)
@@ -161,22 +152,6 @@ func TestRenterSaveLoad(t *testing.T) {
 		t.Error("currency conversion should have 1 currency")
 	}
 	usdRate, exists := newSettings.CurrencyConversionRates[modules.CurrencyUSD]
-	if !exists {
-		t.Error("rate doesn't exist")
-	}
-	if !usdRate.Equals(types.SiacoinPrecision) {
-		t.Error("wrong usd rate")
-	}
-
-	// Check in-memory monetization info.
-	newBase, newCCR := rt.renter.staticMonetizationInfo.Info()
-	if !newBase.Equals(types.SiacoinPrecision) {
-		t.Error("monetization base should be 1")
-	}
-	if len(newCCR) != 1 {
-		t.Error("currency conversion should have 1 currency")
-	}
-	usdRate, exists = newCCR[modules.CurrencyUSD]
 	if !exists {
 		t.Error("rate doesn't exist")
 	}

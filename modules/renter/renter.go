@@ -184,39 +184,6 @@ type cachedUtilities struct {
 	used         []types.SiaPublicKey
 }
 
-// monetizationInfo is a helper struct to pass down monetization information to
-// the stream while still allowing the renter to update it.
-type monetizationInfo struct {
-	currencyConversionRates map[string]types.Currency
-	base                    types.Currency
-	mu                      sync.Mutex
-}
-
-// newMonetizationInfo creates new monetization infos.
-func newMonetizationInfo() *monetizationInfo {
-	return &monetizationInfo{}
-}
-
-// Update updates the monetization infos.
-func (mi *monetizationInfo) Update(base types.Currency, ccr map[string]types.Currency) {
-	mi.mu.Lock()
-	defer mi.mu.Unlock()
-	mi.base = base
-	mi.currencyConversionRates = ccr
-}
-
-// Info returns the information in the monetizationInfo object.
-func (mi *monetizationInfo) Info() (base types.Currency, ccr map[string]types.Currency) {
-	mi.mu.Lock()
-	defer mi.mu.Unlock()
-	// Deep copy rates.
-	ccr = make(map[string]types.Currency)
-	for k, v := range mi.currencyConversionRates {
-		ccr[k] = v
-	}
-	return mi.base, ccr
-}
-
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -295,7 +262,6 @@ type Renter struct {
 	staticAlerter                      *modules.GenericAlerter
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
-	staticMonetizationInfo             *monetizationInfo
 	staticSkykeyManager                *skykey.SkykeyManager
 	staticStreamBufferSet              *streamBufferSet
 	tg                                 threadgroup.ThreadGroup
@@ -660,9 +626,6 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 		return err
 	}
 
-	// Update monetization info in memory.
-	r.staticMonetizationInfo.Update(s.MonetizationBase, s.CurrencyConversionRates)
-
 	// Save the changes.
 	id := r.mu.Lock()
 	r.persist.ConversionRates = s.CurrencyConversionRates
@@ -862,7 +825,9 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.uploadHeap.managedPauseStatus()
-	mb, ccr := r.staticMonetizationInfo.Info()
+	id := r.mu.RLock()
+	mb, ccr := r.persist.MonetizationBase, r.persist.ConversionRates
+	r.mu.RUnlock(id)
 	return modules.RenterSettings{
 		Allowance:               r.hostContractor.Allowance(),
 		CurrencyConversionRates: ccr,
@@ -1053,8 +1018,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:          tpool,
 	}
 	r.staticBubbleScheduler = newBubbleScheduler(r)
-	r.staticMonetizationInfo = newMonetizationInfo()
-	r.staticStreamBufferSet = newStreamBufferSet(&r.tg, w, r.staticMonetizationInfo)
+	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.uploadHeap.pauseChan)
 

@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -49,6 +50,61 @@ type (
 		disableForce bool
 	}
 )
+
+// monetizedResponseWriter is a wrapper for a response writer. It monetizes the
+// returned bytes.
+type monetizedResponseWriter struct {
+	staticW      http.ResponseWriter
+	staticMD     modules.SkyfileMetadata
+	staticWallet modules.SiacoinSenderMulti
+
+	staticConversionRates  map[string]types.Currency
+	staticMonetizationBase types.Currency
+
+	// count is used for sanity checking the number of monetized bytes against
+	// the total.
+	count int
+}
+
+// newMonetizedResponseWriter creates a new wrapped writer.
+func newMonetizedResponseWriter(inner http.ResponseWriter, md modules.SkyfileMetadata, w modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) http.ResponseWriter {
+	return &monetizedResponseWriter{
+		staticW:                inner,
+		staticMD:               md,
+		staticWallet:           w,
+		staticConversionRates:  cr,
+		staticMonetizationBase: mb,
+	}
+}
+
+// Header calls the inner writers Header method.
+func (rw *monetizedResponseWriter) Header() http.Header {
+	return rw.staticW.Header()
+}
+
+// WriteHeader calls the inner writers WriteHeader method.
+func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
+	rw.staticW.WriteHeader(statusCode)
+}
+
+// Write wrap the inner Write and adds monetization.
+func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
+	// Sanity check the number of monetized bytes against the total.
+	rw.count += len(b)
+	if rw.count > int(rw.staticMD.Length) {
+		build.Critical("monetized more data than the total data of the skylink")
+		return rw.staticW.Write(b) // forward without monetizing
+	}
+
+	// Pay monetizers.
+	err := modules.PayMonetizers(rw.staticWallet, rw.staticMD.Monetization, uint64(len(b)), rw.staticMD.Length, rw.staticConversionRates, rw.staticMonetizationBase)
+	if err != nil {
+		return 0, err
+	}
+
+	// Forward data to inner.
+	return rw.staticW.Write(b)
+}
 
 // buildETag is a helper function that returns an ETag.
 func buildETag(skylink modules.Skylink, method, path string, format modules.SkyfileFormat) string {
