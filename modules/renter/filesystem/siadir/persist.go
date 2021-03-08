@@ -39,12 +39,12 @@ var (
 	// ErrDeleted is the error returned if the siadir is deleted
 	ErrDeleted = errors.New("siadir is deleted")
 
-	// errCorruptFile is the error returned if the siadir is believed to be
+	// ErrCorruptFile is the error returned if the siadir is believed to be
 	// corrupt
-	errCorruptFile = errors.New(".siadir file is potentially corrupt")
+	ErrCorruptFile = errors.New(".siadir file is potentially corrupt")
 
-	// errInvalidChecksum is the error returned if the siadir checksum is invalid
-	errInvalidChecksum = errors.New("invalid checksum")
+	// ErrInvalidChecksum is the error returned if the siadir checksum is invalid
+	ErrInvalidChecksum = errors.New(".siadir has invalid checksum")
 )
 
 // New creates a new directory in the renter directory and makes sure there is a
@@ -86,7 +86,7 @@ func LoadSiaDir(path string, deps modules.Dependencies) (sd *SiaDir, err error) 
 		path: path,
 	}
 	sd.metadata, err = callLoadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
-	if errors.Contains(err, errInvalidChecksum) || errors.Contains(err, errCorruptFile) {
+	if errors.Contains(err, ErrInvalidChecksum) || errors.Contains(err, ErrCorruptFile) {
 		// If there was an error on load related to the checksum or a corrupt file,
 		// return a newly initialized metadata and try and fix the corruption by
 		// re-saving the metadata. This is OK because siadir persistence is not ACID
@@ -276,7 +276,7 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 
 	// Verify there is enough data for a checksum
 	if len(fileBytes) < crypto.HashSize {
-		return Metadata{}, errCorruptFile
+		return Metadata{}, ErrCorruptFile
 	}
 
 	// Verify checksum
@@ -284,7 +284,7 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 	mdBytes := fileBytes[crypto.HashSize:]
 	fileChecksum := crypto.HashBytes(mdBytes)
 	if !bytes.Equal(checksum, fileChecksum[:]) {
-		return Metadata{}, errInvalidChecksum
+		return Metadata{}, ErrInvalidChecksum
 	}
 
 	// Parse the json object.

@@ -49,7 +49,7 @@ func testCallLoadSiaDirMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = callLoadSiaDirMetadata(emptyFile, modules.ProdDependencies)
-	if !errors.Contains(err, errCorruptFile) {
+	if !errors.Contains(err, ErrCorruptFile) {
 		t.Error("unexpected error", err)
 	}
 
@@ -67,7 +67,7 @@ func testCallLoadSiaDirMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = callLoadSiaDirMetadata(corruptFile, modules.ProdDependencies)
-	if !errors.Contains(err, errInvalidChecksum) {
+	if !errors.Contains(err, ErrInvalidChecksum) {
 		t.Error("unexpected error", err)
 	}
 
