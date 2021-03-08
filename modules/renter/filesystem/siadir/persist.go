@@ -173,7 +173,6 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 
 // Rename renames the SiaDir to targetPath.
 func (sd *SiaDir) rename(targetPath string) error {
-	// TODO: os.Rename is not ACID
 	err := os.Rename(sd.path, targetPath)
 	if err != nil {
 		return err
@@ -380,15 +379,16 @@ func newMetadata() Metadata {
 }
 
 // saveDir saves the metadata to disk at the provided path.
-func saveDir(path string, md Metadata, deps modules.Dependencies) error {
+func saveDir(path string, md Metadata, deps modules.Dependencies) (err error) {
 	// Open .siadir file
 	f, err := deps.OpenFile(filepath.Join(path, SiaDirExtension), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open file")
 	}
 	defer func() {
-		errors.Compose(err, f.Close())
+		err = errors.Compose(err, f.Close())
 	}()
+
 	// Marshal metadata
 	data, err := json.Marshal(md)
 	if err != nil {
@@ -404,18 +404,18 @@ func saveDir(path string, md Metadata, deps modules.Dependencies) error {
 		return errors.AddContext(err, "unable to write checksum")
 	}
 
-	// Truncate the file before writing the file to disk to prevent checksums
-	// failing on load
-	checksumLen := int64(len(checksum))
-	err = f.Truncate(checksumLen)
-	if err != nil {
-		return errors.AddContext(err, "unable to truncate file")
-	}
-
 	// Write the metadata to disk
+	checksumLen := int64(len(checksum))
 	_, err = f.WriteAt(data, checksumLen)
 	if err != nil {
 		return errors.AddContext(err, "unable to write data to disk")
+	}
+
+	// Truncate the file to clear any corrupt or lingering data
+	truncateLen := checksumLen + int64(len(data))
+	err = f.Truncate(truncateLen)
+	if err != nil {
+		return errors.AddContext(err, "unable to truncate file")
 	}
 	return nil
 }
