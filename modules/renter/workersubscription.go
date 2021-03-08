@@ -864,6 +864,8 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 	}
 
 	// Collect the values.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
 	var notifications []modules.RPCRegistrySubscriptionNotificationEntryUpdate
 	for _, sub := range subs {
 		if sub.latestRV == nil {
