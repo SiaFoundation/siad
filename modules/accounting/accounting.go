@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
@@ -74,18 +73,15 @@ func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner,
 		staticDeps: deps,
 	}
 
-	// Pending final persist structure, only init in testing.
-	if build.Release == "testing" {
-		// Initialize the persistence
-		err := a.initPersist()
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to initialize the persistence")
-		}
+	// Initialize the persistence
+	err := a.initPersist()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to initialize the persistence")
+	}
 
-		// Launch background thread to persist the accounting information
-		if !a.staticDeps.Disrupt("DisablePersistLoop") {
-			go a.callThreadedPersistAccounting()
-		}
+	// Launch background thread to persist the accounting information
+	if !a.staticDeps.Disrupt("DisablePersistLoop") {
+		go a.callThreadedPersistAccounting()
 	}
 	return a, nil
 }

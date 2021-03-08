@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"path/filepath"
 	"strings"
@@ -626,6 +627,14 @@ func TestWalletSend(t *testing.T) {
 	}
 	originalBalance2 := wg.ConfirmedSiacoinBalance
 
+	// Asset non zero balances
+	if originalBalance1.IsZero() {
+		t.Fatal("renter1 balance is zero")
+	}
+	if originalBalance2.IsZero() {
+		t.Fatal("renter2 balance is zero")
+	}
+
 	// Send coins to renter2 without fees included, mine blocks.
 	uc, err := renter2.WalletAddressGet()
 	if err != nil {
@@ -636,22 +645,28 @@ func TestWalletSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		err = miner.MineBlock()
-		if err != nil {
-			t.Fatal(err)
+		// Mine a block every 10 iterations
+		if tries%10 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				return err
+			}
 		}
+		tries++
+
 		// Check the balance of renter2.
 		wg, err = renter2.WalletGet()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		newBalance2 := wg.ConfirmedSiacoinBalance
 		if newBalance2.Cmp(originalBalance2) > 0 {
 			return nil
 		}
 
-		return errors.New("renter2 hasn't received transaction yet")
+		return fmt.Errorf("renter2 hasn't received transaction yet: Original %v New %v", originalBalance2.HumanString(), newBalance2.HumanString())
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -684,22 +699,28 @@ func TestWalletSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tries = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		err = miner.MineBlock()
-		if err != nil {
-			t.Fatal(err)
+		// Mine a block every 10 iterations
+		if tries%10 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				return err
+			}
 		}
+		tries++
+
 		// Check the balance of renter1.
 		wg, err = renter1.WalletGet()
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		newBalance1 := wg.ConfirmedSiacoinBalance
 		if newBalance1.Cmp(originalBalance1) > 0 {
 			return nil
 		}
 
-		return errors.New("renter1 hasn't received transaction yet")
+		return fmt.Errorf("renter1 hasn't received transaction yet: Original %v New %v", originalBalance1.HumanString(), newBalance1.HumanString())
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -712,7 +733,7 @@ func TestWalletSend(t *testing.T) {
 	}
 	newBalance2 := wg.ConfirmedSiacoinBalance
 	if newBalance2.Cmp(types.ZeroCurrency) != 0 {
-		t.Fatal("an exact amount wasn't spend")
+		t.Fatal("an exact amount wasn't spent")
 	}
 }
 

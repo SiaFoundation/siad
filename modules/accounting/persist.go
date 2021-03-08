@@ -1,7 +1,7 @@
 package accounting
 
 import (
-	"fmt"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -19,36 +18,19 @@ const (
 	// logFile is the name of the log file for the Accounting module.
 	logFile string = modules.AccountingDir + ".log"
 
-	// maxPersistSize is the size of the marshaled persistence
-	//
-	// 16 bytes for Currency fields
-	// 8 bytes for Timestamp field
-	// 48 bytes for overhead
-	//
-	// (4 x 16) + 8 + 48 = 120
-	maxPersistSize int = 120
-
-	// persistEntrySize is the size of the encoded persist entry
-	//
-	// maxPersistSize + 8 for the size
-	persistEntrySize int = 128
-
 	// persistFile is the name of the persist file
-	persistFile string = "accounting.dat"
+	persistFile string = "accounting"
 )
 
 var (
 	// metadataHeader is the header of the metadata for the persist file
 	metadataHeader = types.NewSpecifier("Accounting\n")
 
-	// metadataVersion is the version of the persistence file
-	metadataVersion = types.NewSpecifier("v1.5.5\n")
-
 	// persistErrorInterval is the interval at which the persist loop will wait in
 	// the event of an error.
 	persistErrorInterval = build.Select(build.Var{
 		Dev:      time.Second,
-		Standard: time.Hour,
+		Standard: time.Minute,
 		Testing:  time.Millisecond * 100,
 	}).(time.Duration)
 
@@ -61,29 +43,20 @@ var (
 	}).(time.Duration)
 )
 
-type (
-	// persistence contains the accounting information that is persisted on disk
-	persistence struct {
-		// Not implemented yet
-		//
-		// FeeManager modules.FeeManagerAccounting `json:"feemanager"`
-		// Host       modules.HostAccounting       `json:"host"`
-		// Miner      modules.MinerAccounting      `json:"miner"`
+// persistence contains the accounting information that is persisted on disk
+type persistence struct {
+	// Not implemented yet
+	//
+	// FeeManager modules.FeeManagerAccounting `json:"feemanager"`
+	// Host       modules.HostAccounting       `json:"host"`
+	// Miner      modules.MinerAccounting      `json:"miner"`
 
-		Renter modules.RenterAccounting `json:"renter"`
-		Wallet modules.WalletAccounting `json:"wallet"`
+	Renter modules.RenterAccounting `json:"renter"`
+	Wallet modules.WalletAccounting `json:"wallet"`
 
-		// Unix Timestamp
-		Timestamp int64 `json:"timestamp"`
-	}
-
-	// persistEntry is the struct that is persisted on disk
-	persistEntry struct {
-		// Size is the actual size for the persisted data
-		Size        int
-		Persistence [maxPersistSize]byte
-	}
-)
+	// Unix Timestamp
+	Timestamp int64 `json:"timestamp"`
+}
 
 // callThreadedPersistAccounting is a background loop that persists the
 // accounting information based on the persistInterval.
@@ -149,7 +122,7 @@ func (a *Accounting) initPersist() error {
 
 	// Initialize the AOP
 	var reader io.Reader
-	a.staticAOP, reader, err = persist.NewAppendOnlyPersist(a.staticPersistDir, persistFile, metadataHeader, metadataVersion)
+	a.staticAOP, reader, err = persist.NewAppendOnlyPersist(a.staticPersistDir, persistFile, metadataHeader, persist.MetadataVersionv156)
 	if err != nil {
 		return errors.AddContext(err, "unable to create AppendOnlyPersist")
 	}
@@ -158,12 +131,16 @@ func (a *Accounting) initPersist() error {
 		return errors.AddContext(err, "unable to add AOP close to threadgroup AfterStop")
 	}
 
-	// Load the last persisted entry
-	a.persistence, err = unmarshalLastPersistence(reader)
+	// Unmarshal the persistence
+	persistence, err := unmarshalPersistence(reader)
 	if err != nil {
-		return errors.AddContext(err, "unable to load the last persist entry")
+		return errors.AddContext(err, "unable to unmarshal persistence")
 	}
 
+	// Keep the last persist entry in memory
+	if len(persistence) > 0 {
+		a.persistence = persistence[len(persistence)-1]
+	}
 	return nil
 }
 
@@ -202,73 +179,34 @@ func (a *Accounting) managedUpdateAndPersistAccounting() error {
 }
 
 // marshalPersistence marshals the persistence.
-func marshalPersistence(p persistence) (rpe [persistEntrySize]byte, err error) {
-	// Marshal the persistence and ensure it is less than the max size
-	data := encoding.Marshal(p)
-	if len(data) > maxPersistSize {
-		err = fmt.Errorf("Marshaled persistence is too big: persistence %v, max %v", len(data), maxPersistSize)
-		build.Critical(err)
-		return
+func marshalPersistence(p persistence) ([]byte, error) {
+	// Marshal the persistence
+	data, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
 	}
-
-	// Create the persistEntry
-	entry := persistEntry{
-		Size: len(data),
-	}
-	copy(entry.Persistence[:], data)
-
-	// Marshal the persistEntry and check the size
-	encodedEntry := encoding.Marshal(entry)
-	if len(encodedEntry) != persistEntrySize {
-		err = fmt.Errorf("Marshaled persist entry incorrect size: entry %v, max %v", len(encodedEntry), persistEntrySize)
-		build.Critical(err)
-		return
-	}
-
-	// Copy the encodedEntry into the returned value
-	copy(rpe[:], encodedEntry)
-	return
+	return data, nil
 }
 
-// unmarshalLastPersistence will read through the reader until the last
-// persist entry is found and will unmarshal and return that persistence.
-func unmarshalLastPersistence(r io.Reader) (persistence, error) {
-	var p persistence
-	// Read through the reader until the last element
+// unmarshalPersistence uses a json Decoder to read the persisted json entries
+// and unmarshals them.
+func unmarshalPersistence(r io.Reader) ([]persistence, error) {
+	// Create decoder
+	d := json.NewDecoder(r)
+
+	var persist []persistence
 	for {
-		buf := make([]byte, persistEntrySize)
-		_, err := io.ReadFull(r, buf)
+		// Decode persisted json entry
+		var p persistence
+		err := d.Decode(&p)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return persistence{}, errors.AddContext(err, "unable to read from reader")
+			return nil, errors.AddContext(err, "unable to read from reader")
 		}
-		// New entry found, unmarshal and overwrite any previous persistence
-		p, err = unmarshalPersistence(buf)
-		if err != nil {
-			return persistence{}, errors.AddContext(err, "unable to unmarshal persistence")
-		}
+		// Append to persist
+		persist = append(persist, p)
 	}
-	return p, nil
-}
-
-// unmarshalPersistence unmarshals the persist entry and then unmarshals the
-// encoded persistence.
-func unmarshalPersistence(entry []byte) (persistence, error) {
-	// Unmarshal persistEntry
-	var pe persistEntry
-	err := encoding.Unmarshal(entry, &pe)
-	if err != nil {
-		return persistence{}, errors.AddContext(err, "unable to unmarshal persistEntry")
-	}
-
-	// Unmarshal persistence
-	var p persistence
-	err = encoding.Unmarshal(pe.Persistence[:], &p)
-	if err != nil {
-		return persistence{}, errors.AddContext(err, "unable to unmarshal persistence")
-	}
-
-	return p, nil
+	return persist, nil
 }
