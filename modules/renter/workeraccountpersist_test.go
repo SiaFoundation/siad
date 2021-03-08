@@ -483,7 +483,3 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
 }
-
-func copyFile(src, dst string) {
-
-}

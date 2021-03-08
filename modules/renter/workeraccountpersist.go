@@ -435,7 +435,15 @@ func (am *accountManager) openFile() (bool, error) {
 	// upgrade. This means we try and copy over the temporary file to the
 	// accounts file.
 	if accountsTmpFileExists && !accountsFileExists {
-		err = am.upgradeFromV150ToV156_Continue()
+		// open the tmp file
+		tmpFile, err := r.deps.OpenFile(accountsTmpFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+		if err != nil {
+			return false, errors.AddContext(err, "error opening tmp account file")
+		}
+
+		// try and complete the update progress by starting the upgrade code at
+		// point where we copy the tmp file into the accounts file
+		err = am.upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile)
 		if err != nil {
 			return false, errors.AddContext(err, "error copying temporary accounts file to the account file location")
 		}
@@ -463,7 +471,14 @@ func (am *accountManager) openFile() (bool, error) {
 		// not be recovered for whatever reason we only log that error but
 		// consider it lost.
 		if errors.Contains(err, errWrongVersion) {
-			err = am.upgradeFromV150ToV156()
+			// open the tmp file
+			tmpFile, err := r.deps.OpenFile(accountsTmpFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+			if err != nil {
+				return false, errors.AddContext(err, "error opening tmp account file")
+			}
+
+			// call the upgrade code
+			err = am.upgradeFromV150ToV156(tmpFile)
 			if err != nil {
 				return false, errors.AddContext(err, "error upgrading accounts file")
 			}
@@ -552,20 +567,13 @@ func (am *accountManager) updateMetadata(meta accountsMetadata) error {
 // upgradeFromV150ToV156 is compat code that upgrades the accounts file from
 // v150 to v156. The new accounts take up more space on disk, so we have to read
 // all of them, assign them new offets and rewrite them to the accounts file.
-func (am *accountManager) upgradeFromV150ToV156() error {
+func (am *accountManager) upgradeFromV150ToV156(tmpFile modules.File) error {
 	// convenience variables
 	r := am.staticRenter
 	accFilePath := filepath.Join(r.persistDir, accountsFilename)
-	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
-
-	// open the tmp file
-	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "failed to open tmp file")
-	}
 
 	// write the header
-	_, err = tmpFile.WriteAt(encoding.Marshal(accountsMetadata{
+	_, err := tmpFile.WriteAt(encoding.Marshal(accountsMetadata{
 		Header:  metadataHeader,
 		Version: metadataVersion,
 		Clean:   false,
@@ -603,42 +611,20 @@ func (am *accountManager) upgradeFromV150ToV156() error {
 		return errors.AddContext(err, "error opening account file")
 	}
 
-	// copy the tmp file to the accounts file
-	_, err = io.Copy(am.staticFile, tmpFile)
-	if err != nil {
-		return errors.AddContext(err, "failed to copy the temporary accounts file to the actual accounts file location")
-	}
-
-	// sync the accounts file
-	err = am.staticFile.Sync()
-	if err != nil {
-		return errors.AddContext(err, "failed to sync accounts file")
-	}
-
-	// seek to the beginning of the file
-	_, err = am.staticFile.Seek(0, io.SeekStart)
-	if err != nil {
-		return errors.AddContext(err, "failed to seek to the beginning of the accounts file")
-	}
-
-	// delete the tmp file
-	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
+	// copy the accounts from the tmp file to the accounts file, this is
+	// extracted into a separate method as the recovery flow might have to pick
+	// up from where we left off in case of failure during an initial attempt
+	return am.upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile)
 }
 
-// upgradeFromV150ToV156_Continue is a function that is called when the upgrade
-// was unsuccessful and only the temporary accounts file is present on disk, in
-// which case we want to try and complete the process by copying the tmp file to
-// the location of the accounts file.
-func (am *accountManager) upgradeFromV150ToV156_Continue() (err error) {
+// upgradeFromV150ToV156_CopyAccountsFromFile will copy the contents of the tmp
+// file into the accounts file. This is a separate method as this function is
+// called during the happy flow, but it is also potentially the steps required
+// when trying to recover from a failed initial update attempt.
+func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile modules.File) (err error) {
 	// convenience variables
 	r := am.staticRenter
 	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
-
-	// open the tmp file
-	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "error opening temporary account file")
-	}
 
 	// copy the tmp file to the accounts file
 	_, err = io.Copy(am.staticFile, tmpFile)
