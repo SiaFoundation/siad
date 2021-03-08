@@ -63,7 +63,7 @@ var (
 	// can stay active in the background before being cancelled.
 	ReadRegistryBackgroundTimeout = build.Select(build.Var{
 		Dev:      time.Minute,
-		Standard: 5 * time.Minute,
+		Standard: 2 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -89,10 +89,10 @@ var (
 	// readRegistryStatsInterval is the granularity with which read registry
 	// stats are collected. The smaller the number the faster updating the stats
 	// is but the less accurate the estimate.
-	readRegistryStatsInterval = 10 * time.Millisecond
+	readRegistryStatsInterval = 20 * time.Millisecond
 
 	// readRegistryStatsDecay is the decay applied to the registry stats.
-	readRegistryStatsDecay = 0.95
+	readRegistryStatsDecay = 0.995
 
 	// readRegistryStatsPercentile is the percentile returned by the read
 	// registry stats Estimate method.
@@ -103,7 +103,7 @@ var (
 	// NOTE: This needs to be <= readRegistryBackgroundTimeout
 	readRegistryStatsSeed = build.Select(build.Var{
 		Dev:      30 * time.Second,
-		Standard: time.Minute,
+		Standard: 2 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
@@ -199,6 +199,8 @@ func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTi
 			continue
 		}
 		// The one with the higher revision gets priority if both have an rv.
+		// TODO: Add code to check for scenarios related to rapidly updating
+		// entries.
 		if bestRV != nil && respRV != nil && respRV.Revision > bestRV.Revision {
 			best = resp
 			continue

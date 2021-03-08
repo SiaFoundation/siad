@@ -9,7 +9,7 @@ import (
 )
 
 type (
-	// DependencyReadRegistryBlocking will block the read registry call due to
+	// DependencyReadRegistryBlocking will block the read registry call by
 	// making it think that it got one more worker than it actually has.
 	// Therefore, waiting for a response that never comes.
 	DependencyReadRegistryBlocking struct {
