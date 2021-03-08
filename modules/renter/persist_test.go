@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 )
@@ -78,6 +79,21 @@ func TestRenterSaveLoad(t *testing.T) {
 	if settings.MaxUploadSpeed != DefaultMaxUploadSpeed {
 		t.Error("default max upload speed not set at init")
 	}
+	if !settings.MonetizationBase.IsZero() {
+		t.Error("monetization base should default to zero")
+	}
+	if len(settings.CurrencyConversionRates) != 0 {
+		t.Error("currency conversion shouldn't be set")
+	}
+
+	// Check in-memory monetization info.
+	base, ccr := rt.renter.staticMonetizationInfo.Info()
+	if !base.IsZero() {
+		t.Error("monetization base should default to zero")
+	}
+	if len(ccr) != 0 {
+		t.Error("currency converesion shouldn't be set")
+	}
 
 	// Update the settings of the renter to have a new stream cache size and
 	// download speed.
@@ -85,7 +101,12 @@ func TestRenterSaveLoad(t *testing.T) {
 	newUpSpeed := int64(500e3)
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
-	rt.renter.SetSettings(settings)
+	settings.MonetizationBase = types.SiacoinPrecision
+	settings.CurrencyConversionRates[modules.CurrencyUSD] = types.SiacoinPrecision
+	err = rt.renter.SetSettings(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add a file to the renter
 	entry, err := rt.renter.newRenterTestFile()
@@ -132,6 +153,35 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
+	}
+	if !newSettings.MonetizationBase.Equals(types.SiacoinPrecision) {
+		t.Error("monetization base should be 1")
+	}
+	if len(newSettings.CurrencyConversionRates) != 1 {
+		t.Error("currency conversion should have 1 currency")
+	}
+	usdRate, exists := newSettings.CurrencyConversionRates[modules.CurrencyUSD]
+	if !exists {
+		t.Error("rate doesn't exist")
+	}
+	if !usdRate.Equals(types.SiacoinPrecision) {
+		t.Error("wrong usd rate")
+	}
+
+	// Check in-memory monetization info.
+	newBase, newCCR := rt.renter.staticMonetizationInfo.Info()
+	if !newBase.Equals(types.SiacoinPrecision) {
+		t.Error("monetization base should be 1")
+	}
+	if len(newCCR) != 1 {
+		t.Error("currency conversion should have 1 currency")
+	}
+	usdRate, exists = newCCR[modules.CurrencyUSD]
+	if !exists {
+		t.Error("rate doesn't exist")
+	}
+	if !usdRate.Equals(types.SiacoinPrecision) {
+		t.Error("wrong usd rate")
 	}
 
 	// Check that SiaFileSet loaded the renter's file

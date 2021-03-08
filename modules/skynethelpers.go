@@ -279,6 +279,9 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, err
 	}
 
+	// TODO: Should we check that the monetization has sane values? e.g. don't
+	// allow for downloading files that cost more than 0.1SC?
+
 	return sl, fanoutBytes, sm, baseSectorPayload, nil
 }
 

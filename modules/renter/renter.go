@@ -187,9 +187,9 @@ type cachedUtilities struct {
 // monetizationInfo is a helper struct to pass down monetization information to
 // the stream while still allowing the renter to update it.
 type monetizationInfo struct {
-	usdConversionRate types.Currency
-	base              types.Currency
-	mu                sync.Mutex
+	currencyConversionRates map[string]types.Currency
+	base                    types.Currency
+	mu                      sync.Mutex
 }
 
 // newMonetizationInfo creates new monetization infos.
@@ -198,16 +198,23 @@ func newMonetizationInfo() *monetizationInfo {
 }
 
 // Update updates the monetization infos.
-func (mi *monetizationInfo) Update(base, usdConversionRate types.Currency) {
+func (mi *monetizationInfo) Update(base types.Currency, ccr map[string]types.Currency) {
 	mi.mu.Lock()
-	defer mi.mu.Lock()
+	defer mi.mu.Unlock()
 	mi.base = base
-	mi.usdConversionRate = usdConversionRate
+	mi.currencyConversionRates = ccr
 }
 
 // Info returns the information in the monetizationInfo object.
-func (mi *monetizationInfo) Info() (base, usdConversionRate types.Currency) {
-	return mi.base, mi.usdConversionRate
+func (mi *monetizationInfo) Info() (base types.Currency, ccr map[string]types.Currency) {
+	mi.mu.Lock()
+	defer mi.mu.Unlock()
+	// Deep copy rates.
+	ccr = make(map[string]types.Currency)
+	for k, v := range mi.currencyConversionRates {
+		ccr[k] = v
+	}
+	return mi.base, ccr
 }
 
 // A Renter is responsible for tracking all of the files that a user has
@@ -652,10 +659,16 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	if err != nil {
 		return err
 	}
+
+	// Update monetization info in memory.
+	r.staticMonetizationInfo.Update(s.MonetizationBase, s.CurrencyConversionRates)
+
 	// Save the changes.
 	id := r.mu.Lock()
+	r.persist.ConversionRates = s.CurrencyConversionRates
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
+	r.persist.MonetizationBase = s.MonetizationBase
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -849,11 +862,14 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.uploadHeap.managedPauseStatus()
+	mb, ccr := r.staticMonetizationInfo.Info()
 	return modules.RenterSettings{
-		Allowance:        r.hostContractor.Allowance(),
-		IPViolationCheck: enabled,
-		MaxDownloadSpeed: download,
-		MaxUploadSpeed:   upload,
+		Allowance:               r.hostContractor.Allowance(),
+		CurrencyConversionRates: ccr,
+		IPViolationCheck:        enabled,
+		MaxDownloadSpeed:        download,
+		MaxUploadSpeed:          upload,
+		MonetizationBase:        mb,
 		UploadsStatus: modules.UploadsStatus{
 			Paused:       paused,
 			PauseEndTime: endTime,

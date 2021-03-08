@@ -444,11 +444,8 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 func (s *stream) payMonetizers(downloaded uint64) error {
 	sb := s.staticStreamBuffer
 	ds := sb.staticDataSource
-	monetizationBase, usdConversionRate := sb.staticMonetizationInfo.Info()
-	conversionRates := map[string]types.Currency{
-		modules.CurrencyUSD: usdConversionRate,
-	}
-	return modules.PayMonetizers(sb.staticWallet, s.Metadata().Monetization, downloaded, ds.DataSize(), conversionRates, monetizationBase)
+	base, ccr := sb.staticMonetizationInfo.Info()
+	return modules.PayMonetizers(sb.staticWallet, s.Metadata().Monetization, downloaded, ds.DataSize(), ccr, base)
 }
 
 // prepareOffset will ensure that the dataSection containing the offset is made
