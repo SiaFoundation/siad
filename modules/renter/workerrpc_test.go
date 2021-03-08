@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -158,7 +159,6 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 // a ReadSector program
 func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	w := wt.worker
-
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 	err := wt.host.AddSector(sectorRoot, sectorData)
@@ -173,9 +173,10 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
-	jrs := new(jobReadSector)
-	jrs.staticMetadata = jobReadMetadata{staticSpendingCategory: categoryDownload}
-	jrs.staticLength = modules.SectorSize
+	// create read sector job
+	readSectorRespChan := make(chan *jobReadResponse)
+	jrs := w.newJobReadSector(context.Background(), w.staticJobReadQueue, readSectorRespChan, categoryDownload, sectorRoot, 0, modules.SectorSize)
+
 	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
