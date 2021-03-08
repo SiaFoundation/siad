@@ -210,10 +210,7 @@ func (s *spendingDetails) update(category spendingCategory, amount types.Currenc
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.ReadWriter, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
-	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
-		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
-	}
+func (a *account) ProvidePayment(stream io.ReadWriter, amount types.Currency, blockHeight types.BlockHeight) error {
 	// NOTE: we purposefully do not verify if the account has sufficient funds.
 	// Seeing as withdrawals are a blocking action on the host, it is perfectly
 	// ok to trigger them from an account with insufficient balance.
@@ -736,7 +733,6 @@ func (w *worker) managedRefillAccount() {
 	// build payment details
 	details := contractor.PaymentDetails{
 		Host:          w.staticHostPubKey,
-		RPC:           modules.RPCFundAccount,
 		Amount:        amount.Add(pt.FundAccountCost),
 		RefundAccount: modules.ZeroAccountID,
 		SpendingDetails: modules.SpendingDetails{
@@ -831,7 +827,6 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	// build payment details
 	details := contractor.PaymentDetails{
 		Host:          w.staticHostPubKey,
-		RPC:           modules.RPCAccountBalance,
 		Amount:        pt.AccountBalanceCost,
 		RefundAccount: w.staticAccount.staticID,
 		SpendingDetails: modules.SpendingDetails{

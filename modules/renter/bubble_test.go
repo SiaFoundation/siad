@@ -140,6 +140,9 @@ func testBubbleScheduler(t *testing.T) {
 	// Basic functionality test
 	t.Run("Basic", testBubbleScheduler_Basic)
 
+	// Specific Methods
+	t.Run("managedQueueParent", testBubbleScheduler_managedQueueParent)
+
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -273,7 +276,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	}
 
 	// Calling complete should add the update back to the queue
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 	checkStatus(siaPath, bubbleQueued, true)
 
 	// Check Status
@@ -288,7 +291,7 @@ func testBubbleScheduler_Basic(t *testing.T) {
 	// calling managed pop and then calling complete should result in an empty map
 	// and queue
 	_ = bs.managedPop()
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 
 	// Check Status
 	bs.mu.Lock()
@@ -322,7 +325,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 			return
 		}
 		// calling complete should close the channel
-		bs.callCompleteBubbleUpdate(siaPath)
+		bs.managedCompleteBubbleUpdate(siaPath)
 	}()
 
 	// Should be blocking until after the duration
@@ -371,7 +374,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 		t.Fatal("no bubble update")
 	}
 	// calling complete should close the channel
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 
 	// Wait for go routines to finish
 	wg.Wait()
@@ -391,7 +394,7 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	completeChan2 := bs.callQueueBubble(siaPath)
 
 	// Call complete
-	bs.callCompleteBubbleUpdate(siaPath)
+	bs.managedCompleteBubbleUpdate(siaPath)
 
 	// Both of the original complete channels should not longer be blocking
 	select {
@@ -410,5 +413,54 @@ func testBubbleScheduler_Blocking(t *testing.T) {
 	case <-bu.complete:
 		t.Error("bubble update complete chan is not blocking")
 	default:
+	}
+}
+
+// testBubbleScheduler_managedQueueParent probes the managedQueueParent method.
+func testBubbleScheduler_managedQueueParent(t *testing.T) {
+	// Initialize a bubble scheduler
+	bs := newBubbleScheduler(&Renter{})
+
+	// Calling managedQueueParent on root should be a no-op
+	err := bs.managedQueueParent(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be nothing in the bubbleScheduler
+	bs.mu.Lock()
+	if len(bs.bubbleUpdates) != 0 {
+		t.Error("unexpected")
+	}
+	if bs.fifo.Len() != 0 {
+		t.Error("unexpected")
+	}
+	bs.mu.Unlock()
+
+	// Call managedQueueParent on a siapath
+	err = bs.managedQueueParent(modules.RandomSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be a root dir update in the bubbleScheduler
+	bs.mu.Lock()
+	if len(bs.bubbleUpdates) != 1 {
+		t.Error("unexpected")
+	}
+	if bs.fifo.Len() != 1 {
+		t.Error("unexpected")
+	}
+	mapBU, ok := bs.bubbleUpdates[modules.RootSiaPath()]
+	if !ok {
+		t.Error("root update not found in map")
+	}
+	bs.mu.Unlock()
+	popBU := bs.managedPop()
+	if popBU == nil {
+		t.Error("nil bubble update popped")
+	}
+	if !reflect.DeepEqual(mapBU, popBU) {
+		t.Error("map and popped update don't match")
 	}
 }

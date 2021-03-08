@@ -603,11 +603,26 @@ func (r *Renter) threadedUpdateRenterHealth() {
 
 		// Prepare the subtree for being bubbled
 		r.log.Debugf("Preparing subtree '%v' for bubble", siaPath)
-		urp, err := r.managedPrepareForBubble(siaPath, false)
+		urp, err := r.callPrepareForBubble(siaPath, false)
 		if err != nil {
 			// Log the error
-			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
+			r.log.Println("Error calling callPrepareForBubble on `", siaPath.String(), "`:", err)
+
+			// Check if urp is nil. This should only happen if the first call to Add
+			// the Root dir fails.
+			if urp == nil {
+				// Sleep and continue
+				select {
+				case <-time.After(healthLoopErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+				continue
+			}
 		}
+
+		// Sanity check that we have both a urp and it has directories listed in its
+		// childDir map.
 		if urp == nil || urp.callNumChildDirs() == 0 {
 			// This should never happen, build.Critical and sleep to prevent potential
 			// rapid cycling.
@@ -625,8 +640,8 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 }
 
-// managedPrepareForBubble prepares a directory for the Health Loop to call
-// bubble on and returns a uniqueRefreshPaths including all the paths of the
+// callPrepareForBubble prepares a directory for the Health Loop to call bubble
+// on and returns a uniqueRefreshPaths including all the paths of the
 // directories in the subtree that need to be updated. This includes updating
 // the LastHealthCheckTime for the supplied root directory.
 //
@@ -635,7 +650,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 //
 // If the force boolean is supplied, the LastHealthCheckTime of the directories
 // will be ignored so all directories will be considered.
-func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
+func (r *Renter) callPrepareForBubble(rootDir modules.SiaPath, force bool) (*uniqueRefreshPaths, error) {
 	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
 	aggregateLastHealthCheckTime := time.Now()
@@ -673,7 +688,9 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath, force bool) (*
 	errList := r.staticFileSystem.CachedList(rootDir, true, func(modules.FileInfo) {}, dlf)
 	if errList != nil {
 		err = errors.Compose(err, errList)
-		return nil, errors.AddContext(err, "unable to get cached list of sub directories")
+		// Still return the uniqueRefreshPaths as we added at least the root dir and
+		// we should return.
+		return urp, errors.AddContext(err, "unable to get cached list of sub directories")
 	}
 
 	// Update the root directory's LastHealthCheckTime to signal that this sub

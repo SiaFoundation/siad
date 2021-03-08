@@ -28,14 +28,16 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 	}
 
 	// Create monetization.
-	monetization := []modules.Monetizer{
-		{
-			Address:  types.UnlockHash{},
-			Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-			Currency: modules.CurrencyUSD,
+	monetization := &modules.Monetization{
+		Monetizers: []modules.Monetizer{
+			{
+				Address:  types.UnlockHash{},
+				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
+				Currency: modules.CurrencyUSD,
+			},
 		},
 	}
-	fastrand.Read(monetization[0].Address[:])
+	fastrand.Read(monetization.Monetizers[0].Address[:])
 
 	// Create SkyfileMultipartUploadParameters.
 	smup := modules.SkyfileMultipartUploadParameters{
@@ -50,7 +52,10 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 	}
 
 	// Verify 'urlValuesFromSkyfileMultipartUploadParameters' helper
-	values := urlValuesFromSkyfileMultipartUploadParameters(smup)
+	values, err := urlValuesFromSkyfileMultipartUploadParameters(smup)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !hasValueForKeys(values, []string{
 		"siapath",
 		"force",
@@ -103,7 +108,10 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 	}
 
 	// Verify 'urlValuesFromSkyfileMultipartUploadParameters' helper
-	values = urlValuesFromSkyfileUploadParameters(sup)
+	values, err = urlValuesFromSkyfileUploadParameters(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !hasValueForKeys(values, []string{
 		"siapath",
 		"dryrun",

@@ -155,3 +155,29 @@ type DependencyDontUpdateStuckStatusOnCleanup struct {
 func (d *DependencyDontUpdateStuckStatusOnCleanup) Disrupt(s string) bool {
 	return s == "DontUpdateChunkStatus"
 }
+
+// DependencyToggleDisableDeleteBlockedFiles can toggle the renter's ability to
+// delete blocked files in the health loop.
+type DependencyToggleDisableDeleteBlockedFiles struct {
+	mu             sync.Mutex
+	deleteDisabled bool
+	modules.ProductionDependencies
+}
+
+// DisableDeleteBlockedFiles will toggle the renter's ability to delete blocked
+// files.
+func (d *DependencyToggleDisableDeleteBlockedFiles) DisableDeleteBlockedFiles(disable bool) {
+	d.mu.Lock()
+	d.deleteDisabled = disable
+	d.mu.Unlock()
+}
+
+// Disrupt will prevent the renter from deleting blocked files when delete is
+// disabled.
+func (d *DependencyToggleDisableDeleteBlockedFiles) Disrupt(s string) bool {
+	d.mu.Lock()
+	disabled := d.deleteDisabled
+	d.mu.Unlock()
+
+	return disabled && (s == "DisableDeleteBlockedFiles")
+}

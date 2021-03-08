@@ -326,7 +326,6 @@ func (w *worker) staticUpdatePriceTable() {
 	// build payment details
 	details := contractor.PaymentDetails{
 		Host:          w.staticHostPubKey,
-		RPC:           modules.RPCUpdatePriceTable,
 		Amount:        pt.UpdatePriceTableCost,
 		RefundAccount: w.staticAccount.staticID,
 		SpendingDetails: modules.SpendingDetails{

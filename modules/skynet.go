@@ -38,6 +38,9 @@ const (
 const (
 	// CurrencyUSD the specifier for USD in the monetizer.
 	CurrencyUSD = "usd"
+
+	// LicenseMonetization is the first skynet monetization license.
+	LicenseMonetization = "AAAQ0UB7qWNm1sMcVuASY4iGNk7spjcAPxhNliCofOrhvg"
 )
 
 var (
@@ -60,6 +63,9 @@ var (
 	// ErrInvalidCurrency is returned if an unknown monetization currency is
 	// specified.
 	ErrInvalidCurrency = errors.New("specified monetization currency is invalid")
+
+	// ErrUnknownLicense is returned if an unknown license is specified.
+	ErrUnknownLicense = errors.New("specified license is unknown")
 )
 
 var (
@@ -115,7 +121,7 @@ type (
 
 		// Monetization contains a list of monetization info for the upload. It
 		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization []Monetizer
+		Monetization *Monetization
 
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
@@ -171,7 +177,7 @@ type (
 
 		// Monetization contains a list of monetization info for the upload. It
 		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization []Monetizer
+		Monetization *Monetization
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -190,13 +196,13 @@ type (
 	// into the leading bytes of the skyfile, meaning that this struct can be
 	// extended without breaking compatibility.
 	SkyfileMetadata struct {
-		Filename           string          `json:"filename,omitempty"`
-		Length             uint64          `json:"length,omitempty"`
+		Filename           string          `json:"filename"`
+		Length             uint64          `json:"length"`
 		Mode               os.FileMode     `json:"mode,omitempty"`
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
-		Monetization       []Monetizer     `json:"monetization,omitempty"`
+		Monetization       *Monetization   `json:"monetization,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -204,6 +210,12 @@ type (
 		Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 		Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
+	}
+
+	// Monetization contains the monetization information for a skyfile.
+	Monetization struct {
+		Monetizers []Monetizer `json:"monetizers"`
+		License    string      `json:"license"`
 	}
 
 	// Monetizer refers to a single content provider being paid.
@@ -261,10 +273,18 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 	// Adjust the monetization using the ratio between the previous total length
 	// and the new one.
-	metadata.Monetization = append([]Monetizer{}, sm.Monetization...)
-	for i, m := range metadata.Monetization {
-		m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
-		metadata.Monetization[i] = m
+	if sm.Monetization != nil {
+		// Deep copy parent monetization.
+		var md Monetization
+		md = *sm.Monetization
+		md.Monetizers = append([]Monetizer{}, sm.Monetization.Monetizers...)
+		// Adjust individual monetizers.
+		for i, m := range md.Monetizers {
+			m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
+			md.Monetizers[i] = m
+		}
+		// Assign to metadata.
+		metadata.Monetization = &md
 	}
 	return metadata, isFile, offset, metadata.size()
 }
@@ -521,6 +541,59 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 		panic("computeMonetizationPayout should never fail with a fastrand.Reader")
 	}
 	return payout
+}
+
+// PayMonetizers is a helper method for paying out monetizers.
+func PayMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
+	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
+}
+
+// payMonetizers is a helper method for paying out monetizers.
+func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
+	// If there is no monetization, there is nothing for us to do.
+	if monetization == nil {
+		return nil
+	}
+	// If no data was downloaded, there is nothing to pay for.
+	if downloadedData == 0 {
+		return nil
+	}
+	// Pay out monetizers.
+	var payouts []types.SiacoinOutput
+	for _, monetizer := range monetization.Monetizers {
+		// Check conversion rate.
+		conversion, valid := conversionRates[monetizer.Currency]
+		if !valid {
+			return ErrInvalidCurrency
+		}
+		// Convert money to SC.
+		sc := monetizer.Amount.Mul(conversion)
+
+		// Adjust money to percentage of downloaded content.
+		sc = sc.Mul64(downloadedData).Div64(totalData)
+
+		// Figure out how much to pay.
+		payout, err := computeMonetizationPayout(sc, monetizationBase, rand)
+		if err != nil {
+			return err
+		}
+
+		// Ignore 0 payouts.
+		if payout.IsZero() {
+			continue
+		}
+		payouts = append(payouts, types.SiacoinOutput{
+			Value:      payout,
+			UnlockHash: monetizer.Address,
+		})
+	}
+	// If no payouts remain, there is nothing to do.
+	if len(payouts) == 0 {
+		return nil
+	}
+	// Send money.
+	_, err := w.SendSiacoinsMulti(payouts)
+	return err
 }
 
 // computeMonetizationPayout is a helper function to decide how much money to
