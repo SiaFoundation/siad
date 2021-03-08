@@ -234,8 +234,8 @@ func TestPriceTableForSubscription(t *testing.T) {
 	// Create a new, valid price table and set it to simulate a price table
 	// update.
 	wptValid := &workerPriceTable{
-		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(100 * time.Millisecond), // Won't cover the period
-		staticUpdateTime: time.Now().Add(time.Hour),                                              // 1 hour from now
+		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(priceTableRetryInterval).Add(time.Second),
+		staticUpdateTime: time.Now().Add(time.Hour), // 1 hour from now
 	}
 	fastrand.Read(wptValid.staticPriceTable.UID[:])
 	wt.staticSetPriceTable(wptValid)
