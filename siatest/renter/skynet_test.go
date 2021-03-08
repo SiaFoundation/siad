@@ -883,7 +883,15 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// get the stats
+	// This test relies on state from the previous tests. Make sure we are
+	// starting from a place of updated metadata
+	err := r.RenterBubblePost(modules.RootSiaPath(), true, true)
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(time.Second)
+
+	// Get the stats
 	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
@@ -960,7 +968,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check that the right stats were returned.
 	statsBefore := stats
+	tries := 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Make sure that the filesystem is being updated
+		if tries%10 == 0 {
+			err = r.RenterBubblePost(modules.RootSiaPath(), true, true)
+			if err != nil {
+				return err
+			}
+		}
+		tries++
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			return err
@@ -1013,7 +1030,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check the stats after the delete operation. Do it in a retry to account
 	// for the bubble.
+	tries = 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Make sure that the filesystem is being updated
+		if tries%10 == 0 {
+			err = r.RenterBubblePost(modules.RootSiaPath(), true, true)
+			if err != nil {
+				return err
+			}
+		}
+		tries++
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			t.Fatal(err)
