@@ -104,7 +104,7 @@ type (
 		SpendingUploads           types.Currency
 	}
 
-	// accountPersistenceV150 is the how the account persistence struct looked
+	// accountPersistenceV150 is how the account persistence struct looked
 	// before adding the spending details in v156
 	accountPersistenceV150 struct {
 		AccountID modules.AccountID
@@ -624,7 +624,6 @@ func (am *accountManager) upgradeFromV150ToV156(tmpFile modules.File) error {
 func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile modules.File) (err error) {
 	// convenience variables
 	r := am.staticRenter
-	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
 
 	// copy the tmp file to the accounts file
 	_, err = io.Copy(am.staticFile, tmpFile)
@@ -645,6 +644,7 @@ func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile mod
 	}
 
 	// delete the tmp file
+	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
 	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
 }
 

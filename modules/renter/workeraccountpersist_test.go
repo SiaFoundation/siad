@@ -460,10 +460,13 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	}
 
 	if !ap.SpendingDownloads.Equals(uMar.SpendingDownloads) ||
-		!ap.SpendingSnapshotDownloads.Equals(uMar.SpendingSnapshotDownloads) ||
 		!ap.SpendingRegistryReads.Equals(uMar.SpendingRegistryReads) ||
 		!ap.SpendingRegistryWrites.Equals(uMar.SpendingRegistryWrites) ||
-		!ap.SpendingSubscriptions.Equals(uMar.SpendingSubscriptions) {
+		!ap.SpendingRepairDownloads.Equals(uMar.SpendingRepairDownloads) ||
+		!ap.SpendingRepairUploads.Equals(uMar.SpendingRepairUploads) ||
+		!ap.SpendingSnapshotDownloads.Equals(uMar.SpendingSnapshotDownloads) ||
+		!ap.SpendingSubscriptions.Equals(uMar.SpendingSubscriptions) ||
+		!ap.SpendingUploads.Equals(uMar.SpendingUploads) {
 		t.Fatal("Unexpected spending details")
 	}
 
