@@ -239,7 +239,8 @@ LOOP:
 
 		// Remember the response with the highest revision number. We use >=
 		// here to also catch the edge case of the initial revision being 0.
-		if srv == nil || resp.staticSignedRegistryValue.Revision >= srv.Revision {
+		if srv == nil || resp.staticSignedRegistryValue.Revision > srv.Revision ||
+			(resp.staticSignedRegistryValue.Revision == srv.Revision && resp.staticSignedRegistryValue.HasMoreWork(srv.RegistryValue)) {
 			srv = resp.staticSignedRegistryValue
 		}
 	}

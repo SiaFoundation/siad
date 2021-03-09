@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"bytes"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
@@ -77,13 +79,20 @@ func (entry RegistryValue) Sign(sk crypto.SecretKey) SignedRegistryValue {
 	}
 }
 
+// hash hashes the registry value.
+func (entry RegistryValue) hash() crypto.Hash {
+	return crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
+}
+
+// HasMoreWork returns 'true' if the hash of entry is larger than target's.
+func (entry RegistryValue) HasMoreWork(target RegistryValue) bool {
+	hEntry := entry.hash()
+	hTarget := target.hash()
+	return bytes.Compare(hTarget[:], hEntry[:]) > 0
+}
+
 // Verify verifies the signature on the RegistryValue.
 func (entry SignedRegistryValue) Verify(pk crypto.PublicKey) error {
 	hash := entry.hash()
 	return crypto.VerifyHash(hash, pk, entry.Signature)
-}
-
-// hash hashes the registry value.
-func (entry RegistryValue) hash() crypto.Hash {
-	return crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
 }
