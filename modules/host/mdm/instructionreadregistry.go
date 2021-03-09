@@ -81,7 +81,6 @@ func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Curr
 		return errOutput(err), types.ZeroCurrency
 	}
 	return executeReadRegistry(prevOutput, i.staticState, modules.RegistrySubscriptionID(pubKey, tweak))
-
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.

@@ -306,6 +306,30 @@ func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, twe
 	return refund, nil
 }
 
+// AddReadRegistrySIDInstruction adds an ReadRegistry instruction to the program.
+func (pb *ProgramBuilder) AddReadRegistrySIDInstruction(sid SubscriptionID) (types.Currency, error) {
+	// Marshal sid.
+	subID := encoding.Marshal(sid)
+	// Compute the argument offsets.
+	subIDOff := uint64(pb.programData.Len())
+	// Extend the programData.
+	_, err := pb.programData.Write(subID)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistrySIDInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewReadRegistrySIDInstruction(subIDOff)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Read cost, collateral and memory usage.
+	collateral := MDMReadRegistryCollateral()
+	cost, refund := MDMReadRegistryCost(pb.staticPT)
+	memory := MDMReadRegistryMemory()
+	time := uint64(MDMTimeReadRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return refund, nil
+}
+
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (pb *ProgramBuilder) Cost(finalized bool) (cost, storage, collateral types.Currency) {
@@ -379,6 +403,16 @@ func NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff uint64) Instructi
 	binary.LittleEndian.PutUint64(i.Args[:8], pubKeyOff)
 	binary.LittleEndian.PutUint64(i.Args[8:16], pubKeyLen)
 	binary.LittleEndian.PutUint64(i.Args[16:24], tweakOff)
+	return i
+}
+
+// NewReadRegistrySIDInstruction creates an Instruction from arguments.
+func NewReadRegistrySIDInstruction(sidOffset uint64) Instruction {
+	i := Instruction{
+		Specifier: SpecifierReadRegistrySID,
+		Args:      make([]byte, RPCIReadRegistrySIDLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], sidOffset)
 	return i
 }
 
