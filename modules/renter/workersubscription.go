@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"sync"
@@ -13,15 +14,28 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
+
+// TODO: (f/u) testing for account deposits and withdrawals
+// TODO: (f/u) cooldown testing
 
 var (
 	// initialSubscriptionBudget is the initial budget withdrawn for a
 	// subscription. After using up 50% of it, the worker refills the budget
 	// again to match the initial budget.
 	initialSubscriptionBudget = modules.DefaultMaxEphemeralAccountBalance.Div64(10) // 10% of the max
+
+	// subscriptionCooldownResetInterval is the time after which we consider an
+	// ongoing subscription to be healthy enough to reset the consecutive
+	// failures.
+	subscriptionCooldownResetInterval = build.Select(build.Var{
+		Testing:  time.Second * 5,
+		Dev:      time.Minute,
+		Standard: time.Hour,
+	}).(time.Duration)
 
 	// subscriptionExtensionWindow is the time before the subscription period
 	// ends when the workers starts trying to extend the subscription.
@@ -47,6 +61,10 @@ var (
 	priceTableRetryInterval = time.Second
 )
 
+// minSubscriptionVersion is the min version required for a host to support the
+// subscription protocol.
+const minSubscriptionVersion = "1.5.5"
+
 type (
 	// subscriptionInfos contains all of the registry subscription related
 	// information of a worker.
@@ -55,8 +73,8 @@ type (
 		// to subscribe to. The worker might not be subscribed to these values
 		// at all times due to interruptions but it will try to resubscribe as
 		// soon as possible.
-		// The worker will also try to unsubscribe from all subsriptions that it
-		// currently has which it is not supposed to be subscribed to.
+		// The worker will also try to unsubscribe from all subscriptions that
+		// it currently has which it is not supposed to be subscribed to.
 		subscriptions map[modules.SubscriptionID]*subscription
 
 		// staticWakeChan is a channel to tell the subscription loop that more
@@ -65,6 +83,10 @@ type (
 
 		// stats
 		atomicExtensions uint64
+
+		// cooldown
+		cooldownUntil       time.Time
+		consecutiveFailures uint64
 
 		// utility fields
 		mu sync.Mutex
@@ -166,14 +188,12 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	// Check if the host was trying to cheat us with an outdated entry.
 	latestRev, exists := w.staticRegistryCache.Get(sneu.PubKey, sneu.Entry.Tweak)
 	if exists && sneu.Entry.Revision < latestRev {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		return fmt.Errorf("host provided outdated entry %v < %v", sneu.Entry.Revision, latestRev)
 	}
 
 	// Verify the signature.
 	err = sneu.Entry.Verify(sneu.PubKey.ToPublicKey())
 	if err != nil {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		return errors.AddContext(err, "failed to verify signature")
 	}
 
@@ -187,7 +207,6 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	defer subInfo.mu.Unlock()
 	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(sneu.PubKey, sneu.Entry.Tweak)]
 	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
-		// TODO: (f/u) Punish the host by adding a subscription cooldown.
 		if exists && sub.latestRV != nil {
 			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
 		}
@@ -272,6 +291,46 @@ func (nh *notificationHandler) managedHandleNotification(stream siamux.Stream, b
 	if err := nh.staticStream.Close(); err != nil {
 		w.renter.log.Debugln("managedHandleNotification: failed to close subscription:", err)
 	}
+}
+
+// managedClearSubscription replaces the channels of all subscriptions of the
+// subInfo. This unblocks anyone waiting for a subscription to be established.
+func (subInfo *subscriptionInfos) managedClearSubscriptions() {
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	for _, sub := range subInfo.subscriptions {
+		// Replace channels.
+		select {
+		case <-sub.subscribed:
+		default:
+			close(sub.subscribed)
+		}
+		sub.subscribed = make(chan struct{})
+	}
+}
+
+// managedIncrementCooldown increments the subscription cooldown.
+func (subInfo *subscriptionInfos) managedIncrementCooldown() {
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+
+	// If the last cooldown ended a while ago, we reset the consecutive
+	// failures.
+	if time.Now().Sub(subInfo.cooldownUntil) > subscriptionCooldownResetInterval {
+		subInfo.consecutiveFailures = 0
+	}
+
+	// Increment the cooldown.
+	subInfo.cooldownUntil = cooldownUntil(subInfo.consecutiveFailures)
+	subInfo.consecutiveFailures++
+}
+
+// managedOnCooldown returns whether the subscription cooldown is active and its
+// remaining time.
+func (subInfo *subscriptionInfos) managedOnCooldown() (time.Duration, bool) {
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
+	return time.Until(subInfo.cooldownUntil), time.Now().Before(subInfo.cooldownUntil)
 }
 
 // managedSubscriptionDiff returns the difference between the desired
@@ -404,17 +463,8 @@ func (w *worker) managedSubscriptionCleanup(stream siamux.Stream, subscriber str
 	// Close the handler.
 	err = errors.Compose(err, w.renter.staticMux.CloseListener(subscriber))
 
-	// Clear the active subsriptions at the end of this method.
-	subInfo.mu.Lock()
-	for _, sub := range subInfo.subscriptions {
-		// Replace closed channels.
-		select {
-		case <-sub.subscribed:
-			sub.subscribed = make(chan struct{})
-		default:
-		}
-	}
-	subInfo.mu.Unlock()
+	// Clear the active subscriptions at the end of this method.
+	subInfo.managedClearSubscriptions()
 	return err
 }
 
@@ -637,6 +687,119 @@ func (w *worker) managedFundSubscription(stream siamux.Stream, pt *modules.RPCPr
 	return modules.RPCFundSubscription(stream, w.staticHostPubKey, w.staticAccount.staticID, w.staticAccount.staticSecretKey, pt.HostBlockHeight, fundAmt)
 }
 
+// threadedSubscriptionLoop is the main subscription loop. It opens a
+// subscription with the host and then calls managedSubscriptionLoop to keep the
+// subscription alive. If the subscription dies, threadedSubscriptionLoop will
+// start it again.
+func (w *worker) threadedSubscriptionLoop() {
+	if err := w.staticTG.Add(); err != nil {
+		return
+	}
+	defer w.staticTG.Done()
+
+	// No need to run loop if the host doesn't support it.
+	if build.VersionCmp(w.staticCache().staticHostVersion, minSubscriptionVersion) < 0 {
+		return
+	}
+
+	// Disable loop if necessary.
+	if w.renter.deps.Disrupt("DisableSubscriptionLoop") {
+		return
+	}
+
+	// Convenience var.
+	subInfo := w.staticSubscriptionInfo
+
+	for {
+		// Clear potential subscriptions before establishing a new loop.
+		subInfo.managedClearSubscriptions()
+
+		// Check for shutdown
+		select {
+		case <-w.staticTG.StopChan():
+			return // shutdown
+		default:
+		}
+
+		// Nothing to do if there are no subscriptions.
+		subInfo.mu.Lock()
+		nSubs := len(subInfo.subscriptions)
+		subInfo.mu.Unlock()
+		if nSubs == 0 {
+			select {
+			case <-subInfo.staticWakeChan:
+				// Wait for work
+			case <-w.staticTG.StopChan():
+				return // shutdown
+			}
+		}
+
+		// If the worker is on a cooldown, block until it is over before trying
+		// to establish a new subscriptoin session.
+		if w.managedOnMaintenanceCooldown() {
+			cooldownTime := w.callStatus().MaintenanceCoolDownTime
+			w.staticTG.Sleep(cooldownTime)
+			continue // try again
+		}
+		if cooldownTime, onCooldown := subInfo.managedOnCooldown(); onCooldown {
+			w.staticTG.Sleep(cooldownTime)
+			continue // try again
+		}
+
+		// Get a valid price table.
+		pt := w.managedPriceTableForSubscription(modules.SubscriptionPeriod)
+
+		// Compute the initial deadline.
+		deadline := time.Now().Add(modules.SubscriptionPeriod)
+
+		// Set the initial budget.
+		initialBudget := initialSubscriptionBudget
+		budget := modules.NewBudget(initialBudget)
+
+		// Track the withdrawal.
+		w.staticAccount.managedTrackWithdrawal(initialBudget)
+
+		// Prepare a unique handler for the host to subscribe to.
+		var subscriber types.Specifier
+		fastrand.Read(subscriber[:])
+		subscriberStr := hex.EncodeToString(subscriber[:])
+
+		// Begin the subscription session.
+		stream, err := w.managedBeginSubscription(initialBudget, w.staticAccount.staticID, subscriber)
+		if err != nil {
+			// Mark withdrawal as failed.
+			w.staticAccount.managedCommitWithdrawal(initialBudget, false)
+
+			// Log error and increment cooldown.
+			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
+			subInfo.managedIncrementCooldown()
+			continue
+		}
+
+		// Commit the withdrawal.
+		w.staticAccount.managedCommitWithdrawal(initialBudget, true)
+
+		// Run the subscription. The error is checked after closing the handler
+		// and the refund.
+		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
+
+		// Deposit refund. This happens in any case.
+		refund := budget.Remaining()
+		w.staticAccount.managedTrackDeposit(refund)
+		w.staticAccount.managedCommitDeposit(refund, true)
+
+		// Check the error.
+		if errors.Contains(errSubscription, threadgroup.ErrStopped) {
+			return // shutdown
+		}
+		if err != nil {
+			w.renter.log.Printf("Worker %v: subscription got interrupted: %v", w.staticHostPubKeyStr, errSubscription)
+			subInfo.managedIncrementCooldown()
+			continue
+		}
+	}
+}
+
 // Unsubscribe marks the provided entries as not subscribed to and notifies the
 // worker of the change.
 func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest) {
@@ -701,6 +864,8 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 	}
 
 	// Collect the values.
+	subInfo.mu.Lock()
+	defer subInfo.mu.Unlock()
 	var notifications []modules.RPCRegistrySubscriptionNotificationEntryUpdate
 	for _, sub := range subs {
 		if sub.latestRV == nil {

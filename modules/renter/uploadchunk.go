@@ -691,7 +691,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.managedUpdateUploadChunkStuckStatus(uc)
 
 		// Update the file's metadata.
-		offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+		offlineMap, goodForRenewMap, contracts, used := r.callRenterContractsAndUtilities()
 		err := r.managedUpdateFileMetadata(uc.fileEntry, offlineMap, goodForRenewMap, contracts, used)
 		if err != nil {
 			r.log.Print("managedCleanUpUploadChunk: failed to update file metadata", err)

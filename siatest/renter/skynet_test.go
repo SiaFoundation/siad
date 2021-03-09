@@ -64,9 +64,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "DisableForce", Test: testSkynetDisableForce},
-		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
-		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
-		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Stats", Test: testSkynetStats},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
@@ -374,6 +371,34 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Upload another skyfile, this time make it an empty file
+	var noData []byte
+	emptySiaPath, err := modules.NewSiaPath("testEmptyPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptySkylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             emptySiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Filename:            "testEmpty",
+		Reader:              bytes.NewReader(noData),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, metadata, err = r.SkynetSkylinkGet(emptySkylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if metadata.Length != 0 {
+		t.Fatal("Unexpected metadata")
 	}
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
@@ -690,6 +715,24 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
 	}
 
+	// TEST EMPTY FILE
+	fileName = "TestEmptyFileUpload"
+	emptyFile := siatest.TestFile{Name: "file", Data: []byte{}}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, []siatest.TestFile{emptyFile}, "", false, false)
+	if err != nil {
+		t.Fatal("Expected upload of empty file to succeed")
+	}
+	data, md, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal("Expected download of empty file to succeed")
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected data")
+	}
+	if md.Length != 0 {
+		t.Fatal("Unexpected metadata")
+	}
+
 	// TEST SMALL SUBFILE
 	//
 	// Define test func
@@ -841,7 +884,15 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// get the stats
+	// This test relies on state from the previous tests. Make sure we are
+	// starting from a place of updated metadata
+	err := r.RenterBubblePost(modules.RootSiaPath(), true, true)
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(time.Second)
+
+	// Get the stats
 	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
@@ -918,7 +969,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check that the right stats were returned.
 	statsBefore := stats
+	tries := 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Make sure that the filesystem is being updated
+		if tries%10 == 0 {
+			err = r.RenterBubblePost(modules.RootSiaPath(), true, true)
+			if err != nil {
+				return err
+			}
+		}
+		tries++
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			return err
@@ -971,7 +1031,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check the stats after the delete operation. Do it in a retry to account
 	// for the bubble.
+	tries = 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Make sure that the filesystem is being updated
+		if tries%10 == 0 {
+			err = r.RenterBubblePost(modules.RootSiaPath(), true, true)
+			if err != nil {
+				return err
+			}
+		}
+		tries++
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			t.Fatal(err)
@@ -2069,21 +2138,69 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// TestSkynetBlocklist verifies the functionality of the Skynet blocklist.
+func TestSkynetBlocklist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define a portal with dependency
+	portalDir := filepath.Join(groupDir, "portal")
+	portalParams := node.Renter(portalDir)
+	portalParams.CreatePortal = true
+	deps := &dependencies.DependencyToggleDisableDeleteBlockedFiles{}
+	portalParams.RenterDeps = deps
+	_, err = tg.AddNodes(portalParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run subtests
+	t.Run("BlocklistHash", func(t *testing.T) {
+		testSkynetBlocklistHash(t, tg, deps)
+	})
+	t.Run("BlocklistSkylink", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps)
+	})
+	t.Run("BlocklistUpgrade", func(t *testing.T) {
+		testSkynetBlocklistUpgrade(t, tg)
+	})
+}
+
 // testSkynetBlocklistHash tests the skynet blocklist module when submitting
 // hashes of the skylink's merkleroot
-func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetBlocklist(t, tg, true)
+func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
+	testSkynetBlocklist(t, tg, deps, true)
 }
 
 // testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
-func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetBlocklist(t, tg, false)
+func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
+	testSkynetBlocklist(t, tg, deps, false)
 }
 
 // testSkynetBlocklist tests the skynet blocklist module
-func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
+func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash bool) {
 	r := tg.Renters()[0]
+	deps.DisableDeleteBlockedFiles(true)
+
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
 	size := modules.SectorSize + uint64(100+siatest.Fuzz())
@@ -2399,6 +2516,9 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 			t.Error(err)
 		}
 	}
+
+	// Disable the dependency
+	deps.DisableDeleteBlockedFiles(false)
 
 	// Add both skylinks back to the blocklist
 	remove = []string{}
@@ -4468,5 +4588,55 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestReadUnknownRegistryEntry makes sure that reading an unknown entry takes
+// the appropriate amount of time.
+func TestReadUnknownRegistryEntry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyReadRegistryBlocking{}
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Get a random pubkey.
+	var spk types.SiaPublicKey
+	fastrand.Read(spk.Key)
+
+	// Look it up.
+	start := time.Now()
+	_, err = r.RegistryRead(spk, crypto.Hash{})
+	passed := time.Since(start)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+
+	// The time should have been less than MaxRegistryReadTimeout but greater
+	// than readRegistryBackgroundTimeout.
+	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
+		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
 	}
 }

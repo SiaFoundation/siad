@@ -58,6 +58,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +89,15 @@ func TestRenterSaveLoad(t *testing.T) {
 	usd, exists := settings.CurrencyConversionRates[modules.CurrencyUSD]
 	if !exists || !usd.Equals(types.ZeroCurrency) {
 		t.Error("wrong usd rate")
+	}
+
+	// The registry stats should be seeded.
+	if rt.renter.staticRRS.Estimate() != readRegistryStatsSeed+readRegistryStatsInterval {
+		t.Fatalf("registry stats aren't seeded correctly %v != %v", rt.renter.staticRRS.Estimate(), readRegistryStatsSeed+readRegistryStatsInterval)
+	}
+	// It should be possible to add a ReadRegistryBackgroundTimeout measurement.
+	if err := rt.renter.staticRRS.AddDatum(ReadRegistryBackgroundTimeout); err != nil {
+		t.Fatal(err)
 	}
 
 	// Update the settings of the renter to have a new stream cache size and
@@ -176,6 +186,7 @@ func TestRenterPaths(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Start renter with background loops disabled to avoid NDFs related to this
 	// test creating siafiles directly vs through the staticFileSystem.
@@ -301,6 +312,7 @@ func TestSiafileCompatibility(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)

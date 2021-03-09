@@ -108,7 +108,7 @@ func newMonetizedWriter(w io.Writer, md modules.SkyfileMetadata, wallet modules.
 	}
 }
 
-// Write wrap the inner Write and adds monetization.
+// Write wraps the inner Write and adds monetization.
 func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	// Sanity check the number of monetized bytes against the total.
 	rw.count += len(b)
