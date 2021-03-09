@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -293,7 +294,7 @@ func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
 	// create the renter dir
 	testdir := build.TempDir("renter", t.Name())
 	renterDir := filepath.Join(testdir, modules.RenterDir)
-	err := os.MkdirAll(renterDir, 0700)
+	err := os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,13 +344,13 @@ func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester
 	defer func() {
 		err := rt.Close()
 		if err != nil {
-			t.Log(err)
+			t.Fatal(err)
 		}
 	}()
 
 	// create the renter dir
 	renterDir := filepath.Join(testdir, modules.RenterDir)
-	err = os.MkdirAll(renterDir, 0700)
+	err = os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +372,7 @@ func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester
 	}
 
 	// open the tmp file
-	tmpFile, err := os.OpenFile(dst, os.O_RDWR, 0600)
+	tmpFile, err := os.OpenFile(dst, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		t.Fatal(err)
 	}

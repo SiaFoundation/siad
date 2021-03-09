@@ -3,6 +3,8 @@ package renter
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -195,9 +197,23 @@ func testAccountMinAndMaxExpectedBalance(t *testing.T) {
 func testAccountSyncBalance(t *testing.T) {
 	t.Parallel()
 
+	// create a mock of the accounts file
+	deps := modules.ProductionDependencies{}
+	f, err := deps.OpenFile(filepath.Join(t.TempDir(), accountsFilename), os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = f.Close()
+		if err != nil {
+			t.Fatal("err")
+		}
+	}()
+
 	oneCurrency := types.NewCurrency64(1)
 
 	a := new(account)
+	a.staticFile = f
 	a.balance = types.ZeroCurrency
 	a.negativeBalance = oneCurrency
 	a.pendingDeposits = oneCurrency
