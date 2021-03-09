@@ -55,7 +55,7 @@ func TestAccount(t *testing.T) {
 	t.Run("CheckFundAccountGouging", testAccountCheckFundAccountGouging)
 	t.Run("Constants", testAccountConstants)
 	t.Run("MinMaxExpectedBalance", testAccountMinAndMaxExpectedBalance)
-	t.Run("ResetBalance", testAccountResetBalance)
+	t.Run("SyncBalance", testAccountSyncBalance)
 
 	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
 	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
@@ -190,9 +190,9 @@ func testAccountMinAndMaxExpectedBalance(t *testing.T) {
 	}
 }
 
-// testAccountResetBalance is a small unit test that verifies the functionality
-// of the reset balance function.
-func testAccountResetBalance(t *testing.T) {
+// testAccountSyncBalance is a small unit test that verifies the functionality
+// of the sync balance function.
+func testAccountSyncBalance(t *testing.T) {
 	t.Parallel()
 
 	oneCurrency := types.NewCurrency64(1)
@@ -202,7 +202,7 @@ func testAccountResetBalance(t *testing.T) {
 	a.negativeBalance = oneCurrency
 	a.pendingDeposits = oneCurrency
 	a.pendingWithdrawals = oneCurrency
-	a.managedResetBalance(oneCurrency)
+	a.managedSyncBalance(oneCurrency)
 
 	if !a.balance.Equals(oneCurrency) {
 		t.Fatal("unexpected balance after reset", a.balance)
@@ -215,6 +215,18 @@ func testAccountResetBalance(t *testing.T) {
 	}
 	if !a.pendingWithdrawals.IsZero() {
 		t.Fatal("unexpected pending withdrawals after reset", a.pendingWithdrawals)
+	}
+	if !a.balanceDriftPositive.Equals(oneCurrency) || !a.balanceDriftNegative.IsZero() {
+		t.Fatal("unexpected drift")
+	}
+	if a.syncAt == (time.Time{}) {
+		t.Fatal("unexpected sync at")
+	}
+
+	// verify negative drift gets updated properly as well
+	a.managedSyncBalance(types.ZeroCurrency)
+	if !a.balanceDriftPositive.Equals(oneCurrency) || !a.balanceDriftNegative.Equals(oneCurrency) {
+		t.Fatal("unexpected drift")
 	}
 }
 
