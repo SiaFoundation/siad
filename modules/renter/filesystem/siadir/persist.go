@@ -171,7 +171,7 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	return sd.updateMetadata(metadata)
 }
 
-// Rename renames the SiaDir to targetPath.
+// rename renames the SiaDir to targetPath.
 func (sd *SiaDir) rename(targetPath string) error {
 	err := os.Rename(sd.path, targetPath)
 	if err != nil {
@@ -327,12 +327,9 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode, deps modul
 	if err := os.MkdirAll(dirPath, modules.DefaultDirPerm); err != nil {
 		return err
 	}
-	if dirPath == rootPath {
-		return nil
-	}
 
 	// Create metadata
-	for {
+	for dirPath != rootPath {
 		dirPath = filepath.Dir(dirPath)
 		if dirPath == string(filepath.Separator) || dirPath == "." {
 			dirPath = rootPath
@@ -347,9 +344,6 @@ func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode, deps modul
 			if err != nil {
 				return errors.AddContext(err, "unable to saveDir")
 			}
-		}
-		if dirPath == rootPath {
-			break
 		}
 	}
 	return nil
