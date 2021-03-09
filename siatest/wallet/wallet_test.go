@@ -627,7 +627,7 @@ func TestWalletSend(t *testing.T) {
 	}
 	originalBalance2 := wg.ConfirmedSiacoinBalance
 
-	// Asset non zero balances
+	// Assert non zero balances
 	if originalBalance1.IsZero() {
 		t.Fatal("renter1 balance is zero")
 	}
@@ -666,7 +666,7 @@ func TestWalletSend(t *testing.T) {
 			return nil
 		}
 
-		return fmt.Errorf("renter2 hasn't received transaction yet: Original %v New %v", originalBalance2.HumanString(), newBalance2.HumanString())
+		return fmt.Errorf("renter2 hasn't received transaction yet: Original balance %v, New balance %v", originalBalance2.HumanString(), newBalance2.HumanString())
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -720,7 +720,7 @@ func TestWalletSend(t *testing.T) {
 			return nil
 		}
 
-		return fmt.Errorf("renter1 hasn't received transaction yet: Original %v New %v", originalBalance1.HumanString(), newBalance1.HumanString())
+		return fmt.Errorf("renter1 hasn't received transaction yet: Original balance %v, New balance %v", originalBalance1.HumanString(), newBalance1.HumanString())
 	})
 	if err != nil {
 		t.Fatal(err)
