@@ -458,6 +458,12 @@ func TestNewWithdrawalMessage(t *testing.T) {
 // openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
 func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
+	// randomBalance is a small helper function that returns a random
+	// types.Currency taking into account the given max value
+	randomBalance := func(max uint64) types.Currency {
+		return types.NewCurrency64(fastrand.Uint64n(max))
+	}
+
 	accounts := make([]*account, 0)
 	for i := 0; i < fastrand.Intn(10)+1; i++ {
 		hostKey := types.SiaPublicKey{
@@ -470,10 +476,21 @@ func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 		}
 
 		// give it a random balance state
-		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.negativeBalance = types.NewCurrency64(fastrand.Uint64n(1e2))
-		account.pendingDeposits = types.NewCurrency64(fastrand.Uint64n(1e2))
-		account.pendingWithdrawals = types.NewCurrency64(fastrand.Uint64n(1e2))
+		account.balance = randomBalance(1e3)
+		account.negativeBalance = randomBalance(1e2)
+		account.pendingDeposits = randomBalance(1e2)
+		account.pendingWithdrawals = randomBalance(1e2)
+		account.spending = spendingDetails{
+			downloads:         randomBalance(1e1),
+			registryReads:     randomBalance(1e1),
+			registryWrites:    randomBalance(1e1),
+			repairDownloads:   randomBalance(1e1),
+			repairUploads:     randomBalance(1e1),
+			snapshotDownloads: randomBalance(1e1),
+			snapshotUploads:   randomBalance(1e1),
+			subscriptions:     randomBalance(1e1),
+			uploads:           randomBalance(1e1),
+		}
 		accounts = append(accounts, account)
 	}
 	return accounts, nil

@@ -149,6 +149,7 @@ type (
 		repairDownloads   types.Currency
 		repairUploads     types.Currency
 		snapshotDownloads types.Currency
+		snapshotUploads   types.Currency
 		subscriptions     types.Currency
 		uploads           types.Currency
 	}
