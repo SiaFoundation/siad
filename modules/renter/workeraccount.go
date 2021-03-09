@@ -348,6 +348,12 @@ func (a *account) managedSyncBalance(balance types.Currency) {
 		a.balanceDriftNegative = a.balanceDriftNegative.Add(delta)
 	}
 
+	// Persist the account
+	err := a.persist()
+	if err != nil {
+		a.staticRenter.log.Printf("could not persist account, err: %v\n", err)
+	}
+
 	// Determine how long to wait before attempting to sync again, and then
 	// update the syncAt time. There is significant randomness in the waiting
 	// because syncing with the host requires freezing up the worker. We do not
