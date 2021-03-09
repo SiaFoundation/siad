@@ -230,6 +230,9 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
+	// read registry stats
+	staticRRS *readRegistryStats
+
 	// Memory management
 	//
 	// registryMemoryManager is used for updating registry entries and reading
@@ -1012,7 +1015,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticBubbleScheduler = newBubbleScheduler(r)
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
+	r.staticRRS = newReadRegistryStats(ReadRegistryBackgroundTimeout, readRegistryStatsInterval, readRegistryStatsDecay, readRegistryStatsPercentile)
 	close(r.uploadHeap.pauseChan)
+
+	// Seed the rrs.
+	err := r.staticRRS.AddDatum(readRegistryStatsSeed)
+	if err != nil {
+		return nil, err
+	}
 
 	// Init the statsChan and close it right away to signal that no scan is
 	// going on.
@@ -1021,7 +1031,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
-	var err error
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {
 		return nil, err
