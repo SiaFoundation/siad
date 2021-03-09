@@ -257,6 +257,8 @@ func TestUpdate(t *testing.T) {
 	for !rv.HasMoreWork(expectedRV.RegistryValue) {
 		rv.Data = fastrand.Bytes(100)
 		rv = rv.Sign(sk)
+		v.data = rv.Data
+		v.signature = rv.Signature
 	}
 	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
@@ -269,6 +271,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Lower the revision. This is still invalid but returns a different error.
+	expectedRV = rv
 	rv.Revision--
 	v.revision--
 	rv = rv.Sign(sk)

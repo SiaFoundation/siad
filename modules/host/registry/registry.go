@@ -109,9 +109,9 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	oldRV := modules.NewRegistryValue(v.tweak, v.data, v.revision)
 	if !init {
 		s := fmt.Sprintf("%v <= %v", rv.Revision, v.revision)
-		if rv.Revision < v.revision {
+		if rv.Revision < oldRV.Revision {
 			return errors.AddContext(ErrLowerRevNum, s)
-		} else if rv.Revision == v.revision && !oldRV.HasMoreWork(rv.RegistryValue) {
+		} else if rv.Revision == oldRV.Revision && !rv.HasMoreWork(oldRV) {
 			return errors.AddContext(ErrSameRevNum, s)
 		}
 	}
