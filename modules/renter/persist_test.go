@@ -82,8 +82,12 @@ func TestRenterSaveLoad(t *testing.T) {
 	if !settings.MonetizationBase.IsZero() {
 		t.Error("monetization base should default to zero")
 	}
-	if len(settings.CurrencyConversionRates) != 0 {
-		t.Error("currency conversion shouldn't be set")
+	if len(settings.CurrencyConversionRates) != 1 {
+		t.Error("invalid currency conversion")
+	}
+	usd, exists := settings.CurrencyConversionRates[modules.CurrencyUSD]
+	if !exists || !usd.Equals(types.ZeroCurrency) {
+		t.Error("wrong usd rate")
 	}
 
 	// Update the settings of the renter to have a new stream cache size and
