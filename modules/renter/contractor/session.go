@@ -236,11 +236,11 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	if err != nil {
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
-		return nil, errors.New("contract has already ended")
+		return nil, errContractEnded
 	} else if !haveHost {
-		return nil, errors.New("no record of that host")
+		return nil, errHostNotFound
 	} else if host.Filtered {
-		return nil, errors.New("host is blacklisted")
+		return nil, errHostBlocked
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return nil, errTooExpensive
 	} else if host.UploadBandwidthPrice.Cmp(maxUploadPrice) > 0 {
