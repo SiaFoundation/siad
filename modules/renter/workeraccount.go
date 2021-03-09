@@ -90,10 +90,23 @@ type (
 		// Money has multiple states in an account, this is all the information
 		// we need to understand the current state of the account's balance and
 		// pending updates.
-		balance            types.Currency
-		negativeBalance    types.Currency
-		pendingWithdrawals types.Currency
-		pendingDeposits    types.Currency
+		//
+		// The two drift fields keep track of the delta between our version of
+		// the balance and the host's version of the balance. We want to keep
+		// track of this drift as in the future we might add code that acts upon
+		// it and penalizes the host if we find they are cheating us, or
+		// behaving sub-optimally.
+		balance              types.Currency
+		balanceDriftPositive types.Currency
+		balanceDriftNegative types.Currency
+		pendingDeposits      types.Currency
+		pendingWithdrawals   types.Currency
+		negativeBalance      types.Currency
+
+		// Spending details contain a breakdown of how much money from the
+		// ephemeral account got spent on what type of action. Examples of such
+		// actions are downloads, registry reads, registry writes, etc.
+		spending spendingDetails
 
 		// Error tracking.
 		recentErr         error
@@ -124,6 +137,25 @@ type (
 		staticOffset int64
 		staticRenter *Renter
 	}
+
+	// spendingDetails contains a breakdown of all spending metrics, all money
+	// that is being spent from an ephemeral account is accounted for in one of
+	// these categories. Every field of this struct should have a corresponding
+	// 'spendingCategory'.
+	spendingDetails struct {
+		downloads         types.Currency
+		registryReads     types.Currency
+		registryWrites    types.Currency
+		repairDownloads   types.Currency
+		repairUploads     types.Currency
+		snapshotDownloads types.Currency
+		subscriptions     types.Currency
+		uploads           types.Currency
+	}
+
+	// spendingCategory defines an enum that represent a category in the
+	// spending details
+	spendingCategory uint64
 )
 
 // ProvidePayment takes a stream and various payment details and handles the
@@ -425,12 +457,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
-
-	// If our account balance is lower than the balance indicated by the host,
-	// we want to sync our balance by resetting it.
-	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
-		w.staticAccount.managedResetBalance(balance)
-	}
+	w.managedHandleAccountBalanceSync(balance)
 
 	// Determine how long to wait before attempting to sync again, and then
 	// update the syncAt time. There is significant randomness in the waiting
@@ -444,6 +471,30 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
 	// accordingly. Perform this check at startup and periodically.
+}
+
+// managedHandleAccountBalanceSync updates the account's drift fields using the
+// account's current available balance and the given balance, which is the one
+// received from the host.
+func (w *worker) managedHandleAccountBalanceSync(balance types.Currency) {
+	// If our balance is equal to what the host communicated, we're done.
+	currBalance := w.staticAccount.managedAvailableBalance()
+	if currBalance.Equals(balance) {
+		return
+	}
+
+	// However, if it is lower we want to reset our account balance and track
+	// the amount we drifted.
+	if currBalance.Cmp(balance) < 0 {
+		w.staticAccount.managedResetBalance(balance)
+		delta := balance.Sub(currBalance)
+		w.staticAccount.balanceDriftPositive = w.staticAccount.balanceDriftPositive.Add(delta)
+		return
+	}
+
+	// If it's higher we only track the amount we drifted.
+	delta := currBalance.Sub(balance)
+	w.staticAccount.balanceDriftNegative = w.staticAccount.balanceDriftNegative.Add(delta)
 }
 
 // managedNeedsToRefillAccount will check whether the worker's account needs to
