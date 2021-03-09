@@ -175,7 +175,7 @@ func (v *TestValues) AddReadRegistrySIDInstruction(sid modules.SubscriptionID, r
 	collateral := modules.MDMReadRegistryCollateral()
 	cost, refund := modules.MDMReadRegistryCost(v.staticPT)
 	time := uint64(modules.MDMTimeReadRegistry)
-	newData := crypto.HashSize + len(encoding.Marshal(sid))
+	newData := len(encoding.Marshal(sid))
 	readonly := true
 	batch := true
 	var successRefund types.Currency
