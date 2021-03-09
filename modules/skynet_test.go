@@ -503,7 +503,7 @@ func TestPayMonetizers(t *testing.T) {
 	w := &monetizationWalletTester{}
 
 	// Monetization base..
-	base := types.NewCurrency64(1000)
+	base := types.SiacoinPrecision.Mul64(1000) // 1KS payouts
 
 	// Declare a helper to create valid monetizers.
 	validMonetization := func() *Monetization {
@@ -511,7 +511,7 @@ func TestPayMonetizers(t *testing.T) {
 			License: LicenseMonetization,
 			Monetizers: []Monetizer{
 				{
-					Amount:   types.NewCurrency64(fastrand.Uint64n(100) + 1),
+					Amount:   types.SiacoinPrecision.Div64(100000), // $0.00001
 					Currency: CurrencyUSD,
 				},
 			},
@@ -520,60 +520,66 @@ func TestPayMonetizers(t *testing.T) {
 		return m
 	}
 
-	// Declare valid currencies.
-	rate := types.NewCurrency64(2) // $1 is 2H
-	conversionRates := map[string]types.Currency{
-		CurrencyUSD: rate,
-	}
+	// Declare a test helper.
+	test := func(rate types.Currency) {
+		conversionRates := map[string]types.Currency{
+			CurrencyUSD: rate,
+		}
 
-	// no data
-	m := validMonetization()
-	err := PayMonetizers(w, m, 0, 100, conversionRates, base)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// invalid currency
-	m = validMonetization()
-	m.Monetizers[0].Currency = ""
-	err = PayMonetizers(w, m, 100, 100, conversionRates, base)
-	if !errors.Contains(err, ErrInvalidCurrency) {
-		t.Fatal(err)
-	}
-
-	// Run the remaining test 1000 times to make sure the success test cases
-	// don't just pass by accident.
-	for i := 0; i < 1000; i++ {
-		// pay out base - lottery success
-		m = validMonetization()
-		n := m.Monetizers[0].Amount.Mul(rate).Sub64(1) // n < amt -> success
-		err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
+		// no data
+		m := validMonetization()
+		err := PayMonetizers(w, m, 0, 100, conversionRates, base)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// there should be 1 payout of amount 'base' to the right address.
-		if len(w.lastPayout) != 1 {
-			t.Fatal("wrong number of payouts", len(w.lastPayout))
-		}
-		if !w.lastPayout[0].Value.Equals(base) {
-			t.Fatal("wrong payout amount", w.lastPayout[0].Value, base)
-		}
-		if w.lastPayout[0].UnlockHash != m.Monetizers[0].Address {
-			t.Fatal("wrong payout address")
-		}
-		w.Reset()
 
-		// pay out base - lottery failure
+		// invalid currency
 		m = validMonetization()
-		n = m.Monetizers[0].Amount.Mul(rate) // n == amt -> failure
-		err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
-		if err != nil {
+		m.Monetizers[0].Currency = ""
+		err = PayMonetizers(w, m, 100, 100, conversionRates, base)
+		if !errors.Contains(err, ErrInvalidCurrency) {
 			t.Fatal(err)
 		}
-		// there should be no payout
-		if len(w.lastPayout) != 0 {
-			t.Fatal("wrong number of payouts", len(w.lastPayout))
+
+		// Run the remaining test 1000 times to make sure the success test cases
+		// don't just pass by accident.
+		for i := 0; i < 1000; i++ {
+			// pay out base - lottery success
+			m = validMonetization()
+			n := m.Monetizers[0].Amount.Mul(rate).Div(types.SiacoinPrecision).Sub64(1) // n < amt -> success
+			err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// there should be 1 payout of amount 'base' to the right address.
+			if len(w.lastPayout) != 1 {
+				t.Fatal("wrong number of payouts", len(w.lastPayout))
+			}
+			if !w.lastPayout[0].Value.Equals(base) {
+				t.Fatal("wrong payout amount", w.lastPayout[0].Value, base)
+			}
+			if w.lastPayout[0].UnlockHash != m.Monetizers[0].Address {
+				t.Fatal("wrong payout address")
+			}
+			w.Reset()
+
+			// pay out base - lottery failure
+			m = validMonetization()
+			n = m.Monetizers[0].Amount.Mul(rate).Div(types.SiacoinPrecision) // n == amt -> failure
+			err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// there should be no payout
+			if len(w.lastPayout) != 0 {
+				t.Fatal("wrong number of payouts", len(w.lastPayout))
+			}
+			w.Reset()
 		}
-		w.Reset()
 	}
+
+	// Run the test twice. Once with a positive and once with a negative
+	// conversion rate.
+	test(types.SiacoinPrecision.Mul64(10)) // $1 = 10SC
+	test(types.SiacoinPrecision.Div64(10)) // $1 = 0.1SC
 }
