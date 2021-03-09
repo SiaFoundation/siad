@@ -141,9 +141,9 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	}
 	if height > contract.EndHeight {
-		return nil, errors.New("contract has already ended")
+		return nil, errContractEnded
 	} else if !haveHost {
-		return nil, errors.New("no record of that host")
+		return nil, errHostNotFound
 	} else if host.DownloadBandwidthPrice.Cmp(maxDownloadPrice) > 0 {
 		return nil, errTooExpensive
 	}

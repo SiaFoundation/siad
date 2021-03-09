@@ -32,9 +32,15 @@ var (
 	ErrInsufficientAllowance = errors.New("allowance is not large enough to cover fees of contract creation")
 	errTooExpensive          = errors.New("host price was too high")
 
+	// errContractEnded is the error returned when the contract has already ended
+	errContractEnded = errors.New("contract has already ended")
+
 	// errContractNotGFR is used to indicate that a contract renewal failed
 	// because the contract was marked !GFR.
 	errContractNotGFR = errors.New("contract is not GoodForRenew")
+
+	// errHostBlocked is the error returned when the host is blocked
+	errHostBlocked = errors.New("host is blocked")
 )
 
 type (
@@ -143,7 +149,7 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract modules.Re
 		return types.ZeroCurrency, errors.New("could not find host in hostdb")
 	}
 	if host.Filtered {
-		return types.ZeroCurrency, errors.New("host is blacklisted")
+		return types.ZeroCurrency, errHostBlocked
 	}
 
 	// Estimate the amount of money that's going to be needed for existing
@@ -624,9 +630,9 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 	c.mu.Unlock()
 
 	if !ok {
-		return modules.RenterContract{}, errors.New("no record of that host")
+		return modules.RenterContract{}, errHostNotFound
 	} else if host.Filtered {
-		return modules.RenterContract{}, errors.New("host is blacklisted")
+		return modules.RenterContract{}, errHostBlocked
 	} else if host.StoragePrice.Cmp(maxStoragePrice) > 0 {
 		return modules.RenterContract{}, errTooExpensive
 	} else if host.MaxDuration < period {
