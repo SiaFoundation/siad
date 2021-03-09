@@ -46,6 +46,29 @@ func (p *program) staticDecodeReadRegistryInstruction(instruction modules.Instru
 	}, nil
 }
 
+// executeReadRegistry executes a registry lookup.
+func executeReadRegistry(prevOutput output, ps *programState, sid modules.SubscriptionID) (output, types.Currency) {
+	// Prepare the output. An empty output.Output means the data wasn't found.
+	out := output{
+		NewSize:       prevOutput.NewSize,
+		NewMerkleRoot: prevOutput.NewMerkleRoot,
+		Output:        nil,
+	}
+
+	// Get the value. If this fails we are done.
+	rv, found := ps.host.RegistryGet(sid)
+	if !found {
+		_, refund := modules.MDMReadRegistryCost(ps.priceTable)
+		return out, refund
+	}
+
+	// Return the signature followed by the data.
+	rev := make([]byte, 8)
+	binary.LittleEndian.PutUint64(rev, rv.Revision)
+	out.Output = append(rv.Signature[:], append(rev, rv.Data...)...)
+	return out, types.ZeroCurrency
+}
+
 // Execute executes the 'ReadRegistry' instruction.
 func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the args.
@@ -57,26 +80,8 @@ func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Curr
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
+	return executeReadRegistry(prevOutput, i.staticState, modules.RegistrySubscriptionID(pubKey, tweak))
 
-	// Prepare the output. An empty output.Output means the data wasn't found.
-	out := output{
-		NewSize:       prevOutput.NewSize,
-		NewMerkleRoot: prevOutput.NewMerkleRoot,
-		Output:        nil,
-	}
-
-	// Get the value. If this fails we are done.
-	rv, found := i.staticState.host.RegistryGet(pubKey, tweak)
-	if !found {
-		_, refund := modules.MDMReadRegistryCost(i.staticState.priceTable)
-		return out, refund
-	}
-
-	// Return the signature followed by the data.
-	rev := make([]byte, 8)
-	binary.LittleEndian.PutUint64(rev, rv.Revision)
-	out.Output = append(rv.Signature[:], append(rev, rv.Data...)...)
-	return out, types.ZeroCurrency
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.

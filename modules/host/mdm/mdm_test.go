@@ -26,7 +26,7 @@ type (
 		generateSectors bool
 		blockHeight     types.BlockHeight
 		sectors         map[crypto.Hash][]byte
-		registry        map[crypto.Hash]modules.SignedRegistryValue
+		registry        map[modules.SubscriptionID]modules.SignedRegistryValue
 		mu              sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
@@ -48,7 +48,7 @@ func newTestHost() *TestHost {
 func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
 		generateSectors: generateSectors,
-		registry:        make(map[crypto.Hash]modules.SignedRegistryValue),
+		registry:        make(map[modules.SubscriptionID]modules.SignedRegistryValue),
 		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
@@ -80,10 +80,10 @@ func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 }
 
 // RegistryGet retrieves a value from the registry.
-func (h *TestHost) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
+func (h *TestHost) RegistryGet(sid modules.SubscriptionID) (modules.SignedRegistryValue, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	v, exists := h.registry[crypto.HashAll(pubKey, tweak)]
+	v, exists := h.registry[sid]
 	if !exists {
 		return modules.SignedRegistryValue{}, false
 	}
@@ -94,7 +94,7 @@ func (h *TestHost) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (mo
 func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	key := crypto.HashAll(pubKey, rv.Tweak)
+	key := modules.RegistrySubscriptionID(pubKey, rv.Tweak)
 	oldRV, exists := h.registry[key]
 
 	if exists && rv.Revision < oldRV.Revision {
