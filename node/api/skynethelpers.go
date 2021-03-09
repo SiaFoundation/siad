@@ -54,7 +54,38 @@ type (
 // monetizedResponseWriter is a wrapper for a response writer. It monetizes the
 // returned bytes.
 type monetizedResponseWriter struct {
-	staticW      http.ResponseWriter
+	staticInner http.ResponseWriter
+	staticW     io.Writer
+}
+
+// newMonetizedResponseWriter creates a new response writer wrapped with a
+// monetized writer.
+func newMonetizedResponseWriter(inner http.ResponseWriter, md modules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) http.ResponseWriter {
+	return &monetizedResponseWriter{
+		staticInner: inner,
+		staticW:     newMonetizedWriter(inner, md, wallet, cr, mb),
+	}
+}
+
+// Header calls the inner writers Header method.
+func (rw *monetizedResponseWriter) Header() http.Header {
+	return rw.staticInner.Header()
+}
+
+// WriteHeader calls the inner writers WriteHeader method.
+func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
+	rw.staticInner.WriteHeader(statusCode)
+}
+
+// Write writes to the underlying monetized writer.
+func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
+	return rw.staticW.Write(b)
+}
+
+// monetizedWriter is a wrapper for a io.Writer. It monetizes the returned
+// bytes.
+type monetizedWriter struct {
+	staticW      io.Writer
 	staticMD     modules.SkyfileMetadata
 	staticWallet modules.SiacoinSenderMulti
 
@@ -66,29 +97,19 @@ type monetizedResponseWriter struct {
 	count int
 }
 
-// newMonetizedResponseWriter creates a new wrapped writer.
-func newMonetizedResponseWriter(inner http.ResponseWriter, md modules.SkyfileMetadata, w modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) http.ResponseWriter {
-	return &monetizedResponseWriter{
-		staticW:                inner,
+// newMonetizedWriter creates a new wrapped writer.
+func newMonetizedWriter(w io.Writer, md modules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) io.Writer {
+	return &monetizedWriter{
+		staticW:                w,
 		staticMD:               md,
-		staticWallet:           w,
+		staticWallet:           wallet,
 		staticConversionRates:  cr,
 		staticMonetizationBase: mb,
 	}
 }
 
-// Header calls the inner writers Header method.
-func (rw *monetizedResponseWriter) Header() http.Header {
-	return rw.staticW.Header()
-}
-
-// WriteHeader calls the inner writers WriteHeader method.
-func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
-	rw.staticW.WriteHeader(statusCode)
-}
-
 // Write wrap the inner Write and adds monetization.
-func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
+func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	// Sanity check the number of monetized bytes against the total.
 	rw.count += len(b)
 	if rw.count > int(rw.staticMD.Length) {
@@ -362,7 +383,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 // serveArchive serves skyfiles as an archive by reading them from r and writing
 // the archive to dst using the given archiveFunc.
-func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc) error {
+func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc, monetize func(io.Writer) io.Writer) error {
 	// Get the files to archive.
 	var files []modules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
@@ -401,12 +422,12 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 			Len:      length,
 		})
 	}
-	return archiveFunc(dst, src, files)
+	return archiveFunc(dst, src, files, monetize)
 }
 
 // serveTar is an archiveFunc that implements serving the files from src to dst
 // as a tar.
-func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
+func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error {
 	tw := tar.NewWriter(dst)
 	for _, file := range files {
 		// Create header.
@@ -421,7 +442,7 @@ func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 			return err
 		}
 		// Write file content.
-		if _, err := io.CopyN(tw, src, header.Size); err != nil {
+		if _, err := io.CopyN(monetize(tw), src, header.Size); err != nil {
 			return err
 		}
 	}
@@ -430,7 +451,7 @@ func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 
 // serveZip is an archiveFunc that implements serving the files from src to dst
 // as a zip.
-func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
+func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error {
 	zw := zip.NewWriter(dst)
 	for _, file := range files {
 		f, err := zw.Create(file.Filename)
@@ -439,7 +460,7 @@ func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 		}
 
 		// Write file content.
-		_, err = io.CopyN(f, src, int64(file.Len))
+		_, err = io.CopyN(monetize(f), src, int64(file.Len))
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}

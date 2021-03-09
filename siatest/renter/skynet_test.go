@@ -4374,27 +4374,72 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Download it.
+	// Download it raw.
 	_, _, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Download it with the concat format.
+	_, _, err = r.SkynetSkylinkConcatGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download it as tar.
+	_, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-	// Wait for the miner to become aware of the txn.
+	// Download it as tar gz.
+	_, reader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Download it as zip.
+	_, reader, err = r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the miner to become aware of the txns.
 	m := tg.Miners()[0]
+	nTxns := 5
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		tgtg, err := m.TransactionPoolTransactionsGet()
 		if err != nil {
 			t.Fatal(err)
 		}
+		nFound := 0
 		for _, txn := range tgtg.Transactions {
 			for _, sco := range txn.SiacoinOutputs {
 				if sco.UnlockHash == addr {
-					return nil // found
+					nFound++
 				}
 			}
 		}
-		return errors.New("txn not found")
+		if nFound < nTxns {
+			return fmt.Errorf("found %v out of %v txns", nFound, nTxns)
+		}
+		return nil
 	})
 
 	// Wait a bit more just to be safe. This catches the case where we try to
@@ -4414,9 +4459,10 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// The balance should be $1 == 100SC
-		if !wg.ConfirmedSiacoinBalance.Equals(types.SiacoinPrecision.Mul64(100)) {
-			return fmt.Errorf("wrong balance: %v != %v", wg.ConfirmedSiacoinBalance, types.SiacoinPrecision.Mul64(100))
+		// The balance should be $5 == 500SC due to 5 downloads.
+		expectedBalance := types.SiacoinPrecision.Mul64(100).Mul64(uint64(nTxns))
+		if !wg.ConfirmedSiacoinBalance.Equals(expectedBalance) {
+			return fmt.Errorf("wrong balance: %v != %v", wg.ConfirmedSiacoinBalance, expectedBalance)
 		}
 		return nil
 	})
