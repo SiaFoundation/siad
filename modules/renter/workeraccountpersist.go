@@ -318,6 +318,66 @@ func (am *accountManager) managedSaveAndClose() error {
 	return am.staticFile.Close()
 }
 
+// checkMetadata will load the metadata from the account file and return whether
+// or not the previous shutdown was clean. If the metadata does not match the
+// expected metadata, an error will be returned.
+//
+// NOTE: If we change the version of the file, this is probably the function
+// that should handle doing the persist upgrade. Inside of this function there
+// would be a call to the upgrade function.
+func (am *accountManager) checkMetadata() (bool, error) {
+	// Read metadata.
+	metadata, err := readAccountsMetadata(am.staticFile)
+	if err != nil {
+		return false, errors.AddContext(err, "failed to read metadata from accounts file")
+	}
+
+	// Validate the metadata.
+	if metadata.Header != metadataHeader {
+		return false, errors.AddContext(errWrongHeader, "failed to verify accounts metadata")
+	}
+	if metadata.Version != metadataVersion {
+		return false, errors.AddContext(errWrongVersion, "failed to verify accounts metadata")
+	}
+	return metadata.Clean, nil
+}
+
+// handleInterruptedUpgrade ensures that an interrupted upgrade can be recovered
+// from. It does so by checking for the existence of a tmp accounts file, if
+// that file is present we want to handle it occordingly.
+func (am *accountManager) handleInterruptedUpgrade() error {
+	// convenience variables
+	r := am.staticRenter
+	tmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
+
+	// check whether the tmp file exists
+	tmpFileExists, err := fileExists(tmpFilePath)
+	if err != nil {
+		return errors.AddContext(err, "error checking if tmp file exists")
+	}
+
+	// if the tmp file does not exist, we don't have to do anything
+	if !tmpFileExists {
+		return nil
+	}
+
+	// open the tmp file
+	tmpFile, err := r.deps.OpenFile(tmpFilePath, os.O_RDWR, defaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "error opening tmp account file")
+	}
+
+	// read the metadata, there can only be two scenarios:
+	// - the tmp file is clean, continue from that file
+	// - the tmp file is dirty, remove it
+	tmpFileMetadata, err := readAccountsMetadata(tmpFile)
+	if err == nil && tmpFileMetadata.Clean {
+		return am.upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile)
+	}
+
+	return errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath))
+}
+
 // managedLoad will pull all of the accounts off of disk and load them into the
 // account manager. This should complete before the accountManager is made
 // available to other processes.
@@ -361,30 +421,6 @@ func (am *accountManager) load() error {
 	return nil
 }
 
-// checkMetadata will load the metadata from the account file and return whether
-// or not the previous shutdown was clean. If the metadata does not match the
-// expected metadata, an error will be returned.
-//
-// NOTE: If we change the version of the file, this is probably the function
-// that should handle doing the persist upgrade. Inside of this function there
-// would be a call to the upgrade function.
-func (am *accountManager) checkMetadata() (bool, error) {
-	// Read metadata.
-	metadata, err := readAccountsMetadata(am.staticFile)
-	if err != nil {
-		return false, errors.AddContext(err, "failed to read metadata from accounts file")
-	}
-
-	// Validate the metadata.
-	if metadata.Header != metadataHeader {
-		return false, errors.AddContext(errWrongHeader, "failed to verify accounts metadata")
-	}
-	if metadata.Version != metadataVersion {
-		return false, errors.AddContext(errWrongVersion, "failed to verify accounts metadata")
-	}
-	return metadata.Clean, nil
-}
-
 // openFile will open the file of the account manager and set the account
 // manager's file variable.
 //
@@ -399,95 +435,40 @@ func (am *accountManager) openFile() (bool, error) {
 		return false, errors.New("accounts file already open")
 	}
 
-	// Check for the existence of the accounts files
-	accountsFilePath := filepath.Join(r.persistDir, accountsFilename)
-	accountsFileExists, err := fileExists(accountsFilePath)
-	if err != nil {
-		return false, err
-	}
-	accountsTmpFilePath := filepath.Join(r.persistDir, accountsTmpFilename)
-	accountsTmpFileExists, err := fileExists(accountsTmpFilePath)
-	if err != nil {
-		return false, err
-	}
-
-	// Open the accounts file, create it if it does not exist yet.
-	am.staticFile, err = r.deps.OpenFile(accountsFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	// Open the accounts file
+	accountsFile, err := am.openAccountsFile(accountsFilename)
 	if err != nil {
 		return false, errors.AddContext(err, "error opening account file")
 	}
+	am.staticFile = accountsFile
 
-	// Try and read the clean flag from the accounts metadata. We do this before
-	// any upgrade code is executed, the value of this 'cleanClose' will decide
-	// on whether we use the balances in the accounts.
-	var cleanClose bool
-	if accountsFileExists {
-		metadata, err := readAccountsMetadata(am.staticFile)
-		if err == nil {
-			cleanClose = metadata.Clean
-		}
-	} else {
-		cleanClose = true
+	// Read accounts metadata
+	metadata, err := readAccountsMetadata(am.staticFile)
+	if err != nil {
+		return false, errors.AddContext(err, "error reading account metadata")
 	}
 
-	// If the temporary file exists it means we uncleanly exited during an
-	// upgrade. This means we want to try and continue that upgrade and ensure
-	// it finishes successfully. There can only be two scenarios:
-	// - if the tmp file is clean, we want to continue from a valid tmp file
-	// - if the tmp file is not clean, we want to start over
-	if accountsTmpFileExists {
-		// open the tmp file
-		tmpFile, err := r.deps.OpenFile(accountsTmpFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
-		if err != nil {
-			return false, errors.AddContext(err, "error opening tmp account file")
-		}
-
-		// read the metadata
-		tmpFileMetadata, err := readAccountsMetadata(tmpFile)
-		if err != nil {
-			return false, errors.AddContext(err, "error reading tmp account file metadata")
-		}
-
-		// if the tmp file is marked clean, we can use it safely, if not we
-		// simply remove it and continue the flow, that will retry the upgrade
-		tmpFileClean := tmpFileMetadata.Clean
-		if tmpFileClean {
-			err = am.upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile)
-			if err != nil {
-				return false, errors.AddContext(err, "error copying temporary file into accounts file")
-			}
-		} else {
-			err = errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(accountsTmpFilePath)), "failed to delete accounts file")
-			if err != nil {
-				return false, errors.AddContext(err, "error removing temporary accounts file")
-			}
-		}
+	// Handle a potentially interrupted upgrade
+	err = am.handleInterruptedUpgrade()
+	if err != nil {
+		return false, errors.AddContext(err, "error occurred while trying to recover from an intterupted upgrade")
 	}
 
-	// If the accounts file existed we want to check the metadata. If the
-	// file is an old accounts file, try to upgrade accounts to the current
-	// version. This method does not return an error, if an account not be
-	// recovered for whatever reason we only log that error but consider it
-	// lost.
-	if accountsFileExists {
-		_, err = am.checkMetadata()
-		if err != nil && !errors.Contains(err, errWrongVersion) {
-			return false, errors.AddContext(err, "error reading account metadata")
-		}
-		if errors.Contains(err, errWrongVersion) {
-			// open the tmp file
-			tmpFile, err := r.deps.OpenFile(accountsTmpFilePath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
-			if err != nil {
-				return false, errors.AddContext(err, "error opening tmp account file")
-			}
+	// Check accounts metadata
+	_, err = am.checkMetadata()
+	if err != nil && !errors.Contains(err, errWrongVersion) {
+		return false, errors.AddContext(err, "error reading account metadata")
+	}
 
-			// call the upgrade code
-			err = am.upgradeFromV150ToV156(tmpFile)
-			if err != nil {
-				return false, errors.AddContext(err, "error upgrading accounts file")
-			}
-			am.staticRenter.log.Println("successfully upgraded accounts file from v150 to v156")
+	// If the metadata contains a wrong version, run the upgrade code
+	if errors.Contains(err, errWrongVersion) {
+		err = am.upgradeFromV150ToV156()
+		if err != nil {
+			return false, errors.AddContext(err, "error upgrading accounts file")
 		}
+
+		// log the successful upgrade
+		am.staticRenter.log.Println("successfully upgraded accounts file from v150 to v156")
 	}
 
 	// Whether this is a new file or an existing file, we need to set the header
@@ -510,7 +491,42 @@ func (am *accountManager) openFile() (bool, error) {
 		return false, errors.AddContext(err, "failed to sync accounts file")
 	}
 
-	return cleanClose, nil
+	return metadata.Clean, nil
+}
+
+// openAccountsFile is a helper function that will open an accounts file with
+// given filename. If the accounts file does not exist prior to calling this
+// function, it will be created and provided with the metadata header.
+func (am *accountManager) openAccountsFile(filename string) (modules.File, error) {
+	r := am.staticRenter
+
+	// check whether the file exists
+	accountsFilepath := filepath.Join(r.persistDir, filename)
+	accountsFileExists, err := fileExists(accountsFilepath)
+	if err != nil {
+		return nil, err
+	}
+
+	// open the file and create it if necessary
+	accountsFile, err := r.deps.OpenFile(accountsFilepath, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		return nil, errors.AddContext(err, "error opening account file")
+	}
+
+	// make sure a newly created accounts file has the metadata header
+	if !accountsFileExists {
+		_, err = accountsFile.WriteAt(encoding.Marshal(accountsMetadata{
+			Header:  metadataHeader,
+			Version: metadataVersion,
+			Clean:   false,
+		}), 0)
+		err = errors.Compose(err, accountsFile.Sync())
+		if err != nil {
+			return accountsFile, errors.AddContext(err, "error writing metadata to accounts file")
+		}
+	}
+
+	return accountsFile, nil
 }
 
 // readAccountAt tries to read an account object from the account persist file
@@ -562,37 +578,26 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 	return acc, nil
 }
 
-// updateMetadata writes the given metadata to the accounts file.
-func (am *accountManager) updateMetadata(meta accountsMetadata) error {
-	_, err := am.staticFile.WriteAt(encoding.Marshal(meta), 0)
-	return err
-}
-
 // upgradeFromV150ToV156 is compat code that upgrades the accounts file from
 // v150 to v156. The new accounts take up more space on disk, so we have to read
 // all of them, assign them new offets and rewrite them to the accounts file.
-func (am *accountManager) upgradeFromV150ToV156(tmpFile modules.File) error {
+func (am *accountManager) upgradeFromV150ToV156() error {
 	// convenience variables
 	r := am.staticRenter
 
-	// write the header
-	_, err := tmpFile.WriteAt(encoding.Marshal(accountsMetadata{
-		Header:  metadataHeader,
-		Version: metadataVersion,
-		Clean:   false,
-	}), 0)
+	// open a tmp accounts file
+	tmpFile, err := am.openAccountsFile(accountsTmpFilename)
 	if err != nil {
-		return errors.AddContext(err, "failed to write header to tmp file")
+		return errors.AddContext(err, "failed to open tmp accounts file")
 	}
 
-	// collect all accounts from the current accounts file and call persist on
-	// each one, the accounts were created referencing the tmp file so this
-	// process will write the accounts to the tmp file
+	// read the accounts from the accounts file, but link them to the tmp file,
+	// when calling persist on the account it will write the account into the
+	// tmp file
 	accounts := compatV150ReadAccounts(r.log, am.staticFile, tmpFile)
 	for _, acc := range accounts {
-		err := acc.managedPersist()
-		if err != nil {
-			r.log.Println("failed to upgrade account persistence from v150 to v156", err)
+		if err := acc.managedPersist(); err != nil {
+			r.log.Println("failed to upgrade account from v150 to v156", err)
 		}
 	}
 
@@ -602,9 +607,7 @@ func (am *accountManager) upgradeFromV150ToV156(tmpFile modules.File) error {
 		return errors.AddContext(err, "failed to sync tmp file")
 	}
 
-	// update the header and mark it clean, this is a signal to the upgrade code
-	// if we ever have to recover from a failed upgrade that the tmp file can be
-	// used to continue the upgrade flow
+	// update the header and mark it clean
 	_, err = tmpFile.WriteAt(encoding.Marshal(accountsMetadata{
 		Header:  metadataHeader,
 		Version: metadataVersion,
@@ -614,7 +617,9 @@ func (am *accountManager) upgradeFromV150ToV156(tmpFile modules.File) error {
 		return errors.AddContext(err, "failed to write header to tmp file")
 	}
 
-	// sync the tmp file
+	// sync the tmp file, this step is very important because
+	// if it completes successfully, and the upgrade fails over this point, the
+	// tmp file will be used to recover from an interrupted upgrade.
 	err = tmpFile.Sync()
 	if err != nil {
 		return errors.AddContext(err, "failed to sync tmp file")
@@ -655,6 +660,12 @@ func (am *accountManager) upgradeFromV150ToV156_CopyAccountsFromFile(tmpFile mod
 
 	// delete the tmp file
 	return errors.AddContext(errors.Compose(tmpFile.Close(), r.deps.RemoveFile(tmpFilePath)), "failed to delete accounts file")
+}
+
+// updateMetadata writes the given metadata to the accounts file.
+func (am *accountManager) updateMetadata(meta accountsMetadata) error {
+	_, err := am.staticFile.WriteAt(encoding.Marshal(meta), 0)
+	return err
 }
 
 // compatV150ReadAccounts is a helper function that reads the accounts from the
@@ -701,6 +712,20 @@ func compatV150ReadAccounts(log *persist.Logger, accountsFile modules.File, tmpF
 	return accounts
 }
 
+// fileExists is a small helper function that checks whether a file at given
+// path exists, it abstracts checking whether the error from the stat is an
+// `IsNotExists` error or not.
+func fileExists(path string) (bool, error) {
+	_, statErr := os.Stat(path)
+	if statErr == nil {
+		return true, nil
+	}
+	if os.IsNotExist(statErr) {
+		return false, nil
+	}
+	return false, errors.AddContext(statErr, "error calling stat on file")
+}
+
 // readAccountsMetadata is a small helper function that tries to read the
 // metadata object from the given file.
 func readAccountsMetadata(file modules.File) (*accountsMetadata, error) {
@@ -731,18 +756,4 @@ func readAccountsMetadata(file modules.File) (*accountsMetadata, error) {
 	}
 
 	return &metadata, nil
-}
-
-// fileExists is a small helper function that checks whether a file at given
-// path exists, it abstracts checking whether the error from the stat is an
-// `IsNotExists` error or not.
-func fileExists(path string) (bool, error) {
-	_, statErr := os.Stat(path)
-	if statErr == nil {
-		return true, nil
-	}
-	if os.IsNotExist(statErr) {
-		return false, nil
-	}
-	return false, errors.AddContext(statErr, "error calling stat on file")
 }

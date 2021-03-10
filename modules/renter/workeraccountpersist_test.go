@@ -371,6 +371,17 @@ func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester
 		t.Fatal(err)
 	}
 
+	// corrupt either the original or tmp file depending on clean param
+	var corruptErr error
+	if clean {
+		corruptErr = corruptAccountsFile(filepath.Join(renterDir, accountsFilename))
+	} else {
+		corruptErr = corruptAccountsFile(filepath.Join(renterDir, accountsTmpFilename))
+	}
+	if corruptErr != nil {
+		t.Fatal(err)
+	}
+
 	// open the tmp file
 	tmpFile, err := os.OpenFile(dst, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
@@ -472,4 +483,26 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
+}
+
+// corruptAccountsFile will write random data to an accounts file at given path
+//
+// NOTE: this function assumes the accounts file holds at least 2 accounts
+func corruptAccountsFile(path string) (err error) {
+	// open the file
+	var file *os.File
+	file, err = os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return err
+	}
+
+	// defer a sync and close
+	defer func() {
+		err = errors.Compose(err, file.Sync(), file.Close())
+	}()
+
+	// write random bytes
+	randOff := fastrand.Intn(accountSize) + accountsOffset
+	_, err = file.WriteAt(fastrand.Bytes(accountSize), int64(randOff))
+	return err
 }
