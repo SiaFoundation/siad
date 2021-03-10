@@ -328,6 +328,18 @@ func (a *account) managedSyncBalance(balance types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	// Determine how long to wait before attempting to sync again, and then
+	// update the syncAt time. There is significant randomness in the
+	// waiting because syncing with the host requires freezing up the
+	// worker. We do not want to freeze up a large number of workers at
+	// once, nor do we want to freeze them frequently.
+	defer func() {
+		randWait := fastrand.Intn(accountSyncRandWaitMilliseconds)
+		waitTime := time.Duration(randWait) * time.Millisecond
+		waitTime += accountSyncMinWaitTime
+		a.syncAt = time.Now().Add(waitTime)
+	}()
+
 	// If our balance is equal to what the host communicated, we're done.
 	currBalance := a.availableBalance()
 	if currBalance.Equals(balance) {
@@ -353,15 +365,6 @@ func (a *account) managedSyncBalance(balance types.Currency) {
 	if err != nil {
 		a.staticRenter.log.Printf("could not persist account, err: %v\n", err)
 	}
-
-	// Determine how long to wait before attempting to sync again, and then
-	// update the syncAt time. There is significant randomness in the waiting
-	// because syncing with the host requires freezing up the worker. We do not
-	// want to freeze up a large number of workers at once, nor do we want to
-	// freeze them frequently.
-	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
-	waitTime += accountSyncMinWaitTime
-	a.syncAt = time.Now().Add(waitTime)
 }
 
 // managedStatus returns the status of the account
@@ -466,6 +469,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			return
 		}
 	}
+
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up
