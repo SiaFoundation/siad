@@ -19,7 +19,7 @@ var (
 	MaxRegistryReadTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  3 * time.Second,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
@@ -59,6 +59,14 @@ var (
 		Testing:  3,
 	}).(int)
 
+	// ReadRegistryBackgroundTimeout is the amount of time a read registry job
+	// can stay active in the background before being cancelled.
+	ReadRegistryBackgroundTimeout = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 2 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
+
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
 	// request from the memory manager.
 	updateRegistryMemory = uint64(20 * (1 << 10)) // 20kib
@@ -77,7 +85,145 @@ var (
 	// worker stays active in the background after managedUpdateRegistry returns
 	// successfully.
 	updateRegistryBackgroundTimeout = time.Minute
+
+	// readRegistryStatsInterval is the granularity with which read registry
+	// stats are collected. The smaller the number the faster updating the stats
+	// is but the less accurate the estimate.
+	readRegistryStatsInterval = 20 * time.Millisecond
+
+	// readRegistryStatsDecay is the decay applied to the registry stats.
+	readRegistryStatsDecay = 0.995
+
+	// readRegistryStatsPercentile is the percentile returned by the read
+	// registry stats Estimate method.
+	readRegistryStatsPercentile = 0.99
+
+	// readRegistrySeed is the first duration added to the registry stats after
+	// creating it.
+	// NOTE: This needs to be <= readRegistryBackgroundTimeout
+	readRegistryStatsSeed = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 2 * time.Second,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
+
+// readResponseSet is a helper type which allows for returning a set of ongoing
+// ReadRegistry responses.
+type readResponseSet struct {
+	c    <-chan *jobReadRegistryResponse
+	left int
+
+	readResps []*jobReadRegistryResponse
+}
+
+// newReadResponseSet creates a new set from a response chan and number of
+// workers which are expected to write to that chan.
+func newReadResponseSet(responseChan <-chan *jobReadRegistryResponse, numWorkers int) *readResponseSet {
+	return &readResponseSet{
+		c:         responseChan,
+		left:      numWorkers,
+		readResps: make([]*jobReadRegistryResponse, 0, numWorkers),
+	}
+}
+
+// collect will collect all responses. It will block until it has received all
+// of them or until the provided context is closed.
+func (rrs *readResponseSet) collect(ctx context.Context) []*jobReadRegistryResponse {
+	for rrs.responsesLeft() > 0 {
+		resp := rrs.next(ctx)
+		if resp == nil {
+			break
+		}
+	}
+	return rrs.readResps
+}
+
+// next returns the next available response. It will block until the response is
+// received or the provided context is closed.
+func (rrs *readResponseSet) next(ctx context.Context) *jobReadRegistryResponse {
+	select {
+	case <-ctx.Done():
+		return nil
+	case resp := <-rrs.c:
+		rrs.readResps = append(rrs.readResps, resp)
+		rrs.left--
+		return resp
+	}
+}
+
+// responsesLeft returns the number of responses that can still be fetched with
+// Next.
+func (rrs *readResponseSet) responsesLeft() int {
+	return rrs.left
+}
+
+// threadedAddResponseSet adds a response set to the stats. This includes
+// waiting for all responses to arrive and then updating the stats using the
+// fastest success response with the highest rev number.
+func (rs *readRegistryStats) threadedAddResponseSet(ctx context.Context, startTime time.Time, rrs *readResponseSet) {
+	// Get all responses.
+	resps := rrs.collect(ctx)
+	if resps == nil {
+		return // nothing to do
+	}
+
+	// Check for shutdown since collect might have blocked for a while.
+	select {
+	case <-ctx.Done():
+		return // shutdown
+	default:
+	}
+
+	// Find the fastest timing with the highest revision number.
+	var best *jobReadRegistryResponse
+	for _, resp := range resps {
+		if resp.staticErr != nil {
+			continue
+		}
+
+		// If there is no best yet, always set it.
+		if best == nil {
+			best = resp
+			continue
+		}
+		// If there is no rv yet, always set it.
+		bestRV := best.staticSignedRegistryValue
+		respRV := resp.staticSignedRegistryValue
+		if bestRV == nil && respRV != nil {
+			best = resp
+			continue
+		}
+		// If there is an rv but the new response doesn't have one, ignore it.
+		if bestRV != nil && respRV == nil {
+			continue
+		}
+		// The one with the higher revision gets priority if both have an rv.
+		// TODO: Add code to check for scenarios related to rapidly updating
+		// entries.
+		if bestRV != nil && respRV != nil && respRV.Revision > bestRV.Revision {
+			best = resp
+			continue
+		}
+		// Otherwise the faster one wins.
+		if resp.staticCompleteTime.Before(best.staticCompleteTime) {
+			best = resp
+			continue
+		}
+	}
+
+	// No successful responses. We can't update the stats.
+	if best == nil {
+		return
+	}
+
+	// Add the duration to the estimate.
+	d := best.staticCompleteTime.Sub(startTime)
+
+	// The error is ignored since it only returns an error if the measurement is
+	// outside of the 5 minute bounds the stats were created with.
+	_ = rs.AddDatum(d)
+}
 
 // ReadRegistry starts a registry lookup on all available workers. The
 // jobs have 'timeout' amount of time to finish their jobs and return a
@@ -142,10 +288,10 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
-	// Create a context that dies when the function ends, this will cancel all
-	// of the worker jobs that get created by this function.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// Specify a sane timeout for jobs that is independent of the user specified
+	// timeout. It is the maximum time that we let a job execute in the
+	// background before cancelling it.
+	backgroundCtx, backgroundCancel := context.WithTimeout(r.tg.StopCtx(), ReadRegistryBackgroundTimeout)
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
@@ -173,7 +319,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 			continue
 		}
 
-		jrr := worker.newJobReadRegistry(ctx, staticResponseChan, spk, tweak)
+		jrr := worker.newJobReadRegistry(backgroundCtx, staticResponseChan, spk, tweak)
 		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -185,8 +331,33 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
+		backgroundCancel()
 		return modules.SignedRegistryValue{}, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
+	numWorkers := len(workers)
+
+	// If specified, increment numWorkers. This will cause the loop to never
+	// exit without any of the context being closed since the response set won't
+	// be able to read the last response.
+	if r.deps.Disrupt("ReadRegistryBlocking") {
+		numWorkers++
+	}
+
+	// Create the response set.
+	responseSet := newReadResponseSet(staticResponseChan, numWorkers)
+
+	// Add the response set to the stats after this method is done.
+	startTime := time.Now()
+	defer func() {
+		_ = r.tg.Launch(func() {
+			r.staticRRS.threadedAddResponseSet(backgroundCtx, startTime, responseSet)
+			backgroundCancel()
+		})
+	}()
+
+	// Further restrict the input timeout using historical data.
+	ctx, cancel := context.WithTimeout(ctx, r.staticRRS.Estimate())
+	defer cancel()
 
 	// Prepare a context which will be overwritten by a child context with a timeout
 	// when we receive the first response. useHighestRevDefaultTimeout after
@@ -196,29 +367,20 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 
 	var srv *modules.SignedRegistryValue
 	responses := 0
-
-LOOP:
-	for responses < len(workers) {
+	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
 		if srv != nil {
-			// If we have a successful response already, we wait on both contexts
-			// and the response chan.
-			select {
-			case <-useHighestRevCtx.Done():
-				break LOOP // using best
-			case <-ctx.Done():
-				break LOOP // timeout reached
-			case resp = <-staticResponseChan:
-			}
+			// If we have a successful response already, we wait on the highest
+			// rev ctx.
+			resp = responseSet.next(useHighestRevCtx)
 		} else {
 			// Otherwise we don't wait on the usehighestRevCtx since we need a
 			// successful response to abort.
-			select {
-			case <-ctx.Done():
-				break LOOP // timeout reached
-			case resp = <-staticResponseChan:
-			}
+			resp = responseSet.next(ctx)
+		}
+		if resp == nil {
+			break // context triggered
 		}
 
 		// When we get the first response, we initialize the highest rev

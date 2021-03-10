@@ -9,6 +9,12 @@ import (
 )
 
 type (
+	// DependencyReadRegistryBlocking will block the read registry call by
+	// making it think that it got one more worker than it actually has.
+	// Therefore, waiting for a response that never comes.
+	DependencyReadRegistryBlocking struct {
+		modules.ProductionDependencies
+	}
 	// DependencyLegacyRenew forces the contractor to use the legacy behavior
 	// when renewing a contract. This is useful for unit testing since it
 	// doesn't require a renter, workers etc.
@@ -372,6 +378,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyReadRegistryBlocking) Disrupt(s string) bool {
+	return s == "ReadRegistryBlocking"
 }
 
 // Disrupt returns true if the correct string is provided.

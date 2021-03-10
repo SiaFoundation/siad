@@ -109,9 +109,9 @@ will be made. This process continues until the root directory is reached. This
 results in any changes in metadata being "bubbled" to the top so that the root
 directory's metadata reflects the status of the entire filesystem.
 
-If during a bubble, if a file is found that meets the threshold health for repair,
-then a signal is sent to the repair loop. If a stuck chunk is found then
-a signal is sent to the stuck loop. 
+If during a bubble a file is found that meets the threshold health for repair,
+a signal is sent to the repair loop. If a stuck chunk is found then a signal is
+sent to the stuck loop. 
 
 Since we are updating the metadata on disk during the bubble calls we want to
 ensure that only one bubble is being called on a directory at a time. We do this
