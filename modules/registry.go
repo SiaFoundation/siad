@@ -79,11 +79,6 @@ func (entry RegistryValue) Sign(sk crypto.SecretKey) SignedRegistryValue {
 	}
 }
 
-// hash hashes the registry value.
-func (entry RegistryValue) hash() crypto.Hash {
-	return crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
-}
-
 // HasMoreWork returns 'true' if the hash of entry is larger than target's.
 func (entry RegistryValue) HasMoreWork(target RegistryValue) bool {
 	hEntry := entry.hash()
@@ -95,4 +90,9 @@ func (entry RegistryValue) HasMoreWork(target RegistryValue) bool {
 func (entry SignedRegistryValue) Verify(pk crypto.PublicKey) error {
 	hash := entry.hash()
 	return crypto.VerifyHash(hash, pk, entry.Signature)
+}
+
+// hash hashes the registry value.
+func (entry RegistryValue) hash() crypto.Hash {
+	return crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
 }
