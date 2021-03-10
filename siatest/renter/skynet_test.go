@@ -883,7 +883,15 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// get the stats
+	// This test relies on state from the previous tests. Make sure we are
+	// starting from a place of updated metadata
+	err := r.RenterBubblePost(modules.RootSiaPath(), true, true)
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(time.Second)
+
+	// Get the stats
 	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
@@ -960,7 +968,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check that the right stats were returned.
 	statsBefore := stats
+	tries := 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Make sure that the filesystem is being updated
+		if tries%10 == 0 {
+			err = r.RenterBubblePost(modules.RootSiaPath(), true, true)
+			if err != nil {
+				return err
+			}
+		}
+		tries++
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			return err
@@ -1013,7 +1030,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check the stats after the delete operation. Do it in a retry to account
 	// for the bubble.
+	tries = 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Make sure that the filesystem is being updated
+		if tries%10 == 0 {
+			err = r.RenterBubblePost(modules.RootSiaPath(), true, true)
+			if err != nil {
+				return err
+			}
+		}
+		tries++
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			t.Fatal(err)
@@ -4427,5 +4453,55 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownLicense", fastrand.Bytes(1), false, unknownLicense)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrUnknownLicense.Error()) {
 		t.Fatal("should fail", err)
+	}
+}
+
+// TestReadUnknownRegistryEntry makes sure that reading an unknown entry takes
+// the appropriate amount of time.
+func TestReadUnknownRegistryEntry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyReadRegistryBlocking{}
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Get a random pubkey.
+	var spk types.SiaPublicKey
+	fastrand.Read(spk.Key)
+
+	// Look it up.
+	start := time.Now()
+	_, err = r.RegistryRead(spk, crypto.Hash{})
+	passed := time.Since(start)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+
+	// The time should have been less than MaxRegistryReadTimeout but greater
+	// than readRegistryBackgroundTimeout.
+	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
+		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
 	}
 }

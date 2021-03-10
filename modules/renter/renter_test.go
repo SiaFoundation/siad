@@ -311,6 +311,7 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -350,6 +351,7 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)

@@ -778,6 +778,10 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 	if err := fullyConnectNodes(nodes); err != nil {
 		return build.ExtendErr("failed to fully connect nodes", err)
 	}
+	// Mine a block to force another consensus update
+	if err := miner.MineBlock(); err != nil {
+		return build.ExtendErr("failed to mine a block", err)
+	}
 	// Make sure the new nodes are synced.
 	if err := synchronizationCheck(tg.nodes); err != nil {
 		return build.ExtendErr("synchronization check 1 failed", err)
