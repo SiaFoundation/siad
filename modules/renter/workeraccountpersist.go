@@ -564,6 +564,7 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 			repairDownloads:   accountData.SpendingRepairDownloads,
 			repairUploads:     accountData.SpendingRepairUploads,
 			snapshotDownloads: accountData.SpendingSnapshotDownloads,
+			snapshotUploads:   accountData.SpendingSnapshotUploads,
 			subscriptions:     accountData.SpendingSubscriptions,
 			uploads:           accountData.SpendingUploads,
 		},
