@@ -1264,7 +1264,6 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	// Get the account balance before interrupting the loop.
 	wt.staticAccount.mu.Lock()
 	balance := wt.staticAccount.availableBalance()
-	fmt.Println("balance before", balance)
 	wt.staticAccount.mu.Unlock()
 
 	// Stop the loop by shutting down the worker.
