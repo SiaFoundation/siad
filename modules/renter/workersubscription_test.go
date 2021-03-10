@@ -280,6 +280,9 @@ func TestSubscriptionLoop(t *testing.T) {
 	wt.staticUpdatePriceTable()
 	wt.managedRefillAccount()
 
+	// Get the EA balance before running the test.
+	balance := wt.staticAccount.availableBalance()
+
 	// The fresh price table should be valid for the subscription.
 	wpt := wt.staticPriceTable()
 	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
@@ -354,6 +357,18 @@ func TestSubscriptionLoop(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Get the EA balance after funding the account.
+	wt.staticAccount.mu.Lock()
+	balanceAfter := wt.staticAccount.availableBalance()
+	wt.staticAccount.mu.Unlock()
+
+	// The spending should be half the balance that the loop wants to maintain
+	// due to a single refill happening.
+	spending := balance.Sub(balanceAfter)
+	if !spending.Equals(fundAmt) {
+		t.Fatal("fundAmt wasn't subtracted from the EA")
 	}
 
 	// Start a goroutine that updates the price table whenever necessary.
