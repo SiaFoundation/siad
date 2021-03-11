@@ -182,6 +182,7 @@ lint:
       - .cache
   script:
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
+    - make vet
     - make lint
     - make markdown-spellcheck
     - make test

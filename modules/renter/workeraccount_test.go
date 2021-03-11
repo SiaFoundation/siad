@@ -58,8 +58,8 @@ func TestAccount(t *testing.T) {
 	t.Run("CheckFundAccountGouging", testAccountCheckFundAccountGouging)
 	t.Run("Constants", testAccountConstants)
 	t.Run("MinMaxExpectedBalance", testAccountMinAndMaxExpectedBalance)
-	t.Run("ResetBalance", testAccountResetBalance)
 	t.Run("TrackSpending", testAccountTrackSpending)
+	t.Run("SyncBalance", testAccountSyncBalance)
 
 	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
 	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
@@ -198,19 +198,33 @@ func testAccountMinAndMaxExpectedBalance(t *testing.T) {
 	}
 }
 
-// testAccountResetBalance is a small unit test that verifies the functionality
-// of the reset balance function.
-func testAccountResetBalance(t *testing.T) {
+// testAccountSyncBalance is a small unit test that verifies the functionality
+// of the sync balance function.
+func testAccountSyncBalance(t *testing.T) {
 	t.Parallel()
+
+	// create a mock of the accounts file
+	deps := modules.ProductionDependencies{}
+	f, err := deps.OpenFile(filepath.Join(t.TempDir(), accountsFilename), os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = f.Close()
+		if err != nil {
+			t.Fatal("err")
+		}
+	}()
 
 	oneCurrency := types.NewCurrency64(1)
 
 	a := new(account)
+	a.staticFile = f
 	a.balance = types.ZeroCurrency
 	a.negativeBalance = oneCurrency
 	a.pendingDeposits = oneCurrency
 	a.pendingWithdrawals = oneCurrency
-	a.managedResetBalance(oneCurrency)
+	a.managedSyncBalance(oneCurrency)
 
 	if !a.balance.Equals(oneCurrency) {
 		t.Fatal("unexpected balance after reset", a.balance)
@@ -223,6 +237,18 @@ func testAccountResetBalance(t *testing.T) {
 	}
 	if !a.pendingWithdrawals.IsZero() {
 		t.Fatal("unexpected pending withdrawals after reset", a.pendingWithdrawals)
+	}
+	if !a.balanceDriftPositive.Equals(oneCurrency) || !a.balanceDriftNegative.IsZero() {
+		t.Fatal("unexpected drift")
+	}
+	if a.syncAt == (time.Time{}) {
+		t.Fatal("unexpected sync at")
+	}
+
+	// verify negative drift gets updated properly as well
+	a.managedSyncBalance(types.ZeroCurrency)
+	if !a.balanceDriftPositive.Equals(oneCurrency) || !a.balanceDriftNegative.Equals(oneCurrency) {
+		t.Fatal("unexpected drift")
 	}
 }
 
@@ -668,7 +694,10 @@ func openRandomTestAccountsOnRenter(r *Renter) ([]*account, error) {
 			downloads:         randomBalance(1e1),
 			registryReads:     randomBalance(1e1),
 			registryWrites:    randomBalance(1e1),
+			repairDownloads:   randomBalance(1e1),
+			repairUploads:     randomBalance(1e1),
 			snapshotDownloads: randomBalance(1e1),
+			snapshotUploads:   randomBalance(1e1),
 			subscriptions:     randomBalance(1e1),
 			uploads:           randomBalance(1e1),
 		}

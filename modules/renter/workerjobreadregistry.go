@@ -49,6 +49,7 @@ type (
 	jobReadRegistryResponse struct {
 		staticSignedRegistryValue *modules.SignedRegistryValue
 		staticErr                 error
+		staticCompleteTime        time.Time
 	}
 )
 
@@ -140,7 +141,8 @@ func (j *jobReadRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadRegistryResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr:          errors.Extend(err, ErrJobDiscarded),
+			staticCompleteTime: time.Now(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -162,6 +164,7 @@ func (j *jobReadRegistry) callExecute() {
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
+				staticCompleteTime:        time.Now(),
 				staticSignedRegistryValue: srv,
 				staticErr:                 err,
 			}
@@ -248,6 +251,11 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 	case <-ctx.Done():
 		return nil, errors.New("ReadRegistry interrupted")
 	case resp = <-readRegistryRespChan:
+	}
+
+	// Sanity check that the finish time was set.
+	if resp.staticCompleteTime.IsZero() {
+		build.Critical("finish time wasn't set")
 	}
 	return resp.staticSignedRegistryValue, resp.staticErr
 }

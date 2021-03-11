@@ -4437,3 +4437,53 @@ func testSkynetMonetizers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("should fail", err)
 	}
 }
+
+// TestReadUnknownRegistryEntry makes sure that reading an unknown entry takes
+// the appropriate amount of time.
+func TestReadUnknownRegistryEntry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyReadRegistryBlocking{}
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Get a random pubkey.
+	var spk types.SiaPublicKey
+	fastrand.Read(spk.Key)
+
+	// Look it up.
+	start := time.Now()
+	_, err = r.RegistryRead(spk, crypto.Hash{})
+	passed := time.Since(start)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+
+	// The time should have been less than MaxRegistryReadTimeout but greater
+	// than readRegistryBackgroundTimeout.
+	if passed >= renter.MaxRegistryReadTimeout || passed <= renter.ReadRegistryBackgroundTimeout {
+		t.Fatalf("%v not between %v and %v", passed, renter.ReadRegistryBackgroundTimeout, renter.MaxRegistryReadTimeout)
+	}
+}

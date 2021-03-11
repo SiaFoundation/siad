@@ -181,7 +181,10 @@ func BenchmarkAddDatum(b *testing.B) {
 	bs := newReadRegistryStats(maxTime, interval, 0.95, 0.999)
 
 	// Add one entry in the last bucket to allocate the slice.
-	bs.AddDatum(maxTime - interval) // off-by-one
+	err := bs.AddDatum(maxTime - interval) // off-by-one
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	// Sanity check buckets.
 	if time.Duration(len(bs.staticBuckets)) != (maxTime/interval)+1 {

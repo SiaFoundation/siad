@@ -164,6 +164,7 @@ type (
 		repairDownloads   types.Currency
 		repairUploads     types.Currency
 		snapshotDownloads types.Currency
+		snapshotUploads   types.Currency
 		subscriptions     types.Currency
 		uploads           types.Currency
 	}
@@ -257,13 +258,6 @@ func (a *account) callNeedsToSync() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.syncAt.Before(time.Now())
-}
-
-// callSetSyncAt will update the syncAt time for the account.
-func (a *account) callSetSyncAt(newSyncAt time.Time) {
-	a.mu.Lock()
-	a.syncAt = newSyncAt
-	a.mu.Unlock()
 }
 
 // managedAvailableBalance returns the amount of money that is available to
@@ -374,16 +368,51 @@ func (a *account) managedNeedsToRefill(target types.Currency) bool {
 	return a.availableBalance().Cmp(target) < 0
 }
 
-// managedResetBalance sets the given balance and resets the account's balance
-// delta state variables. This happens when we have performanced a balance
-// inquiry on the host and we decide to trust his version of the balance.
-func (a *account) managedResetBalance(balance types.Currency) {
+// managedSyncBalance updates the account's balance related fields to "sync"
+// with the given balance, which was returned by the host. If the given balance
+// is higher or lower than the account's available balance, we update the drift
+// fields in the positive or negative direction.
+func (a *account) managedSyncBalance(balance types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.balance = balance
-	a.pendingDeposits = types.ZeroCurrency
-	a.pendingWithdrawals = types.ZeroCurrency
-	a.negativeBalance = types.ZeroCurrency
+
+	// Determine how long to wait before attempting to sync again, and then
+	// update the syncAt time. There is significant randomness in the
+	// waiting because syncing with the host requires freezing up the
+	// worker. We do not want to freeze up a large number of workers at
+	// once, nor do we want to freeze them frequently.
+	defer func() {
+		randWait := fastrand.Intn(accountSyncRandWaitMilliseconds)
+		waitTime := time.Duration(randWait) * time.Millisecond
+		waitTime += accountSyncMinWaitTime
+		a.syncAt = time.Now().Add(waitTime)
+	}()
+
+	// If our balance is equal to what the host communicated, we're done.
+	currBalance := a.availableBalance()
+	if currBalance.Equals(balance) {
+		return
+	}
+
+	// However, if it is lower we want to reset our account balance and track
+	// the amount we drifted.
+	if currBalance.Cmp(balance) < 0 {
+		a.resetBalance(balance)
+		delta := balance.Sub(currBalance)
+		a.balanceDriftPositive = a.balanceDriftPositive.Add(delta)
+	}
+
+	// If it's higher we only track the amount we drifted.
+	if currBalance.Cmp(balance) > 0 {
+		delta := currBalance.Sub(balance)
+		a.balanceDriftNegative = a.balanceDriftNegative.Add(delta)
+	}
+
+	// Persist the account
+	err := a.persist()
+	if err != nil {
+		a.staticRenter.log.Printf("could not persist account, err: %v\n", err)
+	}
 }
 
 // managedStatus returns the status of the account
@@ -420,6 +449,16 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
+}
+
+// resetBalance sets the given balance and resets the account's balance
+// delta state variables. This happens when we have performanced a balance
+// inquiry on the host and we decide to trust his version of the balance.
+func (a *account) resetBalance(balance types.Currency) {
+	a.balance = balance
+	a.pendingDeposits = types.ZeroCurrency
+	a.pendingWithdrawals = types.ZeroCurrency
+	a.negativeBalance = types.ZeroCurrency
 }
 
 // trackSpending will keep track of the amount spent, taking into account the
@@ -503,6 +542,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			return
 		}
 	}
+
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up
@@ -530,44 +570,15 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
-	w.managedHandleAccountBalanceSync(balance)
 
-	// Determine how long to wait before attempting to sync again, and then
-	// update the syncAt time. There is significant randomness in the waiting
-	// because syncing with the host requires freezing up the worker. We do not
-	// want to freeze up a large number of workers at once, nor do we want to
-	// freeze them frequently.
-	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
-	waitTime += accountSyncMinWaitTime
-	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
+	// Sync the account with the host's version of our balance. This will update
+	// our balance in case the host tells us we actually have more money, and it
+	// will keep track of drift in both directions.
+	w.staticAccount.managedSyncBalance(balance)
 
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
 	// accordingly. Perform this check at startup and periodically.
-}
-
-// managedHandleAccountBalanceSync updates the account's drift fields using the
-// account's current available balance and the given balance, which is the one
-// received from the host.
-func (w *worker) managedHandleAccountBalanceSync(balance types.Currency) {
-	// If our balance is equal to what the host communicated, we're done.
-	currBalance := w.staticAccount.managedAvailableBalance()
-	if currBalance.Equals(balance) {
-		return
-	}
-
-	// However, if it is lower we want to reset our account balance and track
-	// the amount we drifted.
-	if currBalance.Cmp(balance) < 0 {
-		w.staticAccount.managedResetBalance(balance)
-		delta := balance.Sub(currBalance)
-		w.staticAccount.balanceDriftPositive = w.staticAccount.balanceDriftPositive.Add(delta)
-		return
-	}
-
-	// If it's higher we only track the amount we drifted.
-	delta := currBalance.Sub(balance)
-	w.staticAccount.balanceDriftNegative = w.staticAccount.balanceDriftNegative.Add(delta)
 }
 
 // managedNeedsToRefillAccount will check whether the worker's account needs to

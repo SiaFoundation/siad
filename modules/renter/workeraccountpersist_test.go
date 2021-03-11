@@ -9,8 +9,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -19,12 +21,31 @@ import (
 // newRandomAccountPersistence is a helper function that returns an
 // accountPersistence object, initialised with random values
 func newRandomAccountPersistence() accountPersistence {
+	// randomBalance is a small helper function that returns a random
+	// types.Currency taking into account the given max value
+	randomBalance := func(max uint64) types.Currency {
+		return types.NewCurrency64(fastrand.Uint64n(max))
+	}
+
 	aid, sk := modules.NewAccountID()
 	return accountPersistence{
 		AccountID: aid,
-		Balance:   types.NewCurrency64(fastrand.Uint64n(1e3)),
 		HostKey:   types.SiaPublicKey{},
 		SecretKey: sk,
+
+		Balance:              randomBalance(1e4),
+		BalanceDriftPositive: randomBalance(1e2),
+		BalanceDriftNegative: randomBalance(1e2),
+
+		SpendingDownloads:         randomBalance(1e2),
+		SpendingRegistryReads:     randomBalance(1e2),
+		SpendingRegistryWrites:    randomBalance(1e2),
+		SpendingRepairDownloads:   randomBalance(1e2),
+		SpendingRepairUploads:     randomBalance(1e2),
+		SpendingSnapshotDownloads: randomBalance(1e2),
+		SpendingSnapshotUploads:   randomBalance(1e2),
+		SpendingSubscriptions:     randomBalance(1e2),
+		SpendingUploads:           randomBalance(1e2),
 	}
 }
 
@@ -259,11 +280,11 @@ func TestAccountCompatV150(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testAccountCompatV150Basic(t, rt)
 	})
-	t.Run("FailedUpgradeEdge1", func(t *testing.T) {
-		testAccountCompatV150FailedUpgradeEdge1(t, rt)
+	t.Run("RecoveryFromCleanTmpFile", func(t *testing.T) {
+		testAccountCompatV150_TmpFileExistsWithClean(t, rt, true)
 	})
-	t.Run("FailedUpgradeEdge2", func(t *testing.T) {
-		testAccountCompatV150FailedUpgradeEdge2(t, rt)
+	t.Run("RecoveryFromDirtyTmpFile", func(t *testing.T) {
+		testAccountCompatV150_TmpFileExistsWithClean(t, rt, false)
 	})
 }
 
@@ -273,7 +294,7 @@ func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
 	// create the renter dir
 	testdir := build.TempDir("renter", t.Name())
 	renterDir := filepath.Join(testdir, modules.RenterDir)
-	err := os.MkdirAll(renterDir, 0700)
+	err := os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,124 +302,6 @@ func testAccountCompatV150Basic(t *testing.T, rt *renterTester) {
 	// copy the compat file to the accounts file
 	src := "../../compatibility/accounts_v1.5.0.dat"
 	dst := filepath.Join(renterDir, accountsFilename)
-	err = build.CopyFile(src, dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir), &modules.ProductionDependencies{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// add it to the renter tester
-	err = rt.addRenter(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify the compat file was properly read and upgraded to
-	am := r.staticAccountManager
-	am.mu.Lock()
-	numAccounts := len(am.accounts)
-	am.mu.Unlock()
-	if numAccounts != 377 {
-		t.Fatal("unexpected amount of accounts")
-	}
-}
-
-// testAccountCompatV150FailedUpgradeEdge1 verifies an edge in the accounts
-// compat code where an earlier attempt failed and left behind a tmp accounts
-// file. It should recover from that and successfully upgrades the accounts file
-// from v150 to v156.
-func testAccountCompatV150FailedUpgradeEdge1(t *testing.T, rt *renterTester) {
-	// create a renter tester without renter
-	testdir := build.TempDir("renter", t.Name())
-	rt, err := newRenterTesterNoRenter(testdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := rt.Close()
-		if err != nil {
-			t.Log(err)
-		}
-	}()
-
-	// create the renter dir
-	renterDir := filepath.Join(testdir, modules.RenterDir)
-	err = os.MkdirAll(renterDir, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// copy the compat file to the accounts file
-	src := "../../compatibility/accounts_v1.5.0.dat"
-	dst := filepath.Join(renterDir, accountsFilename)
-	err = build.CopyFile(src, dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// copy the tmp file to the tmp accounts file
-	src = "../../compatibility/accounts_v1.5.6.tmp.dat"
-	dst = filepath.Join(renterDir, accountsTmpFilename)
-	err = build.CopyFile(src, dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// create a renter
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir), &modules.ProductionDependencies{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// add it to the renter tester
-	err = rt.addRenter(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify the compat file was properly read and upgraded to
-	am := r.staticAccountManager
-	am.mu.Lock()
-	numAccounts := len(am.accounts)
-	am.mu.Unlock()
-	if numAccounts != 377 {
-		t.Fatal("unexpected amount of accounts")
-	}
-}
-
-// testAccountCompatV150FailedUpgradeEdge2 verifies an edge in the accounts
-// compat code where an earlier attempt failed and left behind only the tmp
-// accounts file and deleted the actual accounts file. It should recover from
-// that and successfully upgrades the accounts file from v150 to v156.
-func testAccountCompatV150FailedUpgradeEdge2(t *testing.T, rt *renterTester) {
-	// create a renter tester without renter
-	testdir := build.TempDir("renter", t.Name())
-	rt, err := newRenterTesterNoRenter(testdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := rt.Close()
-		if err != nil {
-			t.Log(err)
-		}
-	}()
-
-	// create the renter dir
-	renterDir := filepath.Join(testdir, modules.RenterDir)
-	err = os.MkdirAll(renterDir, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// copy the tmp file to the tmp accounts file
-	src := "../../compatibility/accounts_v1.5.6.tmp.dat"
-	dst := filepath.Join(renterDir, accountsTmpFilename)
 	err = build.CopyFile(src, dst)
 	if err != nil {
 		t.Fatal(err)
@@ -423,6 +326,100 @@ func testAccountCompatV150FailedUpgradeEdge2(t *testing.T, rt *renterTester) {
 	am.mu.Unlock()
 	if numAccounts != 377 {
 		t.Fatal("unexpected amount of accounts", numAccounts)
+	}
+}
+
+// testAccountCompatV150_TmpFileExistsWithClean verifies the disaster recovery
+// flow in the accounts compat code where an earlier attempt failed and left
+// behind a tmp accounts file where the "clean" flag is equal to the value given
+// as parameter to this function. Depending on whether the tmp file is true or
+// not the upgrade code should either use or discard the tmp file.
+func testAccountCompatV150_TmpFileExistsWithClean(t *testing.T, rt *renterTester, clean bool) {
+	// create a renter tester without renter
+	testdir := build.TempDir("renter", t.Name())
+	rt, err := newRenterTesterNoRenter(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// create the renter dir
+	renterDir := filepath.Join(testdir, modules.RenterDir)
+	err = os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the compat file to the accounts file
+	src := "../../compatibility/accounts_v1.5.0.dat"
+	dst := filepath.Join(renterDir, accountsFilename)
+	err = build.CopyFile(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the tmp file to the tmp accounts file
+	src = "../../compatibility/accounts_v1.5.6.tmp.dat"
+	dst = filepath.Join(renterDir, accountsTmpFilename)
+	err = build.CopyFile(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// corrupt either the original or tmp file depending on clean param
+	var corruptErr error
+	if clean {
+		corruptErr = corruptAccountsFile(filepath.Join(renterDir, accountsFilename))
+	} else {
+		corruptErr = corruptAccountsFile(filepath.Join(renterDir, accountsTmpFilename))
+	}
+	if corruptErr != nil {
+		t.Fatal(err)
+	}
+
+	// open the tmp file
+	tmpFile, err := os.OpenFile(dst, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// write the header
+	_, err = tmpFile.WriteAt(encoding.Marshal(accountsMetadata{
+		Header:  metadataHeader,
+		Version: metadataVersion,
+		Clean:   clean,
+	}), 0)
+
+	// sync and close the tmp file
+	err = errors.Compose(tmpFile.Sync(), tmpFile.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a renter
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir), &modules.ProductionDependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add it to the renter tester
+	err = rt.addRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the compat file was properly read and upgraded to
+	am := r.staticAccountManager
+	am.mu.Lock()
+	numAccounts := len(am.accounts)
+	am.mu.Unlock()
+	if numAccounts != 377 {
+		t.Fatal("unexpected amount of accounts")
 	}
 }
 
@@ -465,6 +462,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 		!ap.SpendingRepairDownloads.Equals(uMar.SpendingRepairDownloads) ||
 		!ap.SpendingRepairUploads.Equals(uMar.SpendingRepairUploads) ||
 		!ap.SpendingSnapshotDownloads.Equals(uMar.SpendingSnapshotDownloads) ||
+		!ap.SpendingSnapshotUploads.Equals(uMar.SpendingSnapshotUploads) ||
 		!ap.SpendingSubscriptions.Equals(uMar.SpendingSubscriptions) ||
 		!ap.SpendingUploads.Equals(uMar.SpendingUploads) {
 		t.Fatal("Unexpected spending details")
@@ -485,4 +483,26 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
+}
+
+// corruptAccountsFile will write random data to an accounts file at given path
+//
+// NOTE: this function assumes the accounts file holds at least 2 accounts
+func corruptAccountsFile(path string) (err error) {
+	// open the file
+	var file *os.File
+	file, err = os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return err
+	}
+
+	// defer a sync and close
+	defer func() {
+		err = errors.Compose(err, file.Sync(), file.Close())
+	}()
+
+	// write random bytes
+	randOff := fastrand.Intn(accountSize) + accountsOffset
+	_, err = file.WriteAt(fastrand.Bytes(accountSize), int64(randOff))
+	return err
 }
