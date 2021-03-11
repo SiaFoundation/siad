@@ -280,6 +280,9 @@ func TestSubscriptionLoop(t *testing.T) {
 	wt.staticUpdatePriceTable()
 	wt.managedRefillAccount()
 
+	// Get the EA balance before running the test.
+	balance := wt.staticAccount.availableBalance()
+
 	// The fresh price table should be valid for the subscription.
 	wpt := wt.staticPriceTable()
 	if !wpt.staticValidFor(modules.SubscriptionPeriod) {
@@ -354,6 +357,18 @@ func TestSubscriptionLoop(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Get the EA balance after funding the account.
+	wt.staticAccount.mu.Lock()
+	balanceAfter := wt.staticAccount.availableBalance()
+	wt.staticAccount.mu.Unlock()
+
+	// The spending should be half the balance that the loop wants to maintain
+	// due to a single refill happening.
+	spending := balance.Sub(balanceAfter)
+	if !spending.Equals(fundAmt) {
+		t.Fatal("fundAmt wasn't subtracted from the EA")
 	}
 
 	// Start a goroutine that updates the price table whenever necessary.
@@ -1151,13 +1166,6 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		}
 	}()
 
-	// Start the loop.
-	loopDone := make(chan struct{})
-	go func() {
-		wt.threadedSubscriptionLoop()
-		close(loopDone)
-	}()
-
 	// Set a random entry on the host.
 	rv, spk, sk := randomRegistryValue()
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -1253,18 +1261,40 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the entry on the host.
-	rv.Revision++
-	rv = rv.Sign(sk)
+	// Get the account balance before interrupting the loop.
+	wt.staticAccount.mu.Lock()
+	balance := wt.staticAccount.availableBalance()
+	wt.staticAccount.mu.Unlock()
 
 	// Stop the loop by shutting down the worker.
 	err = wt.staticTG.Stop()
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-time.After(time.Minute):
-		t.Fatal("loop didn't finish")
-	case <-loopDone:
+
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get the EA balance again and check the spending.
+		wt.staticAccount.mu.Lock()
+		balanceAfter := wt.staticAccount.availableBalance()
+		wt.staticAccount.mu.Unlock()
+		refund := balanceAfter.Sub(balance)
+		spending := initialSubscriptionBudget.Sub(refund)
+
+		// Compute the cost. Since we don't have access to the bandwidth, we use
+		// hardcoded values.
+		pt := wt.staticPriceTable().staticPriceTable
+		downloadCost := pt.DownloadBandwidthCost.Mul64(4380)
+		uploadCost := pt.UploadBandwidthCost.Mul64(7300)
+		bandwidthCost := downloadCost.Add(uploadCost)
+		subCost := modules.MDMSubscribeCost(&pt, 1, 1)
+		notificationCost := pt.SubscriptionNotificationCost
+		cost := bandwidthCost.Add(notificationCost).Add(subCost)
+		if !cost.Equals(spending) {
+			return fmt.Errorf("cost doesn't equal spending %v != %v", cost, spending)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
