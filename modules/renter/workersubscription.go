@@ -776,19 +776,12 @@ func (w *worker) threadedSubscriptionLoop() {
 			continue
 		}
 
-		// Commit the withdrawal.
-		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, true)
-
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
-		// Deposit refund. This happens in any case.
-		// TODO @chris do you think it's an issue this refund is not being
-		// taken into account by the EA tracking?
-		refund := budget.Remaining()
-		w.staticAccount.managedTrackDeposit(refund)
-		w.staticAccount.managedCommitDeposit(refund, true)
+		// Commit the withdrawal now we know the refund.
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, budget.Remaining(), true)
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {
