@@ -37,9 +37,29 @@ type (
 	}
 )
 
+// RegisterRoutesFeeManager is a helper function to register all feemanager
+// routes.
+func RegisterRoutesFeeManager(router *httprouter.Router, fm modules.FeeManager, requiredPassword string) {
+	router.GET("/feemanager", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		feemanagerHandlerGET(fm, w, req, ps)
+	})
+	router.POST("/feemanager/add", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		feemanagerAddHandlerPOST(fm, w, req, ps)
+	}, requiredPassword))
+	router.POST("/feemanager/cancel", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		feemanagerCancelHandlerPOST(fm, w, req, ps)
+	}, requiredPassword))
+	router.GET("/feemanager/paidfees", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		feemanagerPaidFeesHandlerGET(fm, w, req, ps)
+	})
+	router.GET("/feemanager/pendingfees", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		feemanagerPendingFeesHandlerGET(fm, w, req, ps)
+	})
+}
+
 // feemanagerHandlerGET handles API calls to /feemanager
-func (api *API) feemanagerHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	payoutheight, err := api.feemanager.PayoutHeight()
+func feemanagerHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	payoutheight, err := feemanager.PayoutHeight()
 	if err != nil {
 		WriteError(w, Error{"could not get the payoutHeight of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -50,7 +70,7 @@ func (api *API) feemanagerHandlerGET(w http.ResponseWriter, _ *http.Request, _ h
 }
 
 // feemanagerAddHandlerPOST handles API calls to /feemanager/add
-func (api *API) feemanagerAddHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func feemanagerAddHandlerPOST(feemanager modules.FeeManager, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Scan for amount - REQUIRED
 	if req.FormValue("amount") == "" {
 		WriteError(w, Error{"amount cannot be blank"}, http.StatusBadRequest)
@@ -91,7 +111,7 @@ func (api *API) feemanagerAddHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Add the fee
-	feeUID, err := api.feemanager.AddFee(address, amount, modules.AppUID(appUIDstr), recurring)
+	feeUID, err := feemanager.AddFee(address, amount, modules.AppUID(appUIDstr), recurring)
 	if err != nil {
 		WriteError(w, Error{"could not set the fee: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -104,7 +124,7 @@ func (api *API) feemanagerAddHandlerPOST(w http.ResponseWriter, req *http.Reques
 }
 
 // feemanagerCancelHandlerPOST handles API calls to /feemanager/cancel
-func (api *API) feemanagerCancelHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func feemanagerCancelHandlerPOST(feemanager modules.FeeManager, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Scan for feeuid - REQUIRED
 	feeUID := req.FormValue("feeuid")
 	if feeUID == "" {
@@ -113,7 +133,7 @@ func (api *API) feemanagerCancelHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Cancel the fee
-	err := api.feemanager.CancelFee(modules.FeeUID(feeUID))
+	err := feemanager.CancelFee(modules.FeeUID(feeUID))
 	if err != nil {
 		WriteError(w, Error{"could not cancel the fee: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -124,8 +144,8 @@ func (api *API) feemanagerCancelHandlerPOST(w http.ResponseWriter, req *http.Req
 }
 
 // feemanagerPaidFeesHandlerGET handles API calls to /feemanager/paidfees
-func (api *API) feemanagerPaidFeesHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	paidFees, err := api.feemanager.PaidFees()
+func feemanagerPaidFeesHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	paidFees, err := feemanager.PaidFees()
 	if err != nil {
 		WriteError(w, Error{"could not get the paid fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -136,8 +156,8 @@ func (api *API) feemanagerPaidFeesHandlerGET(w http.ResponseWriter, _ *http.Requ
 }
 
 // feemanagerPendingFeesHandlerGET handles API calls to /feemanager/pendingfees
-func (api *API) feemanagerPendingFeesHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	pendingFees, err := api.feemanager.PendingFees()
+func feemanagerPendingFeesHandlerGET(feemanager modules.FeeManager, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	pendingFees, err := feemanager.PendingFees()
 	if err != nil {
 		WriteError(w, Error{"could not get the pending fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return

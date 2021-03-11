@@ -53,18 +53,12 @@ func (api *API) buildHTTPRoutes() {
 
 	// Explorer API Calls
 	if api.explorer != nil {
-		router.GET("/explorer", api.explorerHandler)
-		router.GET("/explorer/blocks/:height", api.explorerBlocksHandler)
-		router.GET("/explorer/hashes/:hash", api.explorerHashHandler)
+		RegisterRoutesExplorer(router, api.explorer, api.cs)
 	}
 
 	// FeeManager API Calls
 	if api.feemanager != nil {
-		router.GET("/feemanager", api.feemanagerHandlerGET)
-		router.POST("/feemanager/add", RequirePassword(api.feemanagerAddHandlerPOST, requiredPassword))
-		router.POST("/feemanager/cancel", RequirePassword(api.feemanagerCancelHandlerPOST, requiredPassword))
-		router.GET("/feemanager/paidfees", api.feemanagerPaidFeesHandlerGET)
-		router.GET("/feemanager/pendingfees", api.feemanagerPendingFeesHandlerGET)
+		RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
 	}
 
 	// Gateway API Calls
