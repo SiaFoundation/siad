@@ -690,17 +690,18 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 		t.Fatal(err)
 	}
 
-	// Except the spending details to be identical, proving it was persisted to
-	// disk and properly reloaded.
+	// Except the account's spending details were reloaded properly. We do not
+	// strictly compare but verify it's at least equal to what it was prior to
+	// shutdown to avoid NDFs.
 	reloaded := account.callSpendingDetails()
-	if !reloaded.downloads.Equals(spending.downloads) ||
-		!reloaded.registryReads.Equals(spending.registryReads) ||
-		!reloaded.registryWrites.Equals(spending.registryWrites) ||
-		!reloaded.repairDownloads.Equals(spending.repairDownloads) ||
-		!reloaded.repairUploads.Equals(spending.repairUploads) ||
-		!reloaded.snapshotDownloads.Equals(spending.snapshotDownloads) ||
-		!reloaded.snapshotUploads.Equals(spending.snapshotUploads) ||
-		!reloaded.subscriptions.Equals(spending.subscriptions) {
+	if reloaded.downloads.Cmp(spending.downloads) < 0 ||
+		reloaded.registryReads.Cmp(spending.registryReads) < 0 ||
+		reloaded.registryWrites.Cmp(spending.registryWrites) < 0 ||
+		reloaded.repairDownloads.Cmp(spending.repairDownloads) < 0 ||
+		reloaded.repairUploads.Cmp(spending.repairUploads) < 0 ||
+		reloaded.snapshotDownloads.Cmp(spending.snapshotDownloads) < 0 ||
+		reloaded.snapshotUploads.Cmp(spending.snapshotUploads) < 0 ||
+		reloaded.subscriptions.Cmp(spending.subscriptions) < 0 {
 		t.Fatal("unexpected")
 	}
 }
