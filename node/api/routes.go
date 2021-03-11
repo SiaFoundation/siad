@@ -48,70 +48,32 @@ func (api *API) buildHTTPRoutes() {
 
 	// Consensus API Calls
 	if api.cs != nil {
-		router.GET("/consensus", api.consensusHandler)
-		router.GET("/consensus/blocks", api.consensusBlocksHandler)
-		router.GET("/consensus/subscribe/:id", api.consensusSubscribeHandler)
-		router.POST("/consensus/validate/transactionset", api.consensusValidateTransactionsetHandler)
+		RegisterRoutesConsensus(router, api.cs)
 	}
 
 	// Explorer API Calls
 	if api.explorer != nil {
-		router.GET("/explorer", api.explorerHandler)
-		router.GET("/explorer/blocks/:height", api.explorerBlocksHandler)
-		router.GET("/explorer/hashes/:hash", api.explorerHashHandler)
+		RegisterRoutesExplorer(router, api.explorer, api.cs)
 	}
 
 	// FeeManager API Calls
 	if api.feemanager != nil {
-		router.GET("/feemanager", api.feemanagerHandlerGET)
-		router.POST("/feemanager/add", RequirePassword(api.feemanagerAddHandlerPOST, requiredPassword))
-		router.POST("/feemanager/cancel", RequirePassword(api.feemanagerCancelHandlerPOST, requiredPassword))
-		router.GET("/feemanager/paidfees", api.feemanagerPaidFeesHandlerGET)
-		router.GET("/feemanager/pendingfees", api.feemanagerPendingFeesHandlerGET)
+		RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
 	}
 
 	// Gateway API Calls
 	if api.gateway != nil {
-		router.GET("/gateway", api.gatewayHandlerGET)
-		router.POST("/gateway", api.gatewayHandlerPOST)
-		router.GET("/gateway/bandwidth", api.gatewayBandwidthHandlerGET)
-		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
-		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
-		router.GET("/gateway/blocklist", api.gatewayBlocklistHandlerGET)
-		router.POST("/gateway/blocklist", RequirePassword(api.gatewayBlocklistHandlerPOST, requiredPassword))
-
-		// Deprecated fields
-		router.GET("/gateway/blacklist", api.gatewayBlocklistHandlerGET)
-		router.POST("/gateway/blacklist", RequirePassword(api.gatewayBlocklistHandlerPOST, requiredPassword))
+		RegisterRoutesGateway(router, api.gateway, requiredPassword)
 	}
 
 	// Host API Calls
 	if api.host != nil {
-		// Calls directly pertaining to the host.
-		router.GET("/host", api.hostHandlerGET)                                                   // Get the host status.
-		router.POST("/host", RequirePassword(api.hostHandlerPOST, requiredPassword))              // Change the settings of the host.
-		router.POST("/host/announce", RequirePassword(api.hostAnnounceHandler, requiredPassword)) // Announce the host to the network.
-		router.GET("/host/contracts", api.hostContractInfoHandler)                                // Get info about contracts.
-		router.GET("/host/contracts/:contractID", api.hostContractGetHandler)                     // Get info about a contract.
-		router.GET("/host/estimatescore", api.hostEstimateScoreGET)
-		router.GET("/host/bandwidth", api.hostBandwidthHandlerGET)
-
-		// Calls pertaining to the storage manager that the host uses.
-		router.GET("/host/storage", api.storageHandler)
-		router.POST("/host/storage/folders/add", RequirePassword(api.storageFoldersAddHandler, requiredPassword))
-		router.POST("/host/storage/folders/remove", RequirePassword(api.storageFoldersRemoveHandler, requiredPassword))
-		router.POST("/host/storage/folders/resize", RequirePassword(api.storageFoldersResizeHandler, requiredPassword))
-		router.POST("/host/storage/sectors/delete/:merkleroot", RequirePassword(api.storageSectorsDeleteHandler, requiredPassword))
+		RegisterRoutesHost(router, api.host, api.renter, api.staticDeps, requiredPassword)
 	}
 
 	// Miner API Calls
 	if api.miner != nil {
-		router.GET("/miner", api.minerHandler)
-		router.POST("/miner/block", RequirePassword(api.minerBlockHandlerPOST, requiredPassword))
-		router.GET("/miner/header", RequirePassword(api.minerHeaderHandlerGET, requiredPassword))
-		router.POST("/miner/header", RequirePassword(api.minerHeaderHandlerPOST, requiredPassword))
-		router.GET("/miner/start", RequirePassword(api.minerStartHandler, requiredPassword))
-		router.GET("/miner/stop", RequirePassword(api.minerStopHandler, requiredPassword))
+		RegisterRoutesMiner(router, api.miner, requiredPassword)
 	}
 
 	// Renter API Calls
@@ -208,34 +170,7 @@ func (api *API) buildHTTPRoutes() {
 
 	// Wallet API Calls
 	if api.wallet != nil {
-		router.GET("/wallet", api.walletHandler)
-		router.POST("/wallet/033x", RequirePassword(api.wallet033xHandler, requiredPassword))
-		router.GET("/wallet/address", RequirePassword(api.walletAddressHandler, requiredPassword))
-		router.GET("/wallet/addresses", api.walletAddressesHandler)
-		router.GET("/wallet/seedaddrs", api.walletSeedAddressesHandler)
-		router.GET("/wallet/backup", RequirePassword(api.walletBackupHandler, requiredPassword))
-		router.POST("/wallet/init", RequirePassword(api.walletInitHandler, requiredPassword))
-		router.POST("/wallet/init/seed", RequirePassword(api.walletInitSeedHandler, requiredPassword))
-		router.POST("/wallet/lock", RequirePassword(api.walletLockHandler, requiredPassword))
-		router.POST("/wallet/seed", RequirePassword(api.walletSeedHandler, requiredPassword))
-		router.GET("/wallet/seeds", RequirePassword(api.walletSeedsHandler, requiredPassword))
-		router.POST("/wallet/siacoins", RequirePassword(api.walletSiacoinsHandler, requiredPassword))
-		router.POST("/wallet/siafunds", RequirePassword(api.walletSiafundsHandler, requiredPassword))
-		router.POST("/wallet/siagkey", RequirePassword(api.walletSiagkeyHandler, requiredPassword))
-		router.POST("/wallet/sweep/seed", RequirePassword(api.walletSweepSeedHandler, requiredPassword))
-		router.GET("/wallet/transaction/:id", api.walletTransactionHandler)
-		router.GET("/wallet/transactions", api.walletTransactionsHandler)
-		router.GET("/wallet/transactions/:addr", api.walletTransactionsAddrHandler)
-		router.GET("/wallet/verify/address/:addr", api.walletVerifyAddressHandler)
-		router.POST("/wallet/unlock", RequirePassword(api.walletUnlockHandler, requiredPassword))
-		router.POST("/wallet/changepassword", RequirePassword(api.walletChangePasswordHandler, requiredPassword))
-		router.GET("/wallet/verifypassword", RequirePassword(api.walletVerifyPasswordHandler, requiredPassword))
-		router.GET("/wallet/unlockconditions/:addr", RequirePassword(api.walletUnlockConditionsHandlerGET, requiredPassword))
-		router.POST("/wallet/unlockconditions", RequirePassword(api.walletUnlockConditionsHandlerPOST, requiredPassword))
-		router.GET("/wallet/unspent", RequirePassword(api.walletUnspentHandler, requiredPassword))
-		router.POST("/wallet/sign", RequirePassword(api.walletSignHandler, requiredPassword))
-		router.GET("/wallet/watch", RequirePassword(api.walletWatchHandlerGET, requiredPassword))
-		router.POST("/wallet/watch", RequirePassword(api.walletWatchHandlerPOST, requiredPassword))
+		RegisterRoutesWallet(router, api.wallet, requiredPassword)
 	}
 
 	// Apply UserAgent middleware and return the Router

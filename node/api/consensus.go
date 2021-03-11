@@ -115,6 +115,22 @@ type ConsensusBlocksGetSiafundOutput struct {
 	UnlockHash types.UnlockHash      `json:"unlockhash"`
 }
 
+// RegisterRoutesConsensus is a helper function to register all consensus routes.
+func RegisterRoutesConsensus(router *httprouter.Router, cs modules.ConsensusSet) {
+	router.GET("/consensus", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		consensusHandler(cs, w, req, ps)
+	})
+	router.GET("/consensus/blocks", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		consensusBlocksHandler(cs, w, req, ps)
+	})
+	router.GET("/consensus/subscribe/:id", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		consensusSubscribeHandler(cs, w, req, ps)
+	})
+	router.POST("/consensus/validate/transactionset", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		consensusValidateTransactionsetHandler(cs, w, req, ps)
+	})
+}
+
 // ConsensusBlocksGetFromBlock is a helper method that uses a types.Block, types.BlockHeight and
 // types.Currency to create a ConsensusBlocksGet object.
 func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight, d types.Currency) ConsensusBlocksGet {
@@ -200,9 +216,9 @@ func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight, d types.Cur
 }
 
 // consensusHandler handles the API calls to /consensus.
-func (api *API) consensusHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	height := api.cs.Height()
-	b, found := api.cs.BlockAtHeight(height)
+func consensusHandler(cs modules.ConsensusSet, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	height := cs.Height()
+	b, found := cs.BlockAtHeight(height)
 	if !found {
 		err := "Failed to fetch block for current height"
 		WriteError(w, Error{err}, http.StatusInternalServerError)
@@ -210,10 +226,10 @@ func (api *API) consensusHandler(w http.ResponseWriter, _ *http.Request, _ httpr
 		return
 	}
 	cbid := b.ID()
-	currentTarget, _ := api.cs.ChildTarget(cbid)
-	primary, failsafe := api.cs.FoundationUnlockHashes()
+	currentTarget, _ := cs.ChildTarget(cbid)
+	primary, failsafe := cs.FoundationUnlockHashes()
 	WriteJSON(w, ConsensusGET{
-		Synced:       api.cs.Synced(),
+		Synced:       cs.Synced(),
 		Height:       height,
 		CurrentBlock: cbid,
 		Target:       currentTarget,
@@ -244,7 +260,7 @@ func (api *API) consensusHandler(w http.ResponseWriter, _ *http.Request, _ httpr
 
 // consensusBlocksIDHandler handles the API calls to /consensus/blocks
 // endpoint.
-func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func consensusBlocksHandler(cs modules.ConsensusSet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get query params and check them.
 	id, height := req.FormValue("id"), req.FormValue("height")
 	if id != "" && height != "" {
@@ -267,7 +283,7 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 			WriteError(w, Error{"failed to unmarshal blockid"}, http.StatusBadRequest)
 			return
 		}
-		b, h, exists = api.cs.BlockByID(bid)
+		b, h, exists = cs.BlockByID(bid)
 	}
 	// Handle request by height
 	if height != "" {
@@ -275,7 +291,7 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 			WriteError(w, Error{"failed to parse block height"}, http.StatusBadRequest)
 			return
 		}
-		b, exists = api.cs.BlockAtHeight(h)
+		b, exists = cs.BlockAtHeight(h)
 	}
 	// Check if block was found
 	if !exists {
@@ -283,7 +299,7 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	target, _ := api.cs.ChildTarget(b.ID())
+	target, _ := cs.ChildTarget(b.ID())
 	d := target.Difficulty()
 
 	// Write response
@@ -292,14 +308,14 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 
 // consensusValidateTransactionsetHandler handles the API calls to
 // /consensus/validate/transactionset.
-func (api *API) consensusValidateTransactionsetHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func consensusValidateTransactionsetHandler(cs modules.ConsensusSet, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var txnset []types.Transaction
 	err := json.NewDecoder(req.Body).Decode(&txnset)
 	if err != nil {
 		WriteError(w, Error{"could not decode transaction set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	_, err = api.cs.TryTransactionSet(txnset)
+	_, err = cs.TryTransactionSet(txnset)
 	if err != nil {
 		WriteError(w, Error{"transaction set validation failed: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -309,7 +325,7 @@ func (api *API) consensusValidateTransactionsetHandler(w http.ResponseWriter, re
 
 // consensusSubscribeHandler handles the API calls to the /consensus/subscribe
 // endpoint.
-func (api *API) consensusSubscribeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func consensusSubscribeHandler(cs modules.ConsensusSet, w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var ccid modules.ConsensusChangeID
 	if err := (*crypto.Hash)(&ccid).LoadString(ps.ByName("id")); err != nil {
 		WriteError(w, Error{"could not decode ID: " + err.Error()}, http.StatusBadRequest)
@@ -320,8 +336,8 @@ func (api *API) consensusSubscribeHandler(w http.ResponseWriter, req *http.Reque
 	errCh := make(chan error, 1)
 	ccs := newConsensusChangeStreamer(w)
 	go func() {
-		errCh <- api.cs.ConsensusSetSubscribe(ccs, ccid, req.Context().Done())
-		api.cs.Unsubscribe(ccs)
+		errCh <- cs.ConsensusSetSubscribe(ccs, ccid, req.Context().Done())
+		cs.Unsubscribe(ccs)
 	}()
 	err := <-errCh
 	if err != nil {
