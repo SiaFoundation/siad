@@ -68,21 +68,7 @@ func (api *API) buildHTTPRoutes() {
 
 	// Host API Calls
 	if api.host != nil {
-		// Calls directly pertaining to the host.
-		router.GET("/host", api.hostHandlerGET)                                                   // Get the host status.
-		router.POST("/host", RequirePassword(api.hostHandlerPOST, requiredPassword))              // Change the settings of the host.
-		router.POST("/host/announce", RequirePassword(api.hostAnnounceHandler, requiredPassword)) // Announce the host to the network.
-		router.GET("/host/contracts", api.hostContractInfoHandler)                                // Get info about contracts.
-		router.GET("/host/contracts/:contractID", api.hostContractGetHandler)                     // Get info about a contract.
-		router.GET("/host/estimatescore", api.hostEstimateScoreGET)
-		router.GET("/host/bandwidth", api.hostBandwidthHandlerGET)
-
-		// Calls pertaining to the storage manager that the host uses.
-		router.GET("/host/storage", api.storageHandler)
-		router.POST("/host/storage/folders/add", RequirePassword(api.storageFoldersAddHandler, requiredPassword))
-		router.POST("/host/storage/folders/remove", RequirePassword(api.storageFoldersRemoveHandler, requiredPassword))
-		router.POST("/host/storage/folders/resize", RequirePassword(api.storageFoldersResizeHandler, requiredPassword))
-		router.POST("/host/storage/sectors/delete/:merkleroot", RequirePassword(api.storageSectorsDeleteHandler, requiredPassword))
+		RegisterRoutesHost(router, api.host, api.renter, api.staticDeps, requiredPassword)
 	}
 
 	// Miner API Calls
