@@ -62,40 +62,71 @@ func TestEvictionPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create source outputs for transaction graphs.
-	var sources []types.SiacoinOutputID
-	numSources := 1
-	sourceSize := types.SiacoinPrecision.Mul64(1e3)
-	var outputs []types.SiacoinOutput
-	for i := 0; i < numSources; i++ {
-		outputs = append(outputs, types.SiacoinOutput{
-			UnlockHash: typesutil.AnyoneCanSpendUnlockHash,
-			Value:      sourceSize,
+	// Define checkNumTxns helper function. If we are evicting txns, it is OK to
+	// mine additional blocks to avoid NDFs.
+	checkNumTxns := func(m *siatest.TestNode, numTxns int, mineBlocks bool) error {
+		tries := 1
+		return build.Retry(50, 100*time.Millisecond, func() error {
+			// If the mineBlocks bool is true, mine an empty block every 10 tries
+			if (tries%10 == 0) && mineBlocks {
+				err = m.MineEmptyBlock()
+				if err != nil {
+					return err
+				}
+			}
+			tries++
+
+			// Get the transactions
+			tptg, err := m.TransactionPoolTransactionsGet()
+			if err != nil {
+				return err
+			}
+			if len(tptg.Transactions) != numTxns {
+				return fmt.Errorf("expected %v transactions but got %v", numTxns, len(tptg.Transactions))
+			}
+			return nil
 		})
 	}
-	wsmp, err := minerA.WalletSiacoinsMultiPost(outputs)
+
+	// Helper log function
+	logTxns := func(m *siatest.TestNode) {
+		tptg, err := m.TransactionPoolTransactionsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, txn := range tptg.Transactions {
+			t.Log(txn.ID())
+		}
+	}
+
+	// We should be starting with 0 transactions
+	err = checkNumTxns(minerA, 0, true)
+	if err != nil {
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
+	}
+
+	// Create source outputs for transaction graphs.
+	sourceSize := types.SiacoinPrecision.Mul64(1e3)
+	output := types.SiacoinOutput{
+		UnlockHash: typesutil.AnyoneCanSpendUnlockHash,
+		Value:      sourceSize,
+	}
+	wsmp, err := minerA.WalletSiacoinsMultiPost([]types.SiacoinOutput{output})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sourceTransactions := wsmp.Transactions
 	lastTxn := len(sourceTransactions) - 1
-	for i := 0; i < numSources; i++ {
-		sources = append(sources, wsmp.Transactions[lastTxn].SiacoinOutputID(uint64(i)))
-	}
+	sources := []types.SiacoinOutputID{wsmp.Transactions[lastTxn].SiacoinOutputID(0)}
 
 	// Confirm that the transaction was received by minerA.
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		tptg, err := minerA.TransactionPoolTransactionsGet()
-		if err != nil {
-			return err
-		}
-		if len(tptg.Transactions) != 2 {
-			return fmt.Errorf("expected 2 transactions but got %v", len(tptg.Transactions))
-		}
-		return nil
-	})
+	err = checkNumTxns(minerA, 2, false)
 	if err != nil {
-		t.Fatal(err)
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 
 	// Mine empty blocks until right before the eviction policy would kick out
@@ -107,13 +138,18 @@ func TestEvictionPolicy(t *testing.T) {
 		}
 	}
 
-	// Ensure that the transaction is still in minerA's tpool.
-	tptg, err := minerA.TransactionPoolTransactionsGet()
+	// Make sure Miners are synced after rapid mining
+	err = tg.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tptg.Transactions) != 2 {
-		t.Fatal(fmt.Errorf("expected 2 transactions but got %v", len(tptg.Transactions)))
+
+	// Ensure that the transaction is still in minerA's tpool.
+	err = checkNumTxns(minerA, 2, false)
+	if err != nil {
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 
 	// Mine one more empty block, this should cause an eviction of the
@@ -122,12 +158,11 @@ func TestEvictionPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tptg, err = minerA.TransactionPoolTransactionsGet()
+	err = checkNumTxns(minerA, 0, true)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 0 {
-		t.Fatal(fmt.Errorf("expected 0 transactions but got %v", len(tptg.Transactions)))
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 
 	// Since the transaction got evicted, needs to be submitted again.
@@ -135,19 +170,13 @@ func TestEvictionPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Confirm that the transaction was received by minerA.
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		tptg, err := minerA.TransactionPoolTransactionsGet()
-		if err != nil {
-			return err
-		}
-		if len(tptg.Transactions) != 2 {
-			return fmt.Errorf("expected 2 transactions but got %v", len(tptg.Transactions))
-		}
-		return nil
-	})
+	err = checkNumTxns(minerA, 2, false)
 	if err != nil {
-		t.Fatal(err)
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 
 	// Mine empty blocks until right before the eviction policy would kick out
@@ -157,6 +186,12 @@ func TestEvictionPolicy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Make sure Miners are synced after rapid mining
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Use the source output to create a transaction. Submit the transaction to
@@ -177,18 +212,18 @@ func TestEvictionPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	graph1Txns := graph1.Transactions()
+
 	// Give the transactions from graph1 to minerA.
 	err = minerA.TransactionPoolRawPost(graph1Txns[0], graph1Txns[:0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	// There should now be 3 transactions in the transaction pool for minerA.
-	tptg, err = minerA.TransactionPoolTransactionsGet()
+	err = checkNumTxns(minerA, 3, false)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tptg.Transactions) != 3 {
-		t.Fatal("expecting 3 transactions after mining block, got", len(tptg.Transactions))
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 
 	// Mine empty blocks until right before the eviction policy would kick out
@@ -200,16 +235,19 @@ func TestEvictionPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// There should still be 3 transactions in the transaction pool for minerA.
-	tptg, err = minerA.TransactionPoolTransactionsGet()
+
+	// Make sure Miners are synced after rapid mining
+	err = tg.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tptg.Transactions) != 3 {
-		for _, txn := range tptg.Transactions {
-			t.Log(txn.ID())
-		}
-		t.Fatal("expecting 3 transactions after mining block, got", len(tptg.Transactions))
+
+	// There should still be 3 transactions in the transaction pool for minerA.
+	err = checkNumTxns(minerA, 3, false)
+	if err != nil {
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 
 	// Mine one more empty block, this should cause an eviction of the
@@ -218,18 +256,16 @@ func TestEvictionPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm that the transaction was received by minerA.
-	err = build.Retry(50, 100*time.Millisecond, func() error {
-		tptg, err = minerA.TransactionPoolTransactionsGet()
-		if err != nil {
-			return err
-		}
-		if len(tptg.Transactions) != 0 {
-			return fmt.Errorf("expected 0 transactions but got %v", len(tptg.Transactions))
-		}
-		return nil
-	})
+	err = tg.Sync()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Confirm that the transaction was evicted by minerA.
+	err = checkNumTxns(minerA, 0, true)
+	if err != nil {
+		t.Log("Debug output")
+		logTxns(minerA)
+		t.Error(err)
 	}
 }
