@@ -90,10 +90,23 @@ type (
 		// Money has multiple states in an account, this is all the information
 		// we need to understand the current state of the account's balance and
 		// pending updates.
-		balance            types.Currency
-		negativeBalance    types.Currency
-		pendingWithdrawals types.Currency
-		pendingDeposits    types.Currency
+		//
+		// The two drift fields keep track of the delta between our version of
+		// the balance and the host's version of the balance. We want to keep
+		// track of this drift as in the future we might add code that acts upon
+		// it and penalizes the host if we find they are cheating us, or
+		// behaving sub-optimally.
+		balance              types.Currency
+		balanceDriftPositive types.Currency
+		balanceDriftNegative types.Currency
+		pendingDeposits      types.Currency
+		pendingWithdrawals   types.Currency
+		negativeBalance      types.Currency
+
+		// Spending details contain a breakdown of how much money from the
+		// ephemeral account got spent on what type of action. Examples of such
+		// actions are downloads, registry reads, registry writes, etc.
+		spending spendingDetails
 
 		// Error tracking.
 		recentErr         error
@@ -124,6 +137,26 @@ type (
 		staticOffset int64
 		staticRenter *Renter
 	}
+
+	// spendingDetails contains a breakdown of all spending metrics, all money
+	// that is being spent from an ephemeral account is accounted for in one of
+	// these categories. Every field of this struct should have a corresponding
+	// 'spendingCategory'.
+	spendingDetails struct {
+		downloads         types.Currency
+		registryReads     types.Currency
+		registryWrites    types.Currency
+		repairDownloads   types.Currency
+		repairUploads     types.Currency
+		snapshotDownloads types.Currency
+		snapshotUploads   types.Currency
+		subscriptions     types.Currency
+		uploads           types.Currency
+	}
+
+	// spendingCategory defines an enum that represent a category in the
+	// spending details
+	spendingCategory uint64
 )
 
 // ProvidePayment takes a stream and various payment details and handles the
@@ -180,13 +213,6 @@ func (a *account) callNeedsToSync() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.syncAt.Before(time.Now())
-}
-
-// callSetSyncAt will update the syncAt time for the account.
-func (a *account) callSetSyncAt(newSyncAt time.Time) {
-	a.mu.Lock()
-	a.syncAt = newSyncAt
-	a.mu.Unlock()
 }
 
 // managedAvailableBalance returns the amount of money that is available to
@@ -294,16 +320,51 @@ func (a *account) managedNeedsToRefill(target types.Currency) bool {
 	return a.availableBalance().Cmp(target) < 0
 }
 
-// managedResetBalance sets the given balance and resets the account's balance
-// delta state variables. This happens when we have performanced a balance
-// inquiry on the host and we decide to trust his version of the balance.
-func (a *account) managedResetBalance(balance types.Currency) {
+// managedSyncBalance updates the account's balance related fields to "sync"
+// with the given balance, which was returned by the host. If the given balance
+// is higher or lower than the account's available balance, we update the drift
+// fields in the positive or negative direction.
+func (a *account) managedSyncBalance(balance types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.balance = balance
-	a.pendingDeposits = types.ZeroCurrency
-	a.pendingWithdrawals = types.ZeroCurrency
-	a.negativeBalance = types.ZeroCurrency
+
+	// Determine how long to wait before attempting to sync again, and then
+	// update the syncAt time. There is significant randomness in the
+	// waiting because syncing with the host requires freezing up the
+	// worker. We do not want to freeze up a large number of workers at
+	// once, nor do we want to freeze them frequently.
+	defer func() {
+		randWait := fastrand.Intn(accountSyncRandWaitMilliseconds)
+		waitTime := time.Duration(randWait) * time.Millisecond
+		waitTime += accountSyncMinWaitTime
+		a.syncAt = time.Now().Add(waitTime)
+	}()
+
+	// If our balance is equal to what the host communicated, we're done.
+	currBalance := a.availableBalance()
+	if currBalance.Equals(balance) {
+		return
+	}
+
+	// However, if it is lower we want to reset our account balance and track
+	// the amount we drifted.
+	if currBalance.Cmp(balance) < 0 {
+		a.resetBalance(balance)
+		delta := balance.Sub(currBalance)
+		a.balanceDriftPositive = a.balanceDriftPositive.Add(delta)
+	}
+
+	// If it's higher we only track the amount we drifted.
+	if currBalance.Cmp(balance) > 0 {
+		delta := currBalance.Sub(balance)
+		a.balanceDriftNegative = a.balanceDriftNegative.Add(delta)
+	}
+
+	// Persist the account
+	err := a.persist()
+	if err != nil {
+		a.staticRenter.log.Printf("could not persist account, err: %v\n", err)
+	}
 }
 
 // managedStatus returns the status of the account
@@ -340,6 +401,16 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
+}
+
+// resetBalance sets the given balance and resets the account's balance
+// delta state variables. This happens when we have performanced a balance
+// inquiry on the host and we decide to trust his version of the balance.
+func (a *account) resetBalance(balance types.Currency) {
+	a.balance = balance
+	a.pendingDeposits = types.ZeroCurrency
+	a.pendingWithdrawals = types.ZeroCurrency
+	a.negativeBalance = types.ZeroCurrency
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
@@ -398,6 +469,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			return
 		}
 	}
+
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up
@@ -426,20 +498,10 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		return
 	}
 
-	// If our account balance is lower than the balance indicated by the host,
-	// we want to sync our balance by resetting it.
-	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
-		w.staticAccount.managedResetBalance(balance)
-	}
-
-	// Determine how long to wait before attempting to sync again, and then
-	// update the syncAt time. There is significant randomness in the waiting
-	// because syncing with the host requires freezing up the worker. We do not
-	// want to freeze up a large number of workers at once, nor do we want to
-	// freeze them frequently.
-	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
-	waitTime += accountSyncMinWaitTime
-	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
+	// Sync the account with the host's version of our balance. This will update
+	// our balance in case the host tells us we actually have more money, and it
+	// will keep track of drift in both directions.
+	w.staticAccount.managedSyncBalance(balance)
 
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
