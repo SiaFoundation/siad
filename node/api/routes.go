@@ -170,34 +170,7 @@ func (api *API) buildHTTPRoutes() {
 
 	// Wallet API Calls
 	if api.wallet != nil {
-		router.GET("/wallet", api.walletHandler)
-		router.POST("/wallet/033x", RequirePassword(api.wallet033xHandler, requiredPassword))
-		router.GET("/wallet/address", RequirePassword(api.walletAddressHandler, requiredPassword))
-		router.GET("/wallet/addresses", api.walletAddressesHandler)
-		router.GET("/wallet/seedaddrs", api.walletSeedAddressesHandler)
-		router.GET("/wallet/backup", RequirePassword(api.walletBackupHandler, requiredPassword))
-		router.POST("/wallet/init", RequirePassword(api.walletInitHandler, requiredPassword))
-		router.POST("/wallet/init/seed", RequirePassword(api.walletInitSeedHandler, requiredPassword))
-		router.POST("/wallet/lock", RequirePassword(api.walletLockHandler, requiredPassword))
-		router.POST("/wallet/seed", RequirePassword(api.walletSeedHandler, requiredPassword))
-		router.GET("/wallet/seeds", RequirePassword(api.walletSeedsHandler, requiredPassword))
-		router.POST("/wallet/siacoins", RequirePassword(api.walletSiacoinsHandler, requiredPassword))
-		router.POST("/wallet/siafunds", RequirePassword(api.walletSiafundsHandler, requiredPassword))
-		router.POST("/wallet/siagkey", RequirePassword(api.walletSiagkeyHandler, requiredPassword))
-		router.POST("/wallet/sweep/seed", RequirePassword(api.walletSweepSeedHandler, requiredPassword))
-		router.GET("/wallet/transaction/:id", api.walletTransactionHandler)
-		router.GET("/wallet/transactions", api.walletTransactionsHandler)
-		router.GET("/wallet/transactions/:addr", api.walletTransactionsAddrHandler)
-		router.GET("/wallet/verify/address/:addr", api.walletVerifyAddressHandler)
-		router.POST("/wallet/unlock", RequirePassword(api.walletUnlockHandler, requiredPassword))
-		router.POST("/wallet/changepassword", RequirePassword(api.walletChangePasswordHandler, requiredPassword))
-		router.GET("/wallet/verifypassword", RequirePassword(api.walletVerifyPasswordHandler, requiredPassword))
-		router.GET("/wallet/unlockconditions/:addr", RequirePassword(api.walletUnlockConditionsHandlerGET, requiredPassword))
-		router.POST("/wallet/unlockconditions", RequirePassword(api.walletUnlockConditionsHandlerPOST, requiredPassword))
-		router.GET("/wallet/unspent", RequirePassword(api.walletUnspentHandler, requiredPassword))
-		router.POST("/wallet/sign", RequirePassword(api.walletSignHandler, requiredPassword))
-		router.GET("/wallet/watch", RequirePassword(api.walletWatchHandlerGET, requiredPassword))
-		router.POST("/wallet/watch", RequirePassword(api.walletWatchHandlerPOST, requiredPassword))
+		RegisterRoutesWallet(router, api.wallet, requiredPassword)
 	}
 
 	// Apply UserAgent middleware and return the Router
