@@ -552,12 +552,15 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	}
 
 	// verify initial state
-	a := w.staticAccount
-	if !a.spending.downloads.IsZero() ||
-		!a.spending.snapshotDownloads.IsZero() ||
-		!a.spending.registryReads.IsZero() ||
-		!a.spending.registryWrites.IsZero() ||
-		!a.spending.subscriptions.IsZero() {
+	spending := w.staticAccount.callSpendingDetails()
+	if !spending.downloads.IsZero() ||
+		!spending.registryReads.IsZero() ||
+		!spending.registryWrites.IsZero() ||
+		!spending.repairDownloads.IsZero() ||
+		!spending.repairUploads.IsZero() ||
+		!spending.snapshotDownloads.IsZero() ||
+		!spending.snapshotUploads.IsZero() ||
+		!spending.subscriptions.IsZero() {
 		t.Fatal("unexpected")
 	}
 
@@ -576,7 +579,9 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.spending.registryWrites.IsZero() {
+
+	spending = w.staticAccount.callSpendingDetails()
+	if spending.registryWrites.IsZero() {
 		t.Fatal("unexpected")
 	}
 
@@ -585,7 +590,9 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.spending.registryReads.IsZero() {
+
+	spending = w.staticAccount.callSpendingDetails()
+	if spending.registryReads.IsZero() {
 		t.Fatal("unexpected")
 	}
 
@@ -606,7 +613,9 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.spending.snapshotDownloads.IsZero() {
+
+	spending = w.staticAccount.callSpendingDetails()
+	if spending.snapshotDownloads.IsZero() {
 		t.Fatal("unexpected")
 	}
 
@@ -629,11 +638,71 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.spending.downloads.IsZero() {
+
+	spending = w.staticAccount.callSpendingDetails()
+	if spending.downloads.IsZero() {
 		t.Fatal("unexpected")
 	}
 
-	// TODO: subscriptions
+	// Subscribe to the random registry value we created earlier.
+	// Subscribe to that entry.
+	req := modules.RPCRegistrySubscriptionRequest{
+		PubKey: spk,
+		Tweak:  rv.Tweak,
+	}
+	_, err = wt.Subscribe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the entry on the host.
+	rv.Revision++
+	rv = rv.Sign(sk)
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsubscribe
+	wt.Unsubscribe(req)
+
+	// Stop the loop by shutting down the worker.
+	err = wt.staticTG.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the spending is updated
+	time.Sleep(stopSubscriptionGracePeriod)
+	spending = w.staticAccount.callSpendingDetails()
+	if spending.subscriptions.IsZero() {
+		t.Fatal("unexpected")
+	}
+
+	// Reload thhe renter and reload the account for that same host
+	hostkey := wt.worker.staticHostPubKey
+	r, err := wt.rt.reloadRenter(wt.renter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := r.staticAccountManager.managedOpenAccount(hostkey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Except the spending details to be identical, proving it was persisted to
+	// disk and properly reloaded.
+	reloaded := account.callSpendingDetails()
+	if !reloaded.downloads.Equals(spending.downloads) ||
+		!reloaded.registryReads.Equals(spending.registryReads) ||
+		!reloaded.registryWrites.Equals(spending.registryWrites) ||
+		!reloaded.repairDownloads.Equals(spending.repairDownloads) ||
+		!reloaded.repairUploads.Equals(spending.repairUploads) ||
+		!reloaded.snapshotDownloads.Equals(spending.snapshotDownloads) ||
+		!reloaded.snapshotUploads.Equals(spending.snapshotUploads) ||
+		!reloaded.subscriptions.Equals(spending.subscriptions) {
+		t.Fatal("unexpected")
+	}
 }
 
 // TestNewWithdrawalMessage verifies the newWithdrawalMessage helper

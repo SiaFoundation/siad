@@ -297,8 +297,8 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		overdrive:     0, // No need to rush the latency on repair downloads.
 		priority:      0, // Repair downloads are completely de-prioritized.
 
-		staticSpendingCategory: categoryRepairDownload,
 		staticMemoryManager:    chunk.staticMemoryManager, // Same memory manager as upload chunk
+		staticSpendingCategory: categoryRepairDownload,
 	})
 	if err != nil {
 		return err

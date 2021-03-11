@@ -77,11 +77,11 @@ type (
 		overdrive         int                 // How many extra pieces to download to prevent slow hosts from being a bottleneck.
 		priority          uint64              // Files with a higher priority will be downloaded first.
 
+		staticMemoryManager *memoryManager
+
 		// staticSpendingCategory specifies what field to update when we track
 		// the amount of money spent from an ephemeral account
 		staticSpendingCategory spendingCategory
-
-		staticMemoryManager *memoryManager
 	}
 )
 
@@ -332,8 +332,8 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *downloa
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 
-		staticSpendingCategory: categoryDownload,
 		staticMemoryManager:    r.userDownloadMemoryManager, // user initiated download
+		staticSpendingCategory: categoryDownload,
 	})
 	if closer, ok := dw.(io.Closer); err != nil && ok {
 		// If the destination can be closed we do so.

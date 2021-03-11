@@ -260,6 +260,13 @@ func (a *account) callNeedsToSync() bool {
 	return a.syncAt.Before(time.Now())
 }
 
+// callSpendingDetails returns the spending details for the account
+func (a *account) callSpendingDetails() spendingDetails {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.spending
+}
+
 // managedAvailableBalance returns the amount of money that is available to
 // spend. It is calculated by taking into account pending spends and pending
 // funds.

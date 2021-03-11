@@ -183,8 +183,8 @@ func (s *streamer) managedFillCache() bool {
 		overdrive:     5,    // TODO: high default until full overdrive support is added.
 		priority:      1000, // TODO: high default until full priority support is added.
 
-		staticSpendingCategory: categoryDownload,
 		staticMemoryManager:    s.r.userDownloadMemoryManager, // user initiated download
+		staticSpendingCategory: categoryDownload,
 	})
 	if err != nil {
 		closeErr := ddw.Close()
