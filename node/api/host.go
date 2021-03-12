@@ -74,13 +74,10 @@ type (
 	StorageGET struct {
 		Folders []modules.StorageFolderMetadata `json:"folders"`
 	}
-
-	// HostScoreEstimateFunc is a function used to estimate a host's score.
-	HostScoreEstimateFunc func(e modules.HostDBEntry, a modules.Allowance) (modules.HostScoreBreakdown, error)
 )
 
 // RegisterRoutesHost is a helper function to register all host routes.
-func RegisterRoutesHost(router *httprouter.Router, h modules.Host, hse HostScoreEstimateFunc, deps modules.Dependencies, requiredPassword string) {
+func RegisterRoutesHost(router *httprouter.Router, h modules.Host, deps modules.Dependencies, requiredPassword string) {
 	// Calls directly pertaining to the host.
 	router.GET("/host", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		hostHandlerGET(h, w, deps, req, ps)
@@ -99,9 +96,6 @@ func RegisterRoutesHost(router *httprouter.Router, h modules.Host, hse HostScore
 	})
 	router.GET("/host/bandwidth", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		hostBandwidthHandlerGET(h, w, req, ps)
-	})
-	router.GET("/host/estimatescore", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-		hostEstimateScoreGET(h, hse, w, req, ps)
 	})
 
 	// Calls pertaining to the storage manager that the host uses.
@@ -391,9 +385,9 @@ func parseHostSettings(host modules.Host, req *http.Request) (modules.HostIntern
 
 // hostEstimateScoreGET handles the POST request to /host/estimatescore and
 // computes an estimated HostDB score for the provided settings.
-func hostEstimateScoreGET(host modules.Host, hse HostScoreEstimateFunc, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func hostEstimateScoreGET(host modules.Host, renter modules.Renter, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// This call requires a renter, check that it is present.
-	if hse == nil {
+	if renter == nil {
 		WriteError(w, Error{"cannot call /host/estimatescore without the renter module"}, http.StatusBadRequest)
 		return
 	}
@@ -436,7 +430,7 @@ func hostEstimateScoreGET(host modules.Host, hse HostScoreEstimateFunc, w http.R
 	entry.HostExternalSettings = mergedSettings
 	// Use the default allowance for now, since we do not know what sort of
 	// allowance the renters may use to attempt to access this host.
-	estimatedScoreBreakdown, err := hse(entry, modules.DefaultAllowance)
+	estimatedScoreBreakdown, err := renter.EstimateHostScore(entry, modules.DefaultAllowance)
 	if err != nil {
 		WriteError(w, Error{"error estimating host score: " + err.Error()}, http.StatusInternalServerError)
 		return

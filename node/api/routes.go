@@ -68,7 +68,12 @@ func (api *API) buildHTTPRoutes() {
 
 	// Host API Calls
 	if api.host != nil {
-		RegisterRoutesHost(router, api.host, api.renter.EstimateHostScore, api.staticDeps, requiredPassword)
+		RegisterRoutesHost(router, api.host, api.staticDeps, requiredPassword)
+
+		// Register estiamtescore separately since it depends on a renter.
+		router.GET("/host/estimatescore", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+			hostEstimateScoreGET(api.host, api.renter, w, req, ps)
+		})
 	}
 
 	// Miner API Calls
