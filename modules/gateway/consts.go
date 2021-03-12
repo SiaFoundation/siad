@@ -39,7 +39,7 @@ const (
 	// incoming connections. This version is usually raised if changes to the
 	// codebase were made that weren't backwards compatible. This might include
 	// changes to the protocol or hardforks.
-	minimumAcceptablePeerVersion = "1.3.7"
+	minimumAcceptablePeerVersion = "1.5.4"
 )
 
 var (
