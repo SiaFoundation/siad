@@ -383,9 +383,21 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) (err error) {
 			return errors.AddContext(err, "could not load the new file in memory")
 		}
 		if name := filepath.Base(info.Name()); name == modules.SiaDirExtension {
+			// Verify there is enough data for a checksum
+			if len(b) < crypto.HashSize {
+				return siadir.ErrCorruptFile
+			}
+
+			// Verify checksum
+			checksum := b[:crypto.HashSize]
+			mdBytes := b[crypto.HashSize:]
+			fileChecksum := crypto.HashBytes(mdBytes)
+			if !bytes.Equal(checksum, fileChecksum[:]) {
+				return siadir.ErrInvalidChecksum
+			}
 			// Load the file as a .siadir
 			var md siadir.Metadata
-			err = json.Unmarshal(b, &md)
+			err = json.Unmarshal(mdBytes, &md)
 			if err != nil {
 				return errors.AddContext(err, "could not unmarshal")
 			}
