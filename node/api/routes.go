@@ -68,7 +68,12 @@ func (api *API) buildHTTPRoutes() {
 
 	// Host API Calls
 	if api.host != nil {
-		RegisterRoutesHost(router, api.host, api.renter, api.staticDeps, requiredPassword)
+		RegisterRoutesHost(router, api.host, api.staticDeps, requiredPassword)
+
+		// Register estiamtescore separately since it depends on a renter.
+		router.GET("/host/estimatescore", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+			hostEstimateScoreGET(api.host, api.renter, w, req, ps)
+		})
 	}
 
 	// Miner API Calls
@@ -161,11 +166,7 @@ func (api *API) buildHTTPRoutes() {
 
 	// Transaction pool API Calls
 	if api.tpool != nil {
-		router.GET("/tpool/fee", api.tpoolFeeHandlerGET)
-		router.GET("/tpool/raw/:id", api.tpoolRawHandlerGET)
-		router.POST("/tpool/raw", api.tpoolRawHandlerPOST)
-		router.GET("/tpool/confirmed/:id", api.tpoolConfirmedGET)
-		router.GET("/tpool/transactions", api.tpoolTransactionsHandler)
+		RegisterRoutesTransactionPool(router, api.tpool)
 	}
 
 	// Wallet API Calls

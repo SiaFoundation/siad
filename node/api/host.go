@@ -77,7 +77,7 @@ type (
 )
 
 // RegisterRoutesHost is a helper function to register all host routes.
-func RegisterRoutesHost(router *httprouter.Router, h modules.Host, r modules.Renter, deps modules.Dependencies, requiredPassword string) {
+func RegisterRoutesHost(router *httprouter.Router, h modules.Host, deps modules.Dependencies, requiredPassword string) {
 	// Calls directly pertaining to the host.
 	router.GET("/host", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		hostHandlerGET(h, w, deps, req, ps)
@@ -93,9 +93,6 @@ func RegisterRoutesHost(router *httprouter.Router, h modules.Host, r modules.Ren
 	})
 	router.GET("/host/contracts/:contractID", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		hostContractGetHandler(h, w, req, ps)
-	})
-	router.GET("/host/estimatescore", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-		hostEstimateScoreGET(h, r, w, req, ps)
 	})
 	router.GET("/host/bandwidth", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		hostBandwidthHandlerGET(h, w, req, ps)
