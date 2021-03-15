@@ -47,6 +47,7 @@ const (
 	categoryRepairDownload
 	categoryRepairUpload
 	categorySnapshotDownload
+	categorySnapshotUpload
 	categorySubscription
 	categoryUpload
 )
@@ -187,6 +188,8 @@ func (s *spendingDetails) update(category spendingCategory, amount types.Currenc
 		s.downloads = s.downloads.Add(amount)
 	case categorySnapshotDownload:
 		s.snapshotDownloads = s.snapshotDownloads.Add(amount)
+	case categorySnapshotUpload:
+		s.snapshotUploads = s.snapshotUploads.Add(amount)
 	case categoryRegistryRead:
 		s.registryReads = s.registryReads.Add(amount)
 	case categoryRegistryWrite:

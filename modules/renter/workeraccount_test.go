@@ -291,6 +291,7 @@ func testAccountTrackSpending(t *testing.T) {
 	// verify every category tracks its own field
 	a.trackSpending(categoryDownload, hasting.Mul64(2), hasting)
 	a.trackSpending(categorySnapshotDownload, hasting.Mul64(3), hasting)
+	a.trackSpending(categorySnapshotUpload, hasting.Mul64(3), hasting)
 	a.trackSpending(categoryRegistryRead, hasting.Mul64(4), hasting)
 	a.trackSpending(categoryRegistryWrite, hasting.Mul64(5), hasting)
 	a.trackSpending(categoryRepairDownload, hasting.Mul64(6), hasting)
