@@ -112,7 +112,7 @@ default: &default_params
 ## Default params for Windows runner
 .default_windows: &default_windows_params
   before_script:
-    - ECHO %date% - %time% - (CET/Germany TZ)
+    - ECHO "%date% - %time% (Timezone: CET/Germany)"
     - go version
     - $env:USERNAME
     - New-Item -ItemType Directory -Force .cache\gocache
