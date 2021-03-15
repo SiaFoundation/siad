@@ -310,7 +310,7 @@ siatest-renter-sub-tests:
 legacy-windows-tests-nightly:
   <<: *default_nightly_windows_params
   script:
-    - make test-vlong run=. pkgs="$legacy_pkgs"
+    - make test-vlong-windows run=. pkgs="$legacy_pkgs"
 
 # #################
 # # Package Test
@@ -324,7 +324,7 @@ legacy-windows-tests-nightly:
 # package-host-windows-tests-nightly:
 #   <<: *default_nightly_windows_params
 #   script:
-#     - make test-vlong run=. pkgs="$package_host_pkgs"
+#     - make test-vlong-windows run=. pkgs="$package_host_pkgs"
 
 # package-renter-tests-nightly:
 #   <<: *default_nightly_params
@@ -335,7 +335,7 @@ legacy-windows-tests-nightly:
 # package-renter-windows-tests-nightly:
 #   <<: *default_nightly_windows_params
 #   script:
-#     - make test-vlong run=. pkgs="$package_renter_pkgs"
+#     - make test-vlong-windows run=. pkgs="$package_renter_pkgs"
 
 # package-tests-nightly:
 #   <<: *default_nightly_params
@@ -346,7 +346,7 @@ legacy-windows-tests-nightly:
 # package-windows-tests-nightly:
 #   <<: *default_nightly_windows_params
 #   script:
-#     - make test-vlong run=. pkgs="$package_pkgs"
+#     - make test-vlong-windows run=. pkgs="$package_pkgs"
 
 # #################
 # # Siatest Test
@@ -360,7 +360,7 @@ legacy-windows-tests-nightly:
 # siatest-windows-tests-nightly:
 #   <<: *default_nightly_windows_params
 #   script:
-#     - make test-vlong run=. pkgs="$siatest_pkgs"
+#     - make test-vlong-windows run=. pkgs="$siatest_pkgs"
 
 # siatest-renter-tests-nightly:
 #   <<: *default_nightly_params
@@ -373,7 +373,7 @@ legacy-windows-tests-nightly:
 # siatest-renter-windows-tests-nightly:
 #   <<: *default_nightly_windows_params
 #   script:
-#     - make test-vlong run=. pkgs="$siatest_renter_pkgs"
+#     - make test-vlong-windows run=. pkgs="$siatest_renter_pkgs"
 
 # siatest-renter-sub-tests-nightly:
 #   <<: *default_nightly_params
@@ -386,7 +386,7 @@ legacy-windows-tests-nightly:
 # siatest-renter-sub-windows-tests-nightly:
 #   <<: *default_nightly_windows_params
 #   script:
-#     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+#     - make test-vlong-windows run=. pkgs="$siatest_renter_sub_pkgs"
 
 # ############################
 # # Antfarm Tests 
