@@ -1481,6 +1481,8 @@ func TestSiaDirDelete(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Prepare a siadirset
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	os.RemoveAll(root)
@@ -1614,6 +1616,8 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Prepare a filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	os.RemoveAll(root)

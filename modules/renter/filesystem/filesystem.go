@@ -648,9 +648,9 @@ func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath, mode os.FileMode
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
 		dirPath := siaPath.SiaDirSysPath(fs.absPath())
-		_, err := siadir.New(dirPath, fs.absPath(), mode, fs.staticWal)
+		_, err := siadir.New(dirPath, fs.absPath(), mode)
 		// If the SiaDir already exists on disk, return without an error.
-		if os.IsExist(err) {
+		if errors.Contains(err, os.ErrExist) {
 			return nil // nothing to do
 		}
 		return err

@@ -19,7 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-// TODO: (f/u) testing for account deposits and withdrawals
 // TODO: (f/u) cooldown testing
 
 var (

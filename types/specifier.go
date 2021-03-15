@@ -2,7 +2,6 @@ package types
 
 import (
 	"errors"
-	"fmt"
 	"unicode/utf8"
 )
 
@@ -30,10 +29,11 @@ func NewSpecifier(name string) Specifier {
 	if err := validateSpecifier(name); err != nil {
 		panic(err.Error())
 	}
-	if _, ok := specifierMap[name]; ok {
-		err := fmt.Sprint("ERROR: specifier name already in use: ", name)
-		panic(err)
-	}
+	// TODO: Add back in once Sia and skyd are fully split.
+	//	if _, ok := specifierMap[name]; ok {
+	//		err := fmt.Sprint("ERROR: specifier name already in use: ", name)
+	//		panic(err)
+	//	}
 	specifierMap[name] = struct{}{}
 	var s Specifier
 	copy(s[:], name)

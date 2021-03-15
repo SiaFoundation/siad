@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/writeaheadlog"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -23,7 +21,6 @@ type (
 		deleted bool
 		deps    modules.Dependencies
 		mu      sync.Mutex
-		wal     *writeaheadlog.WAL
 	}
 
 	// Metadata is the metadata that is saved to disk as a .siadir file

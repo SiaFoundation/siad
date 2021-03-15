@@ -421,7 +421,7 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 	if *n.lazySiaDir != nil {
 		return *n.lazySiaDir, nil
 	}
-	sd, err := siadir.LoadSiaDir(n.absPath(), modules.ProdDependencies, n.staticWal)
+	sd, err := siadir.LoadSiaDir(n.absPath(), modules.ProdDependencies)
 	if os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}
@@ -684,8 +684,8 @@ func (n *DirNode) managedNewSiaDir(dirName string, rootPath string, mode os.File
 	if !os.IsNotExist(err) {
 		return ErrExists
 	}
-	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode, n.staticWal)
-	if os.IsExist(err) {
+	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode)
+	if errors.Contains(err, os.ErrExist) {
 		return nil
 	}
 	return err

@@ -76,6 +76,46 @@ type (
 	}
 )
 
+// RegisterRoutesHost is a helper function to register all host routes.
+func RegisterRoutesHost(router *httprouter.Router, h modules.Host, deps modules.Dependencies, requiredPassword string) {
+	// Calls directly pertaining to the host.
+	router.GET("/host", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		hostHandlerGET(h, w, deps, req, ps)
+	})
+	router.POST("/host", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		hostHandlerPOST(h, w, req, ps)
+	}, requiredPassword))
+	router.POST("/host/announce", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		hostAnnounceHandler(h, w, req, ps)
+	}, requiredPassword))
+	router.GET("/host/contracts", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		hostContractInfoHandler(h, w, req, ps)
+	})
+	router.GET("/host/contracts/:contractID", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		hostContractGetHandler(h, w, req, ps)
+	})
+	router.GET("/host/bandwidth", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		hostBandwidthHandlerGET(h, w, req, ps)
+	})
+
+	// Calls pertaining to the storage manager that the host uses.
+	router.GET("/host/storage", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		storageHandler(h, w, req, ps)
+	})
+	router.POST("/host/storage/folders/add", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		storageFoldersAddHandler(h, w, req, ps)
+	}, requiredPassword))
+	router.POST("/host/storage/folders/remove", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		storageFoldersRemoveHandler(h, w, req, ps)
+	}, requiredPassword))
+	router.POST("/host/storage/folders/resize", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		storageFoldersResizeHandler(h, w, req, ps)
+	}, requiredPassword))
+	router.POST("/host/storage/sectors/delete/:merkleroot", RequirePassword(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		storageSectorsDeleteHandler(h, w, req, ps)
+	}, requiredPassword))
+}
+
 // folderIndex determines the index of the storage folder with the provided
 // path.
 func folderIndex(folderPath string, storageFolders []modules.StorageFolderMetadata) (int, error) {
@@ -88,7 +128,7 @@ func folderIndex(folderPath string, storageFolders []modules.StorageFolderMetada
 }
 
 // hostContractGetHandler handles the API call to get information about a contract.
-func (api *API) hostContractGetHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func hostContractGetHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	var obligationID types.FileContractID
 	contractIDStr := ps.ByName("contractID")
 
@@ -100,7 +140,7 @@ func (api *API) hostContractGetHandler(w http.ResponseWriter, _ *http.Request, p
 
 	copy(obligationID[:], buf)
 
-	contract, err := api.host.StorageObligation(obligationID)
+	contract, err := host.StorageObligation(obligationID)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error get storage contract: %v", err)}, http.StatusNotFound)
 		return
@@ -113,24 +153,24 @@ func (api *API) hostContractGetHandler(w http.ResponseWriter, _ *http.Request, p
 
 // hostContractInfoHandler handles the API call to get the contract information of the host.
 // Information is retrieved via the storage obligations from the host database.
-func (api *API) hostContractInfoHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func hostContractInfoHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	cg := ContractInfoGET{
-		Contracts: api.host.StorageObligations(),
+		Contracts: host.StorageObligations(),
 	}
 	WriteJSON(w, cg)
 }
 
 // hostHandlerGET handles GET requests to the /host API endpoint, returning key
 // information about the host.
-func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	es := api.host.ExternalSettings()
-	fm := api.host.FinancialMetrics()
-	is := api.host.InternalSettings()
-	nm := api.host.NetworkMetrics()
-	cs := api.host.ConnectabilityStatus()
-	ws := api.host.WorkingStatus()
-	pk := api.host.PublicKey()
-	pt := api.host.PriceTable()
+func hostHandlerGET(host modules.Host, w http.ResponseWriter, deps modules.Dependencies, _ *http.Request, _ httprouter.Params) {
+	es := host.ExternalSettings()
+	fm := host.FinancialMetrics()
+	is := host.InternalSettings()
+	nm := host.NetworkMetrics()
+	cs := host.ConnectabilityStatus()
+	ws := host.WorkingStatus()
+	pk := host.PublicKey()
+	pt := host.PriceTable()
 	hg := HostGET{
 		ConnectabilityStatus: cs,
 		ExternalSettings:     es,
@@ -142,7 +182,7 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprou
 		WorkingStatus:        ws,
 	}
 
-	if api.staticDeps.Disrupt("TimeoutOnHostGET") {
+	if deps.Disrupt("TimeoutOnHostGET") {
 		time.Sleep(httpServerTimeout + 5*time.Second)
 	}
 
@@ -151,8 +191,8 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprou
 
 // hostsBandwidthHandlerGET handles GET requests to the /host/bandwidth API endpoint,
 // returning bandwidth usage data from the host module
-func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	sent, receive, startTime, err := api.host.BandwidthCounters()
+func hostBandwidthHandlerGET(host modules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	sent, receive, startTime, err := host.BandwidthCounters()
 	if err != nil {
 		WriteError(w, Error{"failed to get hosts's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -167,8 +207,8 @@ func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, _ *http.Request, 
 // parseHostSettings a request's query strings and returns a
 // modules.HostInternalSettings configured with the request's query string
 // parameters.
-func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettings, error) {
-	settings := api.host.InternalSettings()
+func parseHostSettings(host modules.Host, req *http.Request) (modules.HostInternalSettings, error) {
+	settings := host.InternalSettings()
 
 	if req.FormValue("acceptingcontracts") != "" {
 		var x bool
@@ -345,20 +385,20 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 
 // hostEstimateScoreGET handles the POST request to /host/estimatescore and
 // computes an estimated HostDB score for the provided settings.
-func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func hostEstimateScoreGET(host modules.Host, renter modules.Renter, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// This call requires a renter, check that it is present.
-	if api.renter == nil {
+	if renter == nil {
 		WriteError(w, Error{"cannot call /host/estimatescore without the renter module"}, http.StatusBadRequest)
 		return
 	}
 
-	settings, err := api.parseHostSettings(req)
+	settings, err := parseHostSettings(host, req)
 	if err != nil {
 		WriteError(w, Error{"error parsing host settings: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	var totalStorage, remainingStorage uint64
-	for _, sf := range api.host.StorageFolders() {
+	for _, sf := range host.StorageFolders() {
 		totalStorage += sf.Capacity
 		remainingStorage += sf.CapacityRemaining
 	}
@@ -386,11 +426,11 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 		Version: build.Version,
 	}
 	entry := modules.HostDBEntry{}
-	entry.PublicKey = api.host.PublicKey()
+	entry.PublicKey = host.PublicKey()
 	entry.HostExternalSettings = mergedSettings
 	// Use the default allowance for now, since we do not know what sort of
 	// allowance the renters may use to attempt to access this host.
-	estimatedScoreBreakdown, err := api.renter.EstimateHostScore(entry, modules.DefaultAllowance)
+	estimatedScoreBreakdown, err := renter.EstimateHostScore(entry, modules.DefaultAllowance)
 	if err != nil {
 		WriteError(w, Error{"error estimating host score: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -404,14 +444,14 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 
 // hostHandlerPOST handles POST request to the /host API endpoint, which sets
 // the internal settings of the host.
-func (api *API) hostHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	settings, err := api.parseHostSettings(req)
+func hostHandlerPOST(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	settings, err := parseHostSettings(host, req)
 	if err != nil {
 		WriteError(w, Error{"error parsing host settings: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	err = api.host.SetInternalSettings(settings)
+	err = host.SetInternalSettings(settings)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -421,12 +461,12 @@ func (api *API) hostHandlerPOST(w http.ResponseWriter, req *http.Request, _ http
 
 // hostAnnounceHandler handles the API call to get the host to announce itself
 // to the network.
-func (api *API) hostAnnounceHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func hostAnnounceHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var err error
 	if addr := req.FormValue("netaddress"); addr != "" {
-		err = api.host.AnnounceAddress(modules.NetAddress(addr))
+		err = host.AnnounceAddress(modules.NetAddress(addr))
 	} else {
-		err = api.host.Announce()
+		err = host.Announce()
 	}
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -437,14 +477,14 @@ func (api *API) hostAnnounceHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // storageHandler returns a bunch of information about storage management on
 // the host.
-func (api *API) storageHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func storageHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	WriteJSON(w, StorageGET{
-		Folders: api.host.StorageFolders(),
+		Folders: host.StorageFolders(),
 	})
 }
 
 // storageFoldersAddHandler adds a storage folder to the storage manager.
-func (api *API) storageFoldersAddHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func storageFoldersAddHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	folderPath := req.FormValue("path")
 	var folderSize uint64
 	_, err := fmt.Sscan(req.FormValue("size"), &folderSize)
@@ -452,7 +492,7 @@ func (api *API) storageFoldersAddHandler(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = api.host.AddStorageFolder(folderPath, folderSize)
+	err = host.AddStorageFolder(folderPath, folderSize)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -461,14 +501,14 @@ func (api *API) storageFoldersAddHandler(w http.ResponseWriter, req *http.Reques
 }
 
 // storageFoldersResizeHandler resizes a storage folder in the storage manager.
-func (api *API) storageFoldersResizeHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func storageFoldersResizeHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	folderPath := req.FormValue("path")
 	if folderPath == "" {
 		WriteError(w, Error{"path parameter is required"}, http.StatusBadRequest)
 		return
 	}
 
-	storageFolders := api.host.StorageFolders()
+	storageFolders := host.StorageFolders()
 	folderIndex, err := folderIndex(folderPath, storageFolders)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -481,7 +521,7 @@ func (api *API) storageFoldersResizeHandler(w http.ResponseWriter, req *http.Req
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = api.host.ResizeStorageFolder(uint16(folderIndex), newSize, false)
+	err = host.ResizeStorageFolder(uint16(folderIndex), newSize, false)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -491,14 +531,14 @@ func (api *API) storageFoldersResizeHandler(w http.ResponseWriter, req *http.Req
 
 // storageFoldersRemoveHandler removes a storage folder from the storage
 // manager.
-func (api *API) storageFoldersRemoveHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func storageFoldersRemoveHandler(host modules.Host, w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	folderPath := req.FormValue("path")
 	if folderPath == "" {
 		WriteError(w, Error{"path parameter is required"}, http.StatusBadRequest)
 		return
 	}
 
-	storageFolders := api.host.StorageFolders()
+	storageFolders := host.StorageFolders()
 	folderIndex, err := folderIndex(folderPath, storageFolders)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -506,7 +546,7 @@ func (api *API) storageFoldersRemoveHandler(w http.ResponseWriter, req *http.Req
 	}
 
 	force := req.FormValue("force") == "true"
-	err = api.host.RemoveStorageFolder(uint16(folderIndex), force)
+	err = host.RemoveStorageFolder(uint16(folderIndex), force)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -516,13 +556,13 @@ func (api *API) storageFoldersRemoveHandler(w http.ResponseWriter, req *http.Req
 
 // storageSectorsDeleteHandler handles the call to delete a sector from the
 // storage manager.
-func (api *API) storageSectorsDeleteHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
+func storageSectorsDeleteHandler(host modules.Host, w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	sectorRoot, err := scanHash(ps.ByName("merkleroot"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	err = api.host.DeleteSector(sectorRoot)
+	err = host.DeleteSector(sectorRoot)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

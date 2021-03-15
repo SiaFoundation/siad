@@ -1,6 +1,7 @@
 package siadir
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -10,9 +11,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -30,75 +31,21 @@ const (
 	// falsely trying to repair directories that had a read error
 	DefaultDirRedundancy = float64(-1)
 
-	// updateDeleteName is the name of a siaDir update that deletes the
-	// specified metadata file.
-	updateDeleteName = "SiaDirDelete"
-
-	// updateMetadataName is the name of a siaDir update that inserts new
-	// information into the metadata file
-	updateMetadataName = "SiaDirMetadata"
+	// metadataVersion is the version of the metadata
+	metadataVersion = "1.0"
 )
 
 var (
 	// ErrDeleted is the error returned if the siadir is deleted
 	ErrDeleted = errors.New("siadir is deleted")
+
+	// ErrCorruptFile is the error returned if the siadir is believed to be
+	// corrupt
+	ErrCorruptFile = errors.New(".siadir file is potentially corrupt")
+
+	// ErrInvalidChecksum is the error returned if the siadir checksum is invalid
+	ErrInvalidChecksum = errors.New(".siadir has invalid checksum")
 )
-
-// ApplyUpdates  applies a number of writeaheadlog updates to the corresponding
-// SiaDir. This method can apply updates from different SiaDirs and should only
-// be run before the SiaDirs are loaded from disk right after the startup of
-// siad. Otherwise we might run into concurrency issues.
-func ApplyUpdates(updates ...writeaheadlog.Update) error {
-	// Apply updates.
-	for _, u := range updates {
-		err := applyUpdate(modules.ProdDependencies, u)
-		if err != nil {
-			return errors.AddContext(err, "failed to apply update")
-		}
-	}
-	return nil
-}
-
-// CreateAndApplyTransaction is a helper method that creates a writeaheadlog
-// transaction and applies it.
-func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) (err error) {
-	// Create the writeaheadlog transaction.
-	txn, err := wal.NewTransaction(updates)
-	if err != nil {
-		return errors.AddContext(err, "failed to create wal txn")
-	}
-	// No extra setup is required. Signal that it is done.
-	if err := <-txn.SignalSetupComplete(); err != nil {
-		return errors.AddContext(err, "failed to signal setup completion")
-	}
-	// Starting at this point the changes to be made are written to the WAL.
-	// This means we need to panic in case applying the updates fails.
-	defer func() {
-		if err != nil {
-			panic(err)
-		}
-	}()
-	// Apply the updates.
-	if err := ApplyUpdates(updates...); err != nil {
-		return errors.AddContext(err, "failed to apply updates")
-	}
-	// Updates are applied. Let the writeaheadlog know.
-	if err := txn.SignalUpdatesApplied(); err != nil {
-		return errors.AddContext(err, "failed to signal that updates are applied")
-	}
-	return nil
-}
-
-// IsSiaDirUpdate is a helper method that makes sure that a wal update belongs
-// to the SiaDir package.
-func IsSiaDirUpdate(update writeaheadlog.Update) bool {
-	switch update.Name {
-	case updateMetadataName, updateDeleteName:
-		return true
-	default:
-		return false
-	}
-}
 
 // New creates a new directory in the renter directory and makes sure there is a
 // metadata file in the directory and creates one as needed. This method will
@@ -108,151 +55,46 @@ func IsSiaDirUpdate(update writeaheadlog.Update) bool {
 //
 // NOTE: the fullPath is expected to include the rootPath. The rootPath is used
 // to determine when to stop recursively creating siadir metadata.
-func New(fullPath, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaDir, error) {
+func New(fullPath, rootPath string, mode os.FileMode) (*SiaDir, error) {
 	// Create path to directory and ensure path contains all metadata
-	updates, err := createDirMetadataAll(fullPath, rootPath, mode)
+	deps := modules.ProdDependencies
+	err := createDirMetadataAll(fullPath, rootPath, mode, deps)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create metadatas for parent directories")
 	}
 
 	// Create metadata for directory
-	md, update, err := createDirMetadata(fullPath, mode)
+	md, err := createDirMetadata(fullPath, mode)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create metadata for directory")
 	}
 
 	// Create SiaDir
 	sd := &SiaDir{
 		metadata: md,
-		deps:     modules.ProdDependencies,
+		deps:     deps,
 		path:     fullPath,
-		wal:      wal,
 	}
 
-	return sd, CreateAndApplyTransaction(wal, append(updates, update)...)
+	return sd, sd.saveDir()
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+func LoadSiaDir(path string, deps modules.Dependencies) (sd *SiaDir, err error) {
 	sd = &SiaDir{
 		deps: deps,
 		path: path,
-		wal:  wal,
 	}
 	sd.metadata, err = callLoadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
+	if errors.Contains(err, ErrInvalidChecksum) || errors.Contains(err, ErrCorruptFile) {
+		// If there was an error on load related to the checksum or a corrupt file,
+		// return a newly initialized metadata and try and fix the corruption by
+		// re-saving the metadata. This is OK because siadir persistence is not ACID
+		// and all metadata information can be recalculated.
+		sd.metadata = newMetadata()
+		err = sd.saveDir()
+	}
 	return sd, err
-}
-
-// createDirMetadata makes sure there is a metadata file in the directory and
-// creates one as needed
-func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.Update, error) {
-	// Check if metadata file exists
-	mdPath := filepath.Join(path, modules.SiaDirExtension)
-	_, err := os.Stat(mdPath)
-	if err == nil {
-		return Metadata{}, writeaheadlog.Update{}, os.ErrExist
-	} else if !os.IsNotExist(err) {
-		return Metadata{}, writeaheadlog.Update{}, err
-	}
-
-	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
-	// empty directories won't be viewed as being the most in need. Initialize
-	// ModTimes.
-	now := time.Now()
-	md := Metadata{
-		AggregateHealth:        DefaultDirHealth,
-		AggregateMinRedundancy: DefaultDirRedundancy,
-		AggregateModTime:       now,
-		AggregateRemoteHealth:  DefaultDirHealth,
-		AggregateStuckHealth:   DefaultDirHealth,
-
-		Health:        DefaultDirHealth,
-		MinRedundancy: DefaultDirRedundancy,
-		Mode:          mode,
-		ModTime:       now,
-		RemoteHealth:  DefaultDirHealth,
-		StuckHealth:   DefaultDirHealth,
-	}
-	update, err := createMetadataUpdate(mdPath, md)
-	return md, update, err
-}
-
-// createDirMetadataAll creates a path on disk to the provided siaPath and make
-// sure that all the parent directories have metadata files.
-func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode) ([]writeaheadlog.Update, error) {
-	// Create path to directory
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return nil, err
-	}
-	if dirPath == rootPath {
-		return []writeaheadlog.Update{}, nil
-	}
-
-	// Create metadata
-	var updates []writeaheadlog.Update
-	var err error
-	for {
-		dirPath = filepath.Dir(dirPath)
-		if err != nil {
-			return nil, err
-		}
-		if dirPath == string(filepath.Separator) || dirPath == "." {
-			dirPath = rootPath
-		}
-		_, update, err := createDirMetadata(dirPath, mode)
-		if err != nil && !os.IsExist(err) {
-			return nil, err
-		}
-		if !os.IsExist(err) {
-			updates = append(updates, update)
-		}
-		if dirPath == rootPath {
-			break
-		}
-	}
-	return updates, nil
-}
-
-// callLoadSiaDirMetadata loads the directory metadata from disk.
-func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
-	// Open the file.
-	file, err := deps.Open(path)
-	if err != nil {
-		return Metadata{}, err
-	}
-	defer func() {
-		err = errors.Compose(err, file.Close())
-	}()
-
-	// Read the file
-	bytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		return Metadata{}, err
-	}
-
-	// Parse the json object.
-	err = json.Unmarshal(bytes, &md)
-
-	// CompatV1420 check if filemode is set. If not use the default. It's fine
-	// not to persist it right away since it will either be persisted anyway or
-	// we just set the values again the next time we load it and hope that it
-	// gets persisted then.
-	if md.Version == "" && md.Mode == 0 {
-		md.Mode = modules.DefaultDirPerm
-		md.Version = "1.0"
-	}
-	return
-}
-
-// Rename renames the SiaDir to targetPath.
-func (sd *SiaDir) rename(targetPath string) error {
-	// TODO: os.Rename is not ACID
-	err := os.Rename(sd.path, targetPath)
-	if err != nil {
-		return err
-	}
-	sd.path = targetPath
-	return nil
 }
 
 // Delete removes the directory from disk and marks it as deleted. Once the
@@ -267,24 +109,13 @@ func (sd *SiaDir) Delete() error {
 		return nil
 	}
 
-	// Create and apply the delete update
-	update := sd.createDeleteUpdate()
-	err := sd.createAndApplyTransaction(update)
-	sd.deleted = true
-	return err
-}
-
-// saveDir saves the whole SiaDir atomically.
-func (sd *SiaDir) saveDir() error {
-	// Check if Deleted
-	if sd.deleted {
-		return errors.AddContext(ErrDeleted, "cannot save a deleted SiaDir")
-	}
-	metadataUpdate, err := sd.saveMetadataUpdate()
+	// Delete the siadir
+	err := os.RemoveAll(sd.path)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to delete siadir")
 	}
-	return sd.createAndApplyTransaction(metadataUpdate)
+	sd.deleted = true
+	return nil
 }
 
 // Rename renames the SiaDir to targetPath.
@@ -338,6 +169,25 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	return sd.updateMetadata(metadata)
+}
+
+// rename renames the SiaDir to targetPath.
+func (sd *SiaDir) rename(targetPath string) error {
+	err := os.Rename(sd.path, targetPath)
+	if err != nil {
+		return err
+	}
+	sd.path = targetPath
+	return nil
+}
+
+// saveDir saves the SiaDir's metadata to disk.
+func (sd *SiaDir) saveDir() (err error) {
+	// Check if Deleted
+	if sd.deleted {
+		return errors.AddContext(ErrDeleted, "cannot save a deleted SiaDir")
+	}
+	return saveDir(sd.path, sd.metadata, sd.deps)
 }
 
 // updateMetadata updates the SiaDir metadata on disk
@@ -404,4 +254,162 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	}
 
 	return sd.saveDir()
+}
+
+// callLoadSiaDirMetadata loads the directory metadata from disk.
+func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
+	// Open the file.
+	file, err := deps.Open(path)
+	if err != nil {
+		return Metadata{}, err
+	}
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
+
+	// Read the file
+	fileBytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return Metadata{}, errors.AddContext(err, "unable to read bytes from file")
+	}
+
+	// Verify there is enough data for a checksum
+	if len(fileBytes) < crypto.HashSize {
+		return Metadata{}, ErrCorruptFile
+	}
+
+	// Verify checksum
+	checksum := fileBytes[:crypto.HashSize]
+	mdBytes := fileBytes[crypto.HashSize:]
+	fileChecksum := crypto.HashBytes(mdBytes)
+	if !bytes.Equal(checksum, fileChecksum[:]) {
+		return Metadata{}, ErrInvalidChecksum
+	}
+
+	// Parse the json object.
+	err = json.Unmarshal(mdBytes, &md)
+	if err != nil {
+		return Metadata{}, errors.AddContext(err, "unable to unmarshal metadata")
+	}
+
+	// CompatV1420 check if filemode is set. If not use the default. It's fine
+	// not to persist it right away since it will either be persisted anyway or
+	// we just set the values again the next time we load it and hope that it
+	// gets persisted then.
+	if md.Version == "" && md.Mode == 0 {
+		md.Mode = modules.DefaultDirPerm
+		md.Version = metadataVersion
+	}
+	return
+}
+
+// createDirMetadata makes sure there is a metadata file in the directory and
+// creates one as needed
+func createDirMetadata(path string, mode os.FileMode) (Metadata, error) {
+	// Check if metadata file exists
+	mdPath := filepath.Join(path, modules.SiaDirExtension)
+	_, err := os.Stat(mdPath)
+	if err == nil {
+		return Metadata{}, os.ErrExist
+	} else if !os.IsNotExist(err) {
+		return Metadata{}, err
+	}
+
+	md := newMetadata()
+	md.Mode = mode
+	return md, nil
+}
+
+// createDirMetadataAll creates a path on disk to the provided siaPath and make
+// sure that all the parent directories have metadata files.
+func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode, deps modules.Dependencies) error {
+	// Create path to directory
+	if err := os.MkdirAll(dirPath, modules.DefaultDirPerm); err != nil {
+		return err
+	}
+
+	// Create metadata
+	for dirPath != rootPath {
+		dirPath = filepath.Dir(dirPath)
+		if dirPath == string(filepath.Separator) || dirPath == "." {
+			dirPath = rootPath
+		}
+		md, err := createDirMetadata(dirPath, mode)
+		if err != nil && !errors.Contains(err, os.ErrExist) {
+			return errors.AddContext(err, "unable to create metadata")
+		}
+		if !errors.Contains(err, os.ErrExist) {
+			// Save metadata if the file doesn't already exist
+			err = saveDir(dirPath, md, deps)
+			if err != nil {
+				return errors.AddContext(err, "unable to saveDir")
+			}
+		}
+	}
+	return nil
+}
+
+// newMetadata returns an initialized Metadata with all default values.
+func newMetadata() Metadata {
+	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
+	// empty directories won't be viewed as being the most in need. Initialize
+	// ModTimes.
+	now := time.Now()
+	return Metadata{
+		AggregateHealth:        DefaultDirHealth,
+		AggregateMinRedundancy: DefaultDirRedundancy,
+		AggregateModTime:       now,
+		AggregateRemoteHealth:  DefaultDirHealth,
+		AggregateStuckHealth:   DefaultDirHealth,
+
+		Health:        DefaultDirHealth,
+		MinRedundancy: DefaultDirRedundancy,
+		Mode:          modules.DefaultDirPerm,
+		ModTime:       now,
+		RemoteHealth:  DefaultDirHealth,
+		StuckHealth:   DefaultDirHealth,
+		Version:       metadataVersion,
+	}
+}
+
+// saveDir saves the metadata to disk at the provided path.
+func saveDir(path string, md Metadata, deps modules.Dependencies) (err error) {
+	// Open .siadir file
+	f, err := deps.OpenFile(filepath.Join(path, SiaDirExtension), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "unable to open file")
+	}
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
+
+	// Marshal metadata
+	data, err := json.Marshal(md)
+	if err != nil {
+		return errors.AddContext(err, "unable to marshal metadata")
+	}
+
+	// Generate checksum
+	checksum := crypto.HashBytes(data)
+
+	// Write the checksum to the file
+	_, err = f.WriteAt(checksum[:], 0)
+	if err != nil {
+		return errors.AddContext(err, "unable to write checksum")
+	}
+
+	// Write the metadata to disk
+	checksumLen := int64(len(checksum))
+	_, err = f.WriteAt(data, checksumLen)
+	if err != nil {
+		return errors.AddContext(err, "unable to write data to disk")
+	}
+
+	// Truncate the file to clear any corrupt or lingering data
+	truncateLen := checksumLen + int64(len(data))
+	err = f.Truncate(truncateLen)
+	if err != nil {
+		return errors.AddContext(err, "unable to truncate file")
+	}
+	return nil
 }
