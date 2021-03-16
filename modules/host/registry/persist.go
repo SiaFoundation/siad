@@ -135,10 +135,10 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 }
 
 // loadRegistryEntries reads the currently in use registry entries from disk.
-func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.Hash]*value, error) {
+func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[modules.SubscriptionID]*value, error) {
 	// Load the remaining entries.
 	var entry [PersistedEntrySize]byte
-	entries := make(map[crypto.Hash]*value)
+	entries := make(map[modules.SubscriptionID]*value)
 	for index := int64(1); index < numEntries; index++ {
 		_, err := io.ReadFull(r, entry[:])
 		if err != nil {

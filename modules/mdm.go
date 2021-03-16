@@ -127,6 +127,11 @@ const (
 	// ReadRegistry instruction.
 	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
 	RPCIReadRegistryLen = 24
+
+	// RPCIReadRegistrySIDLen is the expected length of the 'Args' of an
+	// ReadRegistrySID instruction.
+	// sidOffset = 8 bytes
+	RPCIReadRegistrySIDLen = 8
 )
 
 var (
@@ -168,6 +173,10 @@ var (
 	// SpecifierReadRegistry is the specifier for the ReadRegistry
 	// instruction.
 	SpecifierReadRegistry = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
+
+	// SpecifierReadRegistrySID is the specifier for the ReadRegistrySID
+	// instruction.
+	SpecifierReadRegistrySID = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y', 'S', 'I', 'D'}
 
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
@@ -493,6 +502,7 @@ func (p Program) ReadOnly() bool {
 		case SpecifierUpdateRegistry:
 			// considered read-only cause it doesn't update a contract
 		case SpecifierReadRegistry:
+		case SpecifierReadRegistrySID:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -521,6 +531,7 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierUpdateRegistry:
 		case SpecifierReadRegistry:
+		case SpecifierReadRegistrySID:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

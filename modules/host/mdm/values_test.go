@@ -168,6 +168,23 @@ func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey, refunded
 	v.addInstruction(collateral, cost, refund, successRefund, memory, time, newData, readonly, batch)
 }
 
+// AddReadRegistrySIDInstruction adds a revision instruction to the builder,
+// keeping track of running values.
+func (v *TestValues) AddReadRegistrySIDInstruction(sid modules.SubscriptionID, refunded bool) {
+	memory := modules.MDMReadRegistryMemory()
+	collateral := modules.MDMReadRegistryCollateral()
+	cost, refund := modules.MDMReadRegistryCost(v.staticPT)
+	time := uint64(modules.MDMTimeReadRegistry)
+	newData := len(encoding.Marshal(sid))
+	readonly := true
+	batch := true
+	var successRefund types.Currency
+	if refunded {
+		successRefund = refund
+	}
+	v.addInstruction(collateral, cost, refund, successRefund, memory, time, newData, readonly, batch)
+}
+
 // Cost returns the current cost of the program which would result . If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (v TestValues) Cost() (cost, failureRefund, collateral, instructionRefund types.Currency) {

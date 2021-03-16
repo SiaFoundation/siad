@@ -46,7 +46,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Registry should contain correct value.
-	rv2, ok := host.RegistryGet(spk, rv.Tweak)
+	rv2, ok := host.RegistryGet(modules.RegistrySubscriptionID(spk, rv.Tweak))
 	if !ok {
 		t.Fatal("registry doesn't contain entry")
 	}
@@ -89,7 +89,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Registry should contain correct value.
-	rv2, ok = host.RegistryGet(spk, rv.Tweak)
+	rv2, ok = host.RegistryGet(modules.RegistrySubscriptionID(spk, rv.Tweak))
 	if !ok {
 		t.Fatal("registry doesn't contain entry")
 	}
