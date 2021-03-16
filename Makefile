@@ -177,13 +177,7 @@ ifneq ("$(OS)","Windows_NT")
 	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
 else
 # Windows
-# Ignore errors if file doesn't exist
-	- RD /S /Q cover
-	- RD /S /Q doc\whitepaper.aux
-	- RD /S /Q doc\whitepaper.log
-	- RD /S /Q doc\whitepaper.pdf
-	- RD /S /Q fullcover
-	- RD /S /Q release
+	- DEL /F /Q cover doc\whitepaper.aux doc\whitepaper.log doc\whitepaper.pdf fullcover release
 endif
 
 test:

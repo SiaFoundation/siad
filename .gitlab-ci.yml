@@ -172,36 +172,36 @@ default: &default_params
 ###############################################
 # Define specific stage parameters
 ###############################################
-# xxx
-# #################
-# # Lint Stage
-# #################
-# lint:
-#   stage: lint
-#   cache:
-#     key: lint-cache
-#     paths:
-#       - .cache
-#   script:
-#     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-#     - make vet
-#     - make lint
-#     - make markdown-spellcheck
-#     - make test
 
-# #################
-# # Build Stage
-# #################
-# build:
-#   stage: lint
-#   ## go 1.13 is the minimum accepted version for building Sia.
-#   image: nebulouslabs/sia-ci
-#   artifacts:
-#     name: "Binaries"
-#     paths:
-#       - $CI_PROJECT_DIR/artifacts
-#   script:
-#     - ./check-builds.sh
+#################
+# Lint Stage
+#################
+lint:
+  stage: lint
+  cache:
+    key: lint-cache
+    paths:
+      - .cache
+  script:
+    - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
+    - make vet
+    - make lint
+    - make markdown-spellcheck
+    - make test
+
+#################
+# Build Stage
+#################
+build:
+  stage: lint
+  ## go 1.13 is the minimum accepted version for building Sia.
+  image: nebulouslabs/sia-ci
+  artifacts:
+    name: "Binaries"
+    paths:
+      - $CI_PROJECT_DIR/artifacts
+  script:
+    - ./check-builds.sh
 
 #################
 # Deploy Stage
@@ -297,14 +297,13 @@ siatest-renter-sub-tests:
 # Nightly Tests 
 ############################
 
-# #xxx
-# #################
-# # Legacy Test
-# #################
-# legacy-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - make test-vlong run=. pkgs="$legacy_pkgs"
+#################
+# Legacy Test
+#################
+legacy-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$legacy_pkgs"
 
 # Windows execution
 legacy-windows-tests-nightly:
@@ -312,96 +311,96 @@ legacy-windows-tests-nightly:
   script:
     - make test-vlong-windows run=. pkgs="$legacy_pkgs"
 
-# #################
-# # Package Test
-# #################
-# package-host-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - make test-vlong run=. pkgs="$package_host_pkgs"
+#################
+# Package Test
+#################
+package-host-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$package_host_pkgs"
 
-# # Windows execution
-# package-host-windows-tests-nightly:
-#   <<: *default_nightly_windows_params
-#   script:
-#     - make test-vlong-windows run=. pkgs="$package_host_pkgs"
+# Windows execution
+package-host-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$package_host_pkgs"
 
-# package-renter-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - make test-vlong run=. pkgs="$package_renter_pkgs"
+package-renter-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$package_renter_pkgs"
 
-# # Windows execution
-# package-renter-windows-tests-nightly:
-#   <<: *default_nightly_windows_params
-#   script:
-#     - make test-vlong-windows run=. pkgs="$package_renter_pkgs"
+# Windows execution
+package-renter-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$package_renter_pkgs"
 
-# package-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - make test-vlong run=. pkgs="$package_pkgs"
+package-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$package_pkgs"
 
-# # Windows execution
-# package-windows-tests-nightly:
-#   <<: *default_nightly_windows_params
-#   script:
-#     - make test-vlong-windows run=. pkgs="$package_pkgs"
+# Windows execution
+package-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$package_pkgs"
 
-# #################
-# # Siatest Test
-# #################
-# siatest-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - make test-vlong run=. pkgs="$siatest_pkgs"
+#################
+# Siatest Test
+#################
+siatest-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$siatest_pkgs"
 
-# # Windows execution
-# siatest-windows-tests-nightly:
-#   <<: *default_nightly_windows_params
-#   script:
-#     - make test-vlong-windows run=. pkgs="$siatest_pkgs"
+# Windows execution
+siatest-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$siatest_pkgs"
 
-# siatest-renter-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - apt-get update
-#     - apt-get install -y fuse
-#     - make test-vlong run=. pkgs="$siatest_renter_pkgs"
+siatest-renter-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - apt-get update
+    - apt-get install -y fuse
+    - make test-vlong run=. pkgs="$siatest_renter_pkgs"
 
-# # Windows execution
-# siatest-renter-windows-tests-nightly:
-#   <<: *default_nightly_windows_params
-#   script:
-#     - make test-vlong-windows run=. pkgs="$siatest_renter_pkgs"
+# Windows execution
+siatest-renter-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$siatest_renter_pkgs"
 
-# siatest-renter-sub-tests-nightly:
-#   <<: *default_nightly_params
-#   script:
-#     - apt-get update
-#     - apt-get install -y fuse
-#     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+siatest-renter-sub-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - apt-get update
+    - apt-get install -y fuse
+    - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
 
-# # Windows execution
-# siatest-renter-sub-windows-tests-nightly:
-#   <<: *default_nightly_windows_params
-#   script:
-#     - make test-vlong-windows run=. pkgs="$siatest_renter_sub_pkgs"
+# Windows execution
+siatest-renter-sub-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong-windows run=. pkgs="$siatest_renter_sub_pkgs"
 
-# ############################
-# # Antfarm Tests 
-# ############################
-# # TODO:
-# # Enable antfarm test triger when the following permission issue is fixed:
-# # https://gitlab.com/gitlab-org/gitlab/-/issues/299433
-# # Updates to master and nightly schedule pipelines will trigger Sia Antfarm
-# # version tests
-# # antfarm-version-tests:
-# #   stage: test
-# #   trigger:
-# #     project: NebulousLabs/Sia-Ant-Farm
-# #     # strategy: depend
-# #   variables:
-# #     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
-# #   only:
-# #     - master
+############################
+# Antfarm Tests 
+############################
+# TODO:
+# Enable antfarm test triger when the following permission issue is fixed:
+# https://gitlab.com/gitlab-org/gitlab/-/issues/299433
+# Updates to master and nightly schedule pipelines will trigger Sia Antfarm
+# version tests
+# antfarm-version-tests:
+#   stage: test
+#   trigger:
+#     project: NebulousLabs/Sia-Ant-Farm
+#     # strategy: depend
+#   variables:
+#     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+#   only:
+#     - master
