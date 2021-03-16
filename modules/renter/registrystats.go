@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // readRegistryStatsDecayInterval is the interval after which the registry stats
@@ -81,7 +80,7 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 	}
 	// Sanity check position. It should always be set at this point.
 	if rrs.currentPosition == -1 {
-		err := errors.New("current position wasn't set")
+		err := fmt.Errorf("current position wasn't set smaller = %v, larger = %v, total = %v, ratio = %v, percentile = %v", smaller, larger, rrs.total, smaller/rrs.total, rrs.staticPercentile)
 		build.Critical(err)
 		rrs.currentPosition = 0
 		return err
