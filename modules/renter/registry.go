@@ -401,7 +401,10 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 
 		// Remember the response with the highest revision number. We use >=
 		// here to also catch the edge case of the initial revision being 0.
-		if srv == nil || resp.staticSignedRegistryValue.Revision >= srv.Revision {
+		revHigher := srv != nil && resp.staticSignedRegistryValue.RegistryValue.Revision > srv.Revision
+		revSame := srv != nil && resp.staticSignedRegistryValue.RegistryValue.Revision == srv.Revision
+		moreWork := srv != nil && resp.staticSignedRegistryValue.HasMoreWork(srv.RegistryValue)
+		if srv == nil || revHigher || (revSame && moreWork) {
 			srv = resp.staticSignedRegistryValue
 		}
 	}

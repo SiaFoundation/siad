@@ -239,7 +239,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Update the same key again. This shouldn't work cause the revision is the
-	// same.
+	// same and the PoW is the same.
 	expectedRV := rv
 	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if !errors.Contains(err, ErrSameRevNum) {
@@ -251,7 +251,27 @@ func TestUpdate(t *testing.T) {
 		t.Fatal("wrong oldRV returned")
 	}
 
+	// Update the key again. This time with the same revision but more PoW. This
+	// should work.
+	expectedRV = rv
+	for !rv.HasMoreWork(expectedRV.RegistryValue) {
+		rv.Data = fastrand.Bytes(100)
+		rv = rv.Sign(sk)
+		v.data = rv.Data
+		v.signature = rv.Signature
+	}
+	oldRV, err = r.Update(rv, v.key, v.expiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(oldRV, expectedRV) {
+		t.Log(oldRV)
+		t.Log(expectedRV)
+		t.Fatal("wrong oldRV returned")
+	}
+
 	// Lower the revision. This is still invalid but returns a different error.
+	expectedRV = rv
 	rv.Revision--
 	v.revision--
 	rv = rv.Sign(sk)
