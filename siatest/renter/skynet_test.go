@@ -4122,12 +4122,30 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
 	}
 
-	// Update the registry again, with the same revision. Shouldn't work.
+	// Update the registry again, with the same revision and same PoW. Shouldn't
+	// work.
 	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
 	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the registry again. With the same revision but higher PoW. Should work.
+	srvHigherPoW := srv2
+	slHigherPow := skylink2
+	for !srvHigherPoW.HasMoreWork(srv2.RegistryValue) {
+		sl, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvHigherPoW.Data = sl.Bytes()
+		srvHigherPoW = srvHigherPoW.Sign(sk)
+		slHigherPow = sl
+	}
+	err = r.RegistryUpdate(spk, dataKey, srvHigherPoW.Revision, srvHigherPoW.Signature, slHigherPow)
+	if err != nil {
 		t.Fatal(err)
 	}
 

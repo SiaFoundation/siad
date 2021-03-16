@@ -124,14 +124,17 @@ func (j *jobUpdateRegistry) callExecute() {
 			return
 		}
 		// If the entry is valid, check if the revision number is actually
-		// invalid.
-		if j.staticSignedRegistryValue.Revision > rv.Revision {
+		// invalid or if the revision numbers match but the PoW is too low.
+		if j.staticSignedRegistryValue.Revision > rv.Revision ||
+			(j.staticSignedRegistryValue.Revision == rv.Revision && j.staticSignedRegistryValue.HasMoreWork(rv.RegistryValue)) {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
 			return
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
+		// TODO: update the cache to store the hash in addition to the revision
+		// number for verifying the pow.
 		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
 		if cached && cachedRevision > rv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)

@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"encoding/hex"
 	"math"
 	"testing"
 
@@ -21,6 +22,45 @@ func TestHashRegistryValue(t *testing.T) {
 	hash := value.hash()
 	if hash.String() != expected {
 		t.Fatalf("expected hash %v, got %v", expected, hash.String())
+	}
+}
+
+// TestHasMoreWork is a unit test for the registry entry's HasMoreWork method.
+func TestHasMoreWork(t *testing.T) {
+	// Create the rv's from hardcoded values for which we know the resulting
+	// hash.
+	rv1Data, err := hex.DecodeString("9c0e0775d2176f1f9984")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv2Data, err := hex.DecodeString("d609d8de783665bfb437")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv1 := NewRegistryValue(crypto.Hash{}, rv1Data, 0)
+	rv2 := NewRegistryValue(crypto.Hash{}, rv2Data, 0)
+
+	// Make sure the hashes match our expectations.
+	rv1Hash := "659f49276a066a4b2434c9ffb953efee63d255e69c5541fb1785b54ebc10fbad"
+	rv2Hash := "0c46015835772a5aa99ca8999fa8b876bb2293cd16ca2fbff8c858a64813eb51"
+	if rv1.hash().String() != rv1Hash {
+		t.Fatal("rv1 wrong hash")
+	}
+	if rv2.hash().String() != rv2Hash {
+		t.Fatal("rv1 wrong hash")
+	}
+
+	// rv2 should have more work than rv1
+	if !rv2.HasMoreWork(rv1) {
+		t.Fatal("rv2 should have more work than rv1")
+	}
+	// rv1 should have less work than rv2
+	if rv1.HasMoreWork(rv2) {
+		t.Fatal("rv1 should have less work than rv2")
+	}
+	// rv1 should not have more work than itself.
+	if rv1.HasMoreWork(rv1) {
+		t.Fatal("rv1 shouldn't have more work than itself")
 	}
 }
 
