@@ -82,7 +82,7 @@ func (rrs *readRegistryStats) AddDatum(duration time.Duration) error {
 	if rrs.currentPosition == -1 {
 		err := fmt.Errorf("current position wasn't set smaller = %v, larger = %v, total = %v, ratio = %v, percentile = %v", smaller, larger, rrs.total, smaller/rrs.total, rrs.staticPercentile)
 		build.Critical(err)
-		rrs.currentPosition = 0
+		rrs.currentPosition = len(rrs.staticBuckets) - 1
 		return err
 	}
 	return nil
