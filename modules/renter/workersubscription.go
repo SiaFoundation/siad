@@ -431,14 +431,14 @@ func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *modules.RPC
 	// Fund the subscription.
 	err := w.managedFundSubscription(stream, pt, fundAmt)
 	if err != nil {
-		w.staticAccount.managedCommitWithdrawal(fundAmt, false)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, fundAmt, types.ZeroCurrency, false)
 		return errors.AddContext(err, "failed to fund subscription")
 	}
 
 	// Success. Add the funds to the budget and signal to the account
 	// that the withdrawal was successful.
 	budget.Deposit(fundAmt)
-	w.staticAccount.managedCommitWithdrawal(fundAmt, true)
+	w.staticAccount.managedCommitWithdrawal(categorySubscription, fundAmt, types.ZeroCurrency, true)
 	return nil
 }
 
@@ -767,7 +767,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		stream, err := w.managedBeginSubscription(initialBudget, w.staticAccount.staticID, subscriber)
 		if err != nil {
 			// Mark withdrawal as failed.
-			w.staticAccount.managedCommitWithdrawal(initialBudget, false)
+			w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
 
 			// Log error and increment cooldown.
 			w.renter.log.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
@@ -775,17 +775,14 @@ func (w *worker) threadedSubscriptionLoop() {
 			continue
 		}
 
-		// Commit the withdrawal.
-		w.staticAccount.managedCommitWithdrawal(initialBudget, true)
-
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
-		// Deposit refund. This happens in any case.
+		// Commit the withdrawal now we know the refund.
 		refund := budget.Remaining()
-		w.staticAccount.managedTrackDeposit(refund)
-		w.staticAccount.managedCommitDeposit(refund, true)
+		withdrawal := initialBudget.Sub(refund)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, withdrawal, refund, true)
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {

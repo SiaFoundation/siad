@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -59,7 +60,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute the program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err == nil || !strings.Contains(err.Error(), "ephemeral account withdrawal message expires too far into the future") {
 		t.Fatal("Unexpected error", err)
 	}
@@ -79,7 +80,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 	w.staticSetPriceTable(wptc)
 
 	// execute the program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -134,7 +135,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +159,6 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 // a ReadSector program
 func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	w := wt.worker
-
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 	err := wt.host.AddSector(sectorRoot, sectorData)
@@ -173,14 +173,16 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
-	jrs := new(jobReadSector)
-	jrs.staticLength = modules.SectorSize
+	// create read sector job
+	readSectorRespChan := make(chan *jobReadResponse)
+	jrs := w.newJobReadSector(context.Background(), w.staticJobReadQueue, readSectorRespChan, categoryDownload, sectorRoot, 0, modules.SectorSize)
+
 	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		t.Fatal(err)
 	}

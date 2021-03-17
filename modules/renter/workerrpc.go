@@ -45,7 +45,7 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
@@ -55,10 +55,11 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// track the withdrawal
-	// TODO: this is very naive and does not consider refunds at all
+	var refund types.Currency
 	w.staticAccount.managedTrackWithdrawal(cost)
 	defer func() {
-		w.staticAccount.managedCommitWithdrawal(cost, err == nil)
+		withdrawn := cost.Sub(refund)
+		w.staticAccount.managedCommitWithdrawal(category, withdrawn, refund, err == nil)
 	}()
 
 	// create a new stream
@@ -145,6 +146,8 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		if err != nil {
 			return
 		}
+
+		refund = refund.Add(response.FailureRefund)
 
 		// We received a valid response. Append it.
 		responses = append(responses, response)

@@ -62,15 +62,16 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 }
 
 // newJobReadSector creates a new read sector job.
-func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, respChan chan *jobReadResponse, root crypto.Hash, offset, length uint64) *jobReadSector {
+func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, respChan chan *jobReadResponse, category spendingCategory, root crypto.Hash, offset, length uint64) *jobReadSector {
 	return &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: respChan,
 			staticLength:       length,
 
-			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadMetadata{
-				staticSectorRoot: root,
-				staticWorker:     w,
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, jobReadMetadata{
+				staticSectorRoot:       root,
+				staticSpendingCategory: category,
+				staticWorker:           w,
 			}),
 		},
 		staticOffset: offset,
@@ -80,9 +81,9 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 
 // ReadSector is a helper method to run a ReadSector job with low priority on a
 // worker.
-func (w *worker) ReadSectorLowPrio(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+func (w *worker) ReadSectorLowPrio(ctx context.Context, category spendingCategory, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	readSectorRespChan := make(chan *jobReadResponse)
-	jro := w.newJobReadSector(ctx, w.staticJobLowPrioReadQueue, readSectorRespChan, root, offset, length)
+	jro := w.newJobReadSector(ctx, w.staticJobLowPrioReadQueue, readSectorRespChan, category, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {
@@ -100,9 +101,9 @@ func (w *worker) ReadSectorLowPrio(ctx context.Context, root crypto.Hash, offset
 }
 
 // ReadSector is a helper method to run a ReadSector job on a worker.
-func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+func (w *worker) ReadSector(ctx context.Context, category spendingCategory, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	readSectorRespChan := make(chan *jobReadResponse)
-	jro := w.newJobReadSector(ctx, w.staticJobReadQueue, readSectorRespChan, root, offset, length)
+	jro := w.newJobReadSector(ctx, w.staticJobReadQueue, readSectorRespChan, category, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {

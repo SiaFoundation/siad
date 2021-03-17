@@ -90,7 +90,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}

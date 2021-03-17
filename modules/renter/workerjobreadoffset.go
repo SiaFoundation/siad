@@ -98,13 +98,17 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 }
 
 // ReadOffset is a helper method to run a ReadOffset job on a worker.
-func (w *worker) ReadOffset(ctx context.Context, offset, length uint64) ([]byte, error) {
+func (w *worker) ReadOffset(ctx context.Context, category spendingCategory, offset, length uint64) ([]byte, error) {
 	readOffsetRespChan := make(chan *jobReadResponse)
 	jro := &jobReadOffset{
 		jobRead: jobRead{
 			staticResponseChan: readOffsetRespChan,
 			staticLength:       length,
-			jobGeneric:         newJobGeneric(ctx, w.staticJobReadQueue, nil),
+
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, jobReadMetadata{
+				staticSpendingCategory: category,
+				staticWorker:           w,
+			}),
 		},
 		staticOffset: offset,
 	}

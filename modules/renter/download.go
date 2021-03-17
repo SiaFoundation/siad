@@ -70,14 +70,18 @@ type (
 		destinationString string              // The string to report to the user for the destination.
 		disableLocalFetch bool                // Whether or not the file can be fetched from disk if available.
 		file              *siafile.Snapshot   // The file to download.
+		latencyTarget     time.Duration       // Workers above this latency will be automatically put on standby initially.
+		length            uint64              // Length of download. Cannot be 0.
+		needsMemory       bool                // Whether new memory needs to be allocated to perform the download.
+		offset            uint64              // Offset within the file to start the download. Must be less than the total filesize.
+		overdrive         int                 // How many extra pieces to download to prevent slow hosts from being a bottleneck.
+		priority          uint64              // Files with a higher priority will be downloaded first.
 
-		latencyTarget       time.Duration // Workers above this latency will be automatically put on standby initially.
-		length              uint64        // Length of download. Cannot be 0.
-		needsMemory         bool          // Whether new memory needs to be allocated to perform the download.
-		offset              uint64        // Offset within the file to start the download. Must be less than the total filesize.
-		overdrive           int           // How many extra pieces to download to prevent slow hosts from being a bottleneck.
-		priority            uint64        // Files with a higher priority will be downloaded first.
 		staticMemoryManager *memoryManager
+
+		// staticSpendingCategory specifies what field to update when we track
+		// the amount of money spent from an ephemeral account
+		staticSpendingCategory spendingCategory
 	}
 )
 
@@ -328,7 +332,8 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *downloa
 		overdrive:     3, // TODO: moderate default until full overdrive support is added.
 		priority:      5, // TODO: moderate default until full priority support is added.
 
-		staticMemoryManager: r.userDownloadMemoryManager, // user initiated download
+		staticMemoryManager:    r.userDownloadMemoryManager, // user initiated download
+		staticSpendingCategory: categoryDownload,
 	})
 	if closer, ok := dw.(io.Closer); err != nil && ok {
 		// If the destination can be closed we do so.
@@ -477,6 +482,8 @@ func (d *download) Start() error {
 			staticChunkMap:   chunkMaps[i-minChunk],
 			staticChunkSize:  params.file.ChunkSize(),
 			staticPieceSize:  params.file.PieceSize(),
+
+			staticSpendingCategory: d.staticParams.staticSpendingCategory,
 
 			// TODO: 25ms is just a guess for a good default. Really, we want to
 			// set the latency target such that slower workers will pick up the

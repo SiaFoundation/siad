@@ -223,6 +223,10 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
+				staticMetadata: jobReadMetadata{
+					staticSpendingCategory: categoryDownload,
+					staticWorker:           w,
+				},
 			},
 		},
 		staticOffset: 0,

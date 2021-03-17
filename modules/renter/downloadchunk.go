@@ -50,6 +50,9 @@ type unfinishedDownloadChunk struct {
 	staticPieceSize   uint64
 	staticWriteOffset int64 // Offset within the writer to write the completed data.
 
+	// Spending details.
+	staticSpendingCategory spendingCategory
+
 	// Fetch + Write instructions - read only or otherwise thread safe.
 	staticDisableDiskFetch bool
 	staticLatencyTarget    time.Duration

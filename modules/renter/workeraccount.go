@@ -36,6 +36,22 @@ const (
 	fundAccountGougingPercentageThreshold = .01
 )
 
+const (
+	// the following categories are constants used to determine the
+	// corresponding spending field in the account's spending details whenever
+	// we pay for an rpc request using the ephemeral account as payment method.
+	categoryErr spendingCategory = iota
+	categoryDownload
+	categoryRegistryRead
+	categoryRegistryWrite
+	categoryRepairDownload
+	categoryRepairUpload
+	categorySnapshotDownload
+	categorySnapshotUpload
+	categorySubscription
+	categoryUpload
+)
+
 var (
 	// accountIdleCheckFrequency establishes how frequently the sync function
 	// should check whether the worker is idle. A relatively high frequency is
@@ -159,6 +175,38 @@ type (
 	spendingCategory uint64
 )
 
+// update will add the the spend of given amount to the appropriate field
+// depending on the given category
+func (s *spendingDetails) update(category spendingCategory, amount types.Currency) {
+	if category == categoryErr {
+		build.Critical("category is not set, developer error")
+		return
+	}
+
+	switch category {
+	case categoryDownload:
+		s.downloads = s.downloads.Add(amount)
+	case categorySnapshotDownload:
+		s.snapshotDownloads = s.snapshotDownloads.Add(amount)
+	case categorySnapshotUpload:
+		s.snapshotUploads = s.snapshotUploads.Add(amount)
+	case categoryRegistryRead:
+		s.registryReads = s.registryReads.Add(amount)
+	case categoryRegistryWrite:
+		s.registryWrites = s.registryWrites.Add(amount)
+	case categoryRepairDownload:
+		s.repairDownloads = s.repairDownloads.Add(amount)
+	case categoryRepairUpload:
+		s.repairUploads = s.repairUploads.Add(amount)
+	case categorySubscription:
+		s.subscriptions = s.subscriptions.Add(amount)
+	case categoryUpload:
+		s.uploads = s.uploads.Add(amount)
+	default:
+		build.Critical("category is not handled, developer error")
+	}
+}
+
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
@@ -213,6 +261,13 @@ func (a *account) callNeedsToSync() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.syncAt.Before(time.Now())
+}
+
+// callSpendingDetails returns the spending details for the account
+func (a *account) callSpendingDetails() spendingDetails {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.spending
 }
 
 // managedAvailableBalance returns the amount of money that is available to
@@ -291,25 +346,32 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 }
 
 // managedCommitWithdrawal commits a pending withdrawal, either after success or
-// failure. Depending on the outcome the given amount will be deducted from the
-// balance or not. If the pending delta is zero, and we altered the account
-// balance, we update the account.
-func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
+// failure. Depending on the outcome the given withdrawal amount will be
+// deducted from the balance or not. If the pending delta is zero, and we
+// altered the account balance, we update the account. The refund is given
+// because both the refund and the withdrawal amount need to be subtracted from
+// the pending withdrawals, seeing is it is no longer 'pending'. Only the
+// withdrawal amount has to be subtracted from the balance because the refund
+// got refunded by the host already.
+func (a *account) managedCommitWithdrawal(category spendingCategory, withdrawal, refund types.Currency, success bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	// (no need to sanity check - the implementation of 'Sub' does this for us)
-	a.pendingWithdrawals = a.pendingWithdrawals.Sub(amount)
+	a.pendingWithdrawals = a.pendingWithdrawals.Sub(withdrawal.Add(refund))
 
 	// reflect the successful withdrawal in the balance field
 	if success {
-		if a.balance.Cmp(amount) >= 0 {
-			a.balance = a.balance.Sub(amount)
+		if a.balance.Cmp(withdrawal) >= 0 {
+			a.balance = a.balance.Sub(withdrawal)
 		} else {
-			amount = amount.Sub(a.balance)
+			withdrawal = withdrawal.Sub(a.balance)
 			a.balance = types.ZeroCurrency
-			a.negativeBalance = a.negativeBalance.Add(amount)
+			a.negativeBalance = a.negativeBalance.Add(withdrawal)
 		}
+
+		// only in case of success we track the spend and what it was spent on
+		a.trackSpending(category, withdrawal)
 	}
 }
 
@@ -411,6 +473,25 @@ func (a *account) resetBalance(balance types.Currency) {
 	a.pendingDeposits = types.ZeroCurrency
 	a.pendingWithdrawals = types.ZeroCurrency
 	a.negativeBalance = types.ZeroCurrency
+}
+
+// trackSpending will keep track of the amount spent, taking into account the
+// given refund as well, within the given spend category
+func (a *account) trackSpending(category spendingCategory, amount types.Currency) {
+	// sanity check the category was set
+	if category == categoryErr {
+		build.Critical("tracked a spend using an uninitialized category, this is prevented as we want to track all money that is being spent without exception")
+		return
+	}
+
+	// update the spending metrics
+	a.spending.update(category, amount)
+
+	// every time we update we write the account to disk
+	err := a.persist()
+	if err != nil {
+		a.staticRenter.log.Printf("failed to persist account, err: %v\n", err)
+	}
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
