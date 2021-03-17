@@ -780,7 +780,9 @@ func (w *worker) threadedSubscriptionLoop() {
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
 		// Commit the withdrawal now we know the refund.
-		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, budget.Remaining(), true)
+		refunded := budget.Remaining()
+		withdrawal := initialBudget.Sub(refunded)
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, withdrawal, refunded, true)
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {

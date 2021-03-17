@@ -58,7 +58,8 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	var refund types.Currency
 	w.staticAccount.managedTrackWithdrawal(cost)
 	defer func() {
-		w.staticAccount.managedCommitWithdrawal(category, cost, refund, err == nil)
+		withdrawn := cost.Sub(refund)
+		w.staticAccount.managedCommitWithdrawal(category, withdrawn, refund, err == nil)
 	}()
 
 	// create a new stream

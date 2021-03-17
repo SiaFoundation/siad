@@ -289,35 +289,26 @@ func testAccountTrackSpending(t *testing.T) {
 	}
 
 	// verify every category tracks its own field
-	a.trackSpending(categoryDownload, hasting.Mul64(2), hasting)
-	a.trackSpending(categorySnapshotDownload, hasting.Mul64(3), hasting)
-	a.trackSpending(categorySnapshotUpload, hasting.Mul64(3), hasting)
-	a.trackSpending(categoryRegistryRead, hasting.Mul64(4), hasting)
-	a.trackSpending(categoryRegistryWrite, hasting.Mul64(5), hasting)
-	a.trackSpending(categoryRepairDownload, hasting.Mul64(6), hasting)
-	a.trackSpending(categoryRepairUpload, hasting.Mul64(7), hasting)
-	a.trackSpending(categorySubscription, hasting.Mul64(8), hasting)
-	a.trackSpending(categoryUpload, hasting.Mul64(9), hasting)
-	if !a.spending.downloads.Equals(hasting) ||
+	a.trackSpending(categoryDownload, hasting.Mul64(1))
+	a.trackSpending(categorySnapshotDownload, hasting.Mul64(2))
+	a.trackSpending(categorySnapshotUpload, hasting.Mul64(3))
+	a.trackSpending(categoryRegistryRead, hasting.Mul64(4))
+	a.trackSpending(categoryRegistryWrite, hasting.Mul64(5))
+	a.trackSpending(categoryRepairDownload, hasting.Mul64(6))
+	a.trackSpending(categoryRepairUpload, hasting.Mul64(7))
+	a.trackSpending(categorySubscription, hasting.Mul64(8))
+	a.trackSpending(categoryUpload, hasting.Mul64(9))
+	if !a.spending.downloads.Equals(hasting.Mul64(1)) ||
 		!a.spending.snapshotDownloads.Equals(hasting.Mul64(2)) ||
-		!a.spending.registryReads.Equals(hasting.Mul64(3)) ||
-		!a.spending.registryWrites.Equals(hasting.Mul64(4)) ||
-		!a.spending.repairDownloads.Equals(hasting.Mul64(5)) ||
-		!a.spending.repairUploads.Equals(hasting.Mul64(6)) ||
-		!a.spending.subscriptions.Equals(hasting.Mul64(7)) ||
-		!a.spending.uploads.Equals(hasting.Mul64(8)) {
+		!a.spending.snapshotUploads.Equals(hasting.Mul64(3)) ||
+		!a.spending.registryReads.Equals(hasting.Mul64(4)) ||
+		!a.spending.registryWrites.Equals(hasting.Mul64(5)) ||
+		!a.spending.repairDownloads.Equals(hasting.Mul64(6)) ||
+		!a.spending.repairUploads.Equals(hasting.Mul64(7)) ||
+		!a.spending.subscriptions.Equals(hasting.Mul64(8)) ||
+		!a.spending.uploads.Equals(hasting.Mul64(9)) {
 		t.Fatal("unexpected")
 	}
-
-	// check refund sanity check
-	func() {
-		defer func() {
-			if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "refund is larger") {
-				t.Fatalf("expected panic when attempting to track a spend where refund exceeds the amount, instead we recovered %v", r)
-			}
-		}()
-		a.trackSpending(categoryDownload, hasting, hasting.Mul64(2))
-	}()
 
 	// check category sanity check
 	func() {
@@ -326,7 +317,7 @@ func testAccountTrackSpending(t *testing.T) {
 				t.Fatalf("expected panic when attempting to track a spend where the category is not initialised, instead we recovered %v", r)
 			}
 		}()
-		a.trackSpending(categoryErr, hasting.Mul64(2), hasting)
+		a.trackSpending(categoryErr, hasting)
 	}()
 }
 

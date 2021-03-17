@@ -346,28 +346,32 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 }
 
 // managedCommitWithdrawal commits a pending withdrawal, either after success or
-// failure. Depending on the outcome the given amount will be deducted from the
-// balance or not. If the pending delta is zero, and we altered the account
-// balance, we update the account.
-func (a *account) managedCommitWithdrawal(category spendingCategory, amount, refund types.Currency, success bool) {
+// failure. Depending on the outcome the given withdrawal amount will be
+// deducted from the balance or not. If the pending delta is zero, and we
+// altered the account balance, we update the account. The refund is given
+// because both the refund and the withdrawal amount need to be subtracted from
+// the pending withdrawals, seeing is it is no longer 'pending'. Only the
+// withdrawal amount has to be subtracted from the balance because the refund
+// got refunded by the host already.
+func (a *account) managedCommitWithdrawal(category spendingCategory, withdrawal, refund types.Currency, success bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	// (no need to sanity check - the implementation of 'Sub' does this for us)
-	a.pendingWithdrawals = a.pendingWithdrawals.Sub(amount)
+	a.pendingWithdrawals = a.pendingWithdrawals.Sub(withdrawal.Add(refund))
 
 	// reflect the successful withdrawal in the balance field
 	if success {
-		if a.balance.Cmp(amount) >= 0 {
-			a.balance = a.balance.Sub(amount)
+		if a.balance.Cmp(withdrawal) >= 0 {
+			a.balance = a.balance.Sub(withdrawal)
 		} else {
-			amount = amount.Sub(a.balance)
+			withdrawal = withdrawal.Sub(a.balance)
 			a.balance = types.ZeroCurrency
-			a.negativeBalance = a.negativeBalance.Add(amount)
+			a.negativeBalance = a.negativeBalance.Add(withdrawal)
 		}
 
 		// only in case of success we track the spend and what it was spent on
-		a.trackSpending(category, amount, refund)
+		a.trackSpending(category, withdrawal)
 	}
 }
 
@@ -473,13 +477,7 @@ func (a *account) resetBalance(balance types.Currency) {
 
 // trackSpending will keep track of the amount spent, taking into account the
 // given refund as well, within the given spend category
-func (a *account) trackSpending(category spendingCategory, amount, refund types.Currency) {
-	// sanity check the refund is less than the amount
-	if refund.Cmp(amount) > 0 {
-		build.Critical("committed a withdrawal where the refund is larger than the withdrawal itself, this should not be possible")
-		return
-	}
-
+func (a *account) trackSpending(category spendingCategory, amount types.Currency) {
 	// sanity check the category was set
 	if category == categoryErr {
 		build.Critical("tracked a spend using an uninitialized category, this is prevented as we want to track all money that is being spent without exception")
@@ -487,7 +485,7 @@ func (a *account) trackSpending(category spendingCategory, amount, refund types.
 	}
 
 	// update the spending metrics
-	a.spending.update(category, amount.Sub(refund))
+	a.spending.update(category, amount)
 
 	// every time we update we write the account to disk
 	err := a.persist()
