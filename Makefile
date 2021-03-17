@@ -177,13 +177,7 @@ ifneq ("$(OS)","Windows_NT")
 	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
 else
 # Windows
-# Ignore errors if file doesn't exist
-	- RD /S /Q cover
-	- RD /S /Q doc\whitepaper.aux
-	- RD /S /Q doc\whitepaper.log
-	- RD /S /Q doc\whitepaper.pdf
-	- RD /S /Q fullcover
-	- RD /S /Q release
+	- DEL /F /Q cover doc\whitepaper.aux doc\whitepaper.log doc\whitepaper.pdf fullcover release
 endif
 
 test:
@@ -194,17 +188,16 @@ test-long: clean fmt vet lint
 	@mkdir -p cover
 	GORACE='$(racevars)' go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
+# Use on Linux (and MacOS)
 test-vlong: clean fmt vet lint
-ifneq ("$(OS)","Windows_NT")
-# Linux
 	@mkdir -p cover
 	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
-else
-# Windows
+
+# Use on Windows without fmt, vet, lint
+test-vlong-windows: clean
 	MD cover
 	SET GORACE='$(racevars)'
 	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
-endif
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
