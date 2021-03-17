@@ -512,6 +512,9 @@ func TestUnitAcceptableVersion(t *testing.T) {
 		"1.3.4",
 		"1.3.5",
 		"1.3.6",
+		"1.3.7",
+		"1.5.0",
+		"1.5.2",
 	}
 	for _, v := range insufficientVersions {
 		err := acceptableVersion(v)
@@ -521,8 +524,6 @@ func TestUnitAcceptableVersion(t *testing.T) {
 	}
 	validVersions := []string{
 		minimumAcceptablePeerVersion,
-		"1.3.7",
-		"1.4.0",
 		"1.6.0",
 		"1.6.1",
 		"1.9",
@@ -704,10 +705,10 @@ func TestConnectRejectsVersions(t *testing.T) {
 			version: "0.9.0",
 			msg:     "Connect should succeed when the remote peer's version is 0.9.0",
 		},
-		// Test that Connect /could/ succeed when the remote peer's version is >= 1.3.0.
+		// Test that Connect /could/ succeed when the remote peer's version is >= 1.5.4.
 		{
 			version:         minimumAcceptablePeerVersion,
-			msg:             "Connect should succeed when the remote peer's version is 1.3.0 and sessionHeader checks out",
+			msg:             "Connect should succeed when the remote peer's version is 1.5.4 and sessionHeader checks out",
 			uniqueID:        func() (id gatewayID) { fastrand.Read(id[:]); return }(),
 			genesisID:       types.GenesisID,
 			versionRequired: minimumAcceptablePeerVersion,
@@ -867,7 +868,7 @@ func TestAcceptConnRejectsVersions(t *testing.T) {
 		{
 			remoteVersion:       minimumAcceptablePeerVersion,
 			versionResponseWant: build.Version,
-			msg:                 "acceptConn should accept a remote peer whose version is 0.4.0",
+			msg:                 "acceptConn should accept a remote peer whose version is 1.5.4",
 		},
 		// Test that acceptConn succeeds when the remote peer's version is
 		// above minAcceptableVersion
