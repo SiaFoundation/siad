@@ -118,9 +118,11 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	}
 
 	// Pay monetizers.
-	err := modules.PayMonetizers(rw.staticWallet, rw.staticMD.Monetization, uint64(len(b)), rw.staticMD.Length, rw.staticConversionRates, rw.staticMonetizationBase)
-	if err != nil {
-		return 0, err
+	if build.Release == "testing" {
+		err := modules.PayMonetizers(rw.staticWallet, rw.staticMD.Monetization, uint64(len(b)), rw.staticMD.Length, rw.staticConversionRates, rw.staticMonetizationBase)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	// Forward data to inner.
