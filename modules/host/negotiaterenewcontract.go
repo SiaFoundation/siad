@@ -107,6 +107,11 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 	if err != nil {
 		return extendErr("failed RPCRecentRevision during RPCRenewContract: ", err)
 	}
+	if so.fileSize() > largeContractSize {
+		err := errors.New("contract is too large for a rhp1 renewal")
+		modules.WriteNegotiationRejection(conn, err)
+		return nil
+	}
 	// The storage obligation is received with a lock. Defer a call to unlock
 	// the storage obligation.
 	defer func() {

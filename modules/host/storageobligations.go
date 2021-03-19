@@ -58,7 +58,7 @@ const (
 const (
 	// largeContractSize is the threshold at which the largeContractUpdateDelay
 	// kicks in whenever modifyStorageObligation is called.
-	largeContractSize = 2 * 1 << 40 // 2 TiB
+	largeContractSize = 10 * 1 << 40 // 10 TiB
 	// largeContractUpdateDelay is the delay applied when calling
 	// modifyStorageObligation on an obligation for a contract with a size
 	// greater than or equal to largeContractSize.
