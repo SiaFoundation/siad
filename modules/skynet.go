@@ -2,7 +2,7 @@ package modules
 
 import (
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -66,6 +67,14 @@ var (
 
 	// ErrUnknownLicense is returned if an unknown license is specified.
 	ErrUnknownLicense = errors.New("specified license is unknown")
+
+	// ErrZeroBase is returned when trying to pay for a monetized file with a 0
+	// base.
+	ErrZeroBase = errors.New("can't pay monetizers when the base is 0")
+
+	// ErrZeroConversionRate is returned when trying to pay for a monetized file
+	// with a 0 conversion rate.
+	ErrZeroConversionRate = fmt.Errorf("can't pay monetizers when the conversion rate for 0")
 )
 
 var (
@@ -562,6 +571,10 @@ func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedD
 	if len(monetization.Monetizers) == 0 {
 		return nil
 	}
+	// There are monetizers, but the base is 0.
+	if monetizationBase.IsZero() {
+		return ErrZeroBase
+	}
 	// Pay out monetizers.
 	var payouts []types.SiacoinOutput
 	for _, monetizer := range monetization.Monetizers {
@@ -569,6 +582,10 @@ func payMonetizers(w SiacoinSenderMulti, monetization *Monetization, downloadedD
 		conversion, valid := conversionRates[monetizer.Currency]
 		if !valid {
 			return ErrInvalidCurrency
+		}
+		// Check if the conversion rate is zero.
+		if conversion.IsZero() {
+			return errors.AddContext(ErrZeroConversionRate, monetizer.Currency)
 		}
 		// Convert money to SC.
 		sc := monetizer.Amount.Mul(conversion).Div(types.SiacoinPrecision)

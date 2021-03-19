@@ -582,4 +582,21 @@ func TestPayMonetizers(t *testing.T) {
 	// conversion rate.
 	test(types.SiacoinPrecision.Mul64(10)) // $1 = 10SC
 	test(types.SiacoinPrecision.Div64(10)) // $1 = 0.1SC
+
+	// Make sure a 0 base or conversion rate is not accepted.
+	m := validMonetization()
+	conversionRates := map[string]types.Currency{
+		CurrencyUSD: types.SiacoinPrecision,
+	}
+	err := PayMonetizers(w, m, 100, 100, conversionRates, types.ZeroCurrency)
+	if !errors.Contains(err, ErrZeroBase) {
+		t.Fatal("should fail")
+	}
+	conversionRates = map[string]types.Currency{
+		CurrencyUSD: types.ZeroCurrency,
+	}
+	err = PayMonetizers(w, m, 100, 100, conversionRates, base)
+	if !errors.Contains(err, ErrZeroConversionRate) {
+		t.Fatal("should fail")
+	}
 }
