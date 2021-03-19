@@ -680,6 +680,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	_, max := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	settings := h.externalSettings(max)
+	soSize := s.so.fileSize()
 	h.mu.Unlock()
 	if !settings.AcceptingContracts {
 		s.writeError(errors.New("host is not accepting new contracts"))
@@ -688,6 +689,9 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		err := errors.New("no such contract")
 		err = errors.Compose(err, s.writeError(err))
 		return err
+	} else if soSize > largeContractSize {
+		s.writeError(errors.New("contract is too large for a rhp2 renewal without clearing it"))
+		return nil
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
