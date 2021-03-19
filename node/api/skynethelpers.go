@@ -59,7 +59,7 @@ type writeReader struct {
 
 // Read implements the io.Reader interface but returns 0 and EOF.
 func (wr *writeReader) Read(b []byte) (int, error) {
-	build.Critical("shouldn't read from writerReader")
+	build.Critical("Read method of the writeReader is not intended to be used")
 	return 0, io.EOF
 }
 
