@@ -125,7 +125,6 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		modules.RPCLoopUnlock:             h.managedRPCLoopUnlock,
 		modules.RPCLoopSettings:           h.managedRPCLoopSettings,
 		modules.RPCLoopFormContract:       h.managedRPCLoopFormContract,
-		modules.RPCLoopRenewContract:      h.managedRPCLoopRenewContract,
 		modules.RPCLoopRenewClearContract: h.managedRPCLoopRenewAndClearContract,
 		modules.RPCLoopWrite:              h.managedRPCLoopWrite,
 		modules.RPCLoopRead:               h.managedRPCLoopRead,
