@@ -3245,7 +3245,7 @@ Specifies the minimum payment in SC for monetized content. If the content
 costs more than the base, it will be paid in full. If the content costs less
 than the base, a dice roll decides whether the base is paid out. e.g. if a
 file costs $1 and the base is $2, there is a 50% chance that the creator is
-paid $1 and a 50$ chance that the creator is paid 0$. This is a scaling
+paid $1 and a 50% chance that the creator is paid $0. This is a scaling
 method to avoid spamming the blockchain with microtransactions.  
 
 ### Response
