@@ -4277,6 +4277,16 @@ func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
 	}
 	fastrand.Read(monetization.Monetizers[0].Address[:])
 
+	// Set conversion rate and monetization base to some value to avoid error.
+	err := r.RenterSetUSDConversionRate(types.NewCurrency64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterSetMonetizationBase(types.NewCurrency64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Test regular small file.
 	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
 	if err != nil {

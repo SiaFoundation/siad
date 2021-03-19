@@ -590,13 +590,13 @@ func TestPayMonetizers(t *testing.T) {
 	}
 	err := PayMonetizers(w, m, 100, 100, conversionRates, types.ZeroCurrency)
 	if !errors.Contains(err, ErrZeroBase) {
-		t.Fatal("should fail")
+		t.Fatal(err)
 	}
 	conversionRates = map[string]types.Currency{
 		CurrencyUSD: types.ZeroCurrency,
 	}
 	err = PayMonetizers(w, m, 100, 100, conversionRates, base)
 	if !errors.Contains(err, ErrZeroConversionRate) {
-		t.Fatal("should fail")
+		t.Fatal(err)
 	}
 }
