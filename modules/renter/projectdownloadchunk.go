@@ -113,6 +113,15 @@ type (
 	// launched. It is used solely for debugging purposes to enable tracking the
 	// chain of events that occurred when a download has timed out or failed.
 	launchedWorkerInfo struct {
+		// pieceIndex is the index of the piece the worker is set to download,
+		// this index corresponds with the index of the `availablePieces` array
+		// on the PDC.
+		pieceIndex uint64
+
+		// overdriveWorker indicates whether this worker was launched as one of
+		// the initial workers, or as an overdrive worker.
+		overdriveWorker bool
+
 		launchTime           time.Time
 		completeTime         time.Time
 		expectedCompleteTime time.Time
@@ -152,17 +161,36 @@ type (
 
 // String implements the String interface.
 func (lwi *launchedWorkerInfo) String() string {
-	downloadComplete := !lwi.completeTime.IsZero()
-	if downloadComplete {
-		jobErrInfo := " and finished successfully"
-		if lwi.jobErr != nil {
-			jobErrInfo = fmt.Sprintf(", failed with err: %v", lwi.jobErr.Error())
-		}
+	pdcId := hex.EncodeToString(lwi.pdc.uid[:])
+	hostKey := lwi.worker.staticHostPubKey.ShortString()
+	estimate := lwi.expectedDuration.Milliseconds()
 
-		return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms and responded after %vms, read job took %vms%v", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), lwi.totalDuration.Milliseconds(), lwi.jobDuration.Milliseconds(), jobErrInfo)
+	var wDescr string
+	if lwi.overdriveWorker {
+		wDescr = fmt.Sprintf("overdrive worker %v", hostKey)
+	} else {
+		wDescr = fmt.Sprintf("initial worker %v", hostKey)
 	}
 
-	return fmt.Sprintf("%v | worker %v was estimated to complete after %v ms but has not yet responded after %vms", hex.EncodeToString(lwi.pdc.uid[:]), lwi.worker.staticHostPubKey.ShortString(), lwi.expectedDuration.Milliseconds(), time.Since(lwi.launchTime).Milliseconds())
+	// if download is not complete yet
+	if lwi.completeTime.IsZero() {
+		duration := time.Since(lwi.launchTime).Milliseconds()
+
+		return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | not responded after %vms", pdcId, wDescr, lwi.pieceIndex, estimate, duration)
+	}
+
+	// if download is complete
+	var jDescr string
+	if lwi.jobErr == nil {
+		jDescr = "job completed successfully"
+	} else {
+		jDescr = fmt.Sprintf("job failed with err: %v", lwi.jobErr.Error())
+	}
+
+	totalDur := lwi.totalDuration.Milliseconds()
+	jobDur := lwi.jobDuration.Milliseconds()
+
+	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.pieceIndex, estimate, totalDur, jobDur, jDescr)
 }
 
 // successful is a small helper method that returns whether the piece was
@@ -368,7 +396,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
+func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
@@ -399,14 +427,19 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 
 	// Track the launched worker
-	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
-		launchTime:           time.Now(),
-		expectedCompleteTime: expectedCompleteTime,
-		expectedDuration:     time.Until(expectedCompleteTime),
+	if added {
+		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
+			pieceIndex:      pieceIndex,
+			overdriveWorker: isOverdrive,
 
-		pdc:    pdc,
-		worker: w,
-	})
+			launchTime:           time.Now(),
+			expectedCompleteTime: expectedCompleteTime,
+			expectedDuration:     time.Until(expectedCompleteTime),
+
+			pdc:    pdc,
+			worker: w,
+		})
+	}
 
 	// Update the status of the piece that was launched. 'launched' should be
 	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If

@@ -70,7 +70,7 @@ func TestAddCostPenalty(t *testing.T) {
 func TestExpBackoffDelayMS(t *testing.T) {
 	t.Parallel()
 
-	maxDelay := time.Duration(30 * time.Second)
+	maxDelay := time.Duration(maxExpBackoffDelayMS) * time.Millisecond
 	for i := 0; i < 20; i++ {
 		if expBackoffDelayMS(i) == time.Duration(0) {
 			t.Fatal("unexpected", i) // verify not null
@@ -78,7 +78,7 @@ func TestExpBackoffDelayMS(t *testing.T) {
 		if expBackoffDelayMS(i) > maxDelay {
 			t.Fatal("unexpected") // verify max delay
 		}
-		if i > 15 && expBackoffDelayMS(i) != maxDelay {
+		if i > maxExpBackoffRetryCount && expBackoffDelayMS(i) != maxDelay {
 			t.Fatal("unexpected") // verify max delay for retry count over 15
 		}
 	}
@@ -116,6 +116,14 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	duration = pdc.adjustedReadDuration(worker)
 	if duration <= jobTime {
 		t.Fatal("unexpected", duration, jobTime)
+	}
+
+	// put the read queue on a cooldown, verify it is reflected in the duration
+	jrq.cooldownUntil = time.Now().Add(time.Minute)
+	prevDur := duration
+	duration = pdc.adjustedReadDuration(worker)
+	if duration <= prevDur {
+		t.Fatal("unexpected", duration, prevDur)
 	}
 }
 
@@ -192,6 +200,29 @@ func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
 	pdc.availablePieces[1] = append(pdc.availablePieces[1], &pieceDownload{
 		worker: w2,
 	})
+	worker, pieceIndex, _, _ = pdc.findBestOverdriveWorker()
+	if worker != w2 {
+		t.Fatal("unexpected", worker.staticHostPubKeyStr)
+	}
+	if pieceIndex != 1 {
+		t.Fatal("unexpected", pieceIndex)
+	}
+
+	// now mock a cooldown on w2's jobread queue, it should now favor w1
+	w2.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Minute)
+	worker, pieceIndex, _, _ = pdc.findBestOverdriveWorker()
+	if worker != w1 {
+		t.Fatal("unexpected", worker.staticHostPubKeyStr)
+	}
+	if pieceIndex != 2 {
+		t.Fatal("unexpected", pieceIndex)
+	}
+
+	// mock worker 1 completed downloading piece at index 2, seeing as piece at
+	// index 2 is complete, it should get skipped and worker 2 should now become
+	// the most interesting overdrive working
+	pdc.availablePieces[2][0].completed = true
+
 	worker, pieceIndex, _, _ = pdc.findBestOverdriveWorker()
 	if worker != w2 {
 		t.Fatal("unexpected", worker.staticHostPubKeyStr)

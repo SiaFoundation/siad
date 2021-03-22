@@ -389,7 +389,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// launch a worker and expect it to have enqueued a job and expect the
 	// complete time to be somewhere in the future
-	expectedCompleteTime, added := pdc.launchWorker(worker, 0)
+	expectedCompleteTime, added := pdc.launchWorker(worker, 0, false)
 	if !added {
 		t.Fatal("unexpected")
 	}
@@ -437,7 +437,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	// launch the worker again but kill the queue, expect it to have not added
 	// the job to the queue and updated the pieceDownload's status to failed
 	worker.staticJobReadQueue.killed = true
-	_, added = pdc.launchWorker(worker, 0)
+	_, added = pdc.launchWorker(worker, 0, false)
 	if added {
 		t.Fatal("unexpected")
 	}
@@ -591,6 +591,9 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	}
 
 	lwi := &launchedWorkerInfo{
+		pieceIndex:      1,
+		overdriveWorker: false,
+
 		launchTime:           time.Now().Add(-5 * time.Second),
 		expectedCompleteTime: time.Now().Add(10 * time.Second),
 		expectedDuration:     10 * time.Second,
@@ -599,23 +602,48 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 		worker: w,
 	}
 
-	expected := fmt.Sprintf("%v was estimated to complete after 10000 ms but has not yet responded after 5000ms", w.staticHostPubKey.ShortString())
-	if !strings.Contains(lwi.String(), expected) {
-		t.Fatal("unexpected", lwi.String())
+	// assert output when download not complete
+	expectedWorkerInfo := "initial worker " + w.staticHostPubKey.ShortString()
+	expectedPieceInfo := "piece 1"
+	expectedEstInfo := "estimated complete 10000 ms"
+	expectedDurInfo := "not responded after 5000ms"
+	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
+		!strings.Contains(lwi.String(), expectedPieceInfo) ||
+		!strings.Contains(lwi.String(), expectedEstInfo) ||
+		!strings.Contains(lwi.String(), expectedDurInfo) {
+		t.Fatal("unexpected: ", lwi.String())
 	}
 
+	// assert output when download complete
 	lwi.completeTime = time.Now()
 	lwi.jobDuration = 20 * time.Second
 	lwi.totalDuration = time.Since(lwi.launchTime)
 
-	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms and finished successfully", w.staticHostPubKey.ShortString())
-	if !strings.Contains(lwi.String(), expected) {
+	expectedDurInfo = "responded after 5000ms"
+	expectedJobInfo := "read job took 20000ms"
+	expectedErrInfo := "job completed successfully"
+	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
+		!strings.Contains(lwi.String(), expectedDurInfo) ||
+		!strings.Contains(lwi.String(), expectedJobInfo) ||
+		!strings.Contains(lwi.String(), expectedErrInfo) {
 		t.Fatal("unexpected", lwi.String())
 	}
 
+	// assert output when job errored out
 	lwi.jobErr = errors.New("some failure")
-	expected = fmt.Sprintf("%v was estimated to complete after 10000 ms and responded after 5000ms, read job took 20000ms, failed with err: some failure", w.staticHostPubKey.ShortString())
-	if !strings.Contains(lwi.String(), expected) {
+
+	expectedErrInfo = "job failed with err: some failure"
+	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
+		!strings.Contains(lwi.String(), expectedDurInfo) ||
+		!strings.Contains(lwi.String(), expectedJobInfo) ||
+		!strings.Contains(lwi.String(), expectedErrInfo) {
+		t.Fatal("unexpected", lwi.String())
+	}
+
+	// assert output when worker is overdrive worker
+	lwi.overdriveWorker = true
+	expectedWorkerInfo = "overdrive worker " + w.staticHostPubKey.ShortString()
+	if !strings.Contains(lwi.String(), expectedWorkerInfo) {
 		t.Fatal("unexpected", lwi.String())
 	}
 }
