@@ -70,7 +70,7 @@ func TestAddCostPenalty(t *testing.T) {
 func TestExpBackoffDelayMS(t *testing.T) {
 	t.Parallel()
 
-	maxDelay := time.Duration(3 * time.Second)
+	maxDelay := time.Duration(maxExpBackoffDelayMS) * time.Millisecond
 	for i := 0; i < 20; i++ {
 		if expBackoffDelayMS(i) == time.Duration(0) {
 			t.Fatal("unexpected", i) // verify not null
@@ -78,7 +78,7 @@ func TestExpBackoffDelayMS(t *testing.T) {
 		if expBackoffDelayMS(i) > maxDelay {
 			t.Fatal("unexpected") // verify max delay
 		}
-		if i > 15 && expBackoffDelayMS(i) != maxDelay {
+		if i > maxExpBackoffRetryCount && expBackoffDelayMS(i) != maxDelay {
 			t.Fatal("unexpected") // verify max delay for retry count over 15
 		}
 	}

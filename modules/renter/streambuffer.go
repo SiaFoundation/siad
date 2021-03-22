@@ -379,9 +379,9 @@ func (s *stream) Read(b []byte) (int, error) {
 	dataSection, exists := sb.dataSections[currentSection]
 	sb.mu.Unlock()
 	if !exists {
-		errMsg := "data section should always in the stream buffer for the current offset of a stream"
-		build.Critical(errMsg)
-		return 0, errors.New(errMsg)
+		err := errors.New("data section should always in the stream buffer for the current offset of a stream")
+		build.Critical(err)
+		return 0, err
 	}
 
 	// Block until the data is available.

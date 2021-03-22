@@ -8,6 +8,23 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+const (
+	// maxExpBackoffJitterMS defines the maximum number of milliseconds that can
+	// get added as jitter to the wait time in the exponential backoff
+	// mechanism.
+	maxExpBackoffJitterMS = 100
+
+	// maxExpBackoffDelayMS defines the maximum number of milliseconds that can
+	// be induced by the exponential backoff mechanism.
+	maxExpBackoffDelayMS = 3000
+
+	// maxExpBackoffRetryCount defines at what retry count the exponential
+	// backoff mechanism defaults to maxExpBackoffDelayMS. At current values
+	// this is set to 12 as that would induce a minimum wait of over 4s, which
+	// is higher than the current maxExpBackoffDelayMS.
+	maxExpBackoffRetryCount = 12
+)
+
 // TODO: Better handling of time.After
 
 // TODO: The pricing mechanism for these overdrive workers is not optimal
@@ -333,18 +350,17 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 // expBackoffDelayMS is a helper function that implements a very rudimentary
 // exponential backoff delay capped at 3s.
 func expBackoffDelayMS(retry int) time.Duration {
-	maxDelayMS := 3000 // 3s
-	maxDelayDur := time.Duration(maxDelayMS) * time.Millisecond
+	maxDelayDur := time.Duration(maxExpBackoffDelayMS) * time.Millisecond
 
-	// seeing as a retry of 12 guarantees a delay of 30s, return the max delay,
+	// seeing as a retry of 12 guarantees a delay of 3s, return the max delay,
 	// this also prevents an overflow for large retry values
-	if retry > 12 {
+	if retry > maxExpBackoffRetryCount {
 		return maxDelayDur
 	}
 
 	delayMS := int(math.Pow(2, float64(retry)))
-	delayMS += fastrand.Intn(100) // jitter
-	if delayMS > maxDelayMS {
+	delayMS += fastrand.Intn(maxExpBackoffJitterMS) // 100ms jitter
+	if delayMS > maxExpBackoffDelayMS {
 		return maxDelayDur
 	}
 	return time.Duration(delayMS) * time.Millisecond
