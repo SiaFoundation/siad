@@ -202,7 +202,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		}
 
 		// If there was a worker found, launch the worker.
-		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
+		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex, true)
 		if !success {
 			// If we were unable to successfully launch the worker, we retry
 			// after a certain delay. This to prevent spamming the readqueue
