@@ -8,6 +8,23 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+const (
+	// maxExpBackoffJitterMS defines the maximum number of milliseconds that can
+	// get added as jitter to the wait time in the exponential backoff
+	// mechanism.
+	maxExpBackoffJitterMS = 100
+
+	// maxExpBackoffDelayMS defines the maximum number of milliseconds that can
+	// be induced by the exponential backoff mechanism.
+	maxExpBackoffDelayMS = 3000
+
+	// maxExpBackoffRetryCount defines at what retry count the exponential
+	// backoff mechanism defaults to maxExpBackoffDelayMS. At current values
+	// this is set to 12 as that would induce a minimum wait of over 4s, which
+	// is higher than the current maxExpBackoffDelayMS.
+	maxExpBackoffRetryCount = 12
+)
+
 // TODO: Better handling of time.After
 
 // TODO: The pricing mechanism for these overdrive workers is not optimal
@@ -19,15 +36,26 @@ import (
 
 // adjustedReadDuration returns the amount of time that a worker is expected to
 // take to return, taking into account the penalties for the price of the
-// download.
+// download and a potential cooldown on the read queue.
 func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
-	jobTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+	jrq := w.staticJobReadQueue
+
+	// Fetch the expected job time.
+	jobTime := jrq.callExpectedJobTime(pdc.pieceLength)
 	if jobTime < 0 {
 		jobTime = 0
 	}
 
+	// If the queue is on cooldown, add the remaining cooldown period.
+	if jrq.callOnCooldown() {
+		jrq.mu.Lock()
+		jobTime = jobTime + time.Until(jrq.cooldownUntil)
+		jrq.mu.Unlock()
+	}
+
 	// Add a penalty to performance based on the cost of the job.
-	return addCostPenalty(jobTime, w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength), pdc.pricePerMS)
+	jobCost := jrq.callExpectedJobCost(pdc.pieceLength)
+	return addCostPenalty(jobTime, jobCost, pdc.pricePerMS)
 }
 
 // bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved
@@ -139,13 +167,12 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	bawPieceIndex := 0
 	var baw *worker
 
-LOOP:
 	for i, activePiece := range pdc.availablePieces {
 		for _, pieceDownload := range activePiece {
 			// Don't consider any workers from this piece if the piece is
 			// completed.
 			if pieceDownload.completed {
-				break LOOP
+				break
 			}
 
 			// Skip over failed pieces or pieces that have already launched.
@@ -321,20 +348,19 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 }
 
 // expBackoffDelayMS is a helper function that implements a very rudimentary
-// exponential backoff delay.
+// exponential backoff delay capped at 3s.
 func expBackoffDelayMS(retry int) time.Duration {
-	maxDelayMS := 30000 // 30s
-	maxDelayDur := time.Duration(maxDelayMS) * time.Millisecond
+	maxDelayDur := time.Duration(maxExpBackoffDelayMS) * time.Millisecond
 
-	// seeing as a retry of 15 guarantees a delay of 30s, return the max delay,
+	// seeing as a retry of 12 guarantees a delay of 3s, return the max delay,
 	// this also prevents an overflow for large retry values
-	if retry > 15 {
+	if retry > maxExpBackoffRetryCount {
 		return maxDelayDur
 	}
 
 	delayMS := int(math.Pow(2, float64(retry)))
-	delayMS += fastrand.Intn(1000) // jitter
-	if delayMS > maxDelayMS {
+	delayMS += fastrand.Intn(maxExpBackoffJitterMS) // 100ms jitter
+	if delayMS > maxExpBackoffDelayMS {
 		return maxDelayDur
 	}
 	return time.Duration(delayMS) * time.Millisecond

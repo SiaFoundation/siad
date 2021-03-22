@@ -427,17 +427,19 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 
 	// Track the launched worker
-	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
-		pieceIndex:      pieceIndex,
-		overdriveWorker: isOverdrive,
+	if added {
+		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
+			pieceIndex:      pieceIndex,
+			overdriveWorker: isOverdrive,
 
-		launchTime:           time.Now(),
-		expectedCompleteTime: expectedCompleteTime,
-		expectedDuration:     time.Until(expectedCompleteTime),
+			launchTime:           time.Now(),
+			expectedCompleteTime: expectedCompleteTime,
+			expectedDuration:     time.Until(expectedCompleteTime),
 
-		pdc:    pdc,
-		worker: w,
-	})
+			pdc:    pdc,
+			worker: w,
+		})
+	}
 
 	// Update the status of the piece that was launched. 'launched' should be
 	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
