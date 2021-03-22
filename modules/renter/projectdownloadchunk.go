@@ -163,6 +163,7 @@ type (
 func (lwi *launchedWorkerInfo) String() string {
 	pdcId := hex.EncodeToString(lwi.pdc.uid[:])
 	hostKey := lwi.worker.staticHostPubKey.ShortString()
+	estimate := lwi.expectedDuration.Milliseconds()
 
 	var wDescr string
 	if lwi.overdriveWorker {
@@ -173,7 +174,6 @@ func (lwi *launchedWorkerInfo) String() string {
 
 	// if download is not complete yet
 	if lwi.completeTime.IsZero() {
-		estimate := lwi.expectedDuration.Milliseconds()
 		duration := time.Since(lwi.launchTime).Milliseconds()
 
 		return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | not responded after %vms", pdcId, wDescr, lwi.pieceIndex, estimate, duration)
@@ -187,7 +187,6 @@ func (lwi *launchedWorkerInfo) String() string {
 		jDescr = fmt.Sprintf("job failed with err: %v", lwi.jobErr.Error())
 	}
 
-	estimate := lwi.expectedDuration.Milliseconds()
 	totalDur := lwi.totalDuration.Milliseconds()
 	jobDur := lwi.jobDuration.Milliseconds()
 
