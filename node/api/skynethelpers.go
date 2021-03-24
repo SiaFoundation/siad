@@ -94,7 +94,7 @@ func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
 	return rw.staticW.Write(b)
 }
 
-// monetizedWriter is a wrapper for a io.Writer. It monetizes the returned
+// monetizedWriter is a wrapper for an io.Writer. It monetizes the returned
 // bytes.
 type monetizedWriter struct {
 	staticW      io.Writer
