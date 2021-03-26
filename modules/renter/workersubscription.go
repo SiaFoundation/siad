@@ -74,7 +74,7 @@ type (
 		// soon as possible.
 		// The worker will also try to unsubscribe from all subscriptions that
 		// it currently has which it is not supposed to be subscribed to.
-		subscriptions map[modules.EntryID]*subscription
+		subscriptions map[modules.RegistryEntryID]*subscription
 
 		// staticWakeChan is a channel to tell the subscription loop that more
 		// work is available.
@@ -204,7 +204,7 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	// we are not interested in simply to have us pay for bandwidth.
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
-	sub, exists := subInfo.subscriptions[modules.RegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)]
+	sub, exists := subInfo.subscriptions[modules.DeriveRegistryEntryID(sneu.PubKey, sneu.Entry.Tweak)]
 	if !exists || (sub.latestRV != nil && sub.latestRV.Revision >= sneu.Entry.Revision) {
 		if exists && sub.latestRV != nil {
 			return fmt.Errorf("host sent an outdated revision %v >= %v", sub.latestRV.Revision, sneu.Entry.Revision)
@@ -481,7 +481,7 @@ func (w *worker) managedUnsubscribeFromRVs(stream siamux.Stream, toUnsubscribe [
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for _, req := range toUnsubscribe {
-		sid := modules.RegistryEntryID(req.PubKey, req.Tweak)
+		sid := modules.DeriveRegistryEntryID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
 			err = errors.New("managedSubscriptionLoop: missing subscription - subscriptions should only be deleted in this thread so this shouldn't be the case")
@@ -517,7 +517,7 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modul
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for _, rv := range rvs {
-		subInfo.subscriptions[modules.RegistryEntryID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
+		subInfo.subscriptions[modules.DeriveRegistryEntryID(rv.PubKey, rv.Entry.Tweak)].latestRV = &rv.Entry
 	}
 	// Close the channels to signal that the subscription is done.
 	for _, c := range subChans {
@@ -804,7 +804,7 @@ func (w *worker) Unsubscribe(requests ...modules.RPCRegistrySubscriptionRequest)
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
 	for _, req := range requests {
-		sid := modules.RegistryEntryID(req.PubKey, req.Tweak)
+		sid := modules.DeriveRegistryEntryID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists || !sub.subscribe {
 			continue // nothing to do
@@ -831,7 +831,7 @@ func (w *worker) Subscribe(ctx context.Context, requests ...modules.RPCRegistryS
 	var subs []*subscription
 	var subChans []chan struct{}
 	for i, req := range requests {
-		sid := modules.RegistryEntryID(req.PubKey, req.Tweak)
+		sid := modules.DeriveRegistryEntryID(req.PubKey, req.Tweak)
 		sub, exists := subInfo.subscriptions[sid]
 		if !exists {
 			sub = newSubscription(&requests[i])

@@ -48,7 +48,7 @@ func (p *program) staticDecodeReadRegistryInstruction(instruction modules.Instru
 }
 
 // executeReadRegistry executes a registry lookup.
-func executeReadRegistry(prevOutput output, ps *programState, sid modules.EntryID, needPubKeyAndTweak bool) (output, types.Currency) {
+func executeReadRegistry(prevOutput output, ps *programState, sid modules.RegistryEntryID, needPubKeyAndTweak bool) (output, types.Currency) {
 	// Prepare the output. An empty output.Output means the data wasn't found.
 	out := output{
 		NewSize:       prevOutput.NewSize,
@@ -89,7 +89,7 @@ func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Curr
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
-	return executeReadRegistry(prevOutput, i.staticState, modules.RegistryEntryID(pubKey, tweak), false)
+	return executeReadRegistry(prevOutput, i.staticState, modules.DeriveRegistryEntryID(pubKey, tweak), false)
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.

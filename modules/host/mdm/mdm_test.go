@@ -26,7 +26,7 @@ type (
 		generateSectors bool
 		blockHeight     types.BlockHeight
 		sectors         map[crypto.Hash][]byte
-		registry        map[modules.EntryID]TestRegistryValue
+		registry        map[modules.RegistryEntryID]TestRegistryValue
 		mu              sync.Mutex
 	}
 	TestRegistryValue struct {
@@ -52,7 +52,7 @@ func newTestHost() *TestHost {
 func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
 		generateSectors: generateSectors,
-		registry:        make(map[modules.EntryID]TestRegistryValue),
+		registry:        make(map[modules.RegistryEntryID]TestRegistryValue),
 		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
@@ -84,7 +84,7 @@ func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 }
 
 // RegistryGet retrieves a value from the registry.
-func (h *TestHost) RegistryGet(sid modules.EntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool) {
+func (h *TestHost) RegistryGet(sid modules.RegistryEntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	v, exists := h.registry[sid]
@@ -98,7 +98,7 @@ func (h *TestHost) RegistryGet(sid modules.EntryID) (types.SiaPublicKey, modules
 func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	key := modules.RegistryEntryID(pubKey, rv.Tweak)
+	key := modules.DeriveRegistryEntryID(pubKey, rv.Tweak)
 	oldRV, exists := h.registry[key]
 
 	if exists && rv.Revision < oldRV.Revision {

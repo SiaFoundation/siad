@@ -307,7 +307,7 @@ func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, twe
 }
 
 // AddReadRegistryEIDInstruction adds an ReadRegistry instruction to the program.
-func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid EntryID, needPKAndTweak bool) (types.Currency, error) {
+func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid RegistryEntryID, needPKAndTweak bool) (types.Currency, error) {
 	// Marshal sid.
 	subID := encoding.Marshal(sid)
 	// Compute the argument offsets.

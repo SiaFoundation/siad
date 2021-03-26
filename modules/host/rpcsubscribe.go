@@ -24,15 +24,15 @@ type (
 		// It's a map of maps since the same entry can be subscribed to by
 		// multiple peers and we want to be able to look up subscriptions in
 		// constant time.
-		subscriptions map[modules.EntryID]map[subscriptionInfoID]*subscriptionInfo
+		subscriptions map[modules.RegistryEntryID]map[subscriptionInfoID]*subscriptionInfo
 	}
 	// subscriptionInfo holds the information required to respond to a
 	// subscriber and to correctly charge it.
 	subscriptionInfo struct {
 		closed           bool
 		notificationCost types.Currency
-		latestRevNum     map[modules.EntryID]uint64
-		subscriptions    map[modules.EntryID]struct{}
+		latestRevNum     map[modules.RegistryEntryID]uint64
+		subscriptions    map[modules.RegistryEntryID]struct{}
 		mu               sync.Mutex
 
 		staticBudget     *modules.RPCBudget
@@ -53,7 +53,7 @@ var (
 // newRegistrySubscriptions creates a new registrySubscriptions instance.
 func newRegistrySubscriptions() *registrySubscriptions {
 	return &registrySubscriptions{
-		subscriptions: make(map[modules.EntryID]map[subscriptionInfoID]*subscriptionInfo),
+		subscriptions: make(map[modules.RegistryEntryID]map[subscriptionInfoID]*subscriptionInfo),
 	}
 }
 
@@ -61,8 +61,8 @@ func newRegistrySubscriptions() *registrySubscriptions {
 func newSubscriptionInfo(stream siamux.Stream, budget *modules.RPCBudget, notificationsCost types.Currency, subscriber types.Specifier) *subscriptionInfo {
 	info := &subscriptionInfo{
 		notificationCost: notificationsCost,
-		latestRevNum:     make(map[modules.EntryID]uint64),
-		subscriptions:    make(map[modules.EntryID]struct{}),
+		latestRevNum:     make(map[modules.RegistryEntryID]uint64),
+		subscriptions:    make(map[modules.RegistryEntryID]struct{}),
 		staticBudget:     budget,
 		staticStream:     stream,
 		staticSubscriber: hex.EncodeToString(subscriber[:]),
@@ -72,7 +72,7 @@ func newSubscriptionInfo(stream siamux.Stream, budget *modules.RPCBudget, notifi
 }
 
 // AddSubscriptions adds one or multiple subscriptions.
-func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryIDs ...modules.EntryID) {
+func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryIDs ...modules.RegistryEntryID) {
 	// Add to the info first.
 	info.mu.Lock()
 	for _, id := range entryIDs {
@@ -92,7 +92,7 @@ func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryI
 }
 
 // RemoveSubscriptions removes one or multiple subscriptions.
-func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, entryIDs []modules.EntryID) {
+func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, entryIDs []modules.RegistryEntryID) {
 	// Delete from the info first.
 	info.mu.Lock()
 	for _, entryID := range entryIDs {
@@ -128,11 +128,11 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	}
 
 	// Send initial values.
-	ids := make([]modules.EntryID, 0, len(rsrs))
+	ids := make([]modules.RegistryEntryID, 0, len(rsrs))
 	rvs := make([]modules.SignedRegistryValue, 0, len(ids))
 	for _, rsr := range rsrs {
-		ids = append(ids, modules.RegistryEntryID(rsr.PubKey, rsr.Tweak))
-		_, rv, found := h.staticRegistry.Get(modules.RegistryEntryID(rsr.PubKey, rsr.Tweak))
+		ids = append(ids, modules.DeriveRegistryEntryID(rsr.PubKey, rsr.Tweak))
+		_, rv, found := h.staticRegistry.Get(modules.DeriveRegistryEntryID(rsr.PubKey, rsr.Tweak))
 		if !found {
 			continue
 		}
@@ -178,9 +178,9 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 	if err != nil {
 		return errors.AddContext(err, "failed to read subscription requests")
 	}
-	ids := make([]modules.EntryID, 0, len(rsrs))
+	ids := make([]modules.RegistryEntryID, 0, len(rsrs))
 	for _, rsr := range rsrs {
-		ids = append(ids, modules.RegistryEntryID(rsr.PubKey, rsr.Tweak))
+		ids = append(ids, modules.DeriveRegistryEntryID(rsr.PubKey, rsr.Tweak))
 	}
 
 	// Remove the subscription.
@@ -288,7 +288,7 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 	h.staticRegistrySubscriptions.mu.Lock()
 	defer h.staticRegistrySubscriptions.mu.Unlock()
 
-	id := modules.RegistryEntryID(pubKey, rv.Tweak)
+	id := modules.DeriveRegistryEntryID(pubKey, rv.Tweak)
 	infos, found := h.staticRegistrySubscriptions.subscriptions[id]
 	if !found {
 		return
@@ -409,7 +409,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 	// Clean up the subscriptions at the end.
 	defer func() {
 		info.mu.Lock()
-		var entryIDs []modules.EntryID
+		var entryIDs []modules.RegistryEntryID
 		for entryID := range info.subscriptions {
 			entryIDs = append(entryIDs, entryID)
 		}

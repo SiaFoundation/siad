@@ -683,7 +683,7 @@ func TestFullRegistry(t *testing.T) {
 	}
 
 	// Remember the entries for after the prune + reload.
-	entryMap := make(map[modules.EntryID]*value)
+	entryMap := make(map[modules.RegistryEntryID]*value)
 	for k, v := range r.entries {
 		entryMap[k] = v
 	}
@@ -863,7 +863,7 @@ func TestRegistryRace(t *testing.T) {
 	for i := 0; i < numEntries; i++ {
 		rv := rvs[i]
 		key := keys[i]
-		v, exists := r.entries[modules.RegistryEntryID(key, rv.Tweak)]
+		v, exists := r.entries[modules.DeriveRegistryEntryID(key, rv.Tweak)]
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -890,7 +890,7 @@ func TestRegistryRace(t *testing.T) {
 	for i := 0; i < numEntries; i++ {
 		rv := rvs[i]
 		key := keys[i]
-		v, exists := r.entries[modules.RegistryEntryID(key, rv.Tweak)]
+		v, exists := r.entries[modules.DeriveRegistryEntryID(key, rv.Tweak)]
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1021,7 +1021,7 @@ func TestTruncate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, rv, _ = r.Get(modules.RegistryEntryID(v.key, v.tweak))
+		_, rv, _ = r.Get(modules.DeriveRegistryEntryID(v.key, v.tweak))
 		entries = append(entries, rv)
 		keys = append(keys, v.key)
 	}
@@ -1057,7 +1057,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.DeriveRegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1091,7 +1091,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.DeriveRegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1128,7 +1128,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.DeriveRegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1162,7 +1162,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.DeriveRegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1259,7 +1259,7 @@ func TestMigrate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		_, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		_, entryExist, exists := r.Get(modules.DeriveRegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
