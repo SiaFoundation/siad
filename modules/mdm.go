@@ -130,8 +130,8 @@ const (
 
 	// RPCIReadRegistryEIDLen is the expected length of the 'Args' of an
 	// ReadRegistryEID instruction.
-	// sidOffset = 8 bytes
-	RPCIReadRegistryEIDLen = 8
+	// sidOffset = 8 bytes + pubkey bool 1 byte
+	RPCIReadRegistryEIDLen = 9
 )
 
 var (

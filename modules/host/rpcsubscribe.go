@@ -132,7 +132,7 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	rvs := make([]modules.SignedRegistryValue, 0, len(ids))
 	for _, rsr := range rsrs {
 		ids = append(ids, modules.RegistryEntryID(rsr.PubKey, rsr.Tweak))
-		rv, found := h.staticRegistry.Get(modules.RegistryEntryID(rsr.PubKey, rsr.Tweak))
+		_, rv, found := h.staticRegistry.Get(modules.RegistryEntryID(rsr.PubKey, rsr.Tweak))
 		if !found {
 			continue
 		}

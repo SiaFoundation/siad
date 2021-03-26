@@ -133,8 +133,8 @@ func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey,
 
 // AddReadRegistryInstruction adds an ReadRegistry instruction to the
 // builder, keeping track of running values.
-func (tb *testProgramBuilder) AddReadRegistryEIDInstruction(sid modules.EntryID, refunded bool) types.Currency {
-	refund, err := tb.staticPB.AddReadRegistryEIDInstruction(sid)
+func (tb *testProgramBuilder) AddReadRegistryEIDInstruction(sid modules.EntryID, refunded, needPubKeyAndTweak bool) types.Currency {
+	refund, err := tb.staticPB.AddReadRegistryEIDInstruction(sid, needPubKeyAndTweak)
 	if err != nil {
 		panic(err)
 	}

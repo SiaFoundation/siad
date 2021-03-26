@@ -307,7 +307,7 @@ func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, twe
 }
 
 // AddReadRegistryEIDInstruction adds an ReadRegistry instruction to the program.
-func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid EntryID) (types.Currency, error) {
+func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid EntryID, needPKAndTweak bool) (types.Currency, error) {
 	// Marshal sid.
 	subID := encoding.Marshal(sid)
 	// Compute the argument offsets.
@@ -318,7 +318,7 @@ func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid EntryID) (types.Curr
 		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryEIDInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewReadRegistryEIDInstruction(subIDOff)
+	i := NewReadRegistryEIDInstruction(subIDOff, needPKAndTweak)
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Read cost, collateral and memory usage.
@@ -407,12 +407,15 @@ func NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff uint64) Instructi
 }
 
 // NewReadRegistryEIDInstruction creates an Instruction from arguments.
-func NewReadRegistryEIDInstruction(sidOffset uint64) Instruction {
+func NewReadRegistryEIDInstruction(sidOffset uint64, needPKAndTweakOffset bool) Instruction {
 	i := Instruction{
 		Specifier: SpecifierReadRegistryEID,
 		Args:      make([]byte, RPCIReadRegistryEIDLen),
 	}
 	binary.LittleEndian.PutUint64(i.Args[:8], sidOffset)
+	if needPKAndTweakOffset {
+		i.Args[8] = 1
+	}
 	return i
 }
 

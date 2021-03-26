@@ -131,16 +131,16 @@ func (r *Registry) Close() error {
 }
 
 // Get fetches the data associated with a key and tweak from the registry.
-func (r *Registry) Get(sid modules.EntryID) (modules.SignedRegistryValue, bool) {
+func (r *Registry) Get(sid modules.EntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool) {
 	r.mu.Lock()
 	v, ok := r.entries[sid]
 	r.mu.Unlock()
 	if !ok {
-		return modules.SignedRegistryValue{}, false
+		return types.SiaPublicKey{}, modules.SignedRegistryValue{}, false
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
+	return v.key, modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
 }
 
 // Len returns the length of the registry.

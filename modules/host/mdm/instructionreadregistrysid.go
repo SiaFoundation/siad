@@ -14,6 +14,7 @@ type instructionReadRegistryEID struct {
 	commonInstruction
 
 	subscriptionIDOffset uint64
+	needPubKeyAndTweak   bool
 }
 
 // staticDecodeReadRegistryEIDInstruction creates a new 'ReadRegistryEID'
@@ -30,13 +31,15 @@ func (p *program) staticDecodeReadRegistryEIDInstruction(instruction modules.Ins
 			modules.RPCIReadRegistryEIDLen, len(instruction.Args))
 	}
 	// Read args.
-	sidOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
+	eidOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
+	needPubKeyAndTweak := instruction.Args[8] == 1
 	return &instructionReadRegistryEID{
 		commonInstruction: commonInstruction{
 			staticData:  p.staticData,
 			staticState: p.staticProgramState,
 		},
-		subscriptionIDOffset: sidOffset,
+		needPubKeyAndTweak:   needPubKeyAndTweak,
+		subscriptionIDOffset: eidOffset,
 	}, nil
 }
 
@@ -47,7 +50,7 @@ func (i *instructionReadRegistryEID) Execute(prevOutput output) (output, types.C
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
-	return executeReadRegistry(prevOutput, i.staticState, modules.EntryID(sid))
+	return executeReadRegistry(prevOutput, i.staticState, modules.EntryID(sid), i.needPubKeyAndTweak)
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.

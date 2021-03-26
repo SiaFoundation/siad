@@ -1021,7 +1021,7 @@ func TestTruncate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rv, _ = r.Get(modules.RegistryEntryID(v.key, v.tweak))
+		_, rv, _ = r.Get(modules.RegistryEntryID(v.key, v.tweak))
 		entries = append(entries, rv)
 		keys = append(keys, v.key)
 	}
@@ -1057,7 +1057,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1065,6 +1065,11 @@ func TestTruncate(t *testing.T) {
 			t.Log(entry)
 			t.Log(entryExist)
 			t.Fatal("entries don't match")
+		}
+		if !reflect.DeepEqual(spk, keys[i]) {
+			t.Log(spk)
+			t.Log(keys[i])
+			t.Fatal("key doesn't match")
 		}
 	}
 
@@ -1086,7 +1091,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1094,6 +1099,11 @@ func TestTruncate(t *testing.T) {
 			t.Log(entry)
 			t.Log(entryExist)
 			t.Fatal("entries don't match")
+		}
+		if !reflect.DeepEqual(spk, keys[i]) {
+			t.Log(spk)
+			t.Log(keys[i])
+			t.Fatal("key doesn't match")
 		}
 	}
 
@@ -1118,7 +1128,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1126,6 +1136,11 @@ func TestTruncate(t *testing.T) {
 			t.Log(entry)
 			t.Log(entryExist)
 			t.Fatal("entries don't match")
+		}
+		if !reflect.DeepEqual(spk, keys[i]) {
+			t.Log(spk)
+			t.Log(keys[i])
+			t.Fatal("key doesn't match")
 		}
 	}
 
@@ -1147,7 +1162,7 @@ func TestTruncate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		spk, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1155,6 +1170,11 @@ func TestTruncate(t *testing.T) {
 			t.Log(entry)
 			t.Log(entryExist)
 			t.Fatal("entries don't match")
+		}
+		if !reflect.DeepEqual(spk, keys[i]) {
+			t.Log(spk)
+			t.Log(keys[i])
+			t.Fatal("key doesn't match")
 		}
 	}
 }
@@ -1190,7 +1210,7 @@ func TestMigrate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rv, _ = r.Get(v.mapKey())
+		_, rv, _ = r.Get(v.mapKey())
 		entries = append(entries, rv)
 		keys = append(keys, v.key)
 	}
@@ -1239,7 +1259,7 @@ func TestMigrate(t *testing.T) {
 
 	// Entries should be the same as before.
 	for i, entry := range entries {
-		entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
+		_, entryExist, exists := r.Get(modules.RegistryEntryID(keys[i], entry.Tweak))
 		if !exists {
 			t.Fatal("entry doesn't exist")
 		}
@@ -1297,7 +1317,7 @@ func TestTruncateForce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rv, _ = r.Get(v.mapKey())
+		_, rv, _ = r.Get(v.mapKey())
 		entries = append(entries, rv)
 		keys = append(keys, v.key)
 	}
@@ -1399,7 +1419,7 @@ func TestFailedLoadLargeRegistry(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rv, _ = r.Get(v.mapKey())
+		_, rv, _ = r.Get(v.mapKey())
 		entries = append(entries, rv)
 		keys = append(keys, v.key)
 	}
