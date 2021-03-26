@@ -199,15 +199,15 @@ type (
 		RevisionTxn types.Transaction
 	}
 
-	// SubscriptionID is a hash derived from the public key and tweak that a
+	// EntryID is a hash derived from the public key and tweak that a
 	// renter would like to subscribe to.
-	SubscriptionID crypto.Hash
+	EntryID crypto.Hash
 )
 
-// RegistrySubscriptionID is a helper to derive a subscription id for a registry
-// key value pair.
-func RegistrySubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) SubscriptionID {
-	return SubscriptionID(crypto.HashAll(pubKey, tweak))
+// RegistryEntryID is a helper to derive an entry id for a registry key value
+// pair.
+func RegistryEntryID(pubKey types.SiaPublicKey, tweak crypto.Hash) EntryID {
+	return EntryID(crypto.HashAll(pubKey, tweak))
 }
 
 // RPCHasSectorInstruction creates an Instruction from arguments.

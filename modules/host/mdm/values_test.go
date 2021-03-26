@@ -170,7 +170,7 @@ func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey, refunded
 
 // AddReadRegistrySIDInstruction adds a revision instruction to the builder,
 // keeping track of running values.
-func (v *TestValues) AddReadRegistrySIDInstruction(sid modules.SubscriptionID, refunded bool) {
+func (v *TestValues) AddReadRegistrySIDInstruction(sid modules.EntryID, refunded bool) {
 	memory := modules.MDMReadRegistryMemory()
 	collateral := modules.MDMReadRegistryCollateral()
 	cost, refund := modules.MDMReadRegistryCost(v.staticPT)

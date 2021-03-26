@@ -47,7 +47,7 @@ func (i *instructionReadRegistrySID) Execute(prevOutput output) (output, types.C
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
-	return executeReadRegistry(prevOutput, i.staticState, modules.SubscriptionID(sid))
+	return executeReadRegistry(prevOutput, i.staticState, modules.EntryID(sid))
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.

@@ -399,7 +399,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 	// Add 2 random rvs to subscription map.
 	srv1, spk1, _ := randomRegistryValue()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk1, srv1.Tweak)] = &subscription{
+	subInfo.subscriptions[modules.RegistryEntryID(spk1, srv1.Tweak)] = &subscription{
 		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk1,
 			Tweak:  srv1.Tweak,
@@ -409,7 +409,7 @@ func TestSubscriptionLoop(t *testing.T) {
 	}
 
 	srv2, spk2, _ := randomRegistryValue()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = &subscription{
+	subInfo.subscriptions[modules.RegistryEntryID(spk2, srv2.Tweak)] = &subscription{
 		staticRequest: &modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk2,
 			Tweak:  srv2.Tweak,
@@ -467,7 +467,7 @@ func TestSubscriptionLoop(t *testing.T) {
 
 	// Remove the second subscription.
 	subInfo.mu.Lock()
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)].subscribe = false
+	subInfo.subscriptions[modules.RegistryEntryID(spk2, srv2.Tweak)].subscribe = false
 
 	// Add a third subscription which should be removed automatically since
 	// "subscribe" is set to false from the beginning. Make sure the channel is
@@ -481,7 +481,7 @@ func TestSubscriptionLoop(t *testing.T) {
 		subscribed: make(chan struct{}),
 		subscribe:  false,
 	}
-	subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, srv2.Tweak)] = sub3
+	subInfo.subscriptions[modules.RegistryEntryID(spk2, srv2.Tweak)] = sub3
 	subInfo.mu.Unlock()
 
 	// After a bit of time we should be successfully unsubscribed.
@@ -762,7 +762,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 
 	// The worker should also have updated the subscription.
 	subInfo.mu.Lock()
-	sub, exists := subInfo.subscriptions[modules.RegistrySubscriptionID(spk2, rv2a.Tweak)]
+	sub, exists := subInfo.subscriptions[modules.RegistryEntryID(spk2, rv2a.Tweak)]
 	if !exists {
 		t.Fatal("rv2's subscription doesn't exist")
 	}
@@ -946,7 +946,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, _ := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.RegistryEntryID(spk, rv.Tweak)
 		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
@@ -982,7 +982,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, sk := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.RegistryEntryID(spk, rv.Tweak)
 		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
@@ -1024,7 +1024,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Subscribe to a random registry value.
 		rv, spk, _ := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.RegistryEntryID(spk, rv.Tweak)
 		subInfo.subscriptions[sid] = newSubscription(&modules.RPCRegistrySubscriptionRequest{
 			PubKey: spk,
 			Tweak:  rv.Tweak,
@@ -1061,7 +1061,7 @@ func TestHandleNotification(t *testing.T) {
 	testNotification(func() {
 		// Create a random registry entry.
 		rv, spk, _ := randomRegistryValue()
-		sid := modules.RegistrySubscriptionID(spk, rv.Tweak)
+		sid := modules.RegistryEntryID(spk, rv.Tweak)
 		// Send rv.
 		sendRegistryValue(spk, rv)
 		// Check fields.

@@ -35,7 +35,7 @@ func TestInstructionReadRegistrySID(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistrySIDInstruction(modules.RegistrySubscriptionID(spk, tweak), false)
+	tb.AddReadRegistrySIDInstruction(modules.RegistryEntryID(spk, tweak), false)
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -81,7 +81,7 @@ func TestInstructionReadRegistrySIDNotFound(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	refund := tb.AddReadRegistrySIDInstruction(modules.RegistrySubscriptionID(spk, crypto.Hash{}), true)
+	refund := tb.AddReadRegistrySIDInstruction(modules.RegistryEntryID(spk, crypto.Hash{}), true)
 
 	// Execute it.
 	outputs, remainingBudget, err := mdm.ExecuteProgramWithBuilderCustomBudget(tb, so, 0, false)
