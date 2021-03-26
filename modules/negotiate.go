@@ -199,9 +199,6 @@ var (
 	// RPCFormContract is the specifier for forming a contract with a host.
 	RPCFormContract = types.NewSpecifier("FormContract" + types.RuneToString(2))
 
-	// RPCRenewContractRHP2 is the specifier to renewing an existing contract.
-	RPCRenewContractRHP2 = types.NewSpecifier("RenewContract" + types.RuneToString(2))
-
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
 	RPCReviseContract = types.NewSpecifier("ReviseContract" + types.RuneToString(2))
@@ -410,7 +407,6 @@ var (
 	RPCLoopFormContract       = types.NewSpecifier("LoopFormContract")
 	RPCLoopLock               = types.NewSpecifier("LoopLock")
 	RPCLoopRead               = types.NewSpecifier("LoopRead")
-	RPCLoopRenewContract      = types.NewSpecifier("LoopRenew")
 	RPCLoopRenewClearContract = types.NewSpecifier("LoopRenewClear")
 	RPCLoopSectorRoots        = types.NewSpecifier("LoopSectorRoots")
 	RPCLoopSettings           = types.NewSpecifier("LoopSettings")

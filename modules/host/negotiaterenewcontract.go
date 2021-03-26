@@ -1,15 +1,10 @@
 package host
 
 import (
-	"net"
-	"time"
-
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // rhp2RenewBaseCollateral returns the base collateral on the storage in the file
@@ -97,159 +92,6 @@ func (h *Host) managedAddRenewCollateral(hostCollateral types.Currency, so stora
 		newOutputs = append(newOutputs, updatedTxn.SiacoinOutputs[outputIndex])
 	}
 	return builder, newParents, newInputs, newOutputs, nil
-}
-
-// managedRenewContractRHP2 accepts a request to renew a file contract.
-func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
-	// Perform the recent revision protocol to get the file contract being
-	// revised.
-	_, so, err := h.managedRPCRecentRevision(conn)
-	if err != nil {
-		return extendErr("failed RPCRecentRevision during RPCRenewContract: ", err)
-	}
-	if so.fileSize() > largeContractSize {
-		err := errors.New("contract is too large for a rhp1 renewal")
-		modules.WriteNegotiationRejection(conn, err)
-		return nil
-	}
-	// The storage obligation is received with a lock. Defer a call to unlock
-	// the storage obligation.
-	defer func() {
-		h.managedUnlockStorageObligation(so.id())
-	}()
-
-	// Perform the host settings exchange with the renter.
-	err = h.managedRPCSettings(conn)
-	if err != nil {
-		return extendErr("RPCSettings failed: ", err)
-	}
-
-	// Set the renewal deadline.
-	conn.SetDeadline(time.Now().Add(modules.NegotiateRenewContractTime))
-
-	// The renter will either accept or reject the host's settings.
-	err = modules.ReadNegotiationAcceptance(conn)
-	if err != nil {
-		return extendErr("renter rejected the host settings: ", ErrorCommunication(err.Error()))
-	}
-	// If the renter sends an acceptance of the settings, it will be followed
-	// by an unsigned transaction containing funding from the renter and a file
-	// contract which matches what the final file contract should look like.
-	// After the file contract, the renter will send a public key which is the
-	// renter's public key in the unlock conditions that protect the file
-	// contract from revision.
-	var txnSet []types.Transaction
-	var renterPK crypto.PublicKey
-	err = encoding.ReadObject(conn, &txnSet, modules.NegotiateMaxFileContractSetLen)
-	if err != nil {
-		return extendErr("unable to read transaction set: ", ErrorConnection(err.Error()))
-	}
-	err = encoding.ReadObject(conn, &renterPK, modules.NegotiateMaxSiaPubkeySize)
-	if err != nil {
-		return extendErr("unable to read renter public key: ", ErrorConnection(err.Error()))
-	}
-
-	_, maxFee := h.tpool.FeeEstimation()
-	h.mu.Lock()
-	settings := h.externalSettings(maxFee)
-	h.mu.Unlock()
-
-	// Verify that the transaction coming over the wire is a proper renewal.
-	hostCollateral, err := h.managedVerifyRenewedContract(so, txnSet, types.Ed25519PublicKey(renterPK))
-	if err != nil {
-		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
-		return extendErr("verification of renewal failed: ", err)
-	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, txnSet)
-	if err != nil {
-		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
-		return extendErr("failed to add collateral: ", err)
-	}
-	// The host indicates acceptance, then sends the new parents, inputs, and
-	// outputs to the transaction.
-	err = modules.WriteNegotiationAcceptance(conn)
-	if err != nil {
-		return extendErr("failed to write acceptance: ", ErrorConnection(err.Error()))
-	}
-	err = encoding.WriteObject(conn, newParents)
-	if err != nil {
-		return extendErr("failed to write new parents: ", ErrorConnection(err.Error()))
-	}
-	err = encoding.WriteObject(conn, newInputs)
-	if err != nil {
-		return extendErr("failed to write new inputs: ", ErrorConnection(err.Error()))
-	}
-	err = encoding.WriteObject(conn, newOutputs)
-	if err != nil {
-		return extendErr("failed to write new outputs: ", ErrorConnection(err.Error()))
-	}
-
-	// The renter will send a negotiation response, followed by transaction
-	// signatures for the file contract transaction in the case of acceptance.
-	// The transaction signatures will be followed by another transaction
-	// signature to sign the no-op file contract revision associated with the
-	// new file contract.
-	err = modules.ReadNegotiationAcceptance(conn)
-	if err != nil {
-		return extendErr("renter rejected collateral extension: ", ErrorCommunication(err.Error()))
-	}
-	var renterTxnSignatures []types.TransactionSignature
-	var renterRevisionSignature types.TransactionSignature
-	err = encoding.ReadObject(conn, &renterTxnSignatures, modules.NegotiateMaxTransactionSignatureSize)
-	if err != nil {
-		return extendErr("failed to read renter transaction signatures: ", ErrorConnection(err.Error()))
-	}
-	err = encoding.ReadObject(conn, &renterRevisionSignature, modules.NegotiateMaxTransactionSignatureSize)
-	if err != nil {
-		return extendErr("failed to read renter revision signatures: ", ErrorConnection(err.Error()))
-	}
-
-	// The host adds the renter transaction signatures, then signs the
-	// transaction and submits it to the blockchain, creating a storage
-	// obligation in the process. The host's part is now complete and the
-	// contract is finalized, but to give confidence to the renter the host
-	// will send the signatures so that the renter can immediately have the
-	// completed file contract.
-	//
-	// During finalization the signatures sent by the renter are all checked.
-	h.mu.RLock()
-	fc := txnSet[len(txnSet)-1].FileContracts[0]
-	renewRevenue := rhp2RenewBasePrice(so, settings, fc)
-	renewRisk := rhp2RenewBaseCollateral(so, settings, fc)
-	h.mu.RUnlock()
-
-	fca := finalizeContractArgs{
-		builder:                 txnBuilder,
-		contractPrice:           settings.ContractPrice,
-		renterPK:                renterPK,
-		renterSignatures:        renterTxnSignatures,
-		renterRevisionSignature: renterRevisionSignature,
-		initialSectorRoots:      so.SectorRoots,
-		hostCollateral:          hostCollateral,
-		hostInitialRevenue:      renewRevenue,
-		hostInitialRisk:         renewRisk,
-	}
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
-	if err != nil {
-		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
-		return extendErr("failed to finalize contract: ", err)
-	}
-	defer h.managedUnlockStorageObligation(newSOID)
-	err = modules.WriteNegotiationAcceptance(conn)
-	if err != nil {
-		return extendErr("failed to write acceptance: ", ErrorConnection(err.Error()))
-	}
-	// The host sends the transaction signatures to the renter, followed by the
-	// revision signature. Negotiation is complete.
-	err = encoding.WriteObject(conn, hostTxnSignatures)
-	if err != nil {
-		return extendErr("failed to write transaction signatures: ", ErrorConnection(err.Error()))
-	}
-	err = encoding.WriteObject(conn, hostRevisionSignature)
-	if err != nil {
-		return extendErr("failed to write revision signature: ", ErrorConnection(err.Error()))
-	}
-	return nil
 }
 
 // managedVerifyRenewedContract checks that the contract renewal matches the
