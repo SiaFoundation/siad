@@ -10,8 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestInstructionReadRegistrySID tests the ReadRegistrySID instruction.
-func TestInstructionReadRegistrySID(t *testing.T) {
+// TestInstructionReadRegistryEID tests the ReadRegistryEID instruction.
+func TestInstructionReadRegistryEID(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -35,7 +35,7 @@ func TestInstructionReadRegistrySID(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistrySIDInstruction(modules.RegistryEntryID(spk, tweak), false)
+	tb.AddReadRegistryEIDInstruction(modules.RegistryEntryID(spk, tweak), false)
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -64,9 +64,9 @@ func TestInstructionReadRegistrySID(t *testing.T) {
 	}
 }
 
-// TestInstructionReadRegistrySIDNotFound tests the ReadRegistrySID instruction
+// TestInstructionReadRegistryEIDNotFound tests the ReadRegistryEID instruction
 // for when an entry isn't found.
-func TestInstructionReadRegistrySIDNotFound(t *testing.T) {
+func TestInstructionReadRegistryEIDNotFound(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -81,7 +81,7 @@ func TestInstructionReadRegistrySIDNotFound(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	refund := tb.AddReadRegistrySIDInstruction(modules.RegistryEntryID(spk, crypto.Hash{}), true)
+	refund := tb.AddReadRegistryEIDInstruction(modules.RegistryEntryID(spk, crypto.Hash{}), true)
 
 	// Execute it.
 	outputs, remainingBudget, err := mdm.ExecuteProgramWithBuilderCustomBudget(tb, so, 0, false)
