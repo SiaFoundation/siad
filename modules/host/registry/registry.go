@@ -57,7 +57,7 @@ type (
 	// Registry is an in-memory key-value store. Renter's can pay the host to
 	// register data with a given pubkey and secondary key (tweak).
 	Registry struct {
-		entries    map[modules.SubscriptionID]*value
+		entries    map[modules.RegistryEntryID]*value
 		staticPath string
 		staticFile *os.File
 		usage      bitfield
@@ -85,8 +85,8 @@ type (
 )
 
 // mapKey creates a key usable in in-memory maps from the value.
-func (v *value) mapKey() modules.SubscriptionID {
-	return modules.RegistrySubscriptionID(v.key, v.tweak)
+func (v *value) mapKey() modules.RegistryEntryID {
+	return modules.DeriveRegistryEntryID(v.key, v.tweak)
 }
 
 // update updates a value with a new revision, expiry and data.
@@ -131,16 +131,16 @@ func (r *Registry) Close() error {
 }
 
 // Get fetches the data associated with a key and tweak from the registry.
-func (r *Registry) Get(sid modules.SubscriptionID) (modules.SignedRegistryValue, bool) {
+func (r *Registry) Get(sid modules.RegistryEntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool) {
 	r.mu.Lock()
 	v, ok := r.entries[sid]
 	r.mu.Unlock()
 	if !ok {
-		return modules.SignedRegistryValue{}, false
+		return types.SiaPublicKey{}, modules.SignedRegistryValue{}, false
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
+	return v.key, modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
 }
 
 // Len returns the length of the registry.
@@ -309,7 +309,7 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 	// Check if the entry exists already. If it does and the new revision is
 	// larger than the last one, we update it.
 	var err error
-	entry, exists := r.entries[modules.RegistrySubscriptionID(pubKey, rv.Tweak)]
+	entry, exists := r.entries[modules.DeriveRegistryEntryID(pubKey, rv.Tweak)]
 	if !exists {
 		// If it doesn't exist we create a new entry.
 		entry, err = r.newValue(rv, pubKey, expiry)

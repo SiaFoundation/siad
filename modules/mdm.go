@@ -128,10 +128,10 @@ const (
 	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
 	RPCIReadRegistryLen = 24
 
-	// RPCIReadRegistrySIDLen is the expected length of the 'Args' of an
-	// ReadRegistrySID instruction.
-	// sidOffset = 8 bytes
-	RPCIReadRegistrySIDLen = 8
+	// RPCIReadRegistryEIDLen is the expected length of the 'Args' of an
+	// ReadRegistryEID instruction.
+	// sidOffset = 8 bytes + pubkey bool 1 byte
+	RPCIReadRegistryEIDLen = 9
 )
 
 var (
@@ -174,9 +174,9 @@ var (
 	// instruction.
 	SpecifierReadRegistry = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
 
-	// SpecifierReadRegistrySID is the specifier for the ReadRegistrySID
+	// SpecifierReadRegistryEID is the specifier for the ReadRegistryEID
 	// instruction.
-	SpecifierReadRegistrySID = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y', 'S', 'I', 'D'}
+	SpecifierReadRegistryEID = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y', 'S', 'I', 'D'}
 
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
@@ -199,15 +199,15 @@ type (
 		RevisionTxn types.Transaction
 	}
 
-	// SubscriptionID is a hash derived from the public key and tweak that a
+	// RegistryEntryID is a hash derived from the public key and tweak that a
 	// renter would like to subscribe to.
-	SubscriptionID crypto.Hash
+	RegistryEntryID crypto.Hash
 )
 
-// RegistrySubscriptionID is a helper to derive a subscription id for a registry
-// key value pair.
-func RegistrySubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) SubscriptionID {
-	return SubscriptionID(crypto.HashAll(pubKey, tweak))
+// DeriveRegistryEntryID is a helper to derive an entry id for a registry key value
+// pair.
+func DeriveRegistryEntryID(pubKey types.SiaPublicKey, tweak crypto.Hash) RegistryEntryID {
+	return RegistryEntryID(crypto.HashAll(pubKey, tweak))
 }
 
 // RPCHasSectorInstruction creates an Instruction from arguments.
@@ -502,7 +502,7 @@ func (p Program) ReadOnly() bool {
 		case SpecifierUpdateRegistry:
 			// considered read-only cause it doesn't update a contract
 		case SpecifierReadRegistry:
-		case SpecifierReadRegistrySID:
+		case SpecifierReadRegistryEID:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -531,7 +531,7 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierUpdateRegistry:
 		case SpecifierReadRegistry:
-		case SpecifierReadRegistrySID:
+		case SpecifierReadRegistryEID:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

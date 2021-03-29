@@ -26,8 +26,12 @@ type (
 		generateSectors bool
 		blockHeight     types.BlockHeight
 		sectors         map[crypto.Hash][]byte
-		registry        map[modules.SubscriptionID]modules.SignedRegistryValue
+		registry        map[modules.RegistryEntryID]TestRegistryValue
 		mu              sync.Mutex
+	}
+	TestRegistryValue struct {
+		modules.SignedRegistryValue
+		spk types.SiaPublicKey
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
@@ -48,7 +52,7 @@ func newTestHost() *TestHost {
 func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
 		generateSectors: generateSectors,
-		registry:        make(map[modules.SubscriptionID]modules.SignedRegistryValue),
+		registry:        make(map[modules.RegistryEntryID]TestRegistryValue),
 		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
@@ -80,32 +84,35 @@ func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 }
 
 // RegistryGet retrieves a value from the registry.
-func (h *TestHost) RegistryGet(sid modules.SubscriptionID) (modules.SignedRegistryValue, bool) {
+func (h *TestHost) RegistryGet(sid modules.RegistryEntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	v, exists := h.registry[sid]
 	if !exists {
-		return modules.SignedRegistryValue{}, false
+		return types.SiaPublicKey{}, modules.SignedRegistryValue{}, false
 	}
-	return v, true
+	return v.spk, v.SignedRegistryValue, true
 }
 
 // RegistryUpdate updates a value in the registry.
 func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	key := modules.RegistrySubscriptionID(pubKey, rv.Tweak)
+	key := modules.DeriveRegistryEntryID(pubKey, rv.Tweak)
 	oldRV, exists := h.registry[key]
 
 	if exists && rv.Revision < oldRV.Revision {
-		return oldRV, registry.ErrLowerRevNum
+		return oldRV.SignedRegistryValue, registry.ErrLowerRevNum
 	}
 	if exists && rv.Revision == oldRV.Revision {
-		return oldRV, registry.ErrSameRevNum
+		return oldRV.SignedRegistryValue, registry.ErrSameRevNum
 	}
 
-	h.registry[key] = rv
-	return oldRV, nil
+	h.registry[key] = TestRegistryValue{
+		SignedRegistryValue: rv,
+		spk:                 pubKey,
+	}
+	return oldRV.SignedRegistryValue, nil
 }
 
 // ReadSector implements the Host interface by returning a random sector for

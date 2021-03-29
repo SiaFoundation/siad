@@ -770,10 +770,10 @@ func (h *Host) managedExternalSettings() modules.HostExternalSettings {
 }
 
 // RegistryGet retrieves a value from the registry.
-func (h *Host) RegistryGet(sid modules.SubscriptionID) (modules.SignedRegistryValue, bool) {
+func (h *Host) RegistryGet(sid modules.RegistryEntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool) {
 	err := h.tg.Add()
 	if err != nil {
-		return modules.SignedRegistryValue{}, false
+		return types.SiaPublicKey{}, modules.SignedRegistryValue{}, false
 	}
 	defer h.tg.Done()
 	return h.staticRegistry.Get(sid)
@@ -789,7 +789,7 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 	// On disrupt, return the most recent known value if it exists. Otherwise it
 	// will add the value.
 	if h.dependencies.Disrupt("RegistryUpdateLyingHost") {
-		srv, found := h.staticRegistry.Get(modules.RegistrySubscriptionID(pubKey, rv.Tweak))
+		_, srv, found := h.staticRegistry.Get(modules.DeriveRegistryEntryID(pubKey, rv.Tweak))
 		if found {
 			return srv, registry.ErrSameRevNum
 		}

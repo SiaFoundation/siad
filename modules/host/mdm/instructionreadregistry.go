@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // instructionReadRegistry defines an instruction to read an entry from the
@@ -47,7 +48,7 @@ func (p *program) staticDecodeReadRegistryInstruction(instruction modules.Instru
 }
 
 // executeReadRegistry executes a registry lookup.
-func executeReadRegistry(prevOutput output, ps *programState, sid modules.SubscriptionID) (output, types.Currency) {
+func executeReadRegistry(prevOutput output, ps *programState, sid modules.RegistryEntryID, needPubKeyAndTweak bool) (output, types.Currency) {
 	// Prepare the output. An empty output.Output means the data wasn't found.
 	out := output{
 		NewSize:       prevOutput.NewSize,
@@ -56,16 +57,24 @@ func executeReadRegistry(prevOutput output, ps *programState, sid modules.Subscr
 	}
 
 	// Get the value. If this fails we are done.
-	rv, found := ps.host.RegistryGet(sid)
+	spk, rv, found := ps.host.RegistryGet(sid)
 	if !found {
 		_, refund := modules.MDMReadRegistryCost(ps.priceTable)
 		return out, refund
 	}
 
+	// Prepend the pubkey and tweak if necessary.
+	if needPubKeyAndTweak {
+		out.Output = append(out.Output, encoding.Marshal(spk)...)
+		out.Output = append(out.Output, rv.Tweak[:]...)
+	}
+
 	// Return the signature followed by the data.
 	rev := make([]byte, 8)
 	binary.LittleEndian.PutUint64(rev, rv.Revision)
-	out.Output = append(rv.Signature[:], append(rev, rv.Data...)...)
+	out.Output = append(out.Output, rv.Signature[:]...)
+	out.Output = append(out.Output, rev...)
+	out.Output = append(out.Output, rv.Data...)
 	return out, types.ZeroCurrency
 }
 
@@ -80,7 +89,7 @@ func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Curr
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
-	return executeReadRegistry(prevOutput, i.staticState, modules.RegistrySubscriptionID(pubKey, tweak))
+	return executeReadRegistry(prevOutput, i.staticState, modules.DeriveRegistryEntryID(pubKey, tweak), false)
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.
