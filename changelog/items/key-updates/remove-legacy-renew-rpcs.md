@@ -1,0 +1,1 @@
+- remove rhp1 and rhp2 renew rpcs that don't clear the old contract upon renewal
