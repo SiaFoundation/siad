@@ -628,10 +628,13 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	if err != nil {
 		return err
 	}
+
 	// Save the changes.
 	id := r.mu.Lock()
+	r.persist.ConversionRates = s.CurrencyConversionRates
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
+	r.persist.MonetizationBase = s.MonetizationBase
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -825,11 +828,16 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.uploadHeap.managedPauseStatus()
+	id := r.mu.RLock()
+	mb, ccr := r.persist.MonetizationBase, r.persist.ConversionRates
+	r.mu.RUnlock(id)
 	return modules.RenterSettings{
-		Allowance:        r.hostContractor.Allowance(),
-		IPViolationCheck: enabled,
-		MaxDownloadSpeed: download,
-		MaxUploadSpeed:   upload,
+		Allowance:               r.hostContractor.Allowance(),
+		CurrencyConversionRates: ccr,
+		IPViolationCheck:        enabled,
+		MaxDownloadSpeed:        download,
+		MaxUploadSpeed:          upload,
+		MonetizationBase:        mb,
 		UploadsStatus: modules.UploadsStatus{
 			Paused:       paused,
 			PauseEndTime: endTime,

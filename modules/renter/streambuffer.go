@@ -198,6 +198,7 @@ type streamBuffer struct {
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        modules.DataSourceID
 	staticPricePerMS      types.Currency
+	staticWallet          modules.SiacoinSenderMulti
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.

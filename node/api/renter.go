@@ -963,6 +963,26 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		settings.IPViolationCheck = ipviolationcheck
 	}
 
+	// Parse usd conversion rate.
+	if usd := req.FormValue("usdconversionrate"); usd != "" {
+		var usdConversionRate types.Currency
+		if _, err := fmt.Sscan(usd, &usdConversionRate); err != nil {
+			WriteError(w, Error{"unable to parse usdConversionRate: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.CurrencyConversionRates[modules.CurrencyUSD] = usdConversionRate
+	}
+
+	// Parse monetization base.
+	if mb := req.FormValue("monetizationbase"); mb != "" {
+		var monetizationBase types.Currency
+		if _, err := fmt.Sscan(mb, &monetizationBase); err != nil {
+			WriteError(w, Error{"unable to parse monetizationbase: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.MonetizationBase = monetizationBase
+	}
+
 	// Set the settings in the renter.
 	err = api.renter.SetSettings(settings)
 	if err != nil {

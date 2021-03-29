@@ -648,6 +648,9 @@ type RenterSettings struct {
 	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
 	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
 	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
+
+	CurrencyConversionRates map[string]types.Currency `json:"currencyconversionrates"`
+	MonetizationBase        types.Currency            `json:"monetizationbase"`
 }
 
 // UploadsStatus contains information about the Renter's Uploads
@@ -1351,6 +1354,15 @@ type Renter interface {
 type Streamer interface {
 	io.ReadSeeker
 	io.Closer
+}
+
+// SkyfileStreamer is the interface implemented by the Renter's skyfile type
+// which allows for streaming files uploaded to the Sia network.
+type SkyfileStreamer interface {
+	io.ReadSeeker
+	io.Closer
+
+	Metadata() SkyfileMetadata
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

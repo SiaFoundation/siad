@@ -121,6 +121,13 @@ type streamerFromReader struct {
 	*bytes.Reader
 }
 
+// skylinkStreamerFromReader wraps a streamerFromReader to give it a Metadata()
+// method, which allows it to satisfy the modules.SkyfileStreamer interface.
+type skylinkStreamerFromReader struct {
+	modules.Streamer
+	staticMD modules.SkyfileMetadata
+}
+
 // Close is a no-op because a bytes.Reader doesn't need to be closed.
 func (sfr *streamerFromReader) Close() error {
 	return nil
@@ -133,6 +140,20 @@ func StreamerFromSlice(b []byte) modules.Streamer {
 	return &streamerFromReader{
 		Reader: reader,
 	}
+}
+
+// SkylinkStreamerFromSlice creates a modules.SkyfileStreamer from a byte slice.
+func SkylinkStreamerFromSlice(b []byte, md modules.SkyfileMetadata) modules.SkyfileStreamer {
+	streamer := StreamerFromSlice(b)
+	return &skylinkStreamerFromReader{
+		Streamer: streamer,
+		staticMD: md,
+	}
+}
+
+// Metadata implements the modules.SkyfileStreamer interface.
+func (sfr *skylinkStreamerFromReader) Metadata() modules.SkyfileMetadata {
+	return sfr.staticMD
 }
 
 // CreateSkylinkFromSiafile creates a skyfile from a siafile. This requires
@@ -637,13 +658,13 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.SkyfileStreamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
 			return modules.SkyfileLayout{}, modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
 		}
-		return modules.SkyfileLayout{}, sf.Metadata, StreamerFromSlice(sf.Content), nil
+		return modules.SkyfileLayout{}, sf.Metadata, SkylinkStreamerFromSlice(sf.Content, sf.Metadata), nil
 	}
 
 	// Check if this skylink is already in the stream buffer set. If so, we can

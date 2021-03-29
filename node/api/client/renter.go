@@ -515,6 +515,22 @@ func (c *Client) RenterRenamePost(siaPathOld, siaPathNew modules.SiaPath, root b
 	return
 }
 
+// RenterSetMonetizationBase updates the renter's monetization base.
+func (c *Client) RenterSetMonetizationBase(mb types.Currency) (err error) {
+	values := url.Values{}
+	values.Set("monetizationbase", fmt.Sprint(mb))
+	err = c.post("/renter", values.Encode(), nil)
+	return
+}
+
+// RenterSetUSDConversionRate update the renter's usd conversion rate.
+func (c *Client) RenterSetUSDConversionRate(cr types.Currency) (err error) {
+	values := url.Values{}
+	values.Set("usdconversionrate", fmt.Sprint(cr))
+	err = c.post("/renter", values.Encode(), nil)
+	return
+}
+
 // RenterSetStreamCacheSizePost uses the /renter endpoint to change the renter's
 // streamCacheSize for streaming
 func (c *Client) RenterSetStreamCacheSizePost(cacheSize uint64) (err error) {
