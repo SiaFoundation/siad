@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -94,12 +93,6 @@ type (
 		Available bool   `json:"available"`
 		Version   string `json:"version"`
 	}
-	// gitlabRelease represents some of the JSON returned by the GitLab
-	// release API endpoint. Only the fields relevant to updating are
-	// included.
-	gitlabRelease struct {
-		Name string `json:"name"`
-	}
 
 	// SiaConstants is a struct listing all of the constants in use.
 	SiaConstants struct {
@@ -153,32 +146,22 @@ type (
 	}
 )
 
-// fetchLatestRelease returns metadata about the most recent GitLab release.
-func fetchLatestRelease() (_ gitlabRelease, err error) {
-	resp, err := http.Get("https://gitlab.com/api/v4/projects/7508674/repository/tags?order_by=name")
+// fetchLatestVersion returns the version of the latest release.
+func fetchLatestVersion() (string, error) {
+	resp, err := http.Get("https://sia.tech/releases/siad/latest")
 	if err != nil {
-		return gitlabRelease{}, err
+		return "", err
 	}
-	defer func() {
-		closeErr := resp.Body.Close()
-		if closeErr != nil {
-			err = errors.Compose(err, closeErr)
-		}
-	}()
-	var releases []gitlabRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return gitlabRelease{}, err
-	} else if len(releases) == 0 {
-		return gitlabRelease{}, errors.New("no releases found")
+	defer resp.Body.Close()
+	versionBytes, err := ioutil.ReadAll(io.LimitReader(resp.Body, 100))
+	if err != nil {
+		return "", err
 	}
-
-	// Find the most recent release that is not a nightly or release candidate.
-	for _, release := range releases {
-		if build.IsVersion(release.Name[1:]) && release.Name[0] == 'v' {
-			return release, nil
-		}
+	version := string(bytes.TrimSpace(versionBytes))
+	if !build.IsVersion(version) {
+		return "", fmt.Errorf("sia.tech reported non-version release %q", version)
 	}
-	return gitlabRelease{}, errors.New("No non-nightly or non-RC releases found")
+	return version, nil
 }
 
 // updateToRelease updates siad and siac to the release specified. siac is
@@ -190,7 +173,7 @@ func updateToRelease(version string) (err error) {
 	}
 
 	// Download file of signed hashes.
-	resp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/Sia-%s-SHA256SUMS.txt.asc", version))
+	resp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/siad/Sia-v%s-SHA256SUMS.txt.asc", version))
 	if err != nil {
 		return err
 	}
@@ -232,8 +215,8 @@ func updateToRelease(version string) (err error) {
 	}
 
 	// download release archive
-	releaseFilePrefix := fmt.Sprintf("Sia-%s-%s-%s", version, runtime.GOOS, runtime.GOARCH)
-	zipResp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/%s.zip", releaseFilePrefix))
+	releaseFilePrefix := fmt.Sprintf("Sia-v%s-%s-%s", version, runtime.GOOS, runtime.GOARCH)
+	zipResp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/siad/%s.zip", releaseFilePrefix))
 	if err != nil {
 		return err
 	}
@@ -371,15 +354,14 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 
 // daemonUpdateHandlerGET handles the API call that checks for an update.
 func (api *API) daemonUpdateHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	release, err := fetchLatestRelease()
+	version, err := fetchLatestVersion()
 	if err != nil {
 		WriteError(w, Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	latestVersion := release.Name[1:] // delete leading 'v'
 	WriteJSON(w, UpdateInfo{
-		Available: build.VersionCmp(latestVersion, build.Version) > 0,
-		Version:   latestVersion,
+		Available: build.VersionCmp(version, build.Version) > 0,
+		Version:   version,
 	})
 }
 
@@ -388,12 +370,12 @@ func (api *API) daemonUpdateHandlerGET(w http.ResponseWriter, _ *http.Request, _
 // should always check the latest version via daemonUpdateHandlerGET first.
 // TODO: add support for specifying version to update to.
 func (api *API) daemonUpdateHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	release, err := fetchLatestRelease()
+	version, err := fetchLatestVersion()
 	if err != nil {
 		WriteError(w, Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	err = updateToRelease(release.Name)
+	err = updateToRelease(version)
 	if err != nil {
 		if rerr := update.RollbackError(err); rerr != nil {
 			WriteError(w, Error{Message: "Serious error: Failed to rollback from bad update: " + rerr.Error()}, http.StatusInternalServerError)
