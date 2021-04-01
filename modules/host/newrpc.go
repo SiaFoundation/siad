@@ -130,6 +130,10 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 		}
 	}
 
+	// The original deadline may have elapsed while we waited for the lock.
+	// Extend it again before writing the response.
+	s.extendDeadline(modules.NegotiateRecentRevisionTime)
+
 	// Write the response.
 	resp := modules.LoopLockResponse{
 		Acquired:     lockErr == nil,
