@@ -1,1 +1,0 @@
-- add license to monetization

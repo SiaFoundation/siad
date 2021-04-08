@@ -1,1 +1,0 @@
-- Add `siac skynet backup` and `siac skynet restore` commands for backing up and restoring skyfiles.

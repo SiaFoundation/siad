@@ -1,1 +1,0 @@
-- Add `/renter/bubble` route to be able to manually trigger bubble updates

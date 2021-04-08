@@ -1,1 +1,0 @@
-- Add `bubbleScheduler` to the renter to manage the bubble update requests

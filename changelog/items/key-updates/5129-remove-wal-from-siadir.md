@@ -1,1 +1,0 @@
-- Remove the `wal` from the `.siadir`

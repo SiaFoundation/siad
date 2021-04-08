@@ -1,3 +1,56 @@
+## Apr 7, 2021:
+### v1.5.6
+**Key Updates**
+- Add repair information to `FileInfo`
+- Add checking for duplicates when updating the skynet blocklist.
+- Remove the `wal` from the `.siadir`
+- Add `bubbleScheduler` to the renter to manage the bubble update requests
+- Create an `accounting` module for the Sia node to provide basic accounting information about the modules.
+- Track EA spending through the account spending details to see what the money
+  from an ephemeral account is being spent on.
+- add license to monetization
+- remove rhp1 and rhp2 renew rpcs that don't clear the old contract upon renewal
+- Add parsing of module names to `siad -M` and automatically enable the
+    `accounting`and `feemanager` modules if the `wallet` is enabled.
+- add ability to specify monetizers when uploading a skyfile
+- update contract size we consider large from 2TB to 10TB to allow for larger contracts before slowing down updates to them.
+- prevent large contracts from renewing if legacy renewal RPCs are used. 
+
+**Bugs Fixed**
++ Changed the minimum acceptable version of gateway peers to 1.5.4 for the Foundation hardfork
+- Fixed panic condition in the repair loop for the unique refresh paths.
+
+**Other**
+- Update `.gitlab-ci.yml` and `Makefile` to fix Windows nightly tests.
+- adds a new endpoint /host/contracts/*contractID* that returns a single contract from the host's database
+- extend account persistence to include spending details fields
+- Add `FundAccountSpending` to the financial metrics in the Renter.
+- Add `MaintenanceSpending` to the financial metrics in the Renter.
+
+## Feb 18, 2021:
+### v1.5.5
+**Key Updates**
+- Add the ability to backup a skylink and restore it from disk
+- Add Skynet stats to the `.siadir` metadata.
+- Add repair information to `.siadir` metadata
+- Add `stucksize` to the directory metadata to show the amount of data being handled by the stuck loop.
+- Change http status code for blocked content from 500 to 451
+- have host send an "ok" response when unsubscribing from a registry value
+- include the public key of the signed entry in the subscription notification response
+- Add `/renter/bubble` route to be able to manually trigger bubble updates
+- siac breaks down memory consumption of the individual memory managers
+- Improve download speeds and consistency.
+- Add `siac skynet backup` and `siac skynet restore` commands for backing up and restoring skyfiles.
+- Update default redundancy to be 10-30 for Skyfiles that exceed a single sector
+  in size.
+
+**Bugs Fixed**
+- The 'siac skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+- Introduce overflow file for sectors where the location counter has reached a value of >= 2^16 to fix uploads failing for all zero sectors
+
+**Other**
+- Add deletion of files that contain blocked skylinks in the bubble code.
+
 ## Jan 12, 2021:
 ### v1.5.4
 **Key Updates**

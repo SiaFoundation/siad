@@ -1,2 +1,0 @@
-- update contract size we consider large from 2TB to 10TB to allow for larger contracts before slowing down updates to them.
-- prevent large contracts from renewing if legacy renewal RPCs are used. 

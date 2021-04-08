@@ -1,2 +1,0 @@
-- Add `FundAccountSpending` to the financial metrics in the Renter.
-- Add `MaintenanceSpending` to the financial metrics in the Renter.

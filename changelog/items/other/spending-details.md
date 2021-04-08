@@ -1,1 +1,0 @@
-- extend account persistence to include spending details fields

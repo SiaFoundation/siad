@@ -1,1 +1,0 @@
-- The 'siac skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
