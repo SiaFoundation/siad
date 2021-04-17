@@ -128,21 +128,11 @@ fmt:
 vet:
 	go vet $(pkgs)
 
-# markdown-spellcheck runs codespell on all markdown files that are not
-# vendored.
-markdown-spellcheck:
-	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
-
-# lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
-# and other linters), the custom analyzers, and also a markdown spellchecker.
-lint: markdown-spellcheck
+# lint runs golangci-lint.
+lint:
 	golangci-lint run -c .golangci.yml ./...
 	analyze -lockcheck=false -- $(pkgs)
 	analyze -lockcheck -- $(lockcheckpkgs)
-
-# spellcheck checks for misspelled words in comments or strings.
-spellcheck: markdown-spellcheck
-	golangci-lint run -c .golangci.yml -E misspell
 
 # staticcheck runs the staticcheck tool
 # NOTE: this is not yet enabled in the CI system.

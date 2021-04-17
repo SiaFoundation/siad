@@ -6,14 +6,6 @@ if ! [ -x "$(command -v golangci-lint)" ]; then
   go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.37.1
 fi
 
-if ! [ -x "$(command -v codespell)" ]; then
-  echo "Installing codespell..."
-  if ! [ -x "$(command -v pip3)" ]; then
-    sudo apt install python3-pip
-  fi
-  pip3 install codespell
-fi
-
 if ! [ -x "$(command -v analyze)" ]; then
   echo "Installing analyze..."
   go get gitlab.com/NebulousLabs/analyze
