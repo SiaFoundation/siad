@@ -3,9 +3,8 @@ package gateway
 import (
 	"net"
 
-	"github.com/xtaci/smux"
-
 	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/internal/smux"
 )
 
 // A streamSession is a multiplexed transport that can accept or initiate
