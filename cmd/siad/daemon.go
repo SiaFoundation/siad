@@ -14,10 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"golang.org/x/crypto/ssh/terminal"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api/server"
-	"gitlab.com/NebulousLabs/Sia/profile"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node/api/server"
+	"go.sia.tech/siad/profile"
 )
 
 // passwordPrompt securely reads a password from stdin.

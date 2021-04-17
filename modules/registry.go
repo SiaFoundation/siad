@@ -3,7 +3,7 @@ package modules
 import (
 	"bytes"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"go.sia.tech/siad/crypto"
 )
 
 const (

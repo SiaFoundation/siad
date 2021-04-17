@@ -1,6 +1,6 @@
 package contractor
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "go.sia.tech/siad/modules"
 
 // Alerts implements the modules.Alerter interface for the contractor. It returns
 // all alerts of the contractor.

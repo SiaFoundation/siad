@@ -6,7 +6,7 @@ language_tabs: # must be one of https://git.io/vQNgJ
 
 toc_footers:
   - <a href='https://sia.tech'>The Official Sia Website
-  - <a href='https://gitlab.com/NebulousLabs/Sia'>Sia on GitLab</a>
+  - <a href='https://github.com/SiaFoundation/siad'>Sia on GitLab</a>
 
 search: true
 ---
@@ -77,7 +77,7 @@ The following details the documentation standards for the API endpoints.
 Contributors should follow these standards when submitting updates to the API
 documentation.  If you find API endpoints that do not adhere to these
 documentation standards please let the Sia team know by submitting an issue
-[here](https://gitlab.com/NebulousLabs/Sia/issues)
+[here](https://github.com/SiaFoundation/siad/issues)
 
 # Standard Responses
 
@@ -6914,7 +6914,7 @@ ID of the transaction being requested.
 {
   "transaction": {
     "transaction": {
-      // See types.Transaction in https://gitlab.com/NebulousLabs/Sia/blob/master/types/transactions.go
+      // See types.Transaction in https://github.com/SiaFoundation/siad/blob/master/types/transactions.go
     },
     "transactionid":         "1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "confirmationheight":    50000,
@@ -6947,7 +6947,7 @@ raw transaction. It is left undocumented here as the processed transaction (the
 rest of the fields in this object) are usually what is desired.
 
 See types.Transaction in
-https://gitlab.com/NebulousLabs/Sia/blob/master/types/transactions.go  
+https://github.com/SiaFoundation/siad/blob/master/types/transactions.go  
 
 **transactionid**  
 ID of the transaction from which the wallet transaction was derived.  

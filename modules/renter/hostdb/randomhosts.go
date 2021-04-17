@@ -3,9 +3,9 @@ package hostdb
 import (
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/hostdb/hosttree"
+	"go.sia.tech/siad/types"
 )
 
 // RandomHosts implements the HostDB interface's RandomHosts() method. It takes

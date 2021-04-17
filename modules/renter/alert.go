@@ -1,7 +1,7 @@
 package renter
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // Alerts implements the modules.Alerter interface for the renter. It returns

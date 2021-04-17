@@ -1,7 +1,7 @@
 package dependencies
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // DependencyDoNotAcceptTxnSet will not accept a transaction set.

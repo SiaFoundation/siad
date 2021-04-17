@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/go-upnp"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
 )
 
 // myExternalIP discovers the gateway's external IP by querying a centralized

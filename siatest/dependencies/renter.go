@@ -3,7 +3,7 @@ package dependencies
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // DependencyTimeoutProjectDownloadByRoot immediately times out projects that

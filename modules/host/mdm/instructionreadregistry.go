@@ -4,9 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // instructionReadRegistry defines an instruction to read an entry from the

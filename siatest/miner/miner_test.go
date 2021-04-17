@@ -3,9 +3,9 @@ package miner
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"go.sia.tech/siad/siatest"
 
-	"gitlab.com/NebulousLabs/Sia/node"
+	"go.sia.tech/siad/node"
 )
 
 // TestMinerEmptyBlock tests if a miner can mine and submit an empty block.

@@ -3,7 +3,7 @@ package miner
 import (
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 )
 
 // threadedMine starts a gothread that does CPU mining. threadedMine is the

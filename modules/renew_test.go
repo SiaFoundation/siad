@@ -3,7 +3,7 @@ package modules
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 )
 
 // TestRenewBaseCost is a unit test for RenewBaseCosts.

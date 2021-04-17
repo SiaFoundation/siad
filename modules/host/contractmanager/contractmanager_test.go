@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
 )
 
 // contractManagerTester holds a contract manager along with some other fields

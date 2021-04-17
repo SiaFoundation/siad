@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // TestEscapeSiaPath probes the escapeSiaPath function

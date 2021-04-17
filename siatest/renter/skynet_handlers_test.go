@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 )
 

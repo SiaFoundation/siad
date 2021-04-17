@@ -3,7 +3,7 @@ package typesutil
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

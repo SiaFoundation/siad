@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/node/api"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/siatest/dependencies"
 )
 
 // TestSkynetDownloads verifies the functionality of Skynet downloads.

@@ -11,9 +11,9 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // nebulousAddress is the nebulous address that is used to send SiaCoin to

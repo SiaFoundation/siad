@@ -11,9 +11,9 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/filesystem/siadir"
+	"go.sia.tech/siad/modules/renter/filesystem/siafile"
 )
 
 // bubbledSiaDirMetadata is a wrapper for siadir.Metadata that also contains the

@@ -12,12 +12,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/filesystem/siadir"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest/dependencies"
 )
 
 // updateFileMetadatas updates the metadata of all siafiles within a dir.

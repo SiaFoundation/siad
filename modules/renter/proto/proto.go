@@ -3,8 +3,8 @@ package proto
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // Dependencies.

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // SprintTxnWithObjectIDs creates a string representing this Transaction in human-readable form with all

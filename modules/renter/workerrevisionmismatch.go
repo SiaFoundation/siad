@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"go.sia.tech/siad/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/errors"
 )
 

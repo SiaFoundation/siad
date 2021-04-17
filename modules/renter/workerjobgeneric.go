@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/errors"
 )
 

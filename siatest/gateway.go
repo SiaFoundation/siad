@@ -1,7 +1,7 @@
 package siatest
 
 import (
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 )
 
 // hasPeer checks if peer is a peer of tn.

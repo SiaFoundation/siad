@@ -5,8 +5,8 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestImmediateBlockFacts grabs the block facts object from the block explorer

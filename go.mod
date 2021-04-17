@@ -1,4 +1,4 @@
-module gitlab.com/NebulousLabs/Sia
+module go.sia.tech/siad
 
 go 1.13
 

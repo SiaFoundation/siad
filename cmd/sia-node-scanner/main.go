@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/gateway"
+	siaPersist "go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )

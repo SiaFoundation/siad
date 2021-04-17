@@ -5,8 +5,8 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
 )
 
 var (

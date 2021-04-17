@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
 )
 
 type (

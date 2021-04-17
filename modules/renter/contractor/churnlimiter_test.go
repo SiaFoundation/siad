@@ -3,8 +3,8 @@ package contractor
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // contractWithSize is a helper function that creates a dummy file contract with a certain size.

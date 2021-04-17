@@ -39,10 +39,10 @@ To build Sia on your machine, enter the following on the command line:
 ```bash
 # Download Sia and its dependencies
 # Binaries will be installed in $GOPATH/bin
-$ go get -u gitlab.com/NebulousLabs/Sia/...
+$ go get -u go.sia.tech/siad/...
 
 # Switch to directory containing Sia source code
-$ cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
+$ cd $GOPATH/src/go.sia.tech/siad
 
 # You have three Sia builds to choose from.
 # To build the standard release binary:
@@ -89,11 +89,11 @@ has a 'forked' copy of the original repo at
 `https://gitlab.com/<your GitLab username>/Sia`.
 
 When you installed Sia using `go get`, the go tool put the Sia source code in 
-$GOPATH/src/gitlab.com/NebulousLabs/Sia. Change to that directory and set up
+$GOPATH/src/go.sia.tech/siad. Change to that directory and set up
 your fork as a git [remote][remote]:
 
 ```bash
-$ cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
+$ cd $GOPATH/src/go.sia.tech/siad
 # Add your fork as a remote.  Name it whatever is convenient,
 # e.g your GitLab username
 $ git remote add <remote name> https://gitlab.com/<username>/Sia.git
@@ -103,15 +103,15 @@ $ git remote add <remote name> git@gitlab.com:<username>/Sia.git
 
 ### Write some code
 
-Right now your git local repository only has one branch (called 'master' by 
-default). If you want to make changes, add a new branch and make your changes 
-there. You should maintain master as an up-to-date copy of the NebulousLabs/Sia 
-repository's master branch.
+Right now your git local repository only has one branch (called 'master' by
+default). If you want to make changes, add a new branch and make your changes
+there. You should maintain master as an up-to-date copy of the repository's
+master branch.
 
 To create and checkout a new branch:
 ```bash
 # If you're not already in the right directory:
-$ cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
+$ cd $GOPATH/src/go.sia.tech/siad
 # Make sure you're on branch master
 $ git checkout master
 # Create and checkout a new branch
@@ -229,9 +229,9 @@ Feel free to ask for help on the #core-dev channel on [discord][discord].
 [branch]: http://blog.scottlowe.org/2015/01/27/using-fork-branch-git-workflow/
 [cheney]: http://dave.cheney.net/2013/06/09/writing-table-driven-tests-in-go
 [cross]: http://dave.cheney.net/2015/08/22/cross-compilation-with-go-1-5
-[developers.md]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Developers.md
+[developers.md]: https://github.com/SiaFoundation/siad/blob/master/doc/Developers.md
 [discord]: https://discord.gg/sia
-[docs]: https://gitlab.com/NebulousLabs/Sia/tree/master/doc
+[docs]: https://github.com/SiaFoundation/siad/tree/master/doc
 [effective]: https://golang.org/doc/effective_go.html
 [git]: https://git-scm.com/doc
 [gofmt]: https://golang.org/cmd/gofmt/
@@ -240,11 +240,11 @@ Feel free to ask for help on the #core-dev channel on [discord][discord].
 [install-go]: https://golang.org/doc/install
 [luke]: https://gist.github.com/lukechampine/6418449
 [nutshell]: https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell
-[resources.md]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Resources.md
+[resources.md]: https://github.com/SiaFoundation/siad/blob/master/doc/Resources.md
 [remote]: https://git-scm.com/book/en/v2/Git-Basics-Working-with-Remotes
-[sia]: https://gitlab.com/NebulousLabs/Sia
+[sia]: https://github.com/SiaFoundation/siad
 [signup]: https://github.com/join?source=header-home
 [source]: https://golang.org/doc/install/source
 [stashing]: https://git-scm.com/book/en/v2/Git-Tools-Stashing-and-Cleaning
-[test-doc]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Testing.md
+[test-doc]: https://github.com/SiaFoundation/siad/blob/master/doc/Testing.md
 [tour]: https://tour.golang.org/welcome/1

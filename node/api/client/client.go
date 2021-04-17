@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/node/api"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/node/api"
 
 	"gitlab.com/NebulousLabs/errors"
 )

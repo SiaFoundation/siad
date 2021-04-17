@@ -3,8 +3,8 @@ package host
 import (
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // rhp2RenewBaseCollateral returns the base collateral on the storage in the file

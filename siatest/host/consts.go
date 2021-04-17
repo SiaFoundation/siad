@@ -3,8 +3,8 @@ package host
 import (
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest"
 )
 
 // hostTestDir creates a temporary testing directory for a host. This should

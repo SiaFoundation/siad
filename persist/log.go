@@ -3,7 +3,7 @@ package persist
 import (
 	"io"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/log"
 )
 

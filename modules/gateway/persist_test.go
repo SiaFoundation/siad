@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 )
 
 // TestLoad probes loading a gateway from a persist file

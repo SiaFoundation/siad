@@ -10,8 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/encoding"
 )
 

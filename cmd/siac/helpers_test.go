@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest"
 	"gitlab.com/NebulousLabs/errors"
 )
 

@@ -8,8 +8,8 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
 )
 
 // findUnfinishedStorageFolderAdditions will scroll through a set of state

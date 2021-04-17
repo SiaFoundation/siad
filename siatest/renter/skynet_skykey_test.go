@@ -6,12 +6,12 @@ import (
 	"net/url"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/skykey"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node/api"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/skykey"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 

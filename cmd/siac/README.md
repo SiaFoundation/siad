@@ -481,7 +481,7 @@ Error log example with 5 above items (part `...` of the message is cut):
         helpers_test.go:159: 
 FAIL
 coverage: 5.3% of statements
-FAIL	gitlab.com/NebulousLabs/Sia/cmd/siac	2.242s
+FAIL	go.sia.tech/siad/cmd/siac	2.242s
 FAIL
 ```
 

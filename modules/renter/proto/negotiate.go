@@ -8,10 +8,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"golang.org/x/crypto/chacha20poly1305"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
 

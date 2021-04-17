@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/types"
 )
 
 // TestTpoolTransactionsGet probes the API end point from returning the

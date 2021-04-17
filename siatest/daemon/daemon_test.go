@@ -10,13 +10,13 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/profile"
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/profile"
+	"go.sia.tech/siad/siatest"
 )
 
 // TestDaemonAPIPassword makes sure that the daemon rejects requests with the

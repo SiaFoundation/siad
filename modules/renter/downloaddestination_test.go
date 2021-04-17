@@ -3,7 +3,7 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // TestWritePiecesPanic is a regression test that ensures WritePieces does not

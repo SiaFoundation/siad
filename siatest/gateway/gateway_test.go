@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/gateway"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/siatest/dependencies"
 )
 
 // TestGatewayRatelimit makes sure that we can set the gateway's ratelimits

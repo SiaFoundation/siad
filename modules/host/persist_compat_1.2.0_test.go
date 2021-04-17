@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/consensus"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/consensus"
+	"go.sia.tech/siad/modules/gateway"
+	"go.sia.tech/siad/modules/transactionpool"
+	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
 

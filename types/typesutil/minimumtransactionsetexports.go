@@ -1,7 +1,7 @@
 package typesutil
 
 import (
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 )
 
 // MinimumTransactionSet takes two transaction sets as input and returns a

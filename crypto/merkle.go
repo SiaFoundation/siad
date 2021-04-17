@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/merkletree/merkletree-blake"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/encoding"
 )
 

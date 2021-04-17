@@ -3,8 +3,8 @@ package api
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules/gateway"
 )
 
 // TestGatewayStatus checks that the /gateway/status call is returning a correct

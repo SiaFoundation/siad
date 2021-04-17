@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/node"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/node"
 	"gitlab.com/NebulousLabs/errors"
 )
 

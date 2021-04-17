@@ -9,8 +9,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/persist"
 )
 
 // LocalDir is a helper struct that represents a directory on disk that is to be

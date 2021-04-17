@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/node"
+	"go.sia.tech/siad/node"
 )
 
 // createNodeParams parses the provided config and creates the corresponding

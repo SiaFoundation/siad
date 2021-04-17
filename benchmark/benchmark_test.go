@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest"
 )
 
 // Config
@@ -160,7 +160,7 @@ func TestSiaUploadsDownloads(t *testing.T) {
 
 	// Wait for uploads to finish. When we start massively downloading while
 	// uploads are in progress, uploads halt, because they have lower priority
-	// TODO: https://gitlab.com/NebulousLabs/Sia/-/issues/4242
+	// TODO: https://gitlab.com/NebulousLabs/Sia/issues/4242
 	// Once RHP is fully functioning, do not wait for all uploads finished,
 	// download concurrently with uploads
 	uploadWG.Wait()

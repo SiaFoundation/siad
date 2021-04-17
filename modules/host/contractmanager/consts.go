@@ -3,8 +3,8 @@ package contractmanager
 import (
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/persist"
 )
 
 // Constants related to the host's alerts.

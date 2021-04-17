@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
 

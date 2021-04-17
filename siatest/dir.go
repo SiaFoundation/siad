@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/persist"
 )
 
 var (

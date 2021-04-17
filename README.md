@@ -1,9 +1,7 @@
 # [![Sia Logo](https://sia.tech/static/assets/svg/sia-green-logo.svg)](http://sia.tech)
 
-[![Build Status](https://gitlab.com/NebulousLabs/Sia/badges/master/pipeline.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
-[![Coverage Report](https://gitlab.com/NebulousLabs/Sia/badges/master/coverage.svg)](https://gitlab.com/NebulousLabs/Sia/commits/master)
-[![GoDoc](https://godoc.org/gitlab.com/NebulousLabs/Sia?status.svg)](https://godoc.org/gitlab.com/NebulousLabs/Sia)
-[![Go Report Card](https://goreportcard.com/badge/gitlab.com/NebulousLabs/Sia)](https://goreportcard.com/report/gitlab.com/NebulousLabs/Sia)
+[![GoDoc](https://godoc.org/go.sia.tech/siad?status.svg)](https://godoc.org/go.sia.tech/siad)
+[![Go Report Card](https://goreportcard.com/badge/go.sia.tech/siad)](https://goreportcard.com/report/go.sia.tech/siad)
 [![License MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 Sia is a decentralized cloud storage platform that radically alters the
@@ -75,7 +73,7 @@ This release comes with 2 binaries, siad and siac. siad is a background service,
 or "daemon," that runs the Sia protocol and exposes an HTTP API on port 9980.
 siac is a command-line client that can be used to interact with siad in a
 user-friendly way. There is also a graphical client,
-[Sia-UI](https://gitlab.com/NebulousLabs/Sia-UI), which is the preferred way of
+[Sia-UI](https://github.com/SiaFoundation/Sia-UI), which is the preferred way of
 using Sia for most users. For interested developers, the siad API is documented
 at [sia.tech/docs](https://sia.tech/docs/).
 
@@ -98,8 +96,8 @@ installed](https://golang.org/doc/install) on the system. Clone the repo and run
 `make`:
 
 ```
-git clone https://gitlab.com/NebulousLabs/Sia
-cd Sia && make dependencies && make
+git clone https://github.com/SiaFoundation/siad
+cd siad && make dependencies && make
 ```
 
 This will install the `siad` and `siac` binaries in your `$GOPATH/bin` folder.
@@ -113,7 +111,7 @@ your browser.
 Official Releases
 --------------------
 Official binaries can be found under
-[Releases](https://gitlab.com/NebulousLabs/Sia/-/releases) or on
+[Releases](https://github.com/SiaFoundation/siad/releases) or on
 [sia.tech](https://sia.tech/get-started).
 
 Additionally, an official Docker image can be found

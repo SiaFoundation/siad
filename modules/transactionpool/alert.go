@@ -1,6 +1,6 @@
 package transactionpool
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "go.sia.tech/siad/modules"
 
 // Alerts implements the modules.Alerter interface for the transactionpool.
 func (tpool *TransactionPool) Alerts() (crit, err, warn []modules.Alert) {

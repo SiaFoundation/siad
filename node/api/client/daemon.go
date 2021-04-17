@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"gitlab.com/NebulousLabs/Sia/node/api"
+	"go.sia.tech/siad/node/api"
 )
 
 // DaemonGlobalRateLimitPost uses the /daemon/settings endpoint to change the

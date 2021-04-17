@@ -57,7 +57,7 @@
 * Google Inc.
 
 
-[guide]: https://gitlab.com/NebulousLabs/Sia/blob/master/CONTRIBUTING.md
-[developers]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Developers.md
-[doc]: https://gitlab.com/NebulousLabs/Sia/tree/master/doc
+[guide]: https://github.com/SiaFoundation/Sia/blob/master/CONTRIBUTING.md
+[developers]: https://github.com/SiaFoundation/Sia/blob/master/doc/Developers.md
+[doc]: https://github.com/SiaFoundation/Sia/tree/master/doc
 [discord]: https://discord.gg/sia

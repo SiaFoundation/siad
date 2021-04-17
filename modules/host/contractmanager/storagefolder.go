@@ -11,8 +11,8 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/sync"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/sync"
 )
 
 var (

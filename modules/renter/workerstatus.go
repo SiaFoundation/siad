@@ -3,7 +3,7 @@ package renter
 import (
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // callStatus returns the status of the worker.

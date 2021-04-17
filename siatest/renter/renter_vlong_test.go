@@ -12,15 +12,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/filesystem"
+	"go.sia.tech/siad/modules/renter/filesystem/siafile"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/siatest/dependencies"
+	"go.sia.tech/siad/types"
 )
 
 // TestRenterSpendingReporting checks the accuracy for the reported

@@ -12,11 +12,11 @@ on that [here](http://golang.org/doc/install/source).
 Sia has a development build, an automated testing build, and a release
 build. The release build is the only one that can synchronize to the full
 network. To get the release build, it is usually sufficient to run `go get -u
-gitlab.com/NebulousLabs/Sia/...`. This will download Sia and its dependencies
+go.sia.tech/siad/...`. This will download Sia and its dependencies
 and install binaries in `$GOPATH/bin`.
 
 After downloading, you can find the Sia source code in
-`$GOPATH/src/gitlab.com/NebulousLabs/Sia`. To build the release binary, run
+`$GOPATH/src/go.sia.tech/siad`. To build the release binary, run
 `make release` from this directory. To build the release binary with a (slow)
 race detector and an array of debugging asserts, run `make release-race`. To
 build the developer binary (which has a different genesis block, faster block

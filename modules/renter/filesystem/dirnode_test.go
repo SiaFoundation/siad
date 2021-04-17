@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/errors"
 )
 

@@ -3,7 +3,7 @@ package types
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 )
 
 // TestCheckBuildConstants checks that the required build constants have been

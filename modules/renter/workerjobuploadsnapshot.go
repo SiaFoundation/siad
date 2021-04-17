@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sort"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/encoding"
 
 	"gitlab.com/NebulousLabs/errors"

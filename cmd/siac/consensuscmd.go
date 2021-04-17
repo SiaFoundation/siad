@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/node/api"
+	"go.sia.tech/siad/node/api"
 	"gitlab.com/NebulousLabs/errors"
 )
 

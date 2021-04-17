@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/skykey"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
 

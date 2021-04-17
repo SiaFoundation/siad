@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 	"golang.org/x/net/context"
 
 	"gitlab.com/NebulousLabs/errors"

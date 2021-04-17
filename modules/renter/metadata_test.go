@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/siatest/dependencies"
 )
 
 // TestCalculateFileMetadatas probes the calculate file metadata methods of the

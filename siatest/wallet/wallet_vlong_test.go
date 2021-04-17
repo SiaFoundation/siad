@@ -3,10 +3,10 @@ package wallet
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules/wallet"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/types"
 )
 
 // TestWalletTransactionsSumUpToWalletBalance tests that even with file

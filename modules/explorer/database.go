@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
 

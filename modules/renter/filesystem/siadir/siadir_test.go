@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
 

@@ -1,6 +1,6 @@
 package dependencies
 
-import "gitlab.com/NebulousLabs/Sia/modules"
+import "go.sia.tech/siad/modules"
 
 // AccountingDisablePersistLoop is a dependency that disables the background
 // loop from updating and persisting the accounting information.

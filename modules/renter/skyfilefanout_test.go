@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules/renter/filesystem"
 )
 
 // TestSkyfileFanout probes the fanout encoding.

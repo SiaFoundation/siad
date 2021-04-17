@@ -1,8 +1,8 @@
 package renter
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TODO: The RPC client is used by the worker to interact with the host. It

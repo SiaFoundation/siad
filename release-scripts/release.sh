@@ -10,7 +10,7 @@ if [[ -z $version ]]; then
 fi
 
 # setup build-time vars
-ldflags="-s -w -X 'gitlab.com/NebulousLabs/Sia/build.GitRevision=`git rev-parse --short HEAD`' -X 'gitlab.com/NebulousLabs/Sia/build.BuildTime=`git show -s --format=%ci HEAD`' -X 'gitlab.com/NebulousLabs/Sia/build.ReleaseTag=${rc}'"
+ldflags="-s -w -X 'go.sia.tech/siad/build.GitRevision=`git rev-parse --short HEAD`' -X 'go.sia.tech/siad/build.BuildTime=`git show -s --format=%ci HEAD`' -X 'go.sia.tech/siad/build.ReleaseTag=${rc}'"
 
 function build {
   os=$1

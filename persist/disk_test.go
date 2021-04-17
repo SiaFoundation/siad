@@ -10,7 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 )
 
 // BenchmarkWrite512MiB checks how long it takes to write 512MiB sequentially.

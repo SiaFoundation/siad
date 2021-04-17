@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/encoding"
 )
 

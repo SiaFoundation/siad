@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/siatest"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/siatest"
 )
 
 // copyFile is a helper function to copy a file to a destination.

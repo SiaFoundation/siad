@@ -12,7 +12,7 @@ import (
 	"os"
 	"sort"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/errors"
 )
 

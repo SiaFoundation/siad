@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/montanaflynn/stats"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/filesystem"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"

@@ -10,13 +10,13 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/siatest"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node"
+	"go.sia.tech/siad/node/api/client"
+	"go.sia.tech/siad/siatest"
+	"go.sia.tech/siad/siatest/dependencies"
+	"go.sia.tech/siad/types"
 )
 
 // TestSiamuxRequired checks that the hostdb will count a host as offline if the

@@ -3,9 +3,9 @@ package client
 import (
 	"encoding/json"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/types"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/node/api"
+	"go.sia.tech/siad/types"
 )
 
 // HostDbGet requests the /hostdb endpoint's resources.

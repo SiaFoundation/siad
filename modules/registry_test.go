@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 

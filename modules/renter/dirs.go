@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"go.sia.tech/siad/node/api/client"
 )
 
 var (

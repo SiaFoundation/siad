@@ -8,9 +8,9 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/renter/filesystem"
+	"go.sia.tech/siad/modules/renter/filesystem/siafile"
 )
 
 type (

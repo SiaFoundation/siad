@@ -3,7 +3,7 @@ package renter
 import (
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 type (

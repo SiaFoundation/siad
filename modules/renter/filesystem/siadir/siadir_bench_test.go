@@ -3,7 +3,7 @@ package siadir
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // BenchmarkSaveSiaDir runs a benchmark on the saveDir method of the siadir

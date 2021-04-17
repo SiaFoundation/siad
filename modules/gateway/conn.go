@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/monitor"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
 )
 
 // peerConn is a simple type that implements the modules.PeerConn interface.

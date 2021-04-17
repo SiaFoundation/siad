@@ -3,7 +3,7 @@ package host
 import (
 	"net"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 type (

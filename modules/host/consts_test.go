@@ -3,7 +3,7 @@ package host
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"go.sia.tech/siad/modules"
 )
 
 // TestSaneDefaults verifies that the defaults satisfy the ratios

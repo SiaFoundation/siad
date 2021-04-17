@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/siatest/dependencies"
 )
 
 // TestAccounting tests the basic functionality of the accounting package
