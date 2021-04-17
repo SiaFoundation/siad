@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper

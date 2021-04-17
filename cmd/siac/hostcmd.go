@@ -10,12 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/node/api/client"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (

@@ -3,10 +3,10 @@ package host
 import (
 	"time"
 
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 )
 
 // managedRPCFundEphemeralAccount handles the RPC request from the renter to

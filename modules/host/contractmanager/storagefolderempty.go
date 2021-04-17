@@ -4,9 +4,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (

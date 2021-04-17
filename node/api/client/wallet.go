@@ -6,12 +6,12 @@ import (
 	"net/url"
 	"strconv"
 
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // WalletAddressGet requests a new address from the /wallet/address endpoint

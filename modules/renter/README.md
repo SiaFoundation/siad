@@ -37,8 +37,6 @@ README files should be reviewed.
  - Filesystem
  - HostDB
  - Proto
- - Skynet Blocklist
- - Skynet Portals
 
 ### Contractor
 The Contractor manages the Renter's contracts and is responsible for all
@@ -63,16 +61,6 @@ The proto module implements the renter's half of the renter-host protocol,
 including contract formation and renewal RPCs, uploading and downloading,
 verifying Merkle proofs, and synchronizing revision states. It is a low-level
 module whose functionality is largely wrapped by the Contractor.
-
-### Skynet Blocklist
-The Skynet Blocklist module manages the list of skylinks that the Renter wants
-blocked. It also manages persisting the blocklist in an ACID and performant
-manner.
-
-### Skynet Portals
-The Skynet Portals module manages the list of known Skynet portals that the
-Renter wants to keep track of. It also manages persisting the list in an ACID
-and performant manner.
 
 ## Subsystems
 The Renter has the following subsystems that help carry out its
@@ -545,26 +533,6 @@ stage will kick in. This stage is called the overdrive stage, and will make sure
 that consecutive workers will be launched, should a worker in the initial set
 fail or be late.
 
-### Skyfile Subsystem
-**Key Files**
- - [skyfile.go](./skyfile.go)
- - [skyfilefanout.go](./skyfilefanout.go)
-
-The skyfile system contains methods for encoding, decoding, uploading, and
-downloading skyfiles using Skylinks, and is one of the foundations underpinning
-Skynet.
-
-The skyfile format is a custom format which prepends metadata to a file such
-that the entire file and all associated metadata can be recovered knowing
-nothing more than a single sector root. That single sector root can be encoded
-alongside some compressed fetch offset and length information to create a
-skylink.
-
-**Outbound Complexities**
- - callUploadStreamFromReader is used to upload new data to the Sia network when
-   creating skyfiles. This call appears three times in
-   [skyfile.go](./skyfile.go)
-
 ### Stream Buffer Subsystem
 **Key Files**
  - [streambuffer.go](./streambuffer.go)
@@ -581,11 +549,6 @@ share their cache. Each stream will maintain its own LRU, but the data is stored
 in a common stream buffer. The stream buffers draw their data from a data source
 interface, which allows multiple different types of data sources to use the
 stream buffer.
-
-A SkylinkDataSource acts as a data source to the stream buffer. As the name
-suggests, such a data source can be initialized using a Skylink, and thus be
-used to download the data from the Skyfile. Internally this data source uses the
-download projects, as described in the [download project subsystem](#download-project-subsystem).
 
 ### Upload Subsystem
 **Key Files**
@@ -618,6 +581,10 @@ merkle root and the contract revision.
  - `Upload` calls `callBuildAndPushChunks` to add upload chunks to the
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2986bb06b... all: Remove Skynet-related code
 ### Upload Streaming Subsystem
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)

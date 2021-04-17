@@ -3,8 +3,8 @@ package modules
 import (
 	"testing"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/types"
 )
 
 // TestBudget tests the RPCBudget helper type.

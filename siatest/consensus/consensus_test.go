@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/node"
 	"go.sia.tech/siad/siatest"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestApiHeight checks if the consensus api endpoint works

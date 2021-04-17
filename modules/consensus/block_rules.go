@@ -3,8 +3,8 @@ package consensus
 import (
 	"sort"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/types"
 )
 
 // blockRuleHelper assists with block validity checks by calculating values

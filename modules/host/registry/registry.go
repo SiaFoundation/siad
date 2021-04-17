@@ -9,11 +9,11 @@ import (
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TODO: F/Us

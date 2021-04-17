@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.sia.tech/siad/modules"
 )
 
 var (

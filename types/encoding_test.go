@@ -11,8 +11,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/crypto"
 )
 
 func hashStr(v interface{}) string {

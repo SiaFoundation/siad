@@ -9,12 +9,12 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // testDir creates a new testing dir for the contractmanager given a test's

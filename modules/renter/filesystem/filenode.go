@@ -5,12 +5,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem/siafile"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -156,7 +156,6 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		Redundancy:       redundancy,
 		Renewing:         true,
 		RepairBytes:      repairBytes,
-		Skylinks:         n.Metadata().Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
@@ -241,7 +240,6 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		Redundancy:       md.CachedUserRedundancy,
 		Renewing:         true,
 		RepairBytes:      md.CachedRepairBytes,
-		Skylinks:         md.Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
 		StuckBytes:       md.CachedStuckBytes,

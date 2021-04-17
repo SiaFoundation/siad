@@ -5,9 +5,9 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestErasureCode groups all of the tests the three implementations of the

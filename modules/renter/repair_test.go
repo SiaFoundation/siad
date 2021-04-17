@@ -106,17 +106,6 @@ func equalBubbledAggregateMetadata(md1, md2 siadir.Metadata, delta time.Duration
 	if md1.AggregateStuckSize != md2.AggregateStuckSize {
 		return fmt.Errorf("AggregateStuckSize not equal, %v and %v", md1.AggregateStuckSize, md2.AggregateStuckSize)
 	}
-
-	// Aggregate Skynet Fields
-	//
-	// Check AggregateSkynetFiles
-	if md1.AggregateSkynetFiles != md2.AggregateSkynetFiles {
-		return fmt.Errorf("AggregateSkynetFiles not equal, %v and %v", md1.AggregateSkynetFiles, md2.AggregateSkynetFiles)
-	}
-	// Check AggregateSkynetSize
-	if md1.AggregateSkynetSize != md2.AggregateSkynetSize {
-		return fmt.Errorf("AggregateSkynetSize not equal, %v and %v", md1.AggregateSkynetSize, md2.AggregateSkynetSize)
-	}
 	return nil
 }
 
@@ -174,17 +163,6 @@ func equalBubbledDirectoryMetadata(md1, md2 siadir.Metadata, delta time.Duration
 	if md1.StuckSize != md2.StuckSize {
 		return fmt.Errorf("StuckSize not equal, %v and %v", md1.StuckSize, md2.StuckSize)
 	}
-
-	// Skynet Fields
-	//
-	// Check SkynetFiles
-	if md1.SkynetFiles != md2.SkynetFiles {
-		return fmt.Errorf("SkynetFiles not equal, %v and %v", md1.SkynetFiles, md2.SkynetFiles)
-	}
-	// Check SkynetSize
-	if md1.SkynetSize != md2.SkynetSize {
-		return fmt.Errorf("SkynetSize not equal, %v and %v", md1.SkynetSize, md2.SkynetSize)
-	}
 	return nil
 }
 
@@ -220,7 +198,7 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
-	err = rt.bubbleAll([]modules.SiaPath{modules.BackupFolder, modules.SkynetFolder, modules.UserFolder})
+	err = rt.bubbleAll([]modules.SiaPath{modules.BackupFolder, modules.UserFolder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,8 +215,8 @@ func TestBubbleHealth(t *testing.T) {
 		AggregateMinRedundancy: siadir.DefaultDirRedundancy,
 		MinRedundancy:          siadir.DefaultDirRedundancy,
 
-		AggregateNumSubDirs: 5,
-		NumSubDirs:          3,
+		AggregateNumSubDirs: 3,
+		NumSubDirs:          2,
 	}
 	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
@@ -381,7 +359,7 @@ func TestBubbleHealth(t *testing.T) {
 	// directories with no files but do have sub directories since bubble will
 	// execute on all the parent directories
 	tc := "Empty directory reset"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_1, 0, 8)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_1, 0, 6)
 
 	// Add a file to the lowest level
 	//
@@ -437,7 +415,7 @@ func TestBubbleHealth(t *testing.T) {
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
 	tc = "Adding stuck file"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 8)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 6)
 
 	// Mark the file as un-stuck
 	f.SetStuck(0, false)
@@ -451,7 +429,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
 	tc = "Un-stuck file"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 8)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 6)
 
 	// Add a sub directory to the directory that contains the file that has a
 	// worst health than the file and confirm that health gets bubbled up.
@@ -476,7 +454,7 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	tc = "Empty lowest level directory"
-	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 9)
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 7)
 }
 
 // TestOldestHealthCheckTime probes managedOldestHealthCheckTime to verify that
@@ -555,10 +533,8 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	err1 := rt.openAndUpdateDir(modules.RootSiaPath(), nowMD)
 	err2 := rt.openAndUpdateDir(modules.BackupFolder, nowMD)
 	err3 := rt.openAndUpdateDir(modules.HomeFolder, nowMD)
-	err4 := rt.openAndUpdateDir(modules.SkynetFolder, nowMD)
-	err5 := rt.openAndUpdateDir(modules.UserFolder, nowMD)
-	err6 := rt.openAndUpdateDir(modules.VarFolder, nowMD)
-	err = errors.Compose(err1, err2, err3, err4, err5, err6)
+	err4 := rt.openAndUpdateDir(modules.UserFolder, nowMD)
+	err = errors.Compose(err1, err2, err3, err4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,22 +703,6 @@ func TestNumFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add skylink to root file. This should not count towards the number of
-	// skyfiles
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var skylink modules.Skylink
-	err = f.AddSkylink(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Add file to subdir
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
@@ -753,19 +713,9 @@ func TestNumFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add a file to the skynet folder
-	up.SiaPath, err = modules.SkynetFolder.Join(hex.EncodeToString(fastrand.Bytes(8)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Call bubble on lowest level and skynet folder and confirm top level reports
+	// Call bubble on lowest level and confirm top level reports
 	// accurate number of files and aggregate number of files
-	err = rt.bubbleAll([]modules.SiaPath{subDir1_2, modules.SkynetFolder})
+	err = rt.bubbleAll([]modules.SiaPath{subDir1_2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -778,15 +728,8 @@ func TestNumFiles(t *testing.T) {
 		if dirInfo.NumFiles != 1 {
 			return fmt.Errorf("NumFiles incorrect, got %v expected %v", dirInfo.NumFiles, 1)
 		}
-		if dirInfo.AggregateNumFiles != 3 {
-			return fmt.Errorf("AggregateNumFiles incorrect, got %v expected %v", dirInfo.AggregateNumFiles, 3)
-		}
-		// Skyfiles
-		if dirInfo.SkynetFiles != 0 {
-			return fmt.Errorf("SkynetFiles incorrect, got %v expected %v", dirInfo.SkynetFiles, 0)
-		}
-		if dirInfo.AggregateSkynetFiles != 1 {
-			return fmt.Errorf("AggregateSkynetFiles incorrect, got %v expected %v", dirInfo.AggregateSkynetFiles, 1)
+		if dirInfo.AggregateNumFiles != 2 {
+			return fmt.Errorf("AggregateNumFiles incorrect, got %v expected %v", dirInfo.AggregateNumFiles, 2)
 		}
 		return nil
 	})
@@ -853,33 +796,8 @@ func TestDirectorySize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add skylink to root file
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var skylink modules.Skylink
-	err = f.AddSkylink(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Add file to subdir
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Add file to skynet folder
-	up.SiaPath, err = modules.SkynetFolder.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -901,15 +819,8 @@ func TestDirectorySize(t *testing.T) {
 		if dirInfo.DirSize != fileSize {
 			return fmt.Errorf("Size incorrect, got %v expected %v", dirInfo.DirSize, fileSize)
 		}
-		if dirInfo.AggregateSize != 3*fileSize {
-			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 3*fileSize)
-		}
-		// Skynet Size
-		if dirInfo.SkynetSize != fileSize {
-			return fmt.Errorf("Size SkynetSize, got %v expected %v", dirInfo.DirSize, fileSize)
-		}
-		if dirInfo.AggregateSkynetSize != 2*fileSize {
-			return fmt.Errorf("AggregateSkynetSize incorrect, got %v expected %v", dirInfo.AggregateSize, 2*fileSize)
+		if dirInfo.AggregateSize != 2*fileSize {
+			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 2*fileSize)
 		}
 		return nil
 	})
@@ -1435,11 +1346,6 @@ func TestCalculateFileMetadata(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	var skylink modules.Skylink
-	err = sf.AddSkylink(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Grab initial metadata values
 	rt.renter.managedUpdateRenterContractsAndUtilities()
@@ -1494,9 +1400,6 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if !fileMetadata.ModTime.Equal(modTime) {
 		t.Fatalf("Unexpected modtime, expected %v got %v", modTime, fileMetadata.ModTime)
-	}
-	if fileMetadata.NumSkylinks != 1 {
-		t.Fatalf("NumSkylinks incorrect, expected %v got %v", 1, fileMetadata.NumSkylinks)
 	}
 }
 
@@ -1746,13 +1649,13 @@ func TestPrepareForBubble(t *testing.T) {
 
 	// Define helper to reset the lastHealthCheckTimes for the directories
 	resetTimes := func() {
-		// Update HomeFolder, BackupFolder, and VarFolder to have an old lastHealthCheckTime
+		// Update HomeFolder and BackupFolder to have an old lastHealthCheckTime
 		old := time.Now().AddDate(-1, 0, 0)
 		oldMetadata := siadir.Metadata{
 			AggregateLastHealthCheckTime: old,
 			LastHealthCheckTime:          old,
 		}
-		oldSiaPaths := []modules.SiaPath{modules.HomeFolder, modules.BackupFolder, modules.VarFolder}
+		oldSiaPaths := []modules.SiaPath{modules.HomeFolder, modules.BackupFolder}
 		for _, sp := range oldSiaPaths {
 			err = rt.openAndUpdateDir(sp, oldMetadata)
 			if err != nil {
@@ -1768,13 +1671,13 @@ func TestPrepareForBubble(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Update emptyDir, UserFolder, and SkynetFolder to have future lastHealthCheckTime
+		// Update emptyDir and UserFolder to have future lastHealthCheckTime
 		future := time.Now().AddDate(1, 0, 0)
 		futureMetadata := siadir.Metadata{
 			AggregateLastHealthCheckTime: future,
 			LastHealthCheckTime:          future,
 		}
-		futureSiaPaths := []modules.SiaPath{emptyDir, modules.UserFolder, modules.SkynetFolder}
+		futureSiaPaths := []modules.SiaPath{emptyDir, modules.UserFolder}
 		for _, sp := range futureSiaPaths {
 			err = rt.openAndUpdateDir(sp, futureMetadata)
 			if err != nil {
@@ -1793,17 +1696,16 @@ func TestPrepareForBubble(t *testing.T) {
 	}
 
 	// Validate that the directories with future LastHealthCheckTimes are ignored
-	if urp.callNumChildDirs() != 3 {
+	if urp.callNumChildDirs() != 2 {
 		t.Log(urp.childDirs)
 		t.Errorf("expected %v got %v", 3, urp.callNumChildDirs())
 	}
 	urp.mu.Lock()
 	_, okHome := urp.childDirs[modules.HomeFolder]
 	_, okBackup := urp.childDirs[modules.BackupFolder]
-	_, okVar := urp.childDirs[modules.VarFolder]
 	urp.mu.Unlock()
-	if !okHome || !okBackup || !okVar {
-		t.Error("unexpected", okHome, okBackup, okVar)
+	if !okHome || !okBackup {
+		t.Error("unexpected", okHome, okBackup)
 	}
 	if urp.callNumParentDirs() != 1 {
 		t.Errorf("expected %v got %v", 1, urp.callNumParentDirs())
@@ -1825,28 +1727,26 @@ func TestPrepareForBubble(t *testing.T) {
 	}
 
 	// Validate that the directories with future LastHealthCheckTimes are not ignored
-	if urp.callNumChildDirs() != 4 {
+	if urp.callNumChildDirs() != 3 {
 		t.Log(urp.childDirs)
-		t.Errorf("expected %v got %v", 4, urp.callNumChildDirs())
+		t.Errorf("expected %v got %v", 3, urp.callNumChildDirs())
 	}
 	urp.mu.Lock()
 	_, okEmpty := urp.childDirs[emptyDir]
 	_, okUser := urp.childDirs[modules.UserFolder]
 	_, okBackup = urp.childDirs[modules.BackupFolder]
-	_, okSkynet := urp.childDirs[modules.SkynetFolder]
 	urp.mu.Unlock()
-	if !okEmpty || !okUser || !okBackup || !okSkynet {
-		t.Error("unexpected", okEmpty, okUser, okBackup, okSkynet)
+	if !okEmpty || !okUser || !okBackup {
+		t.Error("unexpected", okEmpty, okUser, okBackup)
 	}
-	if urp.callNumParentDirs() != 3 {
-		t.Errorf("expected %v got %v", 3, urp.callNumParentDirs())
+	if urp.callNumParentDirs() != 2 {
+		t.Errorf("expected %v got %v", 2, urp.callNumParentDirs())
 	}
 	urp.mu.Lock()
 	_, ok = urp.parentDirs[modules.RootSiaPath()]
 	_, okHome = urp.parentDirs[modules.HomeFolder]
-	_, okVar = urp.parentDirs[modules.VarFolder]
 	urp.mu.Unlock()
-	if !ok || !okHome || !okVar {
-		t.Error("unexpected", ok, okHome, okVar)
+	if !ok || !okHome {
+		t.Error("unexpected", ok, okHome)
 	}
 }

@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"go.sia.tech/siad/build"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/types"
 )
 
 var (

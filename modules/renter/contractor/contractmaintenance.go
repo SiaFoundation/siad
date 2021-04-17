@@ -572,13 +572,6 @@ func staticCheckFormPaymentContractGouging(allowance modules.Allowance, hostSett
 	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
 		return errors.New("sector access price of host is too high - extortion protection enabled")
 	}
-
-	// Check whether the form contract price does not leave enough room for
-	// uploads and downloads. At least half of the payment contract's funds need
-	// to remain for download bandwidth.
-	if allowance.PaymentContractInitialFunding.Div64(2).Cmp(hostSettings.ContractPrice) <= 0 {
-		return errors.New("contract price of host is too high - extortion protection enabled")
-	}
 	return nil
 }
 
@@ -1354,10 +1347,6 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.mu.RLock()
 	neededContracts := int(c.allowance.Hosts) - uploadContracts
 	c.mu.RUnlock()
-	if neededContracts <= 0 && allowance.PaymentContractInitialFunding.IsZero() {
-		c.log.Debugln("do not seem to need more contracts")
-		return
-	}
 	if neededContracts > 0 {
 		c.log.Println("need more contracts:", neededContracts)
 	}
@@ -1491,95 +1480,6 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Failed to update the contract utilities", err)
 			return
 		}
-		c.mu.Lock()
-		err = c.save()
-		c.mu.Unlock()
-		if err != nil {
-			c.log.Println("Unable to save the contractor:", err)
-		}
-	}
-
-	// Portals will need to form additional contracts with any hosts that they
-	// do not currently have contracts with. All other nodes can exit here.
-	if !allowance.PortalMode() {
-		return
-	}
-
-	// Get a full list of active hosts from the hostdb.
-	allHosts, err := c.hdb.ActiveHosts()
-	if err != nil {
-		c.log.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
-	}
-	// Get a list of all current contracts.
-	allContracts = c.staticContracts.ViewAll()
-	currentContracts := make(map[string]modules.RenterContract)
-	for _, contract := range allContracts {
-		currentContracts[contract.HostPublicKey.String()] = contract
-	}
-	for _, host := range allHosts {
-		// Check if maintenance should be stopped.
-		select {
-		case <-c.tg.StopChan():
-			return
-		case <-c.interruptMaintenance:
-			return
-		default:
-		}
-
-		// Check if there is already a contract with this host.
-		_, exists := currentContracts[host.PublicKey.String()]
-		if exists {
-			continue
-		}
-
-		// Skip host if it has a dead score.
-		sb, err := c.hdb.ScoreBreakdown(host)
-		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
-			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
-			continue
-		}
-
-		// Check that the price settings of the host are acceptable.
-		hostSettings := host.HostExternalSettings
-		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
-			continue
-		}
-
-		// Check that the wallet is unlocked.
-		unlocked, err := c.wallet.Unlocked()
-		if !unlocked || err != nil {
-			registerWalletLockedDuringMaintenance = true
-			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
-			return
-		}
-
-		// Determine if there is enough money to form a new contract.
-		if fundsRemaining.Cmp(allowance.PaymentContractInitialFunding) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
-			registerLowFundsAlert = true
-			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
-			break
-		}
-
-		// If we are using a custom resolver we need to replace the domain name
-		// with 127.0.0.1 to be able to form contracts.
-		if c.staticDeps.Disrupt("customResolver") {
-			port := host.NetAddress.Port()
-			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
-		}
-
-		// Attempt forming a contract with this host.
-		start := time.Now()
-		fundsSpent, newContract, err := c.managedNewContract(host, allowance.PaymentContractInitialFunding, endHeight)
-		if err != nil {
-			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
-			continue
-		}
-		fundsRemaining = fundsRemaining.Sub(fundsSpent)
-		c.log.Println("A view contract has been formed with a host:", newContract.ID)
-
-		// Add this contract to the contractor and save.
 		c.mu.Lock()
 		err = c.save()
 		c.mu.Unlock()

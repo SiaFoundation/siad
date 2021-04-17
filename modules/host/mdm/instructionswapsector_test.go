@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionSwapSector tests executing a program with a single

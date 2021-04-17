@@ -4,10 +4,10 @@ import (
 	"sync"
 	"time"
 
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 )
 
 var (
@@ -25,11 +25,10 @@ var (
 // information about a Sia node.
 type Accounting struct {
 	// Modules whos accounting information is tracked
-	staticFeeManager modules.FeeManager
-	staticHost       modules.Host
-	staticMiner      modules.Miner
-	staticRenter     modules.Renter
-	staticWallet     modules.Wallet
+	staticHost   modules.Host
+	staticMiner  modules.Miner
+	staticRenter modules.Renter
+	staticWallet modules.Wallet
 
 	// Accounting module settings
 	persistence      persistence
@@ -46,7 +45,7 @@ type Accounting struct {
 
 // NewCustomAccounting initializes the accounting module with custom
 // dependencies
-func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner, r modules.Renter, w modules.Wallet, persistDir string, deps modules.Dependencies) (*Accounting, error) {
+func NewCustomAccounting(h modules.Host, m modules.Miner, r modules.Renter, w modules.Wallet, persistDir string, deps modules.Dependencies) (*Accounting, error) {
 	// Check that at least the wallet is not nil
 	if w == nil {
 		return nil, errNilWallet
@@ -62,11 +61,10 @@ func NewCustomAccounting(fm modules.FeeManager, h modules.Host, m modules.Miner,
 
 	// Initialize the accounting
 	a := &Accounting{
-		staticFeeManager: fm,
-		staticHost:       h,
-		staticMiner:      m,
-		staticRenter:     r,
-		staticWallet:     w,
+		staticHost:   h,
+		staticMiner:  m,
+		staticRenter: r,
+		staticWallet: w,
 
 		staticPersistDir: persistDir,
 

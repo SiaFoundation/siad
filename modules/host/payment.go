@@ -3,11 +3,11 @@ package host
 import (
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // ProcessPayment reads a payment request from the stream. Depending on the type

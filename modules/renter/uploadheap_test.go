@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -17,7 +18,6 @@ import (
 	"go.sia.tech/siad/modules/renter/filesystem/siafile"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestUploadHeap tests the uploadheap subsystem

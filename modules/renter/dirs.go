@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // CreateDir creates a directory for the renter

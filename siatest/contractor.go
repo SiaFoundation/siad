@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -12,7 +13,6 @@ import (
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/node/api/client"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // CheckBalanceVsSpending checks the renters confirmed siacoin balance in their

@@ -5,11 +5,11 @@ import (
 	"context"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestNewEmptyProgram runs a program without instructions.

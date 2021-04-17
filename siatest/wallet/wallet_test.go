@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -16,8 +18,6 @@ import (
 	"go.sia.tech/siad/siatest"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
-	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestTransactionReorg makes sure that a processedTransaction isn't returned

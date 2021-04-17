@@ -9,8 +9,8 @@ import (
 	"errors"
 	"strings"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/crypto"
 )
 
 const (

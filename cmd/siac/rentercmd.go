@@ -20,13 +20,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem"
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/node/api/client"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -598,8 +598,6 @@ func renterallowancecmd() {
   Renew Window:         %v blocks
   Hosts:                %v
 
-Skynet Portal Per-Contract Budget: %v
-
 Expectations for period:
   Expected Storage:     %v
   Expected Upload:      %v
@@ -614,7 +612,7 @@ Price Protections:
   MaxStoragePrice:           %v per TB per Month
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnitsWithExchangeRate(allowance.Funds, rate), allowance.Period, allowance.RenewWindow,
-		allowance.Hosts, currencyUnitsWithExchangeRate(allowance.PaymentContractInitialFunding, rate),
+		allowance.Hosts,
 		modules.FilesizeUnits(allowance.ExpectedStorage),
 		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
 		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
@@ -722,20 +720,6 @@ func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 			die("Could not parse renew window:", err)
 		}
 		req = req.WithRenewWindow(renewWindow)
-		changedFields++
-	}
-	// parse the payment contract initial funding
-	if allowancePaymentContractInitialFunding != "" {
-		priceStr, err := types.ParseCurrency(allowancePaymentContractInitialFunding)
-		if err != nil {
-			die("Could not parse payment contract initial funding:", err)
-		}
-		var price types.Currency
-		_, err = fmt.Sscan(priceStr, &price)
-		if err != nil {
-			die("could not read payment contract initial funding:", err)
-		}
-		req = req.WithPaymentContractInitialFunding(price)
 		changedFields++
 	}
 	// parse expectedStorage

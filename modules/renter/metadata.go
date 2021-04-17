@@ -50,9 +50,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 		AggregateStuckSize:           uint64(0),
 
-		AggregateSkynetFiles: uint64(0),
-		AggregateSkynetSize:  uint64(0),
-
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: now,
 		MinRedundancy:       math.MaxFloat64,
@@ -65,9 +62,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir
 		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 		StuckSize:           uint64(0),
-
-		SkynetFiles: uint64(0),
-		SkynetSize:  uint64(0),
 	}
 	// Read directory
 	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
@@ -198,29 +192,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir
 			}
 			metadata.Size += fileMetadata.Size
 			metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
-
-			// Update Skynet Fields
-			//
-			// If the current directory is under the Skynet Folder, or the siafile
-			// contains a skylink in the metadata, then we count the file towards the
-			// Skynet Stats.
-			//
-			// For all cases we count the size.
-			//
-			// We only count the file towards the number of files if it is in the
-			// skynet folder and is not extended. We do not count files outside of the
-			// skynet folder because they should be treated as an extended file.
-			isSkynetDir := strings.Contains(siaPath.String(), modules.SkynetFolder.String())
-			isExtended := strings.Contains(fileSiaPath.String(), modules.ExtendedSuffix)
-			hasSkylinks := fileMetadata.NumSkylinks > 0
-			if isSkynetDir || hasSkylinks {
-				metadata.AggregateSkynetSize += fileMetadata.Size
-				metadata.SkynetSize += fileMetadata.Size
-			}
-			if isSkynetDir && !isExtended {
-				metadata.AggregateSkynetFiles++
-				metadata.SkynetFiles++
-			}
 		} else if len(dirMetadatas) > 0 {
 			// Get next dir's metadata.
 			dirMetadata := dirMetadatas[0]
@@ -261,10 +232,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir
 			metadata.AggregateRepairSize += dirMetadata.AggregateRepairSize
 			metadata.AggregateSize += dirMetadata.AggregateSize
 			metadata.AggregateStuckSize += dirMetadata.AggregateStuckSize
-
-			// Update aggregate Skynet fields
-			metadata.AggregateSkynetFiles += dirMetadata.AggregateSkynetFiles
-			metadata.AggregateSkynetSize += dirMetadata.AggregateSkynetSize
 
 			// Add 1 to the AggregateNumSubDirs to account for this subdirectory.
 			metadata.AggregateNumSubDirs++
@@ -324,14 +291,6 @@ func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaF
 		err = errors.Compose(err, sf.Close())
 	}()
 
-	// First check if the fileNode is blocked. Blocking a file does not remove the
-	// file so this is required to ensuring the node is purging blocked files.
-	if r.isFileNodeBlocked(sf) && !r.deps.Disrupt("DisableDeleteBlockedFiles") {
-		// Delete the file
-		r.log.Println("Deleting blocked fileNode at:", siaPath)
-		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
-	}
-
 	// Grab the metadata to pull the cached information from
 	md := sf.Metadata()
 
@@ -342,9 +301,6 @@ func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaF
 		r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 
-	// Grab the number of skylinks
-	numSkylinks := len(sf.Metadata().Skylinks)
-
 	// Return the metadata
 	return bubbledSiaFileMetadata{
 		sp: siaPath,
@@ -352,7 +308,6 @@ func (r *Renter) managedCachedFileMetadata(siaPath modules.SiaPath) (bubbledSiaF
 			Health:              md.CachedHealth,
 			LastHealthCheckTime: sf.LastHealthCheckTime(),
 			ModTime:             sf.ModTime(),
-			NumSkylinks:         uint64(numSkylinks),
 			NumStuckChunks:      md.CachedNumStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          md.CachedRedundancy,
@@ -381,10 +336,6 @@ func (r *Renter) managedCachedFileMetadatas(siaPaths []modules.SiaPath) (_ []bub
 	metadataWorker := func() {
 		for siaPath := range siaPathChan {
 			md, err := r.managedCachedFileMetadata(siaPath)
-			if errors.Contains(err, ErrSkylinkBlocked) {
-				// If the fileNode is blocked we ignore the error and continue.
-				continue
-			}
 			if err != nil {
 				errMu.Lock()
 				errs = errors.Compose(errs, err)

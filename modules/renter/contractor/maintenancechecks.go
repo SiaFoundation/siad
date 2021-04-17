@@ -61,19 +61,11 @@ func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb m
 
 	u := contract.Utility
 
-	// Check whether the contract is a payment contract. Payment contracts
-	// cannot be marked !GFR for poor score.
-	var size uint64
-	if len(contract.Transaction.FileContractRevisions) > 0 {
-		size = contract.Transaction.FileContractRevisions[0].NewFileSize
-	}
-	paymentContract := !c.allowance.PaymentContractInitialFunding.IsZero() && size == 0
-
 	// Contract has no utility if the score is poor. Cannot be marked as bad if
 	// the contract is a payment contract.
 	deadScore := sb.Score.Cmp(types.NewCurrency64(1)) <= 0
 	badScore := !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0
-	if deadScore || (badScore && !paymentContract) {
+	if deadScore || badScore {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
 			c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)

@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 var (

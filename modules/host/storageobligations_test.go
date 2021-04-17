@@ -6,11 +6,11 @@ import (
 
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestStorageObligationID checks that the return function of the storage

@@ -8,8 +8,8 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 var errNothingMounted = errors.New("nothing mounted at that path")

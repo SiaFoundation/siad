@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/ratelimit"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -20,7 +21,6 @@ import (
 	"go.sia.tech/siad/modules/renter"
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/modules/wallet"
-	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // TestHostDBHostsActiveHandler checks the behavior of the call to
@@ -320,7 +320,7 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", "", nil, cs, nil, nil, g, h, m, r, tp, w)
+	srv, err := NewServer(testdir, "localhost:0", "Sia-Agent", "", nil, cs, nil, g, h, m, r, tp, w)
 	if err != nil {
 		return nil, err
 	}

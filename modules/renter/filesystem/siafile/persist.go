@@ -14,9 +14,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (

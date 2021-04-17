@@ -12,15 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // updateRunningCosts is a testing helper function for updating the running

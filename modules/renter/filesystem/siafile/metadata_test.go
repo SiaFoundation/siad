@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // createLinkedBlankSiafile creates 2 SiaFiles which use the same SiaFile to
@@ -83,11 +83,6 @@ func TestBackupRestoreMetadata(t *testing.T) {
 
 	// Test both nil slice and regular slice.
 	if fastrand.Intn(2) == 0 {
-		sf.staticMetadata.Skylinks = []string{}
-	} else {
-		sf.staticMetadata.Skylinks = nil
-	}
-	if fastrand.Intn(2) == 0 {
 		sf.staticMetadata.PartialChunks = []PartialChunkInfo{}
 	} else {
 		sf.staticMetadata.PartialChunks = nil
@@ -146,10 +141,6 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.GroupID = int32(fastrand.Intn(100))
 		sf.staticMetadata.ChunkOffset = int64(fastrand.Uint64n(100))
 		sf.staticMetadata.PubKeyTableOffset = int64(fastrand.Uint64n(100))
-		sf.staticMetadata.Skylinks = nil
-		if fastrand.Intn(2) == 0 { // 50% chance to be not nil
-			sf.staticMetadata.Skylinks = make([]string, fastrand.Intn(10))
-		}
 
 		// Error occurred after changing the fields.
 		return errors.New("")

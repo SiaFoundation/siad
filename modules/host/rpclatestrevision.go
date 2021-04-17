@@ -3,9 +3,9 @@ package host
 import (
 	"fmt"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.sia.tech/siad/modules"
 )
 
 // managedRPCLatestRevision handles the RPC that fetches the latest revision for

@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (

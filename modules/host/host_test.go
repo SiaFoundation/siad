@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -19,10 +23,6 @@ import (
 	"go.sia.tech/siad/modules/gateway"
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
-	"gitlab.com/NebulousLabs/siamux/mux"
 
 	// "go.sia.tech/siad/modules/renter"
 	"go.sia.tech/siad/modules/transactionpool"

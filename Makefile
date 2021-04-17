@@ -27,14 +27,12 @@ pkgs = \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
-	./cmd/skynet-benchmark \
 	./compatibility \
 	./crypto \
 	./modules \
 	./modules/accounting \
 	./modules/consensus \
 	./modules/explorer \
-	./modules/feemanager \
 	./modules/gateway \
 	./modules/host \
 	./modules/host/contractmanager \
@@ -49,8 +47,6 @@ pkgs = \
 	./modules/renter/hostdb \
 	./modules/renter/hostdb/hosttree \
 	./modules/renter/proto \
-	./modules/renter/skynetblocklist \
-	./modules/renter/skynetportals \
 	./modules/transactionpool \
 	./modules/wallet \
 	./node \
@@ -64,7 +60,6 @@ pkgs = \
 	./siatest/consensus \
 	./siatest/daemon \
 	./siatest/dependencies \
-	./siatest/feemanager \
 	./siatest/gateway \
 	./siatest/host \
 	./siatest/miner \
@@ -74,7 +69,6 @@ pkgs = \
 	./siatest/renterhost \
 	./siatest/transactionpool \
 	./siatest/wallet \
-	./skykey \
 	./sync \
 	./types \
 	./types/typesutil \
@@ -90,7 +84,6 @@ lockcheckpkgs = \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
-	./cmd/skynet-benchmark \
 	./node \
 	./node/api \
 	./node/api/client \
@@ -100,9 +93,6 @@ lockcheckpkgs = \
 	./modules/host/registry \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
-	./modules/renter/skynetblocklist \
-	./siatest/accounting \
-	./skykey \
 	./types \
 	./types/typesutil \
 
@@ -111,7 +101,7 @@ run = .
 
 # util-pkgs determine the set of packages that are built when running
 # 'make utils'
-util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-benchmark
+util-pkgs = ./cmd/sia-node-scanner
 
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.

@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // errTestTimeout is returned when the time allotted for testing runs out. It's

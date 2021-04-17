@@ -8,11 +8,11 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // byDirectoryInfo implements sort.Interface for []directoryInfo based on the

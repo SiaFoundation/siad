@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestRPCReadWriteError verifies the functionality of RPCRead, RPCWrite and

@@ -24,7 +24,6 @@ type (
 	GroupParams struct {
 		Hosts   int // number of hosts to create
 		Renters int // number of renters to create
-		Portals int // number of portals to create
 		Miners  int // number of miners to create
 	}
 
@@ -183,13 +182,6 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 	for i := 0; i < groupParams.Hosts; i++ {
 		params = append(params, node.HostTemplate)
 	}
-	// Create portal params
-	for i := 0; i < groupParams.Portals; i++ {
-		// Portals are renters so just use RenterTemplate
-		portalTemplate := node.RenterTemplate
-		portalTemplate.CreatePortal = true
-		params = append(params, portalTemplate)
-	}
 	// Create renter params
 	for i := 0; i < groupParams.Renters; i++ {
 		params = append(params, node.RenterTemplate)
@@ -242,11 +234,6 @@ func (tg *TestGroup) addNodes(nodeParams ...node.NodeParams) (newNodes, newHosts
 		if np.Renter != nil || np.CreateRenter {
 			tg.renters[node] = struct{}{}
 			newRenters[node] = struct{}{}
-			// Add node to portals. No need to create a newPortals as the node is
-			// a renter and the set up will be handled by newRenters
-			if np.CreatePortal {
-				tg.portals[node] = struct{}{}
-			}
 		}
 
 		// Add node to miners
@@ -422,9 +409,6 @@ func setRenterAllowances(renters map[*TestNode]struct{}) error {
 		if !reflect.DeepEqual(renter.params.Allowance, modules.Allowance{}) {
 			allowance = renter.params.Allowance
 		}
-		if renter.params.CreatePortal {
-			allowance.PaymentContractInitialFunding = DefaultPaymentContractInitialFunding
-		}
 		if err := renter.RenterPostAllowance(allowance); err != nil {
 			return err
 		}
@@ -517,10 +501,6 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 			// Protect tests that have a large allowance hosts than number of hosts in
 			// the test group. This is not a bug, some tests are intentionally set up
 			// this way.
-			expectedContracts = uint64(len(hosts))
-		}
-		if renter.params.CreatePortal {
-			// If the renter is a portal then it should form contracts with all hosts
 			expectedContracts = uint64(len(hosts))
 		}
 		// Subtract hosts which the renter doesn't know yet because they

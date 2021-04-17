@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // TestAddStorageFolder tries to add a storage folder to the contract manager,

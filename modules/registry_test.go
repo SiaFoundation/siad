@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestHashRegistryValue tests that signing registry values results in expected

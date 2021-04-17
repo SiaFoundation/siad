@@ -3,8 +3,8 @@ package types
 import (
 	"testing"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/crypto"
 )
 
 // BenchmarkStandaloneValid times how long it takes to verify a single

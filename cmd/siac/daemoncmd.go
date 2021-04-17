@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 var (

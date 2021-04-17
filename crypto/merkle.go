@@ -5,8 +5,8 @@ import (
 
 	"gitlab.com/NebulousLabs/merkletree/merkletree-blake"
 
-	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/build"
 )
 
 const (

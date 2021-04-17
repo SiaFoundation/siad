@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/modules"
 )
 
 // skipWriter is a helper type that ignores the first 'skip' bytes written to it.

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/build"
 )
 
 var (

@@ -3,8 +3,8 @@ package gateway
 import (
 	"path/filepath"
 
-	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/persist"
 )
 
 const (

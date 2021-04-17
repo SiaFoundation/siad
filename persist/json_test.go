@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/build"
 )
 
 // TestSaveLoadJSON creates a simple object and then tries saving and loading

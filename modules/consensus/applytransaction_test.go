@@ -3,9 +3,9 @@ package consensus
 import (
 	"testing"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/types"
 )
 
 /*

@@ -5,9 +5,9 @@ import (
 	"math/big"
 	"testing"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/types"
 )
 
 // TestParseFileSize probes the parseFilesize function

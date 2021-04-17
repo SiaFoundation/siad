@@ -9,11 +9,11 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // ConsensusGET contains general information about the consensus set, with tags

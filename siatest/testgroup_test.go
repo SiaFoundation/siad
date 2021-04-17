@@ -6,7 +6,6 @@ import (
 
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/node"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestNewGroup tests the behavior of NewGroup.
@@ -19,7 +18,6 @@ func TestNewGroup(t *testing.T) {
 	// Specify the parameters for the group
 	groupParams := GroupParams{
 		Hosts:   5,
-		Portals: 1,
 		Renters: 2,
 		Miners:  2,
 	}
@@ -38,17 +36,14 @@ func TestNewGroup(t *testing.T) {
 	if len(tg.Hosts()) != groupParams.Hosts {
 		t.Error("Wrong number of hosts")
 	}
-	expectedRenters := groupParams.Portals + groupParams.Renters
+	expectedRenters := groupParams.Renters
 	if len(tg.Renters()) != expectedRenters {
 		t.Error("Wrong number of renters")
-	}
-	if len(tg.Portals()) != groupParams.Portals {
-		t.Error("Wrong number of portals")
 	}
 	if len(tg.Miners()) != groupParams.Miners {
 		t.Error("Wrong number of miners")
 	}
-	expectedNumberNodes := groupParams.Hosts + groupParams.Portals + groupParams.Renters + groupParams.Miners
+	expectedNumberNodes := groupParams.Hosts + groupParams.Renters + groupParams.Miners
 	if len(tg.Nodes()) != expectedNumberNodes {
 		t.Error("Wrong number of nodes")
 	}
@@ -80,17 +75,6 @@ func TestNewGroup(t *testing.T) {
 		if len(wtg.ConfirmedTransactions) == 0 {
 			t.Errorf("Node has 0 confirmed funds")
 		}
-	}
-
-	// Check the portals allowance
-	p := tg.Portals()[0]
-	rg, err := p.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := rg.Settings.Allowance
-	if !a.PaymentContractInitialFunding.Equals(DefaultPaymentContractInitialFunding) {
-		t.Fatal("Portals PaymentContractInitialFunding is not set as expected")
 	}
 }
 
@@ -179,96 +163,5 @@ func TestAddNewNode(t *testing.T) {
 		if oldRenter.primarySeed == renter.primarySeed {
 			t.Fatal("Returned renter is not the new renter")
 		}
-	}
-}
-
-// TestNewGroupPortal tests NewGroup with a portal
-func TestNewGroupPortal(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Initiate a group with hosts and a miner.
-	groupParams := GroupParams{
-		Hosts:  4,
-		Miners: 1,
-	}
-	// Create the group
-	groupDir := siatestTestDir(t.Name())
-	tg, err := NewGroupFromTemplate(groupDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Add two portals with allowances. The first portal has an allowance that
-	// matches the number of hosts. The second one gets an allowance with 1 host
-	// since it is expected to form contracts with all hosts anyway.
-	portal1Params := node.Renter(filepath.Join(groupDir, "/portal1"))
-	portal1Params.CreatePortal = true
-	a1 := DefaultAllowance
-	a1.Hosts = uint64(len(tg.Hosts()))
-	portal1Params.Allowance = a1
-	portal2Params := node.Renter(filepath.Join(groupDir, "/portal2"))
-	portal2Params.CreatePortal = true
-	a2 := DefaultAllowance
-	a2.Hosts = 1
-	portal2Params.Allowance = a2
-	_, err = tg.AddNodes(portal1Params, portal2Params)
-	if err != nil {
-		t.Fatal("Failed to add portals to group: ", err)
-	}
-
-	// The Test Group should have the portal listed as a renter as well
-	portals := tg.Portals()
-	if len(tg.Renters()) != len(portals) {
-		t.Fatal("Expected same number of renters and portals")
-	}
-
-	// Grab portals
-	p1 := portals[0]
-	p2 := portals[1]
-
-	// Check that neither portal is in a renew window
-	err1 := RenterContractsStable(p1, tg)
-	err2 := RenterContractsStable(p2, tg)
-	err = errors.Compose(err1, err2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// They should have the same number of contracts
-	rc1, err1 := p1.RenterAllContractsGet()
-	rc2, err2 := p2.RenterAllContractsGet()
-	err = errors.Compose(err1, err2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p1Contracts := len(rc1.ActiveContracts) + len(rc1.PassiveContracts)
-	p2Contracts := len(rc2.ActiveContracts) + len(rc2.PassiveContracts)
-	if p1Contracts != p2Contracts || p1Contracts != groupParams.Hosts {
-		t.Log("Portal 1 # of Contracts:", p1Contracts)
-		t.Log("Portal 2 # of Contracts:", p2Contracts)
-		t.Log("# of Hosts:", groupParams.Hosts)
-		t.Fatal("Not enough contracts have formed")
-	}
-
-	// Have 1 portal upload a skyfile and have both portals download it
-	skylink, _, _, err := p1.UploadNewSkyfileBlocking("file", 100, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, err1 = p2.SkynetSkylinkGet(skylink)
-	err1 = errors.AddContext(err1, "p1 download failed")
-	_, _, err2 = p2.SkynetSkylinkGet(skylink)
-	err2 = errors.AddContext(err2, "p2 download failed")
-	err = errors.Compose(err1, err2)
-	if err != nil {
-		t.Fatal(err)
 	}
 }

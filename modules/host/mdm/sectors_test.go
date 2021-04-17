@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (

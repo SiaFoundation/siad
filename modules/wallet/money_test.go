@@ -4,9 +4,9 @@ import (
 	"sort"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSendSiacoins probes the SendSiacoins method of the wallet.

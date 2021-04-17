@@ -63,11 +63,6 @@ func SiaDir() string {
 	return siaDir
 }
 
-// SkynetDir returns the Skynet data directory.
-func SkynetDir() string {
-	return defaultSkynetDir()
-}
-
 // WalletPassword returns the SiaWalletPassword environment variable.
 func WalletPassword() string {
 	return os.Getenv(siaWalletPassword)
@@ -122,22 +117,5 @@ func defaultSiaDir() string {
 		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Sia")
 	default:
 		return filepath.Join(os.Getenv("HOME"), ".sia")
-	}
-}
-
-// defaultSkynetDir returns default data directory for miscellaneous Skynet data,
-// e.g. skykeys. The values for supported operating systems are:
-//
-// Linux:   $HOME/.skynet
-// MacOS:   $HOME/Library/Application Support/Skynet
-// Windows: %LOCALAPPDATA%\Skynet
-func defaultSkynetDir() string {
-	switch runtime.GOOS {
-	case "windows":
-		return filepath.Join(os.Getenv("LOCALAPPDATA"), "Skynet")
-	case "darwin":
-		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Skynet")
-	default:
-		return filepath.Join(os.Getenv("HOME"), ".skynet")
 	}
 }

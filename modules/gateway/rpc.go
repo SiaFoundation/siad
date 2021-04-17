@@ -4,10 +4,10 @@ import (
 	"sync"
 	"time"
 
-	"go.sia.tech/siad/build"
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
 )
 
 // rpcID is an 8-byte signature that is added to all RPCs to tell the gatway

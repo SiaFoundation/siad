@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // Bubble is the process of updating the filesystem metadata for the renter. It

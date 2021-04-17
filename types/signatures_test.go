@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestEd25519PublicKey tests the Ed25519PublicKey function.

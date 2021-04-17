@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 const dummyNode = "111.111.111.111:1111"

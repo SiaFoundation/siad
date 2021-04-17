@@ -24,8 +24,8 @@ func TestAccounting(t *testing.T) {
 func testAccounting(t *testing.T) {
 	// Create new accounting
 	testDir := accountingTestDir(t.Name())
-	fm, h, m, r, w, _ := testingParams()
-	a, err := NewCustomAccounting(fm, h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
+	h, m, r, w, _ := testingParams()
+	a, err := NewCustomAccounting(h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,8 +90,8 @@ func testAccounting(t *testing.T) {
 // testNewCustomAccounting probes the NewCustomAccounting function
 func testNewCustomAccounting(t *testing.T) {
 	// checkNew is a helper function to check NewCustomAccounting
-	checkNew := func(fm modules.FeeManager, h modules.Host, m modules.Miner, r modules.Renter, w modules.Wallet, dir string, deps modules.Dependencies, expectedErr error) {
-		a, err := NewCustomAccounting(fm, h, m, r, w, dir, deps)
+	checkNew := func(h modules.Host, m modules.Miner, r modules.Renter, w modules.Wallet, dir string, deps modules.Dependencies, expectedErr error) {
+		a, err := NewCustomAccounting(h, m, r, w, dir, deps)
 		if err != expectedErr {
 			t.Errorf("Expected %v, got %v", expectedErr, err)
 		}
@@ -106,28 +106,26 @@ func testNewCustomAccounting(t *testing.T) {
 
 	// Create testing parameters
 	testDir := accountingTestDir(t.Name())
-	fm, h, m, r, w, deps := testingParams()
+	h, m, r, w, deps := testingParams()
 
 	// Base Case
-	checkNew(nil, nil, nil, nil, w, testDir, deps, nil)
+	checkNew(nil, nil, nil, w, testDir, deps, nil)
 
 	// Check for nil wallet
-	checkNew(nil, nil, nil, nil, nil, testDir, deps, errNilWallet)
+	checkNew(nil, nil, nil, nil, testDir, deps, errNilWallet)
 
 	// Check for blank persistDir
-	checkNew(nil, nil, nil, nil, w, "", deps, errNilPersistDir)
+	checkNew(nil, nil, nil, w, "", deps, errNilPersistDir)
 
 	// Check for nil Dependencies
-	checkNew(nil, nil, nil, nil, w, testDir, nil, errNilDeps)
+	checkNew(nil, nil, nil, w, testDir, nil, errNilDeps)
 
 	// Test optional modules
 	//
-	// FeeManager
-	checkNew(fm, nil, nil, nil, w, testDir, deps, nil)
 	// Host
-	checkNew(nil, h, nil, nil, w, testDir, deps, nil)
+	checkNew(h, nil, nil, w, testDir, deps, nil)
 	// Miner
-	checkNew(nil, nil, m, nil, w, testDir, deps, nil)
+	checkNew(nil, m, nil, w, testDir, deps, nil)
 	// Renter
-	checkNew(nil, nil, nil, r, w, testDir, deps, nil)
+	checkNew(nil, nil, r, w, testDir, deps, nil)
 }

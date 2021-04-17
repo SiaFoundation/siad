@@ -4,10 +4,10 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestAcceptRenewal is a unit test for managedAcceptRenewal.

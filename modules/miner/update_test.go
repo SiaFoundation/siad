@@ -3,8 +3,8 @@ package miner
 import (
 	"testing"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // TestIntegrationBlockHeightReorg checks that the miner has the correct block

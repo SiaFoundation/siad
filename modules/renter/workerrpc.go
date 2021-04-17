@@ -7,12 +7,12 @@ import (
 	"io"
 	"time"
 
-	"go.sia.tech/siad/build"
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )

@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // instructionUpdateRegistry defines an update to a value in the host's

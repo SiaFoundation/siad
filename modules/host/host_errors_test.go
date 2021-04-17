@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // dependencyErrMkdirAll is a dependency set that returns an error when MkdirAll

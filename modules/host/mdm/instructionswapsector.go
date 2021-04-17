@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // instructionSwapSector is an instruction that swaps two sectors of a file

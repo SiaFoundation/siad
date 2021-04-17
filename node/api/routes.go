@@ -56,11 +56,6 @@ func (api *API) buildHTTPRoutes() {
 		RegisterRoutesExplorer(router, api.explorer, api.cs)
 	}
 
-	// FeeManager API Calls
-	if api.feemanager != nil {
-		RegisterRoutesFeeManager(router, api.feemanager, requiredPassword)
-	}
-
 	// Gateway API Calls
 	if api.gateway != nil {
 		RegisterRoutesGateway(router, api.gateway, requiredPassword)
@@ -121,27 +116,6 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 		router.GET("/renter/workers", api.renterWorkersHandler)
 
-		// Skynet endpoints
-		router.GET("/skynet/basesector/*skylink", api.skynetBaseSectorHandlerGET)
-		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
-		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
-		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
-		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
-		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
-		router.GET("/skynet/root", api.skynetRootHandlerGET)
-		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
-		router.HEAD("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
-		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
-		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
-		router.GET("/skynet/registry", api.registryHandlerGET)
-		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
-		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
-		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))
-		router.POST("/skynet/addskykey", RequirePassword(api.skykeyAddKeyHandlerPOST, requiredPassword))
-		router.POST("/skynet/createskykey", RequirePassword(api.skykeyCreateKeyHandlerPOST, requiredPassword))
-		router.POST("/skynet/deleteskykey", RequirePassword(api.skykeyDeleteHandlerPOST, requiredPassword))
-		router.GET("/skynet/skykeys", RequirePassword(api.skykeysHandlerGET, requiredPassword))
-
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))
 		router.GET("/renter/dir/*siapath", api.renterDirHandlerGET)
@@ -160,8 +134,6 @@ func (api *API) buildHTTPRoutes() {
 		// Deprecated endpoints.
 		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
 		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))
-		router.GET("/skynet/blacklist", api.skynetBlocklistHandlerGET)
-		router.POST("/skynet/blacklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
 	}
 
 	// Transaction pool API Calls
@@ -219,5 +191,5 @@ func RequirePassword(h httprouter.Handle, password string) httprouter.Handle {
 
 // isUnrestricted checks if a request may bypass the useragent check.
 func isUnrestricted(req *http.Request) bool {
-	return strings.HasPrefix(req.URL.Path, "/renter/stream/") || strings.HasPrefix(req.URL.Path, "/skynet/skylink")
+	return strings.HasPrefix(req.URL.Path, "/renter/stream/")
 }

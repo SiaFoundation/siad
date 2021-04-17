@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestVerifyPaymentRevision is a unit test covering verifyPaymentRevision

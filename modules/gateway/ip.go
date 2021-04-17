@@ -6,8 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/modules"
 )
 
 // discoverPeerIP is the handler for the discoverPeer RPC. It returns the

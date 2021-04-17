@@ -13,9 +13,7 @@ import (
 
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/node/api"
-	"go.sia.tech/siad/skykey"
 	"go.sia.tech/siad/types"
 )
 
@@ -136,26 +134,6 @@ func newProgressSpinner(pbs *mpb.Progress, afterBar *mpb.Bar, filename string) *
 	)
 }
 
-// parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
-// the SkyfileUploadParameters
-func parseAndAddSkykey(sup modules.SkyfileUploadParameters) modules.SkyfileUploadParameters {
-	if skykeyName != "" && skykeyID != "" {
-		die("Can only use either skykeyname or skykeyid flag, not both.")
-	}
-	// Set Encrypt param to true if a skykey ID or name is set.
-	if skykeyName != "" {
-		sup.SkykeyName = skykeyName
-	} else if skykeyID != "" {
-		var ID skykey.SkykeyID
-		err := ID.FromString(skykeyID)
-		if err != nil {
-			die("Unable to parse skykey ID")
-		}
-		sup.SkykeyID = ID
-	}
-	return sup
-}
-
 // sanitizeErr is a small helper function that sanitizes the output for the
 // given error string. It will print "-", if the error string is the equivalent
 // of a nil error.
@@ -177,16 +155,4 @@ func sanitizeTime(t time.Time, cond bool) string {
 		return "-"
 	}
 	return fmt.Sprintf("%v", t.Format(time.RFC3339))
-}
-
-// validateSkyKeyNameAndIDUsage validates the usage of name and ID, ensuring
-// that only one is used.
-func validateSkyKeyNameAndIDUsage(name, id string) error {
-	if name == "" && id == "" {
-		return errNeitherNameNorIDUsed
-	}
-	if name != "" && id != "" {
-		return errBothNameAndIDUsed
-	}
-	return nil
 }

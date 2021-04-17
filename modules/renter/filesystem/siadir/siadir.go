@@ -71,10 +71,6 @@ type (
 		AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 		AggregateStuckSize           uint64    `json:"aggregatestucksize"`
 
-		// Aggregate Skynet Specific Stats
-		AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
-		AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
-
 		// The following fields are information specific to the siadir that is not
 		// an aggregate of the entire sub directory tree
 		Health              float64     `json:"health"`
@@ -90,10 +86,6 @@ type (
 		Size                uint64      `json:"size"`
 		StuckHealth         float64     `json:"stuckhealth"`
 		StuckSize           uint64      `json:"stucksize"`
-
-		// Skynet Specific Stats
-		SkynetFiles uint64 `json:"skynetfiles"`
-		SkynetSize  uint64 `json:"skynetsize"`
 
 		// Version is the used version of the header file.
 		Version string `json:"version"`

@@ -46,10 +46,7 @@ import (
 	"go.sia.tech/siad/modules/renter/contractor"
 	"go.sia.tech/siad/modules/renter/filesystem"
 	"go.sia.tech/siad/modules/renter/hostdb"
-	"go.sia.tech/siad/modules/renter/skynetblocklist"
-	"go.sia.tech/siad/modules/renter/skynetportals"
 	"go.sia.tech/siad/persist"
-	"go.sia.tech/siad/skykey"
 	siasync "go.sia.tech/siad/sync"
 	"go.sia.tech/siad/types"
 )
@@ -187,10 +184,6 @@ type cachedUtilities struct {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
-	// Skynet Management
-	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
-	staticSkynetPortals   *skynetportals.SkynetPortals
-
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
 	downloadHeapMu sync.Mutex         // Used to protect the downloadHeap.
@@ -226,7 +219,6 @@ type Renter struct {
 	rl *ratelimit.RateLimit
 
 	// stats cache related fields.
-	stats     *modules.SkynetStats
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
@@ -265,7 +257,6 @@ type Renter struct {
 	staticAlerter                      *modules.GenericAlerter
 	staticFileSystem                   *filesystem.FileSystem
 	staticFuseManager                  renterFuseManager
-	staticSkykeyManager                *skykey.SkykeyManager
 	staticStreamBufferSet              *streamBufferSet
 	tg                                 threadgroup.ThreadGroup
 	tpool                              modules.TransactionPool
@@ -283,7 +274,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 
-	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlocklist.Close(), r.staticSkynetPortals.Close())
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
 }
 
 // MemoryStatus returns the current status of the memory manager
@@ -631,10 +622,8 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 
 	// Save the changes.
 	id := r.mu.Lock()
-	r.persist.ConversionRates = s.CurrencyConversionRates
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-	r.persist.MonetizationBase = s.MonetizationBase
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -828,16 +817,11 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.uploadHeap.managedPauseStatus()
-	id := r.mu.RLock()
-	mb, ccr := r.persist.MonetizationBase, r.persist.ConversionRates
-	r.mu.RUnlock(id)
 	return modules.RenterSettings{
-		Allowance:               r.hostContractor.Allowance(),
-		CurrencyConversionRates: ccr,
-		IPViolationCheck:        enabled,
-		MaxDownloadSpeed:        download,
-		MaxUploadSpeed:          upload,
-		MonetizationBase:        mb,
+		Allowance:        r.hostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
 		UploadsStatus: modules.UploadsStatus{
 			Paused:       paused,
 			PauseEndTime: endTime,
@@ -875,85 +859,6 @@ func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.Mount
 // Unmount unmounts the fuse filesystem currently mounted at mountPoint.
 func (r *Renter) Unmount(mountPoint string) error {
 	return r.staticFuseManager.Unmount(mountPoint)
-}
-
-// AddSkykey adds the skykey with the given name, cipher type, and entropy to
-// the renter's skykey manager.
-func (r *Renter) AddSkykey(sk skykey.Skykey) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.AddKey(sk)
-}
-
-// DeleteSkykeyByID deletes the Skykey with the given ID from the renter's skykey
-// manager if it exists.
-func (r *Renter) DeleteSkykeyByID(id skykey.SkykeyID) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.DeleteKeyByID(id)
-}
-
-// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
-// manager if it exists.
-func (r *Renter) DeleteSkykeyByName(name string) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.DeleteKeyByName(name)
-}
-
-// SkykeyByName gets the Skykey with the given name from the renter's skykey
-// manager if it exists.
-func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
-	if err := r.tg.Add(); err != nil {
-		return skykey.Skykey{}, err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.KeyByName(name)
-}
-
-// CreateSkykey creates a new Skykey with the given name and ciphertype.
-func (r *Renter) CreateSkykey(name string, skType skykey.SkykeyType) (skykey.Skykey, error) {
-	if err := r.tg.Add(); err != nil {
-		return skykey.Skykey{}, err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.CreateKey(name, skType)
-}
-
-// SkykeyByID gets the Skykey with the given ID from the renter's skykey
-// manager if it exists.
-func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
-	if err := r.tg.Add(); err != nil {
-		return skykey.Skykey{}, err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.KeyByID(id)
-}
-
-// SkykeyIDByName gets the SkykeyID of the key with the given name if it
-// exists.
-func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
-	if err := r.tg.Add(); err != nil {
-		return skykey.SkykeyID{}, err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.IDByName(name)
-}
-
-// Skykeys returns a slice containing each Skykey being stored by the renter.
-func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
-	if err := r.tg.Add(); err != nil {
-		return nil, err
-	}
-	defer r.tg.Done()
-
-	return r.staticSkykeyManager.Skykeys(), nil
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
@@ -1068,20 +973,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
-	// Add SkynetBlocklist
-	sb, err := skynetblocklist.New(r.persistDir)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create new skynet blocklist")
-	}
-	r.staticSkynetBlocklist = sb
-
-	// Add SkynetPortals
-	sp, err := skynetportals.New(r.persistDir)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create new skynet portal list")
-	}
-	r.staticSkynetPortals = sp
-
 	// Load all saved data.
 	err = r.managedInitPersist()
 	if err != nil {
@@ -1093,17 +984,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Set the worker pool on the contractor.
 	r.hostContractor.UpdateWorkerPool(r.staticWorkerPool)
-
-	// Create the skykey manager.
-	// In testing, keep the skykeys with the rest of the renter data.
-	skykeyManDir := build.SkynetDir()
-	if build.Release == "testing" {
-		skykeyManDir = persistDir
-	}
-	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
-	if err != nil {
-		return nil, err
-	}
 
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.

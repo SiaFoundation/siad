@@ -8,11 +8,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // cachedMerkleRoot calculates the root of a set of existing Merkle roots.

@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem/siadir"
 	"go.sia.tech/siad/modules/renter/filesystem/siafile"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -592,10 +592,6 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		AggregateStuckHealth:         metadata.AggregateStuckHealth,
 		AggregateStuckSize:           metadata.AggregateStuckSize,
 
-		// Skynet Fields
-		AggregateSkynetFiles: metadata.AggregateSkynetFiles,
-		AggregateSkynetSize:  metadata.AggregateSkynetSize,
-
 		// SiaDir Fields
 		Health:              metadata.Health,
 		LastHealthCheckTime: metadata.LastHealthCheckTime,
@@ -613,10 +609,6 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		StuckSize:           metadata.StuckSize,
 		SiaPath:             siaPath,
 		UID:                 n.staticUID,
-
-		// Skynet Fields
-		SkynetFiles: metadata.SkynetFiles,
-		SkynetSize:  metadata.SkynetSize,
 	}, nil
 }
 

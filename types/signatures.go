@@ -11,9 +11,9 @@ import (
 	"errors"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (

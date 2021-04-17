@@ -17,11 +17,11 @@ import (
 	"github.com/spf13/cobra/doc"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/siatest"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (

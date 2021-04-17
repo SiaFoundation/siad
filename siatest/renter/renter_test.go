@@ -5037,114 +5037,6 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	}
 }
 
-// TestReadSectorOutputCorrupted verifies that the merkle proof check on the
-// ReadSector MDM instruction works as expected.
-func TestReadSectorOutputCorrupted(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a testgroup with a renter and miner.
-	groupParams := siatest.GroupParams{
-		Miners:  1,
-		Renters: 1,
-	}
-
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group:", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// add a host that corrupts downloads.
-	deps1 := dependencies.NewDependencyCorruptReadSector()
-	deps2 := dependencies.NewDependencyCorruptReadSector()
-	deps1.Disable()
-	deps2.Disable()
-	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
-	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
-	hostParams1.HostDeps = deps1
-	hostParams2.HostDeps = deps2
-	_, err = tg.AddNodes(hostParams1, hostParams2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Upload a file.
-	renter := tg.Renters()[0]
-	skylink, _, _, err := renter.UploadNewSkyfileBlocking("test", 100, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Download the file.
-	_, _, err = renter.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Enable the dependencies
-	deps1.Enable()
-	deps2.Enable()
-
-	// Create a new renter (to ensure we're not serving from cache)
-	renterParams := node.Renter(filepath.Join(testDir, "renter2"))
-	added, err := tg.AddNodes(renterParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	renter = added[0]
-
-	// Allow the renter some time to form contracts with all of our hosts.
-	// This should prevent an NDF from occurring where the base sector could not
-	// be downloaded due to shortage of hosts.
-	err = build.Retry(600, 100*time.Millisecond, func() error {
-		wps, err := renter.RenterWorkersGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if wps.NumWorkers != len(tg.Hosts()) {
-			return errors.New("workerpool not ready yet")
-		}
-		for _, ws := range wps.Workers {
-			if ws.AccountStatus.AvailableBalance.IsZero() || !ws.PriceTableStatus.Active {
-				return errors.New("worker not ready yet")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Download again
-	possibleErrs := "all workers failed;download timed out"
-	_, _, err = renter.SkynetSkylinkGet(skylink)
-	if err == nil || strings.Contains(possibleErrs, err.Error()) {
-		t.Fatal(err)
-	}
-
-	// Disable the dependencies
-	deps1.Disable()
-	deps2.Disable()
-
-	// Download one more time. It should work again. Do it in a loop since the
-	// workers might be on a cooldown.
-	err = build.Retry(600, 100*time.Millisecond, func() error {
-		_, _, err = renter.SkynetSkylinkGet(skylink)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestRenterPricesVolatility verifies that the renter caches its price
 // estimation, and subsequent calls result in non-volatile results.
 func TestRenterPricesVolatility(t *testing.T) {
@@ -5244,9 +5136,6 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 		// Update the allowance.
 		allowance := siatest.DefaultAllowance
 		allowance.Hosts = hosts
-		if portalMode {
-			allowance.PaymentContractInitialFunding = types.SiacoinPrecision
-		}
 		err := renter.RenterPostAllowance(allowance)
 		if err != nil {
 			t.Fatal(err)
@@ -5292,120 +5181,6 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-}
-
-// TestRenterClean tests the /renter/clean endpoint functionality.
-func TestRenterClean(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create test group
-	groupParams := siatest.GroupParams{
-		Miners:  1,
-		Hosts:   1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group:", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	r := tg.Renters()[0]
-	numHosts := len(tg.Hosts())
-
-	// Upload 2 SiaFiles then delete one of the SiaFile's localFile so that it
-	// will appear as unrecoverable.
-	//
-	// We use datapieces > numHosts to ensure the redundancy for both files will
-	// be < 1.
-	dp := uint64(numHosts + 1)
-	pp := dp + 1
-	lf, _, err := r.UploadNewFile(100, dp, pp, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = lf.Delete()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, rf2, err := r.UploadNewFile(100, dp, pp, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Upload a SkyFile.
-	//
-	// Since it doesn't have a local file it will appear as unrecoverable if the
-	// hosts are taken down.
-	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Define test function
-	cleanAndVerify := func(numSiaFiles, numSkyFiles int) {
-		// Clean renter
-		err = r.RenterCleanPost()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Check for the expected SiaFiles
-		rds, err := r.RenterDirRootGet(modules.UserFolder)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rds.Files) != numSiaFiles {
-			t.Fatal("unexpected number of files in user folder:", len(rds.Files))
-		}
-		// The file should be the 2nd siafile uploaded.
-		siaPath := rds.Files[0].SiaPath
-		expected, err := modules.UserFolder.Join(rf2.SiaPath().String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !siaPath.Equals(expected) {
-			t.Fatalf("unexpected siapath; expected %v got %v", expected, siaPath)
-		}
-
-		// Check for the expected SkyFiles
-		rds, err = r.RenterDirRootGet(modules.SkynetFolder)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(rds.Files) != numSkyFiles {
-			t.Fatal("unexpected number of files in skynet folder:", len(rds.Files))
-		}
-	}
-
-	// First test should only remove the 1 unrecoverable Siafile
-	cleanAndVerify(1, 1)
-
-	// Take down the hosts
-	for _, h := range tg.Hosts() {
-		err = tg.StopNode(h)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Make sure the redundancy of the Skyfile drops
-	err = r.WaitForDecreasingRedundancy(rf3, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Second test should remove the now unrecoverable Skyfile
-	cleanAndVerify(1, 0)
 }
 
 // TestRenterRepairSize test the RepairSize field of the metadata
@@ -5827,8 +5602,6 @@ func TestRenterBubble(t *testing.T) {
 		{modules.HomeFolder, initDirInfo},
 		{modules.UserFolder, initDirInfo},
 		{modules.BackupFolder, initDirInfo},
-		{modules.VarFolder, initDirInfo},
-		{modules.SkynetFolder, initDirInfo},
 	}
 	// Initial checks are not pending any bubbles so should not need a build retry
 	// loop
@@ -5866,8 +5639,6 @@ func TestRenterBubble(t *testing.T) {
 		{modules.HomeFolder, initDirInfo},
 		{modules.UserFolder, initDirInfo},
 		{modules.BackupFolder, initDirInfo},
-		{modules.VarFolder, initDirInfo},
-		{modules.SkynetFolder, initDirInfo},
 	}
 	for _, test := range tests {
 		// Check the expected DirectoryInfo in a loop to allow for bubble to execute
@@ -5910,8 +5681,6 @@ func TestRenterBubble(t *testing.T) {
 	varDirInfo.NumSubDirs = 1
 	// User has no sub directory
 	userDirInfo := initDirInfo
-	// Skynet has no sub directory
-	skynetDirInfo := initDirInfo
 
 	// Check the filesystem
 	tests = []struct {
@@ -5922,8 +5691,6 @@ func TestRenterBubble(t *testing.T) {
 		{modules.HomeFolder, homeDirInfo},
 		{modules.UserFolder, userDirInfo},
 		{modules.BackupFolder, backupDirInfo},
-		{modules.VarFolder, varDirInfo},
-		{modules.SkynetFolder, skynetDirInfo},
 	}
 	for _, test := range tests {
 		// Check the expected DirectoryInfo in a loop to allow for bubble to execute

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestTransactionPoolRawHandler verifies that the transaction pools' raw

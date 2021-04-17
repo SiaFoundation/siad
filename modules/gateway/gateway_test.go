@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	siasync "go.sia.tech/siad/sync"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // newTestingGateway returns a gateway ready to use in a testing environment.

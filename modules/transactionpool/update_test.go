@@ -331,14 +331,8 @@ func TestTransactionPoolPruning(t *testing.T) {
 	// disconnect tpt, create an unconfirmed transaction on tpt, mine MaxTransactionAge
 	// blocks on tpt2 and reconnect. The unconfirmed transactions should be
 	// removed from tpt's pool.
-	err = tpt.gateway.Disconnect(tpt2.gateway.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tpt2.gateway.Disconnect(tpt.gateway.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
+	tpt.gateway.Disconnect(tpt2.gateway.Address())
+	tpt2.gateway.Disconnect(tpt.gateway.Address())
 	txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)

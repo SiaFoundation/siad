@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -13,7 +14,6 @@ import (
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Wallet tester contains a ConsensusTester and has a bunch of helpful

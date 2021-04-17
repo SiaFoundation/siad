@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"go.sia.tech/siad/node/api"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/node/api"
 )
 
 var (

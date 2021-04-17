@@ -23,13 +23,13 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 const (

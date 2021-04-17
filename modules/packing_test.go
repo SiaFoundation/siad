@@ -7,8 +7,8 @@ import (
 	"testing"
 	"text/tabwriter"
 
-	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/build"
 )
 
 const (

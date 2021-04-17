@@ -29,11 +29,11 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	siasync "go.sia.tech/siad/sync"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // ContractManager is responsible for managing contracts that the host has with

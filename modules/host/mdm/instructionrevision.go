@@ -3,9 +3,9 @@ package mdm
 import (
 	"fmt"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // instructionRevision returns the FileContractRevision returned by this MDM

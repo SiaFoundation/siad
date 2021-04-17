@@ -1,9 +1,9 @@
 package host
 
 import (
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.sia.tech/siad/modules"
 )
 
 // managedRPCAccountBalance handles the RPC which returns the balance of the

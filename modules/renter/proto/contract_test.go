@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // dependencyInterruptContractInsertion will interrupt inserting a contract

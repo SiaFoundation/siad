@@ -3,10 +3,10 @@ package mdm
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionReadOffset tests executing a program with a single

@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
@@ -573,78 +573,6 @@ func TestGetPieceOffsetAndLenWithRecover(t *testing.T) {
 		length := (fastrand.Uint64n(5*crypto.SegmentSize) + 1)
 		offset := fastrand.Uint64n(modules.SectorSize - length)
 		run(offset, length)
-	}
-}
-
-// TestLaunchedWorkerInfo_String is a small unit test that verifies the output
-// of the String implementation on the launched worker info object.
-func TestLaunchedWorkerInfo_String(t *testing.T) {
-	t.Parallel()
-
-	pdc := new(projectDownloadChunk)
-	fastrand.Read(pdc.uid[:])
-
-	w := new(worker)
-	w.staticHostPubKey = types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       fastrand.Bytes(32),
-	}
-
-	lwi := &launchedWorkerInfo{
-		pieceIndex:      1,
-		overdriveWorker: false,
-
-		launchTime:           time.Now().Add(-5 * time.Second),
-		expectedCompleteTime: time.Now().Add(10 * time.Second),
-		expectedDuration:     10 * time.Second,
-
-		pdc:    pdc,
-		worker: w,
-	}
-
-	// assert output when download not complete
-	expectedWorkerInfo := "initial worker " + w.staticHostPubKey.ShortString()
-	expectedPieceInfo := "piece 1"
-	expectedEstInfo := "estimated complete 10000 ms"
-	expectedDurInfo := "not responded after 5000ms"
-	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
-		!strings.Contains(lwi.String(), expectedPieceInfo) ||
-		!strings.Contains(lwi.String(), expectedEstInfo) ||
-		!strings.Contains(lwi.String(), expectedDurInfo) {
-		t.Fatal("unexpected: ", lwi.String())
-	}
-
-	// assert output when download complete
-	lwi.completeTime = time.Now()
-	lwi.jobDuration = 20 * time.Second
-	lwi.totalDuration = time.Since(lwi.launchTime)
-
-	expectedDurInfo = "responded after 5000ms"
-	expectedJobInfo := "read job took 20000ms"
-	expectedErrInfo := "job completed successfully"
-	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
-		!strings.Contains(lwi.String(), expectedDurInfo) ||
-		!strings.Contains(lwi.String(), expectedJobInfo) ||
-		!strings.Contains(lwi.String(), expectedErrInfo) {
-		t.Fatal("unexpected", lwi.String())
-	}
-
-	// assert output when job errored out
-	lwi.jobErr = errors.New("some failure")
-
-	expectedErrInfo = "job failed with err: some failure"
-	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
-		!strings.Contains(lwi.String(), expectedDurInfo) ||
-		!strings.Contains(lwi.String(), expectedJobInfo) ||
-		!strings.Contains(lwi.String(), expectedErrInfo) {
-		t.Fatal("unexpected", lwi.String())
-	}
-
-	// assert output when worker is overdrive worker
-	lwi.overdriveWorker = true
-	expectedWorkerInfo = "overdrive worker " + w.staticHostPubKey.ShortString()
-	if !strings.Contains(lwi.String(), expectedWorkerInfo) {
-		t.Fatal("unexpected", lwi.String())
 	}
 }
 

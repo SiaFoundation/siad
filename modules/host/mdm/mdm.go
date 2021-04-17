@@ -1,10 +1,10 @@
 package mdm
 
 import (
+	"gitlab.com/NebulousLabs/threadgroup"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // StorageObligation defines an interface the storage obligation must adhere to.

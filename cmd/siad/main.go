@@ -144,16 +144,7 @@ Miner (m):
 	The miner requires the consensus set, transaction pool, and wallet.
 	Example:
 		siad -M gctwm
-		siad -M miner
-FeeManager (f):
-	The FeeManager provides a means for application developers to charge
-	users for the user of their application.
-	The FeeManager requires the consensus set, gateway, transaction pool, and wallet.
-	NOTE: While not required, the FeeManager module will be automatically added to
-	the manual list of modules if the Wallet is included.
-	Example:
-		siad -M gctwf
-		siad -M feemanager
+
 Accounting (a):
 	The Accounting module provides a high level accounting summary for the Sia node.
 	The Accounting module requires the consensus set, gateway, transaction pool, wallet,
@@ -163,6 +154,7 @@ Accounting (a):
 	Example:
 		siad -M gctwra
 		siad -M accounting
+
 Explorer (e):
 	The explorer provides statistics about the blockchain and can be
 	queried for information about specific transactions or other objects on

@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestVerifyNewContract is a unit test for managedVerifyNewContract. It tests

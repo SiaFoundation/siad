@@ -5,16 +5,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/feemanager"
 	"go.sia.tech/siad/modules/host"
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/modules/renter"
 	"go.sia.tech/siad/modules/wallet"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // accountingTestDir joins the provided directories and prefixes them with the
@@ -35,8 +34,8 @@ func accountingTestDir(dirs ...string) string {
 
 // newTestAccounting creates a new Accounting module for testing
 func newTestAccounting(testDir string) (*Accounting, error) {
-	fm, h, m, r, w, deps := testingParams()
-	a, err := NewCustomAccounting(fm, h, m, r, w, testDir, deps)
+	h, m, r, w, deps := testingParams()
+	a, err := NewCustomAccounting(h, m, r, w, testDir, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -50,14 +49,13 @@ func randomCurrency() types.Currency {
 
 // testingParams returns the minimum required parameters for creating an
 // Accounting module for testing.
-func testingParams() (modules.FeeManager, modules.Host, modules.Miner, modules.Renter, modules.Wallet, modules.Dependencies) {
-	fm := &feemanager.FeeManager{}
+func testingParams() (modules.Host, modules.Miner, modules.Renter, modules.Wallet, modules.Dependencies) {
 	h := &host.Host{}
 	m := &miner.Miner{}
 	r := &mockRenter{}
 	w := &mockWallet{}
 	deps := &modules.ProductionDependencies{}
-	return fm, h, m, r, w, deps
+	return h, m, r, w, deps
 }
 
 // mockRenter is a helper for Accounting unit tests

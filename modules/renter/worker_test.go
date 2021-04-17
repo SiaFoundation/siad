@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // workerTester is a helper type which contains a renter, host and worker that

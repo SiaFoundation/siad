@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -13,7 +14,6 @@ import (
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/modules/wallet"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // Explorer tester struct is the helper object for explorer

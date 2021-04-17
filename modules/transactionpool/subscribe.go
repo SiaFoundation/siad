@@ -1,10 +1,10 @@
 package transactionpool
 
 import (
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // updateSubscribersTransactions sends a new transaction pool update to all

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -14,6 +13,7 @@ import (
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
 )

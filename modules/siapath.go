@@ -53,15 +53,8 @@ var (
 	// accessible data.
 	HomeFolder = NewGlobalSiaPath("/home")
 
-	// SkynetFolder is the Sia folder where all of the skyfiles are stored by
-	// default.
-	SkynetFolder = NewGlobalSiaPath("/var/skynet")
-
 	// UserFolder is the Sia folder that is used to store the renter's siafiles.
 	UserFolder = NewGlobalSiaPath("/home/user")
-
-	// VarFolder is the Sia folder that contains the skynet folder.
-	VarFolder = NewGlobalSiaPath("/var")
 )
 
 type (

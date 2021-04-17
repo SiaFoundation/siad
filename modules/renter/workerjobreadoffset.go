@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 )
 
 type (

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/modules"
 )
 
 // TestIpRPC tests the ip discovery RPC.

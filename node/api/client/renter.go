@@ -57,13 +57,6 @@ func (a *AllowanceRequestPost) WithRenewWindow(renewWindow types.BlockHeight) *A
 	return a
 }
 
-// WithPaymentContractInitialFunding adds the paymentcontractinitialfunding
-// field to the request.
-func (a *AllowanceRequestPost) WithPaymentContractInitialFunding(price types.Currency) *AllowanceRequestPost {
-	a.values.Set("paymentcontractinitialfunding", price.String())
-	return a
-}
-
 // WithExpectedStorage adds the expected storage field to the request.
 func (a *AllowanceRequestPost) WithExpectedStorage(expectedStorage uint64) *AllowanceRequestPost {
 	a.values.Set("expectedstorage", fmt.Sprint(expectedStorage))
@@ -476,7 +469,6 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	a = a.WithExpectedDownload(allowance.ExpectedDownload)
 	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
 	a = a.WithMaxPeriodChurn(allowance.MaxPeriodChurn)
-	a = a.WithPaymentContractInitialFunding(allowance.PaymentContractInitialFunding)
 	return a.Send()
 }
 
@@ -512,22 +504,6 @@ func (c *Client) RenterRenamePost(siaPathOld, siaPathNew modules.SiaPath, root b
 	values.Set("newsiapath", fmt.Sprint(siaPathNew.String()))
 	values.Set("root", fmt.Sprint(root))
 	err = c.post(fmt.Sprintf("/renter/rename/%s", spo), values.Encode(), nil)
-	return
-}
-
-// RenterSetMonetizationBase updates the renter's monetization base.
-func (c *Client) RenterSetMonetizationBase(mb types.Currency) (err error) {
-	values := url.Values{}
-	values.Set("monetizationbase", fmt.Sprint(mb))
-	err = c.post("/renter", values.Encode(), nil)
-	return
-}
-
-// RenterSetUSDConversionRate update the renter's usd conversion rate.
-func (c *Client) RenterSetUSDConversionRate(cr types.Currency) (err error) {
-	values := url.Values{}
-	values.Set("usdconversionrate", fmt.Sprint(cr))
-	err = c.post("/renter", values.Encode(), nil)
 	return
 }
 

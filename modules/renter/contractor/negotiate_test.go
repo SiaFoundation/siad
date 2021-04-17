@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/ratelimit"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -14,7 +15,6 @@ import (
 	"go.sia.tech/siad/modules/transactionpool"
 	modWallet "go.sia.tech/siad/modules/wallet" // name conflicts with type
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/errors"
 )

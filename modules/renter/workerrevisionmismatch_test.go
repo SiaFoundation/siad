@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestRevisionSync is a unit test that verifies if the revision number fix is

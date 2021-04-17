@@ -3,8 +3,8 @@ package persist
 import (
 	"io"
 
-	"go.sia.tech/siad/build"
 	"gitlab.com/NebulousLabs/log"
+	"go.sia.tech/siad/build"
 )
 
 // Logger is a wrapper for log.Logger.

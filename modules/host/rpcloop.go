@@ -9,11 +9,11 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/chacha20poly1305"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // An rpcSession contains the state of an RPC session with a renter.

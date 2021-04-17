@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem/siadir"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // checkMetadataInit is a helper that verifies that the metadata was initialized

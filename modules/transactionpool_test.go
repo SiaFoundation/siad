@@ -3,8 +3,8 @@ package modules
 import (
 	"testing"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/types"
 )
 
 // TestConsensusConflict checks that the consensus conflict type is correctly

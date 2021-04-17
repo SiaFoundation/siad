@@ -5,10 +5,10 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // ProcessConsensusChange follows the most recent changes to the consensus set,

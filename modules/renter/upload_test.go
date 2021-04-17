@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // TestRenterUploadDirectory verifies that the renter returns an error if a

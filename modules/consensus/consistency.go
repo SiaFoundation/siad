@@ -8,10 +8,10 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // manageErr handles an error detected by the consistency checks.

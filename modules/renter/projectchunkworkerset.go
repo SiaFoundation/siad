@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -122,9 +122,9 @@ type pcwsWorkerState struct {
 }
 
 // projectChunkWorkerSet is an object that contains a set of workers that can be
-// used to download a single chunk. The object can be initialized with either a
-// set of roots (for Skynet downloads) or with a siafile where the host-root
-// pairs are already known (for traditional renter downloads).
+// used to download a single chunk. The object can be initialized with a siafile
+// where the host-root pairs are already known (for traditional renter
+// downloads).
 //
 // If the pcws is initialized with only a set of roots, it will immediately spin
 // up a bunch of worker jobs to locate those roots on the network using

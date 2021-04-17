@@ -3,8 +3,8 @@ package host
 import (
 	"path/filepath"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // upgradeFromV143ToV151 is an upgrade layer that fixes a bug in the host's

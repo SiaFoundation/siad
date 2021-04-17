@@ -4,8 +4,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"go.sia.tech/siad/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules/renter/contractor"
 )
 
 // errCausedByRevisionMismatch returns true if (we suspect) the given error is

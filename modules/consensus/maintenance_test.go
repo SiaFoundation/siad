@@ -3,10 +3,10 @@ package consensus
 import (
 	"testing"
 
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 /*

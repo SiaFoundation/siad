@@ -20,9 +20,6 @@ func parseModules(config Config) node.NodeParams {
 	if strings.Contains(config.Siad.Modules, "e") {
 		params.CreateExplorer = true
 	}
-	if strings.Contains(config.Siad.Modules, "f") {
-		params.CreateFeeManager = true
-	}
 	if strings.Contains(config.Siad.Modules, "g") {
 		params.CreateGateway = true
 	}
@@ -43,7 +40,6 @@ func parseModules(config Config) node.NodeParams {
 		// Add Accounting and FeeManager modules to all nodes that have at least
 		// a wallet
 		params.CreateAccounting = true
-		params.CreateFeeManager = true
 	}
 	// Parse remaining fields.
 	params.Bootstrap = !config.Siad.NoBootstrap

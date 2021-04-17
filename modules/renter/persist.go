@@ -60,9 +60,6 @@ type (
 		MaxUploadSpeed   int64
 		UploadedBackups  []modules.UploadedBackup
 		SyncedContracts  []types.FileContractID
-
-		ConversionRates  map[string]types.Currency
-		MonetizationBase types.Currency
 	}
 )
 
@@ -109,14 +106,6 @@ func (r *Renter) managedLoadSettings() error {
 		return r.managedLoadSettings()
 	} else if err != nil {
 		return err
-	}
-
-	// Make sure the usd conversion rate is set to 0 if it isn't set yet.
-	if r.persist.ConversionRates == nil {
-		r.persist.ConversionRates = make(map[string]types.Currency)
-	}
-	if _, exists := r.persist.ConversionRates[modules.CurrencyUSD]; !exists {
-		r.persist.ConversionRates[modules.CurrencyUSD] = types.ZeroCurrency
 	}
 
 	// Set the bandwidth limits on the contractor, which was already initialized
@@ -205,10 +194,6 @@ func (r *Renter) managedInitPersist() error {
 		return err
 	}
 	err = fs.NewSiaDir(modules.BackupFolder, modules.DefaultDirPerm)
-	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
-		return err
-	}
-	err = fs.NewSiaDir(modules.SkynetFolder, modules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}

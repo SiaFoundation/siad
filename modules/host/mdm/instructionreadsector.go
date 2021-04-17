@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // instructionReadSector is an instruction which reads from a sector specified

@@ -67,14 +67,6 @@ Full Descriptions
 
 * `siac version` displays the version string of siac.
 
-### FeeManager tasks
-
-* `siac feemanager` prints info about the feemanager such as pending fees and
-  the next fee payout height.
-
-* `siac feemanager cancel <feeUID>` cancels a pending fee. If a transaction has
-  already been created the fee cannot be cancelled.
-
 ### Gateway tasks
 
 * `siac gateway` prints info about the gateway, including its address and how
@@ -222,61 +214,6 @@ have the nickname be the same as the filename.
 
 * `siac skykey ls` will list all skykeys. Use with --show-priv-keys to show full
   encoding with private key also.
-
-### Skynet tasks
-
-* `siac skynet backup` back up a skyfile.
-
-* `siac skynet blocklist` lists the merkleroots of all blocked skylinks.
-
-* `siac skynet blocklist add [skylink]` will add any skylinks separated by
-  spaces to the blocklist.
-
-* `siac skynet blocklist remove [skylinks]` will remove any skylinks
-  separated by spaces from the blocklist.
-
-* `siac skynet convert [source siaPath] [destination siaPath]` converts
-  a siafile to a skyfile and then generates its skylink. A new skylink will be
-created in the user's skyfile directory. The skyfile and the original siafile
-are both necessary to pin the file and keep the skylink active. The skyfile will
-consume an additional 40 MiB of storage.
-
-* `siac skynet download [skylink] [destination]` downloads a file from Skynet
-  using a skylink.
-
-* `siac skynet isblocked` will check if a skylink(s) is on the blocklist.
-
-* `siac skynet ls` lists all skyfiles and subdirectories that the user has
-  pinned along with the corresponding skylinks. By default, only files in
-var/skynet/ will be displayed. Files that are not tracking skylinks are not
-counted.
-
-* `siac skynet pin [skylink] [destination siapath]` pins the file associated
-  with this skylink by re-uploading an exact copy. This ensures that the file
-will still be available on skynet as long as you continue maintaining the file
-in your renter.
-
-* `siac skynet portals` list the persisted Skynet portals.
-
-* `siac skynet portals add [url]` adds a Skynet portals which is either
-public or private to the list of persisted Skynet portals. The Skynet portal
-URL is of the form `url:port`. Add the `--public` if you want it to be public.
-It defaults to private.
-
-* `siac skynet portals remove [url]` removes the Skynet portal from the
-persisted list. The Skynet portal URL is of the form `url:port`.
-
-* `siac skynet restore` restore a skyfile.
-
-* `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
-  deleting them from your list of stored files or directories.
-
-* `siac skynet upload [source filepath] [destination siapath]` uploads a file or
-  directory to Skynet. A skylink will be produced for each file. The link can be
-shared and used to retrieve the file. The file(s) that get uploaded will be
-pinned to this Sia node, meaning that this node will pay for storage and repairs
-until the file(s) are manually deleted. If the `silent` flag is provided, `siac`
-will not output progress bars during upload.
 
 ### Utils tasks
 TODO - Fill in

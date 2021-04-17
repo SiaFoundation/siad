@@ -34,8 +34,8 @@ func TestPersist(t *testing.T) {
 func testBasic(t *testing.T) {
 	// Create new accounting
 	testDir := accountingTestDir(t.Name())
-	fm, h, m, r, w, _ := testingParams()
-	a, err := NewCustomAccounting(fm, h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
+	h, m, r, w, _ := testingParams()
+	a, err := NewCustomAccounting(h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func testBasic(t *testing.T) {
 		}
 
 		// Load Accounting
-		a, err = NewCustomAccounting(fm, h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
+		a, err = NewCustomAccounting(h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,8 +129,8 @@ func testCallThreadedPersistAccounting(t *testing.T) {
 func testManagedUpdateAndPersistAccounting(t *testing.T) {
 	// Initialize Accounting
 	testDir := accountingTestDir(t.Name())
-	fm, h, m, r, w, _ := testingParams()
-	a, err := NewCustomAccounting(fm, h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
+	h, m, r, w, _ := testingParams()
+	a, err := NewCustomAccounting(h, m, r, w, testDir, &dependencies.AccountingDisablePersistLoop{})
 	if err != nil {
 		t.Fatal(err)
 	}

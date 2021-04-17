@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 var (

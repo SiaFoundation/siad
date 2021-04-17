@@ -5,12 +5,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/siamux"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 const (

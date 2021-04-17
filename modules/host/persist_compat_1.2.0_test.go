@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/consensus"
@@ -13,7 +14,6 @@ import (
 	"go.sia.tech/siad/modules/transactionpool"
 	"go.sia.tech/siad/modules/wallet"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 const (

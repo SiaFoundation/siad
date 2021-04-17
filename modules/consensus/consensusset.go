@@ -13,10 +13,10 @@ import (
 	"gitlab.com/NebulousLabs/demotemutex"
 	"gitlab.com/NebulousLabs/threadgroup"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (

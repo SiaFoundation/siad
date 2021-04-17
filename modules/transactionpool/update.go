@@ -6,10 +6,10 @@ import (
 	"sort"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // findSets takes a bunch of transactions (presumably from a block) and finds

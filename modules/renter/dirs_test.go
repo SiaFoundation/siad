@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem"
 	"go.sia.tech/siad/modules/renter/filesystem/siadir"
 	"go.sia.tech/siad/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // FileListCollect returns information on all of the files stored by the
@@ -239,9 +239,9 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 5 Directories because of root, foo, home, var, and snapshots
-	if len(directories) != 5 {
-		t.Fatal("Expected 5 DirectoryInfos but got", len(directories))
+	// 4 Directories because of root, foo, home, and snapshots
+	if len(directories) != 4 {
+		t.Fatal("Expected 4 DirectoryInfos but got", len(directories))
 	}
 	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), false, false)
 	if err != nil {
@@ -273,12 +273,12 @@ func TestRenterListDirectory(t *testing.T) {
 		}
 		// Check the aggregate and siadir fields.
 		//
-		// Expecting /home, /home/user, /var, /var/skynet, /snapshots, /foo
-		if rootMD.AggregateNumSubDirs != 6 {
-			return fmt.Errorf("Expected 6 subdirs in aggregate but got %v", rootMD.AggregateNumSubDirs)
+		// Expecting /home, /home/user, /snapshots, /foo
+		if rootMD.AggregateNumSubDirs != 4 {
+			return fmt.Errorf("Expected 4 subdirs in aggregate but got %v", rootMD.AggregateNumSubDirs)
 		}
-		if rootMD.NumSubDirs != 4 {
-			return fmt.Errorf("Expected 4 subdirs but got %v", rootMD.NumSubDirs)
+		if rootMD.NumSubDirs != 3 {
+			return fmt.Errorf("Expected 3 subdirs but got %v", rootMD.NumSubDirs)
 		}
 		if rootMD.AggregateNumFiles != 1 {
 			return fmt.Errorf("Expected 1 file in aggregate but got %v", rootMD.AggregateNumFiles)

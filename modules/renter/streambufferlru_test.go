@@ -3,9 +3,9 @@ package renter
 import (
 	"testing"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
+	"go.sia.tech/siad/types"
 )
 
 // TestStreamLRU checks that all of the code that forms the LRU for a

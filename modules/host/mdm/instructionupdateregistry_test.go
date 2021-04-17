@@ -5,11 +5,11 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionUpdateRegistry tests the update registry instruction.

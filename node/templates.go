@@ -10,7 +10,6 @@ var (
 		CreateAccounting:      true,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false, // TODO: Implement explorer.
-		CreateFeeManager:      true,
 		CreateGateway:         true,
 		CreateHost:            true,
 		CreateMiner:           true,
@@ -25,26 +24,10 @@ var (
 		CreateAccounting:      true,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
-		CreateFeeManager:      true,
 		CreateGateway:         true,
 		CreateHost:            true,
 		CreateMiner:           true,
 		CreateRenter:          true,
-		CreateTransactionPool: true,
-		CreateWallet:          true,
-	}
-	// FeeManagerTemplate is a template for a Sia node that has a functioning
-	// FeeManager. The node has a FeeManager and all dependencies, but no other
-	// modules.
-	FeeManagerTemplate = NodeParams{
-		CreateAccounting:      false,
-		CreateConsensusSet:    true,
-		CreateExplorer:        false,
-		CreateFeeManager:      true,
-		CreateGateway:         true,
-		CreateHost:            false,
-		CreateMiner:           false,
-		CreateRenter:          false,
 		CreateTransactionPool: true,
 		CreateWallet:          true,
 	}
@@ -54,7 +37,6 @@ var (
 		CreateAccounting:      false,
 		CreateConsensusSet:    false,
 		CreateExplorer:        false,
-		CreateFeeManager:      false,
 		CreateGateway:         true,
 		CreateHost:            false,
 		CreateMiner:           false,
@@ -68,7 +50,6 @@ var (
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
-		CreateFeeManager:      false,
 		CreateGateway:         true,
 		CreateHost:            true,
 		CreateMiner:           false,
@@ -82,7 +63,6 @@ var (
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
-		CreateFeeManager:      false,
 		CreateGateway:         true,
 		CreateHost:            false,
 		CreateMiner:           true,
@@ -97,7 +77,6 @@ var (
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
-		CreateFeeManager:      false,
 		CreateGateway:         true,
 		CreateHost:            false,
 		CreateMiner:           false,
@@ -112,7 +91,6 @@ var (
 		CreateAccounting:      false,
 		CreateConsensusSet:    true,
 		CreateExplorer:        false,
-		CreateFeeManager:      false,
 		CreateGateway:         true,
 		CreateHost:            false,
 		CreateMiner:           false,
@@ -132,13 +110,6 @@ func AllModules(dir string) NodeParams {
 // Accounting returns an AccountingTemplate filled out with the provided dir.
 func Accounting(dir string) NodeParams {
 	template := AccountingTemplate
-	template.Dir = dir
-	return template
-}
-
-// FeeManager returns a FeeManagerTemplate filled out with the provided dir.
-func FeeManager(dir string) NodeParams {
-	template := FeeManagerTemplate
 	template.Dir = dir
 	return template
 }

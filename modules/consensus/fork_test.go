@@ -3,8 +3,8 @@ package consensus
 import (
 	"testing"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // TestBacktrackToCurrentPath probes the backtrackToCurrentPath method of the

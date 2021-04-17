@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 func TestRPCID(t *testing.T) {

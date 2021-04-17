@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"

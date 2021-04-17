@@ -3,10 +3,10 @@ package consensus
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // reorgSets contains multiple consensus sets that share a genesis block, which

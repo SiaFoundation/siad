@@ -3,8 +3,8 @@ package api
 import (
 	"io"
 
-	"go.sia.tech/siad/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/modules"
 )
 
 // limitStreamer is a helper struct that wraps a modules.Streamer so it starts

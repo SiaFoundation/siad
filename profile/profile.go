@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/persist"
 )
 
 // There's a global lock on cpu and memory profiling, because I'm not sure what

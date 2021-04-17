@@ -3,9 +3,9 @@ package mdm
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionHasSector tests executing a program with a single

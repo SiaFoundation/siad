@@ -6,8 +6,8 @@ package consensus
 import (
 	"gitlab.com/NebulousLabs/bolt"
 
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"go.sia.tech/siad/types"
 )
 
 // dbBlockHeight is a convenience function allowing blockHeight to be called

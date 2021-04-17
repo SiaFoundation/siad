@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"testing"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // KeyPairSiag_1_0 matches the KeyPair struct of the siag 1.0 code.

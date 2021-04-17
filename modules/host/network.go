@@ -21,13 +21,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.sia.tech/siad/build"
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // defaultConnectionDeadline is the default read and write deadline which is set

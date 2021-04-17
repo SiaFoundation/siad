@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/renter/filesystem"
 	"go.sia.tech/siad/node"
 	"go.sia.tech/siad/siatest"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestCreateLoadBackup tests that creating a backup with the /renter/backup

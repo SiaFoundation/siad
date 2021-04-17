@@ -5,10 +5,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // commitUpdateSector will commit a sector update to the contract manager,

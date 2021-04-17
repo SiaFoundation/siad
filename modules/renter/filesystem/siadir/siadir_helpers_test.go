@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 )
 
 // checkMetadataInit is a helper that verifies that the metadata was initialized
@@ -84,14 +84,6 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("AggregateStuckSize not equal, %v and %v", md.AggregateStuckSize, md2.AggregateStuckSize)
 	}
 
-	// Aggregate Skynet Fields
-	if md.AggregateSkynetFiles != md2.AggregateSkynetFiles {
-		return fmt.Errorf("AggregateSkynetFiles not equal, %v and %v", md.AggregateSkynetFiles, md2.AggregateSkynetFiles)
-	}
-	if md.AggregateSkynetSize != md2.AggregateSkynetSize {
-		return fmt.Errorf("AggregateSkynetSize not equal, %v and %v", md.AggregateSkynetSize, md2.AggregateSkynetSize)
-	}
-
 	// Check SiaDir Fields
 	if md.Health != md2.Health {
 		return fmt.Errorf("Healths not equal, %v and %v", md.Health, md2.Health)
@@ -130,14 +122,6 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("StuckSize not equal, %v and %v", md.StuckSize, md2.StuckSize)
 	}
 
-	// Skynet Fields
-	if md.SkynetFiles != md2.SkynetFiles {
-		return fmt.Errorf("SkynetFiles not equal, %v and %v", md.SkynetFiles, md2.SkynetFiles)
-	}
-	if md.SkynetSize != md2.SkynetSize {
-		return fmt.Errorf("SkynetSize not equal, %v and %v", md.SkynetSize, md2.SkynetSize)
-	}
-
 	return nil
 }
 
@@ -167,9 +151,6 @@ func randomMetadata() Metadata {
 		AggregateStuckHealth:         float64(fastrand.Intn(100)),
 		AggregateStuckSize:           fastrand.Uint64n(100),
 
-		AggregateSkynetFiles: fastrand.Uint64n(100),
-		AggregateSkynetSize:  fastrand.Uint64n(100),
-
 		Health:              float64(fastrand.Intn(100)),
 		LastHealthCheckTime: time.Now(),
 		MinRedundancy:       float64(fastrand.Intn(100)),
@@ -182,9 +163,6 @@ func randomMetadata() Metadata {
 		Size:                fastrand.Uint64n(100),
 		StuckHealth:         float64(fastrand.Intn(100)),
 		StuckSize:           fastrand.Uint64n(100),
-
-		SkynetFiles: fastrand.Uint64n(100),
-		SkynetSize:  fastrand.Uint64n(100),
 	}
 	return md
 }

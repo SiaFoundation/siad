@@ -6,10 +6,10 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // database.go contains objects related to the layout of the transaction pool's

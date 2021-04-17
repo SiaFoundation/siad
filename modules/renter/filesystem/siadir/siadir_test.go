@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSiaDir probes the SiaDir subsystem

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // blockingPortForward is a dependency set that causes the host port forward

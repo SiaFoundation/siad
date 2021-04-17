@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestRefreshPaths probes the refreshpaths subsystem
@@ -169,10 +169,8 @@ func TestRefreshPaths(t *testing.T) {
 	// bubbled as well
 	err1 := dirsToRefresh.callAdd(modules.HomeFolder)
 	err2 := dirsToRefresh.callAdd(modules.UserFolder)
-	err3 := dirsToRefresh.callAdd(modules.VarFolder)
-	err4 := dirsToRefresh.callAdd(modules.SkynetFolder)
-	err5 := dirsToRefresh.callAdd(modules.BackupFolder)
-	err = errors.Compose(err1, err2, err3, err4, err5)
+	err3 := dirsToRefresh.callAdd(modules.BackupFolder)
+	err = errors.Compose(err1, err2, err3)
 	if err != nil {
 		t.Fatal(err)
 	}

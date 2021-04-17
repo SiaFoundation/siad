@@ -10,10 +10,10 @@ import (
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/ratelimit"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (

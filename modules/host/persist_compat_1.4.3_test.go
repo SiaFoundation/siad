@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (

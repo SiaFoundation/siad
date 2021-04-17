@@ -12,7 +12,6 @@ import (
 
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/skykey"
 	"go.sia.tech/siad/types"
 )
 
@@ -102,12 +101,6 @@ type FileListFunc func(FileInfo)
 // over the filesystem.
 type DirListFunc func(DirectoryInfo)
 
-// SkynetStats contains statistical data about skynet
-type SkynetStats struct {
-	NumFiles  int    `json:"numfiles"`
-	TotalSize uint64 `json:"totalsize"`
-}
-
 // RenterStats is a struct which tracks key metrics in a single renter. This
 // struct is intended to give a large overview / large dump of data related to
 // the renter, which can then be aggregated across a fleet of renters by a
@@ -118,9 +111,6 @@ type RenterStats struct {
 
 	// Any alerts that are in place for this renter.
 	Alerts []Alert `json:"alerts"`
-
-	// Performance and throughput information related to the API.
-	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
 
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
@@ -271,13 +261,6 @@ type Allowance struct {
 	Period      types.BlockHeight `json:"period"`
 	RenewWindow types.BlockHeight `json:"renewwindow"`
 
-	// PaymentContractInitialFunding establishes the amount of money that the a
-	// Skynet portal will put into a brand new payment contract. If this value
-	// is set to zero, this node will not act as a Skynet portal. When this
-	// value is non-zero, this node will act as a Skynet portal, and form
-	// contracts with every reasonably priced host.
-	PaymentContractInitialFunding types.Currency `json:"paymentcontractinitialfunding"`
-
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`
 
@@ -324,11 +307,6 @@ type Allowance struct {
 // contractor.
 func (a Allowance) Active() bool {
 	return a.Period != 0
-}
-
-// PortalMode returns true if the renter is supposed to act as a portal.
-func (a Allowance) PortalMode() bool {
-	return !a.PaymentContractInitialFunding.IsZero()
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the
@@ -381,10 +359,6 @@ type DirectoryInfo struct {
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 	AggregateStuckSize           uint64    `json:"aggregatestucksize"`
 
-	// Skynet Fields
-	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
-	AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
-
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
 	Health              float64     `json:"health"`
@@ -403,10 +377,6 @@ type DirectoryInfo struct {
 	StuckHealth         float64     `json:"stuckhealth"`
 	StuckSize           uint64      `json:"stucksize"`
 	UID                 uint64      `json:"uid"`
-
-	// Skynet Fields
-	SkynetFiles uint64 `json:"skynetfiles"`
-	SkynetSize  uint64 `json:"skynetsize"`
 }
 
 // Name implements os.FileInfo.
@@ -648,9 +618,6 @@ type RenterSettings struct {
 	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
 	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
 	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
-
-	CurrencyConversionRates map[string]types.Currency `json:"currencyconversionrates"`
-	MonetizationBase        types.Currency            `json:"monetizationbase"`
 }
 
 // UploadsStatus contains information about the Renter's Uploads
@@ -1244,96 +1211,6 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
-	// AddSkykey adds the skykey to the renter's skykey manager.
-	AddSkykey(skykey.Skykey) error
-
-	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
-	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
-
-	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's
-	// skykey manager if it exists.
-	DeleteSkykeyByID(skykey.SkykeyID) error
-
-	// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
-	// manager if it exists.
-	DeleteSkykeyByName(string) error
-
-	// SkykeyByName gets the Skykey with the given name from the renter's skykey
-	// manager if it exists.
-	SkykeyByName(string) (skykey.Skykey, error)
-
-	// SkykeyByID gets the Skykey with the given ID from the renter's skykey
-	// manager if it exists.
-	SkykeyByID(skykey.SkykeyID) (skykey.Skykey, error)
-
-	// SkykeyIDByName gets the SkykeyID of the key with the given name if it
-	// exists.
-	SkykeyIDByName(string) (skykey.SkykeyID, error)
-
-	// Skykeys returns a slice containing each Skykey being stored by the renter.
-	Skykeys() ([]skykey.Skykey, error)
-
-	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
-	// result in some uploading - the base sector skyfile needs to be uploaded
-	// separately, and if there is a fanout expansion that needs to be uploaded
-	// separately as well.
-	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
-
-	// DownloadByRoot will fetch data using the merkle root of that data. The
-	// given timeout will make sure this call won't block for a time that
-	// exceeds the given timeout value. Passing a timeout of 0 is considered as
-	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
-	// potentially more expensive, hosts.
-	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration, pricePerMS types.Currency) ([]byte, error)
-
-	// DownloadSkylink will fetch a file from the Sia network using the given
-	// skylink. The given timeout will make sure this call won't block for a
-	// time that exceeds the given timeout value. Passing a timeout of 0 is
-	// considered as no timeout. The pricePerMS acts as a budget to spend on
-	// faster, and thus potentially more expensive, hosts.
-	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
-
-	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
-	// download without any decoding of the metadata, fanout, or decryption. The
-	// given timeout will make sure this call won't block for a time that
-	// exceeds the given timeout value. Passing a timeout of 0 is considered as
-	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
-	// potentially more expensive, hosts.
-	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
-
-	// UploadSkyfile will upload data to the Sia network from a reader and
-	// create a skyfile, returning the skylink that can be used to access the
-	// file.
-	//
-	// NOTE: A skyfile is a file that is tracked and repaired by the renter.  A
-	// skyfile contains more than just the file data, it also contains metadata
-	// about the file and other information which is useful in fetching the
-	// file.
-	UploadSkyfile(SkyfileUploadParameters, SkyfileUploadReader) (Skylink, error)
-
-	// Blocklist returns the merkleroots that are blocked
-	Blocklist() ([]crypto.Hash, error)
-
-	// PinSkylink re-uploads the data stored at the file under that skylink with
-	// the given parameters. Alongside the parameters we can pass a timeout and
-	// a price per millisecond. The timeout ensures fetching the base sector
-	// does not surpass it, the price per millisecond is the budget we are
-	// allowed to spend on faster hosts.
-	PinSkylink(link Skylink, sup SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error
-
-	// Portals returns the list of known skynet portals.
-	Portals() ([]SkynetPortal, error)
-
-	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
-	RestoreSkyfile(reader io.Reader) (Skylink, error)
-
-	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
-	// blocked
-	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
-
-	// UpdateSkynetPortals updates the list of known skynet portals.
-	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
-
 	// WorkerPoolStatus returns the current status of the Renter's worker pool
 	WorkerPoolStatus() (WorkerPoolStatus, error)
 
@@ -1361,8 +1238,6 @@ type Streamer interface {
 type SkyfileStreamer interface {
 	io.ReadSeeker
 	io.Closer
-
-	Metadata() SkyfileMetadata
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

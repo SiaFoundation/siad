@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"go.sia.tech/siad/crypto"
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestFileContractTax probes the Tax function.

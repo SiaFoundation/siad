@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestRenewContract is a unit test for the worker's RenewContract method.

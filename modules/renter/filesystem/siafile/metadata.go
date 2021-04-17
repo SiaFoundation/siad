@@ -164,11 +164,6 @@ type (
 		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
 		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
 		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
-
-		// Skylink tracking. If this siafile is known to have sectors of any
-		// skyfiles, those skyfiles will be listed here. It should be noted that
-		// a single siafile can be responsible for tracking many skyfiles.
-		Skylinks []string `json:"skylinks"`
 	}
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
@@ -176,7 +171,6 @@ type (
 		Health              float64
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
-		NumSkylinks         uint64
 		NumStuckChunks      uint64
 		OnDisk              bool
 		Redundancy          float64
@@ -193,27 +187,6 @@ func (sf *SiaFile) AccessTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.AccessTime
-}
-
-// AddSkylink will add a skylink to the SiaFile.
-func (sf *SiaFile) AddSkylink(s modules.Skylink) (err error) {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	// backup the changed metadata before changing it. Revert the change on
-	// error.
-	defer func(backup Metadata) {
-		if err != nil {
-			sf.staticMetadata.restore(backup)
-		}
-	}(sf.staticMetadata.backup())
-	sf.staticMetadata.Skylinks = append(sf.staticMetadata.Skylinks, s.String())
-
-	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.
@@ -373,13 +346,6 @@ func (md Metadata) backup() (b Metadata) {
 		b.PartialChunks = make([]PartialChunkInfo, len(md.PartialChunks), cap(md.PartialChunks))
 		copy(b.PartialChunks, md.PartialChunks)
 	}
-	if md.Skylinks == nil {
-		b.Skylinks = nil
-	} else {
-		// Being extra explicit about capacity and length here.
-		b.Skylinks = make([]string, len(md.Skylinks), cap(md.Skylinks))
-		copy(b.Skylinks, md.Skylinks)
-	}
 	// If the backup was successful it should match the original.
 	if build.Release == "testing" && !md.equals(b) {
 		fmt.Println("md:\n", md)
@@ -423,7 +389,6 @@ func (md *Metadata) restore(b Metadata) {
 	md.GroupID = b.GroupID
 	md.ChunkOffset = b.ChunkOffset
 	md.PubKeyTableOffset = b.PubKeyTableOffset
-	md.Skylinks = b.Skylinks
 	// If the backup was successful it should match the backup.
 	if build.Release == "testing" && !md.equals(b) {
 		fmt.Println("md:\n", md)

@@ -5,11 +5,11 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // SurpassThreshold is a percentage that dictates how much heavier a competing

@@ -103,12 +103,6 @@ type streamBufferDataSource interface {
 	// identical data and be fully interchangeable.
 	ID() modules.DataSourceID
 
-	// Metadata returns the Skyfile metadata of a data source.
-	Metadata() modules.SkyfileMetadata
-
-	// Layout returns the Skyfile layout of a data source.
-	Layout() modules.SkyfileLayout
-
 	// RequestSize should return the request size that the dataSource expects
 	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
 	// that are of the suggested request size and byte aligned.
@@ -295,11 +289,9 @@ func (ds *dataSection) managedData(ctx context.Context) ([]byte, error) {
 // specifically to address the use case where an application may be using the
 // same file or resource continuously, but doing so by repeatedly opening new
 // connections to siad rather than keeping a single stable connection. Some
-// video players do this. On Skynet, most javascript applications do this, as
-// the javascript application does not realize that multiple files within the
-// app are all part of the same resource. This sleep here to delay the release
-// of a resource substantially improves performance in practice, in many cases
-// causing a 4x reduction in response latency.
+// video players do this. This sleep here to delay the release of a resource
+// substantially improves performance in practice, in many cases causing a 4x
+// reduction in response latency.
 func (s *stream) Close() error {
 	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
 		// Convenience variables.
@@ -315,16 +307,6 @@ func (s *stream) Close() error {
 		sbs.managedRemoveStream(sb)
 	})
 	return nil
-}
-
-// Metadata returns the skyfile metadata associated with this stream.
-func (s *stream) Metadata() modules.SkyfileMetadata {
-	return s.staticStreamBuffer.staticDataSource.Metadata()
-}
-
-// Layout returns the skyfile layout associated with this stream.
-func (s *stream) Layout() modules.SkyfileLayout {
-	return s.staticStreamBuffer.staticDataSource.Layout()
 }
 
 // Read will read data into 'b', returning the number of bytes read and any

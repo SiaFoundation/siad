@@ -13,12 +13,12 @@ import (
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/gateway"
 	"go.sia.tech/siad/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestSynchronize tests that the consensus set can successfully synchronize

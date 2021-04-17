@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestMemoryManager checks that the memory management is working correctly.

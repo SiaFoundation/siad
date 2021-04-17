@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // upgradeFromV120ToV143 is an upgrade layer that aids the integration of the
