@@ -21,6 +21,10 @@ import (
 )
 
 const (
+	// RHPVersion is the version of the Sia renter-host protocol currently
+	// implemented by the host module.
+	RHPVersion = "1.5.6"
+
 	// MinimumSupportedRenterHostProtocolVersion is the minimum version of Sia
 	// that supports the currently used version of the renter-host protocol.
 	MinimumSupportedRenterHostProtocolVersion = "1.4.1"

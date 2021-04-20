@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
-	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -44,7 +43,7 @@ var (
 			SectorAccessPrice:      types.SiacoinPrecision.Mul64(2).Div64(1e6),
 			StoragePrice:           types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
 
-			Version: build.Version,
+			Version: modules.RHPVersion,
 		},
 	}
 )

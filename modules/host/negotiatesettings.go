@@ -96,7 +96,7 @@ func (h *Host) externalSettings(maxFeeEstimation types.Currency) modules.HostExt
 		MaxEphemeralAccountBalance: h.settings.MaxEphemeralAccountBalance,
 
 		RevisionNumber: h.revisionNumber,
-		Version:        build.Version,
+		Version:        modules.RHPVersion,
 
 		SiaMuxPort: port,
 	}

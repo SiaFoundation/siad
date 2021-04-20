@@ -360,7 +360,7 @@ func (api *API) daemonUpdateHandlerGET(w http.ResponseWriter, _ *http.Request, _
 		return
 	}
 	WriteJSON(w, UpdateInfo{
-		Available: build.VersionCmp(version, build.Version) > 0,
+		Available: build.VersionCmp(version, build.NodeVersion) > 0,
 		Version:   version,
 	})
 }
@@ -481,7 +481,7 @@ func (api *API) daemonStopProfileHandlerPOST(w http.ResponseWriter, _ *http.Requ
 
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (api *API) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	version := build.Version
+	version := build.NodeVersion
 	if build.ReleaseTag != "" {
 		version += "-" + build.ReleaseTag
 	}

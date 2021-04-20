@@ -110,6 +110,9 @@ import (
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 )
 
+// ProtocolVersion is the current version of the gateway p2p protocol.
+const ProtocolVersion = "1.5.4"
+
 var errNoPeers = errors.New("no peers")
 
 // Gateway implements the modules.Gateway interface.

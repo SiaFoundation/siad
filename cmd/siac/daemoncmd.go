@@ -179,9 +179,9 @@ func profilestopcmd() {
 func versioncmd() {
 	fmt.Println("Sia Client")
 	if build.ReleaseTag == "" {
-		fmt.Println("\tVersion " + build.Version)
+		fmt.Println("\tVersion " + build.NodeVersion)
 	} else {
-		fmt.Println("\tVersion " + build.Version + "-" + build.ReleaseTag)
+		fmt.Println("\tVersion " + build.NodeVersion + "-" + build.ReleaseTag)
 	}
 	if build.GitRevision != "" {
 		fmt.Println("\tGit Revision " + build.GitRevision)

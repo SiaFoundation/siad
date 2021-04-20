@@ -3,7 +3,10 @@ BUILD_TIME=$(shell date)
 GIT_REVISION=$(shell git rev-parse --short HEAD)
 GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 
-ldflags= -X go.sia.tech/siad/build.GitRevision=${GIT_DIRTY}${GIT_REVISION} \
+ldflags= \
+-X "go.sia.tech/siad/build.BinaryName=siad" \
+-X "go.sia.tech/siad/build.NodeVersion=1.5.6" \
+-X "go.sia.tech/siad/build.GitRevision=${GIT_DIRTY}${GIT_REVISION}" \
 -X "go.sia.tech/siad/build.BuildTime=${BUILD_TIME}"
 
 racevars= history_size=3 halt_on_error=1 atexit_sleep_ms=2000

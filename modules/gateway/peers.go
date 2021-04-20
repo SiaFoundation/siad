@@ -165,7 +165,7 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	remoteVersion, err := acceptVersionHandshake(conn, build.Version)
+	remoteVersion, err := acceptVersionHandshake(conn, ProtocolVersion)
 	if err != nil {
 		g.log.Debugf("INFO: %v wanted to connect but version handshake failed: %v", addr, err)
 		conn.Close()
@@ -473,7 +473,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 	g.log.Debugln("Created conn; remote and local addr", conn.RemoteAddr(), conn.LocalAddr())
 
 	// Perform peer initialization.
-	remoteVersion, err := connectVersionHandshake(conn, build.Version)
+	remoteVersion, err := connectVersionHandshake(conn, ProtocolVersion)
 	if err != nil {
 		conn.Close()
 		g.log.Debugln("Unable to connect to", addr, "error:", err)

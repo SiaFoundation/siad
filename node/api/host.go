@@ -9,7 +9,6 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 
-	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -423,7 +422,7 @@ func hostEstimateScoreGET(host modules.Host, renter modules.Renter, w http.Respo
 		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
 
-		Version: build.Version,
+		Version: modules.RHPVersion,
 	}
 	entry := modules.HostDBEntry{}
 	entry.PublicKey = host.PublicKey()

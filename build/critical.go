@@ -8,7 +8,7 @@ import (
 
 // buildInfoString is used to include information about the current build when
 // Critical or Severe are called.
-var buildInfoString = fmt.Sprintf("(Sia v%v, Release: %v)", Version, Release)
+var buildInfoString = fmt.Sprintf("(%v v%v, Release: %v)", BinaryName, NodeVersion, Release)
 
 // Critical should be called if a sanity check has failed, indicating developer
 // error. Critical is called with an extended message guiding the user to the

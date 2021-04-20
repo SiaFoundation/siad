@@ -9,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/encoding"
-	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -59,7 +58,7 @@ func (g *Gateway) staticPingNode(addr modules.NetAddress) (err error) {
 	}()
 
 	// Read the node's version.
-	remoteVersion, err := connectVersionHandshake(conn, build.Version)
+	remoteVersion, err := connectVersionHandshake(conn, ProtocolVersion)
 	if err != nil {
 		return err
 	}

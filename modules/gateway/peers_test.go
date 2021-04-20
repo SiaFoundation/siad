@@ -48,7 +48,7 @@ func TestAddPeer(t *testing.T) {
 		Peer: modules.Peer{
 			NetAddress: "foo.com:123",
 		},
-		sess: newClientStream(new(dummyConn), build.Version),
+		sess: newClientStream(new(dummyConn), ProtocolVersion),
 	})
 	if len(g.peers) != 1 {
 		t.Fatal("gateway did not add peer")
@@ -80,7 +80,7 @@ func TestAcceptPeer(t *testing.T) {
 				Inbound:    false,
 				Local:      false,
 			},
-			sess: newClientStream(new(dummyConn), build.Version),
+			sess: newClientStream(new(dummyConn), ProtocolVersion),
 		}
 		unkickablePeers = append(unkickablePeers, p)
 	}
@@ -92,7 +92,7 @@ func TestAcceptPeer(t *testing.T) {
 				Inbound:    true,
 				Local:      true,
 			},
-			sess: newClientStream(new(dummyConn), build.Version),
+			sess: newClientStream(new(dummyConn), ProtocolVersion),
 		}
 		unkickablePeers = append(unkickablePeers, p)
 	}
@@ -106,7 +106,7 @@ func TestAcceptPeer(t *testing.T) {
 			NetAddress: "9.9.9.9",
 			Inbound:    true,
 		},
-		sess: newClientStream(new(dummyConn), build.Version),
+		sess: newClientStream(new(dummyConn), ProtocolVersion),
 	})
 	for _, p := range unkickablePeers {
 		if _, exists := g.peers[p.NetAddress]; !exists {
@@ -120,7 +120,7 @@ func TestAcceptPeer(t *testing.T) {
 			NetAddress: "9.9.9.9",
 			Inbound:    true,
 		},
-		sess: newClientStream(new(dummyConn), build.Version),
+		sess: newClientStream(new(dummyConn), ProtocolVersion),
 	})
 	// Test that accepting a local peer will kick a kickable peer.
 	g.acceptPeer(&peer{
@@ -129,7 +129,7 @@ func TestAcceptPeer(t *testing.T) {
 			Inbound:    true,
 			Local:      true,
 		},
-		sess: newClientStream(new(dummyConn), build.Version),
+		sess: newClientStream(new(dummyConn), ProtocolVersion),
 	})
 	if _, exists := g.peers["9.9.9.9"]; exists {
 		t.Error("acceptPeer didn't kick a peer to make room for a local peer")
@@ -163,7 +163,7 @@ func TestAcceptPeerSameHost(t *testing.T) {
 				NetAddress: addr,
 				Inbound:    true,
 			},
-			sess: newClientStream(new(dummyConn), build.Version),
+			sess: newClientStream(new(dummyConn), ProtocolVersion),
 		}
 	}
 
@@ -183,7 +183,7 @@ func TestAcceptPeerSameHost(t *testing.T) {
 			NetAddress: "9.9.9.9:9999",
 			Inbound:    true,
 		},
-		sess: newClientStream(new(dummyConn), build.Version),
+		sess: newClientStream(new(dummyConn), ProtocolVersion),
 	})
 
 	// The unique peer should exist.
@@ -228,7 +228,7 @@ func TestRandomOutboundPeer(t *testing.T) {
 			NetAddress: "foo.com:123",
 			Inbound:    false,
 		},
-		sess: newClientStream(new(dummyConn), build.Version),
+		sess: newClientStream(new(dummyConn), ProtocolVersion),
 	})
 	if len(g.peers) != 1 {
 		t.Fatal("gateway did not add peer")
@@ -276,7 +276,7 @@ func TestListen(t *testing.T) {
 	}
 
 	// a simple 'conn.Close' would not obey the stream disconnect protocol
-	newClientStream(conn, build.Version).Close()
+	newClientStream(conn, ProtocolVersion).Close()
 
 	// compliant connect with invalid net address
 	conn, err = net.Dial("tcp", string(g.Address()))
@@ -284,11 +284,11 @@ func TestListen(t *testing.T) {
 		t.Fatal("dial failed:", err)
 	}
 	addr = modules.NetAddress(conn.LocalAddr().String())
-	ack, err = connectVersionHandshake(conn, build.Version)
+	ack, err = connectVersionHandshake(conn, ProtocolVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ack != build.Version {
+	if ack != ProtocolVersion {
 		t.Fatal("gateway should have given ack")
 	}
 
@@ -310,11 +310,11 @@ func TestListen(t *testing.T) {
 		t.Fatal("dial failed:", err)
 	}
 	addr = modules.NetAddress(conn.LocalAddr().String())
-	ack, err = connectVersionHandshake(conn, build.Version)
+	ack, err = connectVersionHandshake(conn, ProtocolVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ack != build.Version {
+	if ack != ProtocolVersion {
 		t.Fatal("gateway should have given ack")
 	}
 
@@ -344,7 +344,7 @@ func TestListen(t *testing.T) {
 
 	// Disconnect. Now that connection has been established, need to shutdown
 	// via the stream multiplexer.
-	newClientStream(conn, build.Version).Close()
+	newClientStream(conn, ProtocolVersion).Close()
 
 	// g should remove the peer
 	err = build.Retry(50, 100*time.Millisecond, func() error {
@@ -622,7 +622,7 @@ func TestConnectRejectsVersions(t *testing.T) {
 		}
 	}()
 	// Setup a listener that mocks Gateway.acceptConn, but sends the
-	// version sent over mockVersionChan instead of build.Version.
+	// version sent over mockVersionChan instead of ProtocolVersion.
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
@@ -724,7 +724,7 @@ func TestConnectRejectsVersions(t *testing.T) {
 		},
 	}
 	for testIndex, tt := range tests {
-		if tt.versionRequired != "" && build.VersionCmp(build.Version, tt.versionRequired) < 0 {
+		if tt.versionRequired != "" && build.VersionCmp(ProtocolVersion, tt.versionRequired) < 0 {
 			continue // skip, as we do not meet the required version
 		}
 
@@ -740,8 +740,8 @@ func TestConnectRejectsVersions(t *testing.T) {
 			if err != nil {
 				panic(fmt.Sprintf("test #%d failed: %s", testIndex, err))
 			}
-			if remoteVersion != build.Version {
-				panic(fmt.Sprintf("test #%d failed: remoteVersion != build.Version", testIndex))
+			if remoteVersion != ProtocolVersion {
+				panic(fmt.Sprintf("test #%d failed: remoteVersion != ProtocolVersion", testIndex))
 			}
 
 			if build.VersionCmp(tt.version, minimumAcceptablePeerVersion) >= 0 {
@@ -867,24 +867,24 @@ func TestAcceptConnRejectsVersions(t *testing.T) {
 		// minAcceptableVersion
 		{
 			remoteVersion:       minimumAcceptablePeerVersion,
-			versionResponseWant: build.Version,
+			versionResponseWant: ProtocolVersion,
 			msg:                 "acceptConn should accept a remote peer whose version is 1.5.4",
 		},
 		// Test that acceptConn succeeds when the remote peer's version is
 		// above minAcceptableVersion
 		{
 			remoteVersion:       "9",
-			versionResponseWant: build.Version,
+			versionResponseWant: ProtocolVersion,
 			msg:                 "acceptConn should accept a remote peer whose version is 9",
 		},
 		{
 			remoteVersion:       "9.9.9",
-			versionResponseWant: build.Version,
+			versionResponseWant: ProtocolVersion,
 			msg:                 "acceptConn should accept a remote peer whose version is 9.9.9",
 		},
 		{
 			remoteVersion:       "9999.9999.9999",
-			versionResponseWant: build.Version,
+			versionResponseWant: ProtocolVersion,
 			msg:                 "acceptConn should accept a remote peer whose version is 9999.9999.9999",
 		},
 	}

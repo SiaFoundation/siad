@@ -536,6 +536,6 @@ func DefaultHostExternalSettings() HostExternalSettings {
 		EphemeralAccountExpiry:     DefaultEphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: DefaultMaxEphemeralAccountBalance,
 
-		Version: build.Version,
+		Version: RHPVersion,
 	}
 }
