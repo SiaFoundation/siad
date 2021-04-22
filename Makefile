@@ -144,6 +144,9 @@ dev:
 dev-race:
 	GORACE='$(racevars)' go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
+static:
+	go build -o release/ -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+
 # release builds and installs release binaries.
 release:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
