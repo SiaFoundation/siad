@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -209,9 +210,11 @@ use it instead of displaying the typical interactive prompt.`,
 
 const askPasswordText = "We need to encrypt the new data using the current wallet password, please provide: "
 
-const currentPasswordText = "Current Password: "
-const newPasswordText = "New Password: "
-const confirmPasswordText = "Confirm: "
+const (
+	currentPasswordText = "Current Password: "
+	newPasswordText     = "New Password: "
+	confirmPasswordText = "Confirm: "
+)
 
 // For an unconfirmed Transaction, the TransactionTimestamp field is set to the
 // maximum value of a uint64.
@@ -220,9 +223,18 @@ const unconfirmedTransactionTimestamp = ^uint64(0)
 // passwordPrompt securely reads a password from stdin.
 func passwordPrompt(prompt string) (string, error) {
 	fmt.Print(prompt)
-	pw, err := terminal.ReadPassword(int(syscall.Stdin))
-	fmt.Println()
-	return string(pw), err
+	if insecureInput {
+		pw, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil {
+			err = fmt.Errorf("error reading input during password prompt: %w", err)
+		}
+		fmt.Println()
+		return strings.TrimSpace(pw), err
+	} else {
+		pw, err := term.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
+		return string(pw), err
+	}
 }
 
 // confirmPassword requests confirmation of a previously-entered password.
