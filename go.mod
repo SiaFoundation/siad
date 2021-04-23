@@ -30,4 +30,5 @@ require (
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1
+	golang.org/x/term v0.0.0-20210421210424-b80969c67360
 )

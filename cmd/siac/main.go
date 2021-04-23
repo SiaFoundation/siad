@@ -84,6 +84,7 @@ var (
 	walletStartHeight    uint64 // Start height for transaction search.
 	walletEndHeight      uint64 // End height for transaction search.
 	walletTxnFeeIncluded bool   // include the fee in the balance being sent
+	insecureInput        bool   // Insecure password/seed input. Disables the shoulder-surfing and Mac secure input feature.
 )
 
 var (
@@ -382,6 +383,7 @@ func initCmds() *cobra.Command {
 	walletLoadCmd.AddCommand(walletLoad033xCmd, walletLoadSeedCmd, walletLoadSiagCmd)
 	walletSendCmd.AddCommand(walletSendSiacoinsCmd, walletSendSiafundsCmd)
 	walletSendSiacoinsCmd.Flags().BoolVarP(&walletTxnFeeIncluded, "fee-included", "", false, "Take the transaction fee out of the balance being submitted instead of the fee being additional")
+	walletUnlockCmd.Flags().BoolVarP(&insecureInput, "insecure-input", "", false, "Disable shoulder-surf protection (echoing passwords and seeds)")
 	walletUnlockCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Display interactive password prompt even if SIA_WALLET_PASSWORD is set")
 	walletBroadcastCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Decode transaction as base64 instead of JSON")
 	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")

@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
@@ -23,7 +23,7 @@ import (
 // passwordPrompt securely reads a password from stdin.
 func passwordPrompt(prompt string) (string, error) {
 	fmt.Print(prompt)
-	pw, err := terminal.ReadPassword(int(syscall.Stdin))
+	pw, err := term.ReadPassword(int(syscall.Stdin))
 	fmt.Println()
 	return string(pw), err
 }
