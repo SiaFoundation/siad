@@ -1,15 +1,13 @@
 package smux
 
 import (
-	crand "crypto/rand"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"strings"
 	"sync"
 	"testing"
@@ -55,6 +53,12 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 	}
+}
+
+func randUint32() uint32 {
+	buf := make([]byte, 4)
+	rand.Read(buf)
+	return binary.LittleEndian.Uint32(buf)
 }
 
 func TestEcho(t *testing.T) {
@@ -418,8 +422,8 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ := Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		rnd := make([]byte, rand.Uint32()%1024)
-		io.ReadFull(crand.Reader, rnd)
+		rnd := make([]byte, randUint32()%1024)
+		io.ReadFull(rand.Reader, rnd)
 		session.conn.Write(rnd)
 	}
 	cli.Close()
@@ -444,7 +448,7 @@ func TestRandomFrame(t *testing.T) {
 	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdNOP}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(allcmds[rand.Int()%len(allcmds)], rand.Uint32())
+		f := newFrame(allcmds[randUint32()%uint32(len(allcmds))], randUint32())
 		session.writeFrame(f, time.Time{})
 	}
 	cli.Close()
@@ -456,7 +460,7 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(byte(rand.Uint32()), rand.Uint32())
+		f := newFrame(byte(randUint32()), randUint32())
 		session.writeFrame(f, time.Time{})
 	}
 	cli.Close()
@@ -468,8 +472,8 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(byte(rand.Uint32()), rand.Uint32())
-		f.ver = byte(rand.Uint32())
+		f := newFrame(byte(randUint32()), randUint32())
+		f.ver = byte(randUint32())
 		session.writeFrame(f, time.Time{})
 	}
 	cli.Close()
@@ -481,9 +485,9 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(cli, nil)
 
-	f := newFrame(byte(rand.Uint32()), rand.Uint32())
-	rnd := make([]byte, rand.Uint32()%1024)
-	io.ReadFull(crand.Reader, rnd)
+	f := newFrame(byte(randUint32()), randUint32())
+	rnd := make([]byte, randUint32()%1024)
+	io.ReadFull(rand.Reader, rnd)
 	f.data = rnd
 
 	buf := make([]byte, headerSize+len(f.data))
@@ -555,7 +559,7 @@ func TestKeepAlive(t *testing.T) {
 	config.KeepAliveInterval = 1 * time.Second
 	config.KeepAliveTimeout = 3 * time.Second
 
-	srvListener, err := net.Listen("tcp", ":0")
+	srvListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +689,7 @@ func TestKeepAliveSlowServer(t *testing.T) {
 	config.KeepAliveInterval = 1 * time.Second
 	config.KeepAliveTimeout = 3 * time.Second
 
-	srvListener, err := net.Listen("tcp", ":0")
+	srvListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -746,7 +750,7 @@ func TestStreamDeadlineSlowServer(t *testing.T) {
 	config.KeepAliveInterval = 1 * time.Second
 	config.KeepAliveTimeout = 3 * time.Second
 
-	srvListener, err := net.Listen("tcp", ":0")
+	srvListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
