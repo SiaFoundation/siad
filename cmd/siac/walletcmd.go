@@ -221,20 +221,20 @@ const (
 const unconfirmedTransactionTimestamp = ^uint64(0)
 
 // passwordPrompt securely reads a password from stdin.
-func passwordPrompt(prompt string) (string, error) {
+func passwordPrompt(prompt string) (pw string, err error) {
 	fmt.Print(prompt)
 	if insecureInput {
-		pw, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil {
-			err = fmt.Errorf("error reading input during password prompt: %w", err)
-		}
-		fmt.Println()
-		return strings.TrimSpace(pw), err
+		pw, err = bufio.NewReader(os.Stdin).ReadString('\n')
 	} else {
-		pw, err := term.ReadPassword(int(syscall.Stdin))
-		fmt.Println()
-		return string(pw), err
+		var pwBytes []byte
+		pwBytes, err = term.ReadPassword(int(syscall.Stdin))
+		pw = string(pwBytes)
 	}
+	fmt.Println()
+	if err != nil {
+		err = fmt.Errorf("error reading password: %w", err)
+	}
+	return strings.TrimSpace(pw), err
 }
 
 // confirmPassword requests confirmation of a previously-entered password.
