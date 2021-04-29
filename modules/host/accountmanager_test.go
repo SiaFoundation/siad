@@ -1122,7 +1122,7 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 	t.Parallel()
 
 	// Prepare a host
-	ht, err := blankHostTester(t.Name())
+	ht, err := blankMockHostTester(&dependencies.HostOutOfSyncInTest{}, t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -93,3 +93,14 @@ func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Depen
 func (d *HostMDMProgramDelayedWrite) Disrupt(s string) bool {
 	return s == "MDMProgramOutputDelayWrite"
 }
+
+// HostOutOfSyncInTest is a dependency that allows for the host to be seen as
+// out of sync in testing.
+type HostOutOfSyncInTest struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *HostOutOfSyncInTest) Disrupt(s string) bool {
+	return s == "OutOfSyncInTest"
+}
