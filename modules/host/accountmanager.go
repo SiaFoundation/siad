@@ -416,7 +416,8 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 
 	// If the host is not synced, withdrawals are disabled. In this case we
 	// also do not want to rotate the fingerprints.
-	if !cc.Synced {
+	allowForTest := build.Release != "testing" || am.h.dependencies.Disrupt("OutOfSyncInTest")
+	if !cc.Synced && allowForTest {
 		am.withdrawalsInactive = true
 		return
 	}
