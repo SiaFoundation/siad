@@ -1,0 +1,51 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: lint
+        uses: golangci/golangci-lint-action@5c56cd6c9dc07901af25baab6f2b0d9f3b7c3018
+        with:
+          version: v1.37.1
+      - name: analyze
+        run: |
+          go get gitlab.com/NebulousLabs/analyze
+          make analyze
+      - name: gofmt 
+        run: make fmt
+      - name: go vet
+        run: make vet
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ darwin, linux, windows ]
+        arch: [ arm64, amd64 ]
+        exclude:
+          - os: windows
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: ^v1.16
+      - name: build ${{ matrix.os }}/${{ matrix.arch }}
+        run: GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} make static
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: [ lint, build ]
+    steps:
+      - uses: actions/checkout@v2
+      - name: test
+        uses: n8maninger/action-golang-test@503bdd1b410aa26740cad03f1214abc8beef5496
+        with:
+          args: "-race;-failfast;-tags=testing debug netgo"
