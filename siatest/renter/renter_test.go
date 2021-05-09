@@ -5627,8 +5627,8 @@ func TestRenterBubble(t *testing.T) {
 	rootDirInfo := initDirInfo
 	rootDirInfo.AggregateLastHealthCheckTime = time.Now()
 	rootDirInfo.LastHealthCheckTime = time.Now()
-	rootDirInfo.AggregateNumSubDirs = 3
-	rootDirInfo.NumSubDirs = 3
+	rootDirInfo.AggregateNumSubDirs = 2
+	rootDirInfo.NumSubDirs = 2
 
 	// Check the filesystem
 	tests = []struct {
@@ -5665,7 +5665,7 @@ func TestRenterBubble(t *testing.T) {
 	// Define expected directory Infos
 	//
 	// Root will now see all sub directories
-	rootDirInfo.AggregateNumSubDirs = 5
+	rootDirInfo.AggregateNumSubDirs = 3
 	// LastHealthCheckTimes will all be set
 	initDirInfo.AggregateLastHealthCheckTime = time.Now()
 	initDirInfo.LastHealthCheckTime = time.Now()

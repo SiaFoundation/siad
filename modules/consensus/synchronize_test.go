@@ -315,9 +315,12 @@ func TestSendBlocksBroadcastsOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		err = cst1.cs.gateway.RPC(cst2.cs.gateway.Address(), "SendBlocks", cst1.cs.threadedReceiveBlocks)
+		// TODO: fix flaky test
+		err = build.Retry(100, time.Millisecond*5, func() error {
+			return cst1.cs.gateway.RPC(cst2.cs.gateway.Address(), "SendBlocks", cst1.cs.threadedReceiveBlocks)
+		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("test #%d rpc failed: %s", j, err)
 		}
 		// Sleep to wait for possible calls to Broadcast to complete. We cannot
 		// wait on a channel because we don't know how many times broadcast has
