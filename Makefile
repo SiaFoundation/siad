@@ -121,6 +121,10 @@ fmt:
 vet:
 	go vet $(pkgs)
 
+analyze:
+	analyze -lockcheck=false -- $(pkgs)
+	analyze -lockcheck -- $(lockcheckpkgs)
+
 # lint runs golangci-lint.
 lint:
 	golangci-lint run -c .golangci.yml ./...
