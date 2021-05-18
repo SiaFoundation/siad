@@ -1,9 +1,7 @@
 package renter
 
 import (
-	"fmt"
 	"io/ioutil"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -191,30 +189,7 @@ func TestAddUploadChunkCritical(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Push another high priority chunk to trigger the critical.
-	func() {
-		defer func() {
-			if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "there should be no buildup if there is nothing in the low priority lane") {
-				t.Fatalf("expected correct critical, got %v", r)
-			}
-		}()
-		ucdq.callAddUploadChunk(chunk(true, 1))
-	}()
-
-	// Wait for the processing thread to be done.
-	err = build.Retry(1000, 10*time.Millisecond, func() error {
-		ucdq.mu.Lock()
-		defer ucdq.mu.Unlock()
-		if !ucdq.processThreadRunning {
-			return nil
-		}
-		return errors.New("processing thread still running")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Push another chunk. This time it shouldn't panic.
+	// Push a high prio chunk. This should not cause a panic.
 	func() {
 		defer func() {
 			if r := recover(); r != nil {

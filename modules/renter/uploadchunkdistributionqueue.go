@@ -138,11 +138,6 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 	// bumped.
 	ucdq.priorityLane.PushBack(uc)
 	if ucdq.lowPriorityLane.Len() == 0 {
-		// Consistency check
-		if ucdq.priorityBuildup != 0 {
-			ucdq.staticRenter.log.Critical("there should be no buildup if there is nothing in the low priority lane")
-		}
-
 		// No need to worry about priority buildup if there is nothing waiting
 		// in the low priority lane.
 		return
