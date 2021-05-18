@@ -1,11 +1,17 @@
 package renter
 
 import (
+	"io/ioutil"
 	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/siatest/dependencies"
 )
 
 // newOverloadedWorker will return a worker that is overloaded.
@@ -134,4 +140,62 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	if !finalized {
 		t.Fatal("bad")
 	}
+}
+
+// TestAddUploadChunkCritial is a test that triggers the critical within
+// callAddUploadChunk.
+func TestAddUploadChunkCritical(t *testing.T) {
+	log, _ := persist.NewLogger(ioutil.Discard)
+	r := &Renter{
+		deps: &dependencies.DependencyDelayChunkDistribution{},
+		log:  log,
+	}
+	ucdq := newUploadChunkDistributionQueue(r)
+
+	chunk := func(priority bool, memoryNeeded uint64) *unfinishedUploadChunk {
+		return &unfinishedUploadChunk{
+			staticPriority:     priority,
+			staticMemoryNeeded: memoryNeeded,
+		}
+	}
+
+	// Push low priority chunk with 10 bytes twice. The first one will be
+	// processed right away while the second one will stay in the lane waiting
+	// for the first one to be distributed.
+	ucdq.callAddUploadChunk(chunk(false, 10))
+	ucdq.callAddUploadChunk(chunk(false, 10))
+
+	ucdq.mu.Lock()
+	if ucdq.lowPriorityLane.Len() == 0 {
+		t.Fatal("low prio lane should contain chunks", ucdq.lowPriorityLane.Len())
+	}
+	ucdq.mu.Unlock()
+
+	// Push high priority chunk with 150 bytes. This should bump a low prio
+	// chunk to the high prio lane and leave a non-zero buildup after the first
+	// low prio chunk is distributed.
+	ucdq.callAddUploadChunk(chunk(true, 150))
+
+	// Wait for the low priority lane to empty itself.
+	err := build.Retry(1000, 10*time.Millisecond, func() error {
+		ucdq.mu.Lock()
+		defer ucdq.mu.Unlock()
+		if ucdq.lowPriorityLane.Len() == 0 {
+			return nil
+		}
+		return errors.New("low prio lane not empty")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Push a high prio chunk. This should not cause a panic.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("expected no panic but got %v", r)
+			}
+		}()
+		ucdq.callAddUploadChunk(chunk(true, 1))
+	}()
 }

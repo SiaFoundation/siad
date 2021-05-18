@@ -138,11 +138,6 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 	// bumped.
 	ucdq.priorityLane.PushBack(uc)
 	if ucdq.lowPriorityLane.Len() == 0 {
-		// Consistency check
-		if ucdq.priorityBuildup != 0 {
-			ucdq.staticRenter.log.Critical("there should be no buildup if there is nothing in the low priority lane")
-		}
-
 		// No need to worry about priority buildup if there is nothing waiting
 		// in the low priority lane.
 		return
@@ -155,7 +150,7 @@ func (ucdq *uploadChunkDistributionQueue) callAddUploadChunk(uc *unfinishedUploa
 	for x := ucdq.lowPriorityLane.Pop(); x != nil; x = ucdq.lowPriorityLane.Pop() {
 		// If there is buildup, add the item.
 		needed := x.staticMemoryNeeded * lowPriorityMinThroughputMultiplier
-		if ucdq.priorityBuildup > needed {
+		if ucdq.priorityBuildup >= needed {
 			ucdq.priorityBuildup -= needed
 			ucdq.priorityLane.PushBack(x)
 			continue
@@ -218,11 +213,19 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		}
 		ucdq.mu.Unlock()
 
-		// While not holding the lock but still blocking, pass the chunk off to
-		// the thread that will distribute the chunk to workers. This call can
-		// fail. If the call failed, the chunk should be re-inserted into the
-		// front of the low prior heap IFF the chunk was a low prio chunk.
-		distributed := ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
+		var distributed bool
+		if ucdq.staticRenter.deps.Disrupt("DelayChunkDistribution") {
+			// Simulate chunk distribution but don't actually distribute it.
+			time.Sleep(time.Second)
+			distributed = true
+		} else {
+			// While not holding the lock but still blocking, pass the chunk off to
+			// the thread that will distribute the chunk to workers. This call can
+			// fail. If the call failed, the chunk should be re-inserted into the
+			// front of the low prior heap IFF the chunk was a low prio chunk.
+			distributed = ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
+		}
+
 		// If the chunk was not distributed, we want to block briefly to give
 		// the workers time to process the items in their queue. The only reason
 		// that a chunk will not be distributed is because workers have too much

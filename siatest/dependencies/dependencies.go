@@ -9,6 +9,11 @@ import (
 )
 
 type (
+	// DependencyDelayChunkDistribution delays the chunk distribution in
+	// callAddUploadChunk by 1 second and skips the actual distribution.
+	DependencyDelayChunkDistribution struct {
+		modules.ProductionDependencies
+	}
 	// DependencyReadRegistryBlocking will block the read registry call by
 	// making it think that it got one more worker than it actually has.
 	// Therefore, waiting for a response that never comes.
@@ -378,6 +383,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDelayChunkDistribution) Disrupt(s string) bool {
+	return s == "DelayChunkDistribution"
 }
 
 // Disrupt returns true if the correct string is provided.
