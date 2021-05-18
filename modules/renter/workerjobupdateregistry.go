@@ -7,7 +7,6 @@ import (
 
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -115,7 +114,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	// in the future in case we are certain that a host can't contain those
 	// errors.
 	rv, err := j.managedUpdateRegistry()
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+	if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
@@ -205,13 +204,13 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		// signed registry value from the response.
 		err = resp.Error
 		// Check for ErrLowerRevNum.
-		if err != nil && strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
-			err = registry.ErrLowerRevNum
+		if err != nil && strings.Contains(err.Error(), modules.ErrLowerRevNum.Error()) {
+			err = modules.ErrLowerRevNum
 		}
-		if err != nil && strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
-			err = registry.ErrSameRevNum
+		if err != nil && strings.Contains(err.Error(), modules.ErrSameRevNum.Error()) {
+			err = modules.ErrSameRevNum
 		}
-		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+		if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
 			// Parse the proof.
 			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)
 			return rv, errors.Compose(err, parseErr)

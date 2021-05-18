@@ -18,28 +18,32 @@ import (
 
 // TODO: F/Us
 // - use LRU for limited entries in memory, rest on disk
-// - optimize locking by locking each entry individually
 const (
 	// PersistedEntrySize is the size of a marshaled entry on disk.
 	PersistedEntrySize = modules.RegistryEntrySize
+)
+
+const (
+	// RegistryEntryNoPubKeySize is the expected size of a registry entry
+	// without a pubkey.
+	RegistryEntryNoPubKeySize = 34
+
+	// RegistryEntryWithPubKeySize is the expectedsize of a registry entry with
+	// a pubkey.
+	RegistryEntryWithPubKeySize = RegistryEntryNoPubKeySize + crypto.PublicKeySize
 )
 
 var (
 	// errEntryWrongSize is returned when a marshaled entry doesn't have a size
 	// of persistedEntrySize. This should never happen.
 	errEntryWrongSize = errors.New("marshaled entry has wrong size")
-	// ErrLowerRevNum is returned when the revision number of the data to
-	// register isn't greater than the known revision number.
-	ErrLowerRevNum = errors.New("provided revision number is invalid")
-	// ErrSameRevNum is returned if the revision number of the data to register
-	// is already registered.
-	ErrSameRevNum = errors.New("provided revision number is already registered")
 	// errInvalidSignature is returned when the signature doesn't match a
 	// registry value.
 	errInvalidSignature = errors.New("provided signature is invalid")
 	// errTooMuchData is returned when the data to register is larger than
 	// RegistryDataSize.
-	errTooMuchData = errors.New("registered data is too large")
+	errTooMuchData          = errors.New("registered data is too large")
+	errUnexpectedDataLength = errors.New("registered data has unexpected length")
 	// errInvalidEntry is returned when trying to update an entry that has been
 	// invalidated on disk and only exists in memory anymore.
 	errInvalidEntry = errors.New("invalid entry")
@@ -58,6 +62,7 @@ type (
 	// register data with a given pubkey and secondary key (tweak).
 	Registry struct {
 		entries    map[modules.RegistryEntryID]*value
+		staticHPK  types.SiaPublicKey
 		staticPath string
 		staticFile *os.File
 		usage      bitfield
@@ -90,7 +95,7 @@ func (v *value) mapKey() modules.RegistryEntryID {
 }
 
 // update updates a value with a new revision, expiry and data.
-func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool) error {
+func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool, hpk types.SiaPublicKey) error {
 	// Check if the entry has been invalidated. This should only ever be the
 	// case when an entry is updated at the same time as its pruned so its
 	// incredibly unlikely to happen. Usually entries would be updated long
@@ -103,10 +108,8 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	oldRV := modules.NewRegistryValue(v.tweak, v.data, v.revision)
 	if !init {
 		s := fmt.Sprintf("%v <= %v", rv.Revision, v.revision)
-		if rv.Revision < oldRV.Revision {
-			return errors.AddContext(ErrLowerRevNum, s)
-		} else if rv.Revision == oldRV.Revision && !rv.HasMoreWork(oldRV) {
-			return errors.AddContext(ErrSameRevNum, s)
+		if err := oldRV.CanUpdateWith(rv.RegistryValue, hpk); err != nil {
+			return errors.AddContext(err, s)
 		}
 	}
 
@@ -230,7 +233,7 @@ func (r *Registry) Truncate(newMaxEntries uint64, force bool) error {
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, maxEntries uint64) (_ *Registry, err error) {
+func New(path string, maxEntries uint64, hpk types.SiaPublicKey) (_ *Registry, err error) {
 	// The path should be an absolute path.
 	if !filepath.IsAbs(path) {
 		return nil, errPathNotAbsolute
@@ -328,7 +331,7 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 		srv = modules.NewSignedRegistryValue(entry.tweak, entry.data, entry.revision, entry.signature)
 	}
 	// Update the entry.
-	err = entry.update(rv, expiry, !exists)
+	err = entry.update(rv, expiry, !exists, r.staticHPK)
 	if err != nil {
 		entry.mu.Unlock()
 		return srv, errors.AddContext(err, "failed to update entry")

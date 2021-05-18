@@ -240,7 +240,7 @@ func TestSaveEntry(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}

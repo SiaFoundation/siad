@@ -4,9 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -93,12 +91,18 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	// Add 1 year to the expiry.
 	newExpiry := i.staticState.host.BlockHeight() + types.BlocksPerYear
 
-	// Try updating the registry.
+	// Create registry value and validate its data.
 	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
+	if err := rv.ValidateData(); err != nil {
+		return errOutput(err), types.ZeroCurrency
+	}
+
+	// Try updating the registry.
 	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
-		// If we weren't able to update the registry due to a ErrLowerRevNum or
-		// ErrSameRevNum, we need to return the existing value as proof.
+	if modules.IsLowerPrioEntryErr(err) {
+		// If we weren't able to update the registry due to an error indicating
+		// that a higher prio entry already exists, we need to return the
+		// existing value as proof.
 		rev := make([]byte, 8)
 		binary.LittleEndian.PutUint64(rev, existingRV.Revision)
 		return output{

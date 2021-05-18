@@ -791,7 +791,7 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 	if h.dependencies.Disrupt("RegistryUpdateLyingHost") {
 		_, srv, found := h.staticRegistry.Get(modules.DeriveRegistryEntryID(pubKey, rv.Tweak))
 		if found {
-			return srv, registry.ErrSameRevNum
+			return srv, modules.ErrSameRevNum
 		}
 	}
 	// On disrupt, the registry shouldn't be updated.
@@ -847,7 +847,7 @@ func (h *Host) managedInitRegistry() error {
 	}
 
 	// Load the registry.
-	registry, err := registry.New(path, settingsEntries)
+	registry, err := registry.New(path, settingsEntries, h.publicKey)
 	if err != nil {
 		return errors.AddContext(err, "failed to load host registry")
 	}

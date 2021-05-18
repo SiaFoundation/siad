@@ -44,7 +44,7 @@ func TestDeleteEntry(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestNew(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestNew(t *testing.T) {
 
 	// Load the registry again. 'New' should load the used entry from disk but
 	// not the unused one.
-	r, err = New(registryPath, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestNew(t *testing.T) {
 
 	// Try to create a registry at a relative path. This shouldn't work.
 	registryPath = "./registry.dat"
-	_, err = New(registryPath, testingDefaultMaxEntries)
+	_, err = New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if !errors.Contains(err, errPathNotAbsolute) {
 		t.Fatal(err)
 	}
@@ -205,7 +205,9 @@ func TestUpdate(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, testingDefaultMaxEntries)
+	_, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	r, err := New(registryPath, testingDefaultMaxEntries, spk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +244,7 @@ func TestUpdate(t *testing.T) {
 	// same and the PoW is the same.
 	expectedRV := rv
 	oldRV, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, ErrSameRevNum) {
+	if !errors.Contains(err, modules.ErrSameRevNum) {
 		t.Fatal("expected invalid rev number", err)
 	}
 	if !reflect.DeepEqual(oldRV, expectedRV) {
@@ -255,11 +257,29 @@ func TestUpdate(t *testing.T) {
 	// should work.
 	expectedRV = rv
 	for !rv.HasMoreWork(expectedRV.RegistryValue) {
-		rv.Data = fastrand.Bytes(100)
+		rv.Data = fastrand.Bytes(modules.RegistryEntryDataSize)
 		rv = rv.Sign(sk)
 		v.data = rv.Data
 		v.signature = rv.Signature
 	}
+	oldRV, err = r.Update(rv, v.key, v.expiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(oldRV, expectedRV) {
+		t.Log(oldRV)
+		t.Log(expectedRV)
+		t.Fatal("wrong oldRV returned")
+	}
+
+	// Update the key again. This time with the same revision and PoW but a
+	// matching hostpubkey. This should work.
+	expectedRV = rv
+	rv.Data = append(rv.Data, pk[:]...)
+	rv = rv.Sign(sk)
+	v.data = rv.Data
+	v.signature = rv.Signature
+
 	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +296,7 @@ func TestUpdate(t *testing.T) {
 	v.revision--
 	rv = rv.Sign(sk)
 	oldRV, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, ErrLowerRevNum) {
+	if !errors.Contains(err, modules.ErrLowerRevNum) {
 		t.Fatal("expected invalid rev number", err)
 	}
 	if !reflect.DeepEqual(oldRV, expectedRV) {
@@ -297,7 +317,7 @@ func TestUpdate(t *testing.T) {
 	if reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key should have existed before")
 	}
-	r, err = New(registryPath, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +382,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Reload the registry. Only the second entry should exist.
-	r, err = New(registryPath, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +460,7 @@ func TestRegistryLimit(t *testing.T) {
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
 	limit := uint64(128)
-	r, err := New(registryPath, limit)
+	r, err := New(registryPath, limit, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +498,7 @@ func TestPrune(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +587,7 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Restart.
-	r, err = New(registryPath, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +632,7 @@ func TestFullRegistry(t *testing.T) {
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
 	numEntries := uint64(128)
-	r, err := New(registryPath, numEntries)
+	r, err := New(registryPath, numEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -646,7 +666,7 @@ func TestFullRegistry(t *testing.T) {
 	}
 
 	// Reload it.
-	r, err = New(registryPath, numEntries)
+	r, err = New(registryPath, numEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +718,7 @@ func TestFullRegistry(t *testing.T) {
 	}
 
 	// Reload it.
-	r, err = New(registryPath, numEntries)
+	r, err = New(registryPath, numEntries, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +771,7 @@ func TestRegistryRace(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, 64)
+	r, err := New(registryPath, 64, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -813,10 +833,10 @@ func TestRegistryRace(t *testing.T) {
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
-			if errors.Contains(err, ErrSameRevNum) {
+			if errors.Contains(err, modules.ErrSameRevNum) {
 				continue // invalid revision numbers are expected
 			}
-			if errors.Contains(err, ErrLowerRevNum) {
+			if errors.Contains(err, modules.ErrLowerRevNum) {
 				continue // invalid revision numbers are expected
 			}
 			if errors.Contains(err, errInvalidEntry) {
@@ -876,7 +896,7 @@ func TestRegistryRace(t *testing.T) {
 	}
 
 	// Reload registry.
-	r, err = New(registryPath, 64)
+	r, err = New(registryPath, 64, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -916,7 +936,7 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, 64)
+	r, err := New(registryPath, 64, types.SiaPublicKey{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -994,7 +1014,7 @@ func TestTruncate(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, 128)
+	r, err := New(registryPath, 128, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1074,7 +1094,7 @@ func TestTruncate(t *testing.T) {
 	}
 
 	// Reload registry.
-	r, err = New(registryPath, 192)
+	r, err = New(registryPath, 192, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1145,7 +1165,7 @@ func TestTruncate(t *testing.T) {
 	}
 
 	// Reload registry.
-	r, err = New(registryPath, 64)
+	r, err = New(registryPath, 64, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1193,7 +1213,7 @@ func TestMigrate(t *testing.T) {
 	registryPathDst := filepath.Join(dir, "registryDst")
 
 	// Create a new registry.
-	r, err := New(registryPathSrc, 128)
+	r, err := New(registryPathSrc, 128, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1242,7 +1262,7 @@ func TestMigrate(t *testing.T) {
 	}
 
 	// Reload the registry.
-	r, err = New(registryPathDst, 128)
+	r, err = New(registryPathDst, 128, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1295,7 +1315,7 @@ func TestTruncateForce(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, 128)
+	r, err := New(registryPath, 128, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1358,7 +1378,7 @@ func TestTruncateForce(t *testing.T) {
 	}
 
 	// Reload the registry.
-	r, err = New(registryPath, 64)
+	r, err = New(registryPath, 64, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1397,7 +1417,7 @@ func TestFailedLoadLargeRegistry(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, 128)
+	r, err := New(registryPath, 128, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1425,7 +1445,7 @@ func TestFailedLoadLargeRegistry(t *testing.T) {
 	}
 	// Try reload it with a bitfield size of 0. This should fail while loading the
 	// registry.
-	_, err = New(registryPath, 0)
+	_, err = New(registryPath, 0, types.SiaPublicKey{})
 	if err == nil || !strings.Contains(err.Error(), "failed to load registry entries") {
 		t.Fatal(err)
 	}

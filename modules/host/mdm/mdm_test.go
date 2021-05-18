@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -102,10 +101,10 @@ func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.S
 	oldRV, exists := h.registry[key]
 
 	if exists && rv.Revision < oldRV.Revision {
-		return oldRV.SignedRegistryValue, registry.ErrLowerRevNum
+		return oldRV.SignedRegistryValue, modules.ErrLowerRevNum
 	}
 	if exists && rv.Revision == oldRV.Revision {
-		return oldRV.SignedRegistryValue, registry.ErrSameRevNum
+		return oldRV.SignedRegistryValue, modules.ErrSameRevNum
 	}
 
 	h.registry[key] = TestRegistryValue{
@@ -329,7 +328,7 @@ func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto
 	} else if err == nil && o.Error != nil {
 		return fmt.Errorf("output contained error: %v", o.Error)
 	} else if o.Error != nil && err != nil && o.Error.Error() != err.Error() {
-		return fmt.Errorf("output errors don't match %v != %v", o.Error, err)
+		return fmt.Errorf("output errors don't match: %v != %v", o.Error, err)
 	}
 	if o.NewSize != newSize {
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)

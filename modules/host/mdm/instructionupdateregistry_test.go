@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -21,7 +20,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	// Create a program to update a registry value that doesn't exist yet.
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryEntryDataSize)
 	rev := uint64(0)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
@@ -68,14 +67,16 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	expectedOutput := append(rv.Signature[:], append(revBytes, rv.Data...)...)
 	// Assert output.
 	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, registry.ErrSameRevNum)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrSameRevNum)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Update the revision to 1. This should work.
+	// Update the revision to 1. This should work. Also append a pubkey to the
+	// data to make sure the longer entry also works.
 	tb = newTestProgramBuilder(pt, 0)
 	rv.Revision++
+	rv.Data = append(rv.Data, pk[:]...)
 	rv = rv.Sign(sk)
 	tb.AddUpdateRegistryInstruction(spk, rv)
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -100,10 +101,28 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 		t.Fatal("registry returned wrong data")
 	}
 
+	// Update the revision with an invalid length.
+	tb = newTestProgramBuilder(pt, 0)
+	rv.Revision++
+	rv.Data = rv.Data[:modules.RegistryEntryDataSizeWithPubKey-1]
+	rv = rv.Sign(sk)
+	tb.AddUpdateRegistryInstruction(spk, rv)
+	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Assert output.
+	output = outputs[0]
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, []byte{}, modules.ErrUnexpectedEntryLength)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Update the revision to 0. This should fail again but provide the right
 	// proof.
 	tb = newTestProgramBuilder(pt, 0)
 	rv.Revision = 0
+	rv.Data = data
 	rv = rv.Sign(sk)
 	tb.AddUpdateRegistryInstruction(spk, rv)
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -116,7 +135,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	expectedOutput = append(rv2.Signature[:], append(revBytes, rv2.Data...)...)
 	// Assert output.
 	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, registry.ErrLowerRevNum)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrLowerRevNum)
 	if err != nil {
 		t.Fatal(err)
 	}
