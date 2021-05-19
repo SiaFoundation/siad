@@ -2099,7 +2099,7 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 	loadedOverflow, exists = loaded.Overflow(id)
 	if !exists || loadedOverflow != 0 {
-		t.Fatal("overflow entry should be 0", loadedOverflow)
+		t.Fatal("overflow entry should be 0", loadedOverflow, exists)
 	}
 
 	// Create multiple threads, all adding sectors at the same time.
