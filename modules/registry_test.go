@@ -38,7 +38,8 @@ func TestCanUpdateWith(t *testing.T) {
 
 	// Value with matching pubkey.
 	rvPubKey := rv
-	rvPubKey.Data = append(rvPubKey.Data, pk[:]...)
+	spkh := crypto.HashObject(spk)
+	rvPubKey.Data = append(rvPubKey.Data, spkh[:]...)
 
 	// Run multiple testcases.
 	tests := []struct {

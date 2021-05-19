@@ -244,7 +244,7 @@ func TestUpdate(t *testing.T) {
 	// same and the PoW is the same.
 	expectedRV := rv
 	oldRV, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, modules.ErrSameRevNum) {
+	if !errors.Contains(err, modules.ErrSameEntry) {
 		t.Fatal("expected invalid rev number", err)
 	}
 	if !reflect.DeepEqual(oldRV, expectedRV) {

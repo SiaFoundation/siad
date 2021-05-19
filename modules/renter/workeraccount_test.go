@@ -564,7 +564,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), fastrand.Uint64n(1000)).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryEntryDataSize), fastrand.Uint64n(1000)).Sign(sk)
 
 	// update the registry
 	err := wt.UpdateRegistry(context.Background(), spk, rv)

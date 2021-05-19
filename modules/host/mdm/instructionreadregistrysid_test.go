@@ -22,7 +22,7 @@ func TestInstructionReadRegistryEID(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryEntryDataSize)
 	rev := fastrand.Uint64n(1000)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -126,7 +126,7 @@ func TestInstructionReadRegistryEIDNoPubkeyAndTweak(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryEntryDataSize)
 	rev := fastrand.Uint64n(1000)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,

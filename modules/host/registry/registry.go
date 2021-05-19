@@ -277,6 +277,7 @@ func New(path string, maxEntries uint64, hpk types.SiaPublicKey) (_ *Registry, e
 	}
 	// Create the registry.
 	reg := &Registry{
+		staticHPK:  hpk,
 		staticFile: f,
 		staticPath: path,
 		usage:      b,

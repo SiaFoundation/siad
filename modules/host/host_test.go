@@ -1117,7 +1117,7 @@ func TestHostRegistry(t *testing.T) {
 		spk.Key = pk[:]
 		var tweak crypto.Hash
 		fastrand.Read(tweak[:])
-		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0).Sign(sk)
+		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryEntryDataSize), 0).Sign(sk)
 		_, err := h.RegistryUpdate(rv, spk, 1337)
 		if err != nil {
 			t.Fatal(err)

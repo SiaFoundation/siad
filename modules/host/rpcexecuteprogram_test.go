@@ -1244,7 +1244,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryEntryDataSize)
 	rev := uint64(1)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
@@ -1501,7 +1501,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryEntryDataSize)
 	rev := uint64(0)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
