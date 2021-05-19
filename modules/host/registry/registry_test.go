@@ -834,13 +834,7 @@ func TestRegistryRace(t *testing.T) {
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
-			if errors.Contains(err, modules.ErrSameRevNum) {
-				continue // invalid revision numbers are expected
-			}
-			if errors.Contains(err, modules.ErrLowerRevNum) {
-				continue // invalid revision numbers are expected
-			}
-			if errors.Contains(err, errInvalidEntry) {
+			if modules.IsLowerPrioEntryErr(err) {
 				continue // invalid entries are expected
 			}
 			if err != nil {

@@ -1351,7 +1351,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	resp = resps[0]
 
 	// Check response.
-	if resp.Error == nil || !strings.Contains(resp.Error.Error(), modules.ErrSameRevNum.Error()) {
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), modules.ErrSameEntry.Error()) {
 		t.Fatal(resp.Error)
 	}
 	if !resp.AdditionalCollateral.Equals(collateral) {
@@ -1582,8 +1582,8 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if len(resp.Output) != 185 {
-		// 185 = 64 (sig) + 8 (revision) + 113 (data)
+	if len(resp.Output) != 106 {
+		// 106 = 64 (sig) + 8 (revision) + 34 (data)
 		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
 	}
 	if !resp.TotalCost.Equals(programCost) {

@@ -114,7 +114,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	// in the future in case we are certain that a host can't contain those
 	// errors.
 	rv, err := j.managedUpdateRegistry()
-	if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
+	if modules.IsLowerPrioEntryErr(err) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
@@ -122,10 +122,10 @@ func (j *jobUpdateRegistry) callExecute() {
 			j.staticQueue.callReportFailure(err)
 			return
 		}
-		// If the entry is valid, check if the revision number is actually
-		// invalid or if the revision numbers match but the PoW is too low.
-		if j.staticSignedRegistryValue.Revision > rv.Revision ||
-			(j.staticSignedRegistryValue.Revision == rv.Revision && j.staticSignedRegistryValue.HasMoreWork(rv.RegistryValue)) {
+		// If the entry is valid, check if the known entry should be able to
+		// update the one returned by the host. If it can, the host is trying to
+		// cheat us.
+		if rv.CanUpdateWith(j.staticSignedRegistryValue.RegistryValue, w.staticHostPubKey) == nil {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
 			return
@@ -210,7 +210,13 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		if err != nil && strings.Contains(err.Error(), modules.ErrSameRevNum.Error()) {
 			err = modules.ErrSameRevNum
 		}
-		if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
+		if err != nil && strings.Contains(err.Error(), modules.ErrSameWork.Error()) {
+			err = modules.ErrSameWork
+		}
+		if err != nil && strings.Contains(err.Error(), modules.ErrSameEntry.Error()) {
+			err = modules.ErrSameEntry
+		}
+		if modules.IsLowerPrioEntryErr(err) {
 			// Parse the proof.
 			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)
 			return rv, errors.Compose(err, parseErr)

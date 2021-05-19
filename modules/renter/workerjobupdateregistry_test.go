@@ -65,7 +65,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	// Run the UpdateRegistry job again. This time it should fail with an error
 	// indicating that the revision number already exists.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !errors.Contains(err, modules.ErrSameRevNum) {
+	if !errors.Contains(err, modules.ErrSameEntry) {
 		t.Fatal(err)
 	}
 
