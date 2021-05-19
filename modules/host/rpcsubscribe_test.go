@@ -28,11 +28,16 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryEntryDataSize)
 	rev := fastrand.Uint64n(1000)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
+	}
+	if fastrand.Intn(2) == 0 {
+		// Random chance to add a pubkey.
+		spkh := crypto.HashObject(spk)
+		data = append(data, spkh[:]...)
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	return rv, spk, sk
