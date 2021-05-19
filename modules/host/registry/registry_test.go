@@ -835,6 +835,9 @@ func TestRegistryRace(t *testing.T) {
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
 			if modules.IsLowerPrioEntryErr(err) {
+				continue // lower prio entries are expected
+			}
+			if errors.Contains(err, errInvalidEntry) {
 				continue // invalid entries are expected
 			}
 			if err != nil {
