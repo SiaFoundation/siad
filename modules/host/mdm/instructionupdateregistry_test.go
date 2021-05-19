@@ -76,7 +76,8 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	// data to make sure the longer entry also works.
 	tb = newTestProgramBuilder(pt, 0)
 	rv.Revision++
-	rv.Data = append(rv.Data, pk[:]...)
+	spkh := crypto.HashObject(spk)
+	rv.Data = append(rv.Data, spkh[:]...)
 	rv = rv.Sign(sk)
 	tb.AddUpdateRegistryInstruction(spk, rv)
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)

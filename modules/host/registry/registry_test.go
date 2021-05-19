@@ -275,7 +275,8 @@ func TestUpdate(t *testing.T) {
 	// Update the key again. This time with the same revision and PoW but a
 	// matching hostpubkey. This should work.
 	expectedRV = rv
-	rv.Data = append(rv.Data, pk[:]...)
+	spkh := crypto.HashObject(spk)
+	rv.Data = append(rv.Data, spkh[:]...)
 	rv = rv.Sign(sk)
 	v.data = rv.Data
 	v.signature = rv.Signature

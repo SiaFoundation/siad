@@ -132,6 +132,7 @@ func (entry RegistryValue) HasMoreWork(target RegistryValue) bool {
 // CanUpdateWith checks whether entry can be overwritten by entry2 based on its
 // revision numbers, work and pubkey.
 func (entry RegistryValue) CanUpdateWith(entry2 RegistryValue, hpk types.SiaPublicKey) error {
+	hpkh := crypto.HashObject(hpk)
 	if entry.Revision > entry2.Revision {
 		return ErrLowerRevNum
 	} else if entry2.Revision > entry.Revision {
@@ -150,8 +151,8 @@ func (entry RegistryValue) CanUpdateWith(entry2 RegistryValue, hpk types.SiaPubl
 	if err != nil {
 		return err
 	}
-	entryIsOnHost := entryHPK != nil && entryHPK.Equals(hpk)
-	entry2IsOnHost := entry2HPK != nil && entry2HPK.Equals(hpk)
+	entryIsOnHost := entryHPK != nil && *entryHPK == hpkh
+	entry2IsOnHost := entry2HPK != nil && *entry2HPK == hpkh
 	if entryIsOnHost && !entry2IsOnHost {
 		return ErrSameWork
 	} else if entry2IsOnHost && !entryIsOnHost {
@@ -170,15 +171,14 @@ func (entry RegistryValue) ValidateData() error {
 
 // ParsePubKey tries to parse a pubkey from a registry entry. It returns `nil`
 // if no key is found.
-func (entry RegistryValue) ParsePubKey() (*types.SiaPublicKey, error) {
+func (entry RegistryValue) ParsePubKey() (*crypto.Hash, error) {
 	switch len(entry.Data) {
 	case RegistryEntryDataSize:
 		return nil, nil
 	case RegistryEntryDataSizeWithPubKey:
-		var pk crypto.PublicKey
-		copy(pk[:], entry.Data[RegistryEntryDataSize:])
-		spk := types.Ed25519PublicKey(pk)
-		return &spk, nil
+		var h crypto.Hash
+		copy(h[:], entry.Data[RegistryEntryDataSize:])
+		return &h, nil
 	default:
 	}
 	return nil, ErrUnexpectedEntryLength

@@ -158,7 +158,8 @@ func TestHasMoreWork(t *testing.T) {
 	// adding a pubkey to rv1 shouldn't change the work but the hash.
 	rv1WithPubkey := rv1
 	_, pk := crypto.GenerateKeyPair()
-	rv1WithPubkey.Data = append(rv1WithPubkey.Data, pk[:]...)
+	spkh := crypto.HashObject(types.Ed25519PublicKey(pk))
+	rv1WithPubkey.Data = append(rv1WithPubkey.Data, spkh[:]...)
 	if rv1.work() != rv1WithPubkey.work() {
 		t.Fatal("work should match")
 	}
@@ -230,12 +231,13 @@ func TestParsePubKey(t *testing.T) {
 	// value with pubkey.
 	_, pk := crypto.GenerateKeyPair()
 	spk2 := types.Ed25519PublicKey(pk)
-	rv.Data = append(rv.Data, pk[:]...)
-	spk, err = rv.ParsePubKey()
+	spk2h := crypto.HashObject(spk2)
+	rv.Data = append(rv.Data, spk2h[:]...)
+	spkh, err := rv.ParsePubKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !spk.Equals(spk2) {
+	if *spkh != spk2h {
 		t.Fatal("spk doesn't match spk2")
 	}
 

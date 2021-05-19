@@ -30,7 +30,7 @@ const (
 
 	// RegistryEntryWithPubKeySize is the expectedsize of a registry entry with
 	// a pubkey.
-	RegistryEntryWithPubKeySize = RegistryEntryNoPubKeySize + crypto.PublicKeySize
+	RegistryEntryWithPubKeySize = RegistryEntryNoPubKeySize + crypto.HashSize
 )
 
 var (
