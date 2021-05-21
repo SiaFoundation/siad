@@ -20,7 +20,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	// Create a program to update a registry value that doesn't exist yet.
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
-	data := fastrand.Bytes(modules.RegistryEntryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize - 1) // try entry without version first
 	rev := uint64(0)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
@@ -72,13 +72,12 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the revision to 1. This should work. Also append a pubkey to the
-	// data to make sure the longer entry also works.
+	// Update the revision to 1. This should work. Make this update a version 1
+	// update with a pubkey.
 	tb = newTestProgramBuilder(pt, 0)
 	rv.Revision++
-	spkh := crypto.HashObject(spk)
-	rv.Data = append(rv.Data, spkh[:]...)
-	rv = rv.Sign(sk)
+	rvwpk := modules.NewRegistryValueWithPubKey(rv.Tweak, spk, fastrand.Bytes(10), rv.Revision)
+	rv = rvwpk.Sign(sk)
 	tb.AddUpdateRegistryInstruction(spk, rv)
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
 	if err != nil {
@@ -100,23 +99,6 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	}
 	if !reflect.DeepEqual(rv2, rv) {
 		t.Fatal("registry returned wrong data")
-	}
-
-	// Update the revision with an invalid length.
-	tb = newTestProgramBuilder(pt, 0)
-	rv.Revision++
-	rv.Data = rv.Data[:modules.RegistryEntryDataSizeWithPubKey-1]
-	rv = rv.Sign(sk)
-	tb.AddUpdateRegistryInstruction(spk, rv)
-	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Assert output.
-	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, []byte{}, modules.ErrUnexpectedEntryLength)
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	// Update the revision to 0. This should fail again but provide the right

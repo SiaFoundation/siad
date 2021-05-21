@@ -23,16 +23,6 @@ const (
 	PersistedEntrySize = modules.RegistryEntrySize
 )
 
-const (
-	// RegistryEntryNoPubKeySize is the expected size of a registry entry
-	// without a pubkey.
-	RegistryEntryNoPubKeySize = 34
-
-	// RegistryEntryWithPubKeySize is the expectedsize of a registry entry with
-	// a pubkey.
-	RegistryEntryWithPubKeySize = RegistryEntryNoPubKeySize + crypto.HashSize
-)
-
 var (
 	// errEntryWrongSize is returned when a marshaled entry doesn't have a size
 	// of persistedEntrySize. This should never happen.

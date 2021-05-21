@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -91,10 +92,10 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	// Add 1 year to the expiry.
 	newExpiry := i.staticState.host.BlockHeight() + types.BlocksPerYear
 
-	// Create registry value and validate its data.
+	// Create registry value and validate its version.
 	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
-	if err := rv.ValidateData(); err != nil {
-		return errOutput(err), types.ZeroCurrency
+	if rv.Version() == modules.RegistryEntryVersionInvalid {
+		return errOutput(errors.New("invalid registry entry version")), types.ZeroCurrency
 	}
 
 	// Try updating the registry.

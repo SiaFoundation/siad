@@ -257,7 +257,7 @@ func TestUpdate(t *testing.T) {
 	// should work.
 	expectedRV = rv
 	for !rv.HasMoreWork(expectedRV.RegistryValue) {
-		rv.Data = fastrand.Bytes(modules.RegistryEntryDataSize)
+		rv.Data = fastrand.Bytes(modules.RegistryDataSize)
 		rv = rv.Sign(sk)
 		v.data = rv.Data
 		v.signature = rv.Signature

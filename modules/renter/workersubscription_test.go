@@ -44,7 +44,7 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryEntryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := fastrand.Uint64n(1000)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,

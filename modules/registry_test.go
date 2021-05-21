@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"bytes"
 	"encoding/hex"
 	"math"
 	"testing"
@@ -37,9 +38,8 @@ func TestCanUpdateWith(t *testing.T) {
 	rvHigherRev.Revision++
 
 	// Value with matching pubkey.
-	rvPubKey := rv
-	spkh := crypto.HashObject(spk)
-	rvPubKey.Data = append(rvPubKey.Data, spkh[:]...)
+	rvPubKey := NewRegistryValueWithPubKey(rv.Tweak, spk, fastrand.Bytes(10), rv.Revision)
+	rvNoPubKey := NewRegistryValue(rv.Tweak, rvPubKey.Data[HostPubKeyHashSize:], rv.Revision)
 
 	// Run multiple testcases.
 	tests := []struct {
@@ -79,18 +79,21 @@ func TestCanUpdateWith(t *testing.T) {
 		},
 		// Case 5: update base with matching pubkey
 		{
-			old: rv,
+			old: rvNoPubKey,
 			new: rvPubKey,
 			err: nil,
 		},
-		// Case 6: update rv with pubkey with base
+		// Case 6: update rv with pubkey with same entry minus the pubkey
 		{
 			old: rvPubKey,
-			new: rv,
+			new: rvNoPubKey,
 			err: ErrSameWork,
 		},
 	}
 	for i, test := range tests {
+		if i < 6 {
+			continue
+		}
 		err = test.old.CanUpdateWith(test.new, spk)
 		if test.err != err && !errors.Contains(err, test.err) {
 			t.Fatalf("%v: %v != %v", i, err, test.err)
@@ -203,7 +206,7 @@ func TestRegistryValueSignature(t *testing.T) {
 	}
 	// Verify invalid - wrong data
 	rv, pk = signedRV()
-	rv.Data = fastrand.Bytes(RegistryEntryDataSize)
+	rv.Data = fastrand.Bytes(RegistryDataSize)
 	if err := rv.Verify(pk); err == nil {
 		t.Fatal("verification succeeded")
 	}
@@ -215,37 +218,39 @@ func TestRegistryValueSignature(t *testing.T) {
 	}
 }
 
-// TestParsePubKey is a unit test for ParsePubKey.
-func TestParsePubKey(t *testing.T) {
+// TestHostPubKeyHash is a unit test for HostPubKeyHash.
+func TestHostPubKeyHash(t *testing.T) {
 	t.Parallel()
 
 	// value without pubkey.
-	rv := NewRegistryValue(crypto.Hash{}, fastrand.Bytes(RegistryEntryDataSize), 0)
-	spk, err := rv.ParsePubKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if spk != nil {
-		t.Fatal("spk should be nil")
+	rv := NewRegistryValue(crypto.Hash{}, fastrand.Bytes(1), 0)
+	hpkh := rv.HostPubKeyHash()
+	if hpkh != nil {
+		t.Fatal("hpkh should be nil")
 	}
 
-	// value with pubkey.
+	// value with pubkey but invalid version.
 	_, pk := crypto.GenerateKeyPair()
-	spk2 := types.Ed25519PublicKey(pk)
-	spk2h := crypto.HashObject(spk2)
-	rv.Data = append(rv.Data, spk2h[:]...)
-	spkh, err := rv.ParsePubKey()
-	if err != nil {
-		t.Fatal(err)
+	hpk2 := types.Ed25519PublicKey(pk)
+	hpkh2 := crypto.HashObject(hpk2)
+	rv.Data = make([]byte, RegistryDataSize)
+	copy(rv.Data, hpkh2[:HostPubKeyHashSize])
+	hpkh = rv.HostPubKeyHash()
+	if hpkh != nil {
+		t.Fatal("hpkh should be nil")
 	}
-	if *spkh != spk2h {
-		t.Fatal("spk doesn't match spk2")
+
+	// with correct version.
+	rv.Data[RegistryDataSize-1] = RegistryEntryVersionWithPubKey
+	hpkh = rv.HostPubKeyHash()
+	if !bytes.Equal(hpkh, hpkh2[:HostPubKeyHashSize]) {
+		t.Fatal("hpkh should be nil")
 	}
 
 	// invalid data length shouldn't panic.
 	rv = NewRegistryValue(crypto.Hash{}, []byte{}, 0)
-	_, err = rv.ParsePubKey()
-	if err == nil {
-		t.Fatal("expect error")
+	hpkh = rv.HostPubKeyHash()
+	if hpkh != nil {
+		t.Fatal("hpkh should be nil")
 	}
 }

@@ -28,7 +28,7 @@ func randomValue(index int64) (modules.SignedRegistryValue, *value, crypto.Secre
 	v := value{
 		expiry:      types.BlockHeight(fastrand.Uint64n(math.MaxUint32)),
 		staticIndex: index,
-		data:        fastrand.Bytes(modules.RegistryEntryDataSize),
+		data:        fastrand.Bytes(modules.RegistryDataSize),
 		revision:    fastrand.Uint64n(math.MaxUint64 - 100), // Leave some room for incrementing the revision during tests
 	}
 	v.key.Algorithm = types.SignatureEd25519

@@ -2,9 +2,9 @@ package modules
 
 import (
 	"bytes"
-	"fmt"
 
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
@@ -27,16 +27,24 @@ const (
 
 	// FileIDVersion is the current version we expect in a FileID.
 	FileIDVersion = 1
+
+	// HostPubKeyHashSize is the expected size of a host's pubkey's hash within
+	// a registry entry.
+	HostPubKeyHashSize = 20
 )
 
 const (
-	// RegistryEntryDataSize is the expected size of a registry update without a
-	// pubkey.
-	RegistryEntryDataSize = 34
+	// RegistryEntryVersionInvalid is a sentinel value for a version byte that
+	// wasn't set.
+	RegistryEntryVersionInvalid = iota
 
-	// RegistryEntryDataSizeWithPubKey is the expected size of a registry update
-	// with a pubkey.
-	RegistryEntryDataSizeWithPubKey = RegistryEntryDataSize + crypto.PublicKeySize
+	// RegistryEntryVersionNoPubKey is the version of an entry without
+	// pubkeyhash.
+	RegistryEntryVersionNoPubKey
+
+	// RegistryEntryVersionWithPubKey is the version of an entry with
+	// pubkeyhash.
+	RegistryEntryVersionWithPubKey
 )
 
 var (
@@ -55,9 +63,6 @@ var (
 	// equal to the existing entry based on its revision number, work and
 	// pubkey.
 	ErrSameEntry = errors.New("provided registry update and old update are either both primary updates or both secondary updates")
-	// ErrUnexpectedEntryLength is returned when an operation fails due to the
-	// registry entry containing an unexpted amount of data.
-	ErrUnexpectedEntryLength = fmt.Errorf("unexpected entry length, expect %v or %v", RegistryEntryDataSize, RegistryEntryDataSizeWithPubKey)
 )
 
 // RoundRegistrySize is a helper to correctly round up the size of a registry to
@@ -96,6 +101,30 @@ func NewRegistryValue(tweak crypto.Hash, data []byte, rev uint64) RegistryValue 
 	return rv
 }
 
+// NewRegistryValueWithPubKey creates a registry value with a host's pubkey. The
+// data is appended to the pubkey together with a version byte. This function
+// returns an empty entry if the resulting data exceeds the max. In a testing
+// build it will panic in that case. If the data is too short to fill the entry,
+// it is padded with zeros.
+func NewRegistryValueWithPubKey(tweak crypto.Hash, hpk types.SiaPublicKey, data []byte, rev uint64) RegistryValue {
+	// Compute the hash of the pubkey, take the first HostPubKeyHashSize bytes
+	// of it and append the data.
+	hpkh := crypto.HashObject(hpk)
+	d := append(hpkh[:HostPubKeyHashSize], data...)
+	if len(d) > RegistryDataSize-1 {
+		// Sanity check that the data + a version byte aren't greater than the max
+		// allowed entry size.
+		build.Critical("NewRegistryValueWithPubKey: too much data provided")
+		return RegistryValue{}
+	} else if diff := RegistryDataSize - len(d); diff > 0 {
+		// If they are smaller than the max, add padding.
+		d = append(d, make([]byte, diff)...)
+	}
+	// Set the version byte.
+	d[RegistryDataSize-1] = RegistryEntryVersionWithPubKey
+	return NewRegistryValue(tweak, d, rev)
+}
+
 // NewSignedRegistryValue is a convenience method for creating a new
 // SignedRegistryValue from arguments.
 func NewSignedRegistryValue(tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature) SignedRegistryValue {
@@ -132,56 +161,64 @@ func (entry RegistryValue) HasMoreWork(target RegistryValue) bool {
 // CanUpdateWith checks whether entry can be overwritten by entry2 based on its
 // revision numbers, work and pubkey.
 func (entry RegistryValue) CanUpdateWith(entry2 RegistryValue, hpk types.SiaPublicKey) error {
-	hpkh := crypto.HashObject(hpk)
+	// First, check the revision.
 	if entry.Revision > entry2.Revision {
 		return ErrLowerRevNum
 	} else if entry2.Revision > entry.Revision {
 		return nil
 	}
+	// Then the work.
 	if entry.HasMoreWork(entry2) {
 		return ErrSameRevNum
 	} else if entry2.HasMoreWork(entry) {
 		return nil
 	}
-	entryHPK, err := entry.ParsePubKey()
-	if err != nil {
-		return err
-	}
-	entry2HPK, err := entry2.ParsePubKey()
-	if err != nil {
-		return err
-	}
-	entryIsOnHost := entryHPK != nil && *entryHPK == hpkh
-	entry2IsOnHost := entry2HPK != nil && *entry2HPK == hpkh
-	if entryIsOnHost && !entry2IsOnHost {
+	// Finally check whether any of them are primary entries.
+	entryIsPrimary := entry.IsPrimaryEntry(hpk)
+	entry2IsPrimary := entry2.IsPrimaryEntry(hpk)
+	if entryIsPrimary && !entry2IsPrimary {
 		return ErrSameWork
-	} else if entry2IsOnHost && !entryIsOnHost {
+	} else if entry2IsPrimary && !entryIsPrimary {
 		return nil
 	}
 	return ErrSameEntry
 }
 
-// ValidateData validates the payload of an entry.
-func (entry RegistryValue) ValidateData() error {
-	if len(entry.Data) != RegistryEntryDataSize && len(entry.Data) != RegistryEntryDataSizeWithPubKey {
-		return ErrUnexpectedEntryLength
+// Version returns the version of the entry. For an unknown version or one that
+// wasn't set RegistryEntryVersionInvalid is returned.
+func (entry RegistryValue) Version() uint8 {
+	if len(entry.Data) < RegistryDataSize {
+		return RegistryEntryVersionNoPubKey
 	}
-	return nil
+	switch entry.Data[RegistryDataSize-1] {
+	case RegistryEntryVersionNoPubKey:
+		return RegistryEntryVersionNoPubKey
+	case RegistryEntryVersionWithPubKey:
+		return RegistryEntryVersionWithPubKey
+	default:
+		return RegistryEntryVersionInvalid
+	}
 }
 
-// ParsePubKey tries to parse a pubkey from a registry entry. It returns `nil`
-// if no key is found.
-func (entry RegistryValue) ParsePubKey() (*crypto.Hash, error) {
-	switch len(entry.Data) {
-	case RegistryEntryDataSize:
-		return nil, nil
-	case RegistryEntryDataSizeWithPubKey:
-		var h crypto.Hash
-		copy(h[:], entry.Data[RegistryEntryDataSize:])
-		return &h, nil
-	default:
+// IsPrimaryEntry compares the pubkey hash within the registry value to the
+// provided one to determine whether the entry is a primary one. This returns
+// `false` for entries without keys.
+func (entry RegistryValue) IsPrimaryEntry(hpk types.SiaPublicKey) bool {
+	if entry.Version() != RegistryEntryVersionWithPubKey {
+		return false
 	}
-	return nil, ErrUnexpectedEntryLength
+	hpkh := crypto.HashObject(hpk)
+	return bytes.Equal(entry.HostPubKeyHash(), hpkh[:HostPubKeyHashSize])
+}
+
+// HostPubKeyHash tries to parse a pubkey from a registry entry. It returns `nil` if
+// no key is found.
+func (entry RegistryValue) HostPubKeyHash() []byte {
+	if entry.Version() != RegistryEntryVersionWithPubKey {
+		return nil // no pubkey
+	}
+	// Return the first HostPubKeyHashSize bytes for the pubkey hash.
+	return entry.Data[:HostPubKeyHashSize]
 }
 
 // Verify verifies the signature on the RegistryValue.
@@ -198,9 +235,9 @@ func (entry RegistryValue) hash() crypto.Hash {
 // work returns the work of the registry value.
 func (entry RegistryValue) work() crypto.Hash {
 	data := entry.Data
-	// For entries with pubkeys, ignore the pubkey.
-	if len(data) == RegistryEntryDataSizeWithPubKey {
-		data = data[:RegistryEntryDataSize]
+	// For entries with pubkeys, ignore the pubkey at the beginning.
+	if entry.Version() == RegistryEntryVersionWithPubKey {
+		data = data[HostPubKeyHashSize:]
 	}
 	return crypto.HashAll(entry.Tweak, data, entry.Revision)
 }
