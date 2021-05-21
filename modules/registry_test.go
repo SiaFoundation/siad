@@ -16,11 +16,11 @@ import (
 func TestCanUpdateWith(t *testing.T) {
 	t.Parallel()
 
-	rvData, err := hex.DecodeString("829675d476f4795e5e3caf6583d1f323a8f065236b9ace5296dfd6b24c876ba7f135")
+	rvData, err := hex.DecodeString("732e473d43831439cc0e9afe560a0e666868cfe66eac19ab53235fcb5e4e9222e72f499a8fc9bd9d8d2b66c9f6eba266e3017297b7b7a1898415f7ab44b4e48b64f5e594bd27400442ed608cb336d80463cfefcd089f62401f3e6ae4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rvMoreWorkData, err := hex.DecodeString("0673b5a673596d840db8f714bbf6751e7d1869fca23e67fa20803597f925ac45e445")
+	rvMoreWorkData, err := hex.DecodeString("a9acd0b5be0acd08e67ab53637d9b7ae0f82e354f9cf0aa615bc5c6a77a05f315b042131358aa18c1978a574f2b1ea80d5ad8f5d441aa490583f2f790c348b5c102ce6f161fa2df6cb713fbe11b57c9a9cbe274534077afba0184ae26fb9d59d2983aad92cd8c6949c548cb81491d060b4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,9 +37,13 @@ func TestCanUpdateWith(t *testing.T) {
 	rvHigherRev := rv
 	rvHigherRev.Revision++
 
-	// Value with matching pubkey.
+	// Create value with pubkey and 10 byte payload.
 	rvPubKey := NewRegistryValueWithPubKey(rv.Tweak, spk, fastrand.Bytes(10), rv.Revision)
-	rvNoPubKey := NewRegistryValue(rv.Tweak, rvPubKey.Data[HostPubKeyHashSize:], rv.Revision)
+
+	// Create a version 1 entry by copying the payload without the pubkey and
+	// version byte. This entry should have the same work now as rvPubKey.
+	d := append([]byte{}, rvPubKey.Data[:len(rvPubKey.Data)-1]...)
+	rvNoPubKey := NewRegistryValue(rv.Tweak, d[HostPubKeyHashSize:], rv.Revision)
 
 	// Run multiple testcases.
 	tests := []struct {
