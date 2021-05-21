@@ -257,30 +257,11 @@ func TestUpdate(t *testing.T) {
 	// should work.
 	expectedRV = rv
 	for !rv.HasMoreWork(expectedRV.RegistryValue) {
-		rv.Data = fastrand.Bytes(modules.RegistryDataSize)
+		rv.Data = fastrand.Bytes(modules.RegistryDataSize - 1)
 		rv = rv.Sign(sk)
 		v.data = rv.Data
 		v.signature = rv.Signature
 	}
-	oldRV, err = r.Update(rv, v.key, v.expiry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(oldRV, expectedRV) {
-		t.Log(oldRV)
-		t.Log(expectedRV)
-		t.Fatal("wrong oldRV returned")
-	}
-
-	// Update the key again. This time with the same revision and PoW but a
-	// matching hostpubkey. This should work.
-	expectedRV = rv
-	spkh := crypto.HashObject(spk)
-	rv.Data = append(rv.Data, spkh[:]...)
-	rv = rv.Sign(sk)
-	v.data = rv.Data
-	v.signature = rv.Signature
-
 	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)

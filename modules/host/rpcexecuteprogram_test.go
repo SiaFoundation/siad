@@ -1244,7 +1244,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize - 1)
 	rev := uint64(1)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
@@ -1501,7 +1501,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize - 1)
 	rev := uint64(0)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
@@ -1582,9 +1582,9 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if len(resp.Output) != 106 {
-		// 106 = 64 (sig) + 8 (revision) + 34 (data)
-		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
+	if len(resp.Output) != 184 {
+		// 184 = 64 (sig) + 8 (revision) + 112 (data)
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 184)
 	}
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())

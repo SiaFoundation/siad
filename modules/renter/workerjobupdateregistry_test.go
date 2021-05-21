@@ -37,7 +37,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize - 1)
 	rev := fastrand.Uint64n(1000) + 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -201,7 +201,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize - 1)
 	rev := fastrand.Uint64n(1000) + 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -271,7 +271,7 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
+	data := fastrand.Bytes(modules.RegistryDataSize - 1)
 	rev := fastrand.Uint64n(1000) + 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,

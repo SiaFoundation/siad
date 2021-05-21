@@ -125,11 +125,11 @@ func TestHasMoreWork(t *testing.T) {
 
 	// Create the rv's from hardcoded values for which we know the resulting
 	// hash.
-	rv1Data, err := hex.DecodeString("829675d476f4795e5e3caf6583d1f323a8f065236b9ace5296dfd6b24c876ba7f135")
+	rv1Data, err := hex.DecodeString("732e473d43831439cc0e9afe560a0e666868cfe66eac19ab53235fcb5e4e9222e72f499a8fc9bd9d8d2b66c9f6eba266e3017297b7b7a1898415f7ab44b4e48b64f5e594bd27400442ed608cb336d80463cfefcd089f62401f3e6ae4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv2Data, err := hex.DecodeString("0673b5a673596d840db8f714bbf6751e7d1869fca23e67fa20803597f925ac45e445")
+	rv2Data, err := hex.DecodeString("a9acd0b5be0acd08e67ab53637d9b7ae0f82e354f9cf0aa615bc5c6a77a05f315b042131358aa18c1978a574f2b1ea80d5ad8f5d441aa490583f2f790c348b5c102ce6f161fa2df6cb713fbe11b57c9a9cbe274534077afba0184ae26fb9d59d2983aad92cd8c6949c548cb81491d060b4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +138,8 @@ func TestHasMoreWork(t *testing.T) {
 	rv2 := NewRegistryValue(crypto.Hash{}, rv2Data, 0)
 
 	// Make sure the hashes match our expectations.
-	rv1Hash := "c598bbad313e0003ce9a95b07b46fcb1abf09dd605389287b4aa9a583f38a901"
-	rv2Hash := "b4afc3c50a9a087d7a1cb82ca14dac1f456f30742856056ff5269eb3a1b7343c"
+	rv1Hash := "2d6dcb452e01d7146238ca65543be7fdd7ed0c1f17d340797a1980bea31f73c1"
+	rv2Hash := "28d9d973d0b4dee185f90649d55ac33d9e1301896b5b20578fb82c887921040b"
 	if rv1.hash().String() != rv1Hash {
 		t.Fatal("rv1 wrong hash")
 	}
@@ -160,11 +160,11 @@ func TestHasMoreWork(t *testing.T) {
 		t.Fatal("rv1 shouldn't have more work than itself")
 	}
 	// adding a pubkey to rv1 shouldn't change the work but the hash.
-	rv1WithPubkey := rv1
 	_, pk := crypto.GenerateKeyPair()
-	spkh := crypto.HashObject(types.Ed25519PublicKey(pk))
-	rv1WithPubkey.Data = append(rv1WithPubkey.Data, spkh[:]...)
+	rv1WithPubkey := NewRegistryValueWithPubKey(rv1.Tweak, types.Ed25519PublicKey(pk), rv1Data, rv1.Revision)
 	if rv1.work() != rv1WithPubkey.work() {
+		t.Log(rv1.Data)
+		t.Log(rv1WithPubkey.Data[HostPubKeyHashSize:])
 		t.Fatal("work should match")
 	}
 	if rv1.hash() == rv1WithPubkey.hash() {

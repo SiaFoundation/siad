@@ -235,9 +235,11 @@ func (entry RegistryValue) hash() crypto.Hash {
 // work returns the work of the registry value.
 func (entry RegistryValue) work() crypto.Hash {
 	data := entry.Data
-	// For entries with pubkeys, ignore the pubkey at the beginning.
+	// For entries with pubkeys, ignore the pubkey at the beginning and the
+	// version at the end. That way a legacy entry containing the same data as
+	// an entry with version byte will still have the same work.
 	if entry.Version() == RegistryEntryVersionWithPubKey {
-		data = data[HostPubKeyHashSize:]
+		data = data[HostPubKeyHashSize : len(data)-1]
 	}
 	return crypto.HashAll(entry.Tweak, data, entry.Revision)
 }
