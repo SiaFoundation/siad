@@ -35,11 +35,6 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	if fastrand.Intn(2) == 0 {
-		// Random chance to add a pubkey.
-		spkh := crypto.HashObject(spk)
-		data = append(data, spkh[:]...)
-	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	return rv, spk, sk
 }
