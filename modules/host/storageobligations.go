@@ -554,7 +554,7 @@ func (h *Host) deleteStorageObligations(soids []types.FileContractID) error {
 		for _, soid := range soids {
 			err := b.Delete([]byte(soid[:]))
 			if err != nil {
-				return build.ExtendErr("unable to delete transaction id:", err)
+				return build.ExtendErr("unable to delete contract id:", err)
 			}
 		}
 		return nil
@@ -956,10 +956,15 @@ func (h *Host) PruneStaleStorageObligations() error {
 		if err != nil {
 			return build.ExtendErr("unable to get transaction ID:", err)
 		}
-		// An obligation is considered stale if it has not been confirmed
-		// within RespendTimeout blocks after negotiation.
+
+		// Delete any any stale obligations if they have not been
+		// confirmed within RespendTimeout blocks after negotiation and requeue
+		// any unresolved obligations that are past their proof deadline
 		if (h.blockHeight > so.NegotiationHeight+wallet.RespendTimeout) && !conf {
 			stale = append(stale, so.ObligationId)
+		} else if h.blockHeight > so.ProofDeadLine && so.ObligationStatus == obligationUnresolved.String() {
+			h.log.Printf("pruning expired contract %s (%s) proof deadline was %d current height is %d", so.ObligationId, so.ObligationStatus, so.ProofDeadLine, h.blockHeight)
+			h.queueActionItem(h.blockHeight+resubmissionTimeout, so.ObligationId)
 		}
 	}
 	// Delete stale obligations from the database.
