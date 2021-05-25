@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -68,7 +67,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	expectedOutput := append(rv.Signature[:], append(revBytes, rv.Data...)...)
 	// Assert output.
 	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, registry.ErrSameRevNum)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrSameRevNum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +115,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	expectedOutput = append(rv2.Signature[:], append(revBytes, rv2.Data...)...)
 	// Assert output.
 	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, registry.ErrLowerRevNum)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrLowerRevNum)
 	if err != nil {
 		t.Fatal(err)
 	}

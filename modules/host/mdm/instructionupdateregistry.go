@@ -6,7 +6,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -96,7 +95,7 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	// Try updating the registry.
 	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
 	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+	if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
 		// If we weren't able to update the registry due to a ErrLowerRevNum or
 		// ErrSameRevNum, we need to return the existing value as proof.
 		rev := make([]byte, 8)

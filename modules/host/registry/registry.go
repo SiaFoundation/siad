@@ -28,12 +28,6 @@ var (
 	// errEntryWrongSize is returned when a marshaled entry doesn't have a size
 	// of persistedEntrySize. This should never happen.
 	errEntryWrongSize = errors.New("marshaled entry has wrong size")
-	// ErrLowerRevNum is returned when the revision number of the data to
-	// register isn't greater than the known revision number.
-	ErrLowerRevNum = errors.New("provided revision number is invalid")
-	// ErrSameRevNum is returned if the revision number of the data to register
-	// is already registered.
-	ErrSameRevNum = errors.New("provided revision number is already registered")
 	// errInvalidSignature is returned when the signature doesn't match a
 	// registry value.
 	errInvalidSignature = errors.New("provided signature is invalid")
@@ -103,10 +97,12 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	oldRV := modules.NewRegistryValue(v.tweak, v.data, v.revision)
 	if !init {
 		s := fmt.Sprintf("%v <= %v", rv.Revision, v.revision)
-		if rv.Revision < oldRV.Revision {
-			return errors.AddContext(ErrLowerRevNum, s)
-		} else if rv.Revision == oldRV.Revision && !rv.HasMoreWork(oldRV) {
-			return errors.AddContext(ErrSameRevNum, s)
+		update, err := oldRV.ShouldUpdateWith(&rv.RegistryValue)
+		if err != nil {
+			return errors.AddContext(modules.ErrLowerRevNum, s)
+		}
+		if !update {
+			return nil
 		}
 	}
 

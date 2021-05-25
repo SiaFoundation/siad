@@ -242,7 +242,7 @@ func TestUpdate(t *testing.T) {
 	// same and the PoW is the same.
 	expectedRV := rv
 	oldRV, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, ErrSameRevNum) {
+	if !errors.Contains(err, modules.ErrSameRevNum) {
 		t.Fatal("expected invalid rev number", err)
 	}
 	if !reflect.DeepEqual(oldRV, expectedRV) {
@@ -276,7 +276,7 @@ func TestUpdate(t *testing.T) {
 	v.revision--
 	rv = rv.Sign(sk)
 	oldRV, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, ErrLowerRevNum) {
+	if !errors.Contains(err, modules.ErrLowerRevNum) {
 		t.Fatal("expected invalid rev number", err)
 	}
 	if !reflect.DeepEqual(oldRV, expectedRV) {
@@ -813,10 +813,10 @@ func TestRegistryRace(t *testing.T) {
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
-			if errors.Contains(err, ErrSameRevNum) {
+			if errors.Contains(err, modules.ErrSameRevNum) {
 				continue // invalid revision numbers are expected
 			}
-			if errors.Contains(err, ErrLowerRevNum) {
+			if errors.Contains(err, modules.ErrLowerRevNum) {
 				continue // invalid revision numbers are expected
 			}
 			if errors.Contains(err, errInvalidEntry) {
