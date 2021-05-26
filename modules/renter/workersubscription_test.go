@@ -1011,7 +1011,7 @@ func TestHandleNotification(t *testing.T) {
 			subInfo.mu.Unlock()
 			// Stream should have been closed.
 			if closer.staticCount() != 1 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})
@@ -1048,7 +1048,7 @@ func TestHandleNotification(t *testing.T) {
 			subInfo.mu.Unlock()
 			// Stream should have been closed.
 			if closer.staticCount() != 2 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})
@@ -1080,7 +1080,7 @@ func TestHandleNotification(t *testing.T) {
 			subInfo.mu.Unlock()
 			// Stream should have been closed.
 			if closer.staticCount() != 3 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})
@@ -1136,7 +1136,7 @@ func TestHandleNotification(t *testing.T) {
 		}
 		err = build.Retry(100, 100*time.Millisecond, func() error {
 			if closer.staticCount() != 4 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})
