@@ -16,14 +16,15 @@ func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPub
 	hdb.mu.RLock()
 	initialScanComplete := hdb.initialScanComplete
 	ipCheckDisabled := hdb.disableIPViolationCheck
+	filteredTree := hdb.filteredTree
 	hdb.mu.RUnlock()
 	if !initialScanComplete {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	if ipCheckDisabled {
-		return hdb.staticFilteredTree.SelectRandom(n, blacklist, nil), nil
+		return filteredTree.SelectRandom(n, blacklist, nil), nil
 	}
-	return hdb.staticFilteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
+	return filteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
 }
 
 // RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree

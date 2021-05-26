@@ -70,7 +70,7 @@ func (hdb *HostDB) load() error {
 	hdb.filterMode = data.FilterMode
 
 	if len(hdb.filteredHosts) > 0 {
-		hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
+		hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
 	}
 
 	// Load each of the hosts into the host trees.
