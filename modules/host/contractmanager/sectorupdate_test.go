@@ -2069,6 +2069,9 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	if loadedOverflow != 1 {
 		t.Fatal("wrong overflow", loadedOverflow)
 	}
+	if err := loaded.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Remove the sector.
 	err = cmt.cm.RemoveSector(root)
@@ -2100,6 +2103,9 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	loadedOverflow, exists = loaded.Overflow(id)
 	if !exists || loadedOverflow != 0 {
 		t.Fatal("overflow entry should be 0", loadedOverflow)
+	}
+	if err := loaded.Close(); err != nil {
+		t.Fatal(err)
 	}
 
 	// Create multiple threads, all adding sectors at the same time.
@@ -2144,6 +2150,9 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	if loadedOverflow != uint64(nWrites*nThreads) {
 		t.Fatal("wrong overflow", loadedOverflow)
 	}
+	if err := loaded.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create multiple threads, all of them removing sectors.
 	for i := 0; i < nThreads; i++ {
@@ -2185,5 +2194,8 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	loadedOverflow, exists = loaded.Overflow(id)
 	if !exists || loadedOverflow != 0 {
 		t.Fatal("overflow entry should be 0", loadedOverflow)
+	}
+	if err := loaded.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
