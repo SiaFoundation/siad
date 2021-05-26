@@ -3,6 +3,7 @@ package modules
 import (
 	"bytes"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 )
 
@@ -24,6 +25,19 @@ const (
 
 	// FileIDVersion is the current version we expect in a FileID.
 	FileIDVersion = 1
+)
+
+var (
+	// ErrInsufficientWork is returned when the revision numbers of two entries
+	// match but the new entry doesn't have enough pow to replace the existing
+	// one.
+	ErrInsufficientWork = errors.New("entry doesn't have enough pow to replace existing entry")
+	// ErrLowerRevNum is returned when the revision number of the data to
+	// register isn't greater than the known revision number.
+	ErrLowerRevNum = errors.New("provided revision number is invalid")
+	// ErrSameRevNum is returned if the revision number of the data to register
+	// is already registered.
+	ErrSameRevNum = errors.New("provided revision number is already registered")
 )
 
 // RoundRegistrySize is a helper to correctly round up the size of a registry to
@@ -77,6 +91,40 @@ func (entry RegistryValue) Sign(sk crypto.SecretKey) SignedRegistryValue {
 		RegistryValue: entry,
 		Signature:     crypto.SignHash(hash, sk),
 	}
+}
+
+// ShouldUpdateWith returns true if entry2 would replace entry1 in a host's
+// registry. It returns false if it shouldn't. An error might be returned in
+// that case to specify the reason.
+func (entry *RegistryValue) ShouldUpdateWith(entry2 *RegistryValue) (bool, error) {
+	// Check entries for nil first.
+	if entry2 == nil {
+		// A nil entry never replaces an existing entry.
+		return false, nil
+	} else if entry == nil {
+		// A non-nil entry always replaces a nil entry.
+		return true, nil
+	}
+	// Both are not nil. Check revision numbers.
+	if entry.Revision > entry2.Revision {
+		return false, ErrLowerRevNum
+	} else if entry.Revision < entry2.Revision {
+		return true, nil
+	}
+	// Both have the same revision number. Check work.
+	if entry.HasMoreWork(*entry2) {
+		return false, ErrInsufficientWork
+	} else if entry2.HasMoreWork(*entry) {
+		return true, nil
+	}
+	// Both have the same work. Entries appear to be equal.
+	return false, ErrSameRevNum
+}
+
+// IsRegistryEntryExistErr returns true if the provided error is related to the
+// host already storing a higher priority registry entry.
+func IsRegistryEntryExistErr(err error) bool {
+	return errors.Contains(err, ErrLowerRevNum) || errors.Contains(err, ErrInsufficientWork) || errors.Contains(err, ErrSameRevNum)
 }
 
 // HasMoreWork returns 'true' if the hash of entry is larger than target's.

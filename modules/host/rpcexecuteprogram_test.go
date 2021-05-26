@@ -18,7 +18,6 @@ import (
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
 )
@@ -1352,7 +1351,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	resp = resps[0]
 
 	// Check response.
-	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrSameRevNum.Error()) {
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), modules.ErrSameRevNum.Error()) {
 		t.Fatal(resp.Error)
 	}
 	if !resp.AdditionalCollateral.Equals(collateral) {
@@ -1424,7 +1423,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	resp = resps[0]
 
 	// Check response.
-	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrLowerRevNum.Error()) {
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), modules.ErrLowerRevNum.Error()) {
 		t.Fatal(resp.Error)
 	}
 	if !resp.AdditionalCollateral.Equals(collateral) {

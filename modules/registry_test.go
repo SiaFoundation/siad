@@ -107,3 +107,69 @@ func TestRegistryValueSignature(t *testing.T) {
 		t.Fatal("verification succeeded")
 	}
 }
+
+// TestShouldUpdateWith is a unit test for ShouldUpdateWith.
+func TestShouldUpdateWith(t *testing.T) {
+	tests := []struct {
+		existing *RegistryValue
+		new      *RegistryValue
+		result   bool
+		err      error
+	}{
+		{
+			existing: nil,
+			new:      &RegistryValue{},
+			result:   true,
+			err:      nil,
+		},
+		{
+			existing: &RegistryValue{},
+			new:      nil,
+			result:   false,
+			err:      nil,
+		},
+		{
+			existing: nil,
+			new:      nil,
+			result:   false,
+			err:      nil,
+		},
+		{
+			existing: &RegistryValue{Revision: 0},
+			new:      &RegistryValue{Revision: 1},
+			result:   true,
+			err:      nil,
+		},
+		{
+			existing: &RegistryValue{Revision: 1},
+			new:      &RegistryValue{Revision: 0},
+			result:   false,
+			err:      ErrLowerRevNum,
+		},
+		{
+			existing: &RegistryValue{Revision: 0, Tweak: crypto.Hash{1, 2, 3}},
+			new:      &RegistryValue{Revision: 0, Tweak: crypto.Hash{3, 2, 1}},
+			result:   true,
+			err:      nil,
+		},
+		{
+			existing: &RegistryValue{Revision: 0, Tweak: crypto.Hash{3, 2, 1}},
+			new:      &RegistryValue{Revision: 0, Tweak: crypto.Hash{1, 2, 3}},
+			result:   false,
+			err:      ErrInsufficientWork,
+		},
+		{
+			existing: &RegistryValue{Revision: 1},
+			new:      &RegistryValue{Revision: 1},
+			result:   false,
+			err:      ErrSameRevNum,
+		},
+	}
+
+	for i, test := range tests {
+		result, err := test.existing.ShouldUpdateWith(test.new)
+		if result != test.result || err != test.err {
+			t.Errorf("%v: wrong result/error expected %v and %v but was %v and %v", i, test.result, test.err, result, err)
+		}
+	}
+}

@@ -147,14 +147,14 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleSubscribeRequest")
 	}
 
+	// Add the subscriptions.
+	h.staticRegistrySubscriptions.AddSubscriptions(info, ids...)
+
 	// Write initial values to the stream.
 	err = modules.RPCWrite(stream, rvs)
 	if err != nil {
 		return errors.AddContext(err, "failed to write initial values to stream")
 	}
-
-	// Add the subscriptions.
-	h.staticRegistrySubscriptions.AddSubscriptions(info, ids...)
 	return nil
 }
 

@@ -99,9 +99,9 @@ type HostDB struct {
 	// with the filterMode. The filteredHosts are the hosts that are submitted
 	// with the filterMode to determine which host should be in the
 	// staticFilteredTree
-	staticFilteredTree *hosttree.HostTree
-	filteredHosts      map[string]types.SiaPublicKey
-	filterMode         modules.FilterMode
+	filteredTree  *hosttree.HostTree
+	filteredHosts map[string]types.SiaPublicKey
+	filterMode    modules.FilterMode
 
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
@@ -116,7 +116,7 @@ func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
-		errF := hdb.staticFilteredTree.Insert(host)
+		errF := hdb.filteredTree.Insert(host)
 		if errF != nil && errF != hosttree.ErrHostExists {
 			err = errors.Compose(err, errF)
 		}
@@ -130,7 +130,7 @@ func (hdb *HostDB) modify(host modules.HostDBEntry) error {
 	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
-		err = errors.Compose(err, hdb.staticFilteredTree.Modify(host))
+		err = errors.Compose(err, hdb.filteredTree.Modify(host))
 	}
 	return err
 }
@@ -141,7 +141,7 @@ func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
 	_, ok := hdb.filteredHosts[pk.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
-		errF := hdb.staticFilteredTree.Remove(pk)
+		errF := hdb.filteredTree.Remove(pk)
 		if err == nil && errF == hosttree.ErrNoSuchHost {
 			return nil
 		}
@@ -161,8 +161,8 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	hdb.weightFunc = wf
 	// Update the hosttree and also the filteredTree if they are not the same.
 	err := hdb.staticHostTree.SetWeightFunction(wf)
-	if hdb.staticFilteredTree != hdb.staticHostTree {
-		err = errors.Compose(err, hdb.staticFilteredTree.SetWeightFunction(wf))
+	if hdb.filteredTree != hdb.staticHostTree {
+		err = errors.Compose(err, hdb.filteredTree.SetWeightFunction(wf))
 	}
 	return err
 }
@@ -267,7 +267,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// The host tree is used to manage hosts and query them at random. The
 	// filteredTree is used when whitelist or blacklist is enabled
 	hdb.staticHostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
-	hdb.staticFilteredTree = hdb.staticHostTree
+	hdb.filteredTree = hdb.staticHostTree
 
 	// Load the prior persistence structures.
 	hdb.mu.Lock()
@@ -427,7 +427,7 @@ func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry, err error) 
 	defer hdb.tg.Done()
 
 	hdb.mu.RLock()
-	allHosts := hdb.staticFilteredTree.All()
+	allHosts := hdb.filteredTree.All()
 	hdb.mu.RUnlock()
 	for _, entry := range allHosts {
 		if len(entry.ScanHistory) == 0 {
@@ -577,7 +577,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 			}
 		}
 		// Reset filtered fields
-		hdb.staticFilteredTree = hdb.staticHostTree
+		hdb.filteredTree = hdb.staticHostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
 		return nil
@@ -590,7 +590,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 
 	// Create filtered HostTree
-	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
+	hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
 
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
@@ -615,7 +615,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 		if isWhitelist != ok {
 			continue
 		}
-		err := hdb.staticFilteredTree.Insert(host)
+		err := hdb.filteredTree.Insert(host)
 		if err != nil {
 			allErrs = errors.Compose(allErrs, err)
 		}

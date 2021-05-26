@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -102,10 +101,10 @@ func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.S
 	oldRV, exists := h.registry[key]
 
 	if exists && rv.Revision < oldRV.Revision {
-		return oldRV.SignedRegistryValue, registry.ErrLowerRevNum
+		return oldRV.SignedRegistryValue, modules.ErrLowerRevNum
 	}
 	if exists && rv.Revision == oldRV.Revision {
-		return oldRV.SignedRegistryValue, registry.ErrSameRevNum
+		return oldRV.SignedRegistryValue, modules.ErrSameRevNum
 	}
 
 	h.registry[key] = TestRegistryValue{
