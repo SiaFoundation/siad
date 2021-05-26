@@ -1962,7 +1962,7 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	cmt, err := newContractManagerTester("TestAddVirtualSectorMassiveParallel")
+	cmt, err := newContractManagerTester("TestAddVirtualSectorOverflow")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2185,6 +2185,9 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	if !exists || loadedOverflow != 0 {
 		t.Fatal("overflow entry should be 0", loadedOverflow)
 	}
+
+	// Sync the map to disk before reading it again.
+	cmt.cm.wal.syncResources()
 
 	// Load the overflow file and confirm that the change was persisted.
 	loaded, err = newOverflowMap(overflowFilePath, modules.ProdDependencies)
