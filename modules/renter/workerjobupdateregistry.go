@@ -214,6 +214,9 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		if err != nil && strings.Contains(err.Error(), modules.ErrSameRevNum.Error()) {
 			err = modules.ErrSameRevNum
 		}
+		if err != nil && strings.Contains(err.Error(), modules.ErrInsufficientWork.Error()) {
+			err = modules.ErrInsufficientWork
+		}
 		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
 			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)

@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -95,9 +94,9 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	// Try updating the registry.
 	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
 	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
-	if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
-		// If we weren't able to update the registry due to a ErrLowerRevNum or
-		// ErrSameRevNum, we need to return the existing value as proof.
+	if modules.IsRegistryEntryExistErr(err) {
+		// If we weren't able to update the registry because the entry already
+		// exists, we need to return a proof.
 		rev := make([]byte, 8)
 		binary.LittleEndian.PutUint64(rev, existingRV.Revision)
 		return output{

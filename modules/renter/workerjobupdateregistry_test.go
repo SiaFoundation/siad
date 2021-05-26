@@ -62,10 +62,32 @@ func TestUpdateRegistryJob(t *testing.T) {
 		t.Fatal("entries don't match")
 	}
 
-	// Run the UpdateRegistry job again. This time it should fail with an error
-	// indicating that the revision number already exists.
+	// Run the UpdateRegistry job again with the same entry. Should succeed.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !errors.Contains(err, modules.ErrSameRevNum) {
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run it again with the same revision number but more pow. Should succeed.
+	rvMoreWork := rv
+	for !rvMoreWork.HasMoreWork(rv.RegistryValue) {
+		rvMoreWork.Data = fastrand.Bytes(10)
+		rvMoreWork = rvMoreWork.Sign(sk)
+	}
+	err = wt.UpdateRegistry(context.Background(), spk, rvMoreWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv = rvMoreWork
+
+	// Run it again with the same revision number but less pow. Should fail.
+	rvLessWork := rv
+	for !rv.HasMoreWork(rvLessWork.RegistryValue) {
+		rvLessWork.Data = fastrand.Bytes(10)
+		rvLessWork = rvLessWork.Sign(sk)
+	}
+	err = wt.UpdateRegistry(context.Background(), spk, rvLessWork)
+	if !errors.Contains(err, modules.ErrInsufficientWork) {
 		t.Fatal(err)
 	}
 
@@ -128,7 +150,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	if !errors.Contains(err, crypto.ErrInvalidSignature) {
 		t.Fatal(err)
 	}
-	if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		t.Fatal("Revision error should have been stripped", err)
 	}
 
@@ -138,7 +160,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) {
 		t.Fatal(err)
 	}
-	if errors.Contains(err, modules.ErrLowerRevNum) || errors.Contains(err, modules.ErrSameRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		t.Fatal("Revision error should have been stripped", err)
 	}
 	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
@@ -238,10 +260,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	if !errors.Contains(err, errHostOutdatedProof) {
 		t.Fatal("worker should return errHostOutdatedProof")
 	}
-	if errors.Contains(err, modules.ErrSameRevNum) {
-		t.Fatal(err)
-	}
-	if errors.Contains(err, modules.ErrLowerRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		t.Fatal(err)
 	}
 }

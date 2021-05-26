@@ -96,10 +96,10 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	// Check if the new revision number is valid.
 	oldRV := modules.NewRegistryValue(v.tweak, v.data, v.revision)
 	if !init {
-		s := fmt.Sprintf("%v <= %v", rv.Revision, v.revision)
+		s := fmt.Sprintf("%v <= %v", oldRV.Revision, rv.Revision)
 		update, err := oldRV.ShouldUpdateWith(&rv.RegistryValue)
 		if err != nil {
-			return errors.AddContext(modules.ErrLowerRevNum, s)
+			return errors.AddContext(err, s)
 		}
 		if !update {
 			return nil
