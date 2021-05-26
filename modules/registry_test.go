@@ -108,6 +108,7 @@ func TestRegistryValueSignature(t *testing.T) {
 	}
 }
 
+// TestShouldUpdateWith is a unit test for ShouldUpdateWith.
 func TestShouldUpdateWith(t *testing.T) {
 	tests := []struct {
 		existing *RegistryValue
@@ -123,6 +124,12 @@ func TestShouldUpdateWith(t *testing.T) {
 		},
 		{
 			existing: &RegistryValue{},
+			new:      nil,
+			result:   false,
+			err:      nil,
+		},
+		{
+			existing: nil,
 			new:      nil,
 			result:   false,
 			err:      nil,

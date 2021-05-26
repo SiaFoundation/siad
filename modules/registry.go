@@ -98,10 +98,12 @@ func (entry RegistryValue) Sign(sk crypto.SecretKey) SignedRegistryValue {
 // that case to specify the reason.
 func (entry *RegistryValue) ShouldUpdateWith(entry2 *RegistryValue) (bool, error) {
 	// Check entries for nil first.
-	if entry == nil && entry2 != nil {
-		return true, nil
-	} else if entry != nil && entry2 == nil {
+	if entry2 == nil {
+		// A nil entry never replaces an existing entry.
 		return false, nil
+	} else if entry == nil {
+		// A non-nil entry always replaces a nil entry.
+		return true, nil
 	}
 	// Both are not nil. Check revision numbers.
 	if entry.Revision > entry2.Revision {
@@ -122,10 +124,7 @@ func (entry *RegistryValue) ShouldUpdateWith(entry2 *RegistryValue) (bool, error
 // IsRegistryEntryExistErr returns true if the provided error is related to the
 // host already storing a higher priority registry entry.
 func IsRegistryEntryExistErr(err error) bool {
-	if errors.Contains(err, ErrLowerRevNum) || errors.Contains(err, ErrInsufficientWork) || errors.Contains(err, ErrSameRevNum) {
-		return true
-	}
-	return false
+	return errors.Contains(err, ErrLowerRevNum) || errors.Contains(err, ErrInsufficientWork) || errors.Contains(err, ErrSameRevNum)
 }
 
 // HasMoreWork returns 'true' if the hash of entry is larger than target's.
