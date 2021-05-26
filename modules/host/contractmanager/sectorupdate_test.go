@@ -1962,7 +1962,7 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	cmt, err := newContractManagerTester("TestAddVirtualSectorOverflow")
+	cmt, err := newContractManagerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
