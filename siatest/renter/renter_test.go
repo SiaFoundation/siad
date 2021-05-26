@@ -4761,7 +4761,7 @@ func TestWorkerStatus(t *testing.T) {
 		pks[c.HostPublicKey.String()] = struct{}{}
 	}
 
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 1000*time.Millisecond, func() error {
 		// Get the worker status
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
