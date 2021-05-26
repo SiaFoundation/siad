@@ -788,6 +788,7 @@ func TestRegistryRace(t *testing.T) {
 
 	// Declare worker thread.
 	done := make(chan struct{})
+	var noPrune uint64
 	worker := func(key types.SiaPublicKey, sk crypto.SecretKey, rv modules.SignedRegistryValue, nextExpiry, nextRevision *uint64) {
 		for {
 			atomic.AddUint64(&iterations, 1)
@@ -796,7 +797,7 @@ func TestRegistryRace(t *testing.T) {
 			op := fastrand.Intn(10) < 1
 
 			// Prune nextExpiry.
-			if op {
+			if op && atomic.LoadUint64(&noPrune) == 0 {
 				atomic.AddUint64(&prunes, 1)
 				n, err := r.Prune(types.BlockHeight(atomic.LoadUint64(nextExpiry)))
 				if err != nil {
@@ -813,10 +814,7 @@ func TestRegistryRace(t *testing.T) {
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
-			if errors.Contains(err, modules.ErrSameRevNum) {
-				continue // invalid revision numbers are expected
-			}
-			if errors.Contains(err, modules.ErrLowerRevNum) {
+			if modules.IsRegistryEntryExistErr(err) {
 				continue // invalid revision numbers are expected
 			}
 			if errors.Contains(err, errInvalidEntry) {
@@ -850,8 +848,12 @@ func TestRegistryRace(t *testing.T) {
 		}(i % numEntries)
 	}
 
-	// Run for 10 seconds.
-	time.Sleep(10 * time.Second)
+	// Run for 5 seconds.
+	time.Sleep(5 * time.Second)
+	// Stop pruning and run for 5 more seconds. That way we fix an NDF where a
+	// prune might delete an entry at the very end.
+	atomic.StoreUint64(&noPrune, 1)
+	time.Sleep(5 * time.Second)
 	close(done)
 	wg.Wait()
 
