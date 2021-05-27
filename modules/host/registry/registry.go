@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -129,6 +130,21 @@ func newSignedRegistryValue(srv modules.SignedRegistryValue, pk crypto.PublicKey
 	}
 }
 
+// isPrimaryEntry returns true if an entry is primary. This means that the entry
+// was specifically intended for this host. Only an entry containing a partial
+// hash of the provided pubkey can be primary so only entries of type
+// 'TypeWithPubkey'.
+func (rv *signedRegistryValue) isPrimaryEntry(hpk types.SiaPublicKey) bool {
+	if rv.entryType != TypeWithPubkey {
+		return false // if the entry doesn't have a pubkey it can't be a primary entry
+	}
+	hpkh := crypto.HashObject(hpk)
+	return bytes.Equal(hpkh[:PubKeyHashSize], rv.Data[:PubKeyHashSize])
+}
+
+// shouldUpdateWith wraps the registry value's ShouldUpdateWith method and adds
+// special checks around whether or not an entry is considered a primary or
+// secondary entry.
 func (rv *signedRegistryValue) shouldUpdateWith(rv2 signedRegistryValue, hpk types.SiaPublicKey) (bool, error) {
 	// Check against the regular helper. If it return true, we are done.
 	shouldUpdate, updateErr := rv.ShouldUpdateWith(&rv2.RegistryValue)
@@ -149,7 +165,20 @@ func (rv *signedRegistryValue) shouldUpdateWith(rv2 signedRegistryValue, hpk typ
 
 	// If revision and pow match and the entry has a pubkey, check if it's a primary
 	// key.
-	panic("not implemented yet")
+	rvPrimary := rv.isPrimaryEntry(hpk)
+	rv2Primary := rv.isPrimaryEntry(hpk)
+
+	// If both are either primary or secondary, we can't update the entry.
+	if rvPrimary == rv2Primary {
+		return false, updateErr
+	}
+	// If the existing one is primary and the new entry is secondary, also don't
+	// update.
+	if rvPrimary && !rv2Primary {
+		return false, updateErr
+	}
+	// If the existing one isn't primary but the new one is, update.
+	return true, nil
 }
 
 // mapKey creates a key usable in in-memory maps from the value.
