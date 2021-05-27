@@ -30,7 +30,11 @@ var registryVersion = types.NewSpecifier("1.0.0")
 
 // persistedEntryType is the type of the entry. Right now there is only a single
 // type and that's 1.
-var persistedEntryType = uint8(1)
+const (
+	TypeInvalid = iota
+	TypeWithoutPubkey
+	TypeWithPubkey
+)
 
 type (
 	// pesistedEntry is an entry
@@ -135,7 +139,7 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 }
 
 // loadRegistryEntries reads the currently in use registry entries from disk.
-func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[modules.RegistryEntryID]*value, error) {
+func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield, repair bool) (map[modules.RegistryEntryID]*value, error) {
 	// Load the remaining entries.
 	var entry [PersistedEntrySize]byte
 	entries := make(map[modules.RegistryEntryID]*value)
@@ -153,8 +157,8 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[modules
 			continue // ignore unused entries
 		}
 		// Set the type if it's not set.
-		if pe.Type == 0 {
-			pe.Type = persistedEntryType
+		if repair && pe.Type == TypeInvalid {
+			pe.Type = TypeWithoutPubkey
 		}
 		// Add the entry to the store.
 		v, err := pe.Value(index)
@@ -181,10 +185,16 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 	if err != nil {
 		return persistedEntry{}, errors.AddContext(err, "newPersistedEntry: failed to compress key")
 	}
+	if value.entryType == TypeInvalid {
+		err := errInvalidEntryType
+		build.Critical(err)
+		return persistedEntry{}, err
+	}
 	pe := persistedEntry{
 		Key:       cpk,
 		Signature: value.signature,
 		Tweak:     value.tweak,
+		Type:      value.entryType,
 
 		DataLen:  uint8(len(value.data)),
 		Expiry:   compressedBlockHeight(value.expiry),
@@ -205,7 +215,16 @@ func (entry persistedEntry) Value(index int64) (*value, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "Value: failed to convert compressed key to SiaPublicKey")
 	}
+	switch entry.Type {
+	case TypeInvalid:
+		return nil, errInvalidEntryType
+	case TypeWithPubkey:
+	case TypeWithoutPubkey:
+	default:
+		return nil, errInvalidEntryType
+	}
 	return &value{
+		entryType:   entry.Type,
 		key:         spk,
 		tweak:       entry.Tweak,
 		expiry:      types.BlockHeight(entry.Expiry),

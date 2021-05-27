@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -29,7 +30,7 @@ func TestInstructionReadRegistryEID(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
+	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)), registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestInstructionReadRegistryEIDNoPubkeyAndTweak(t *testing.T) {
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
+	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)), registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}

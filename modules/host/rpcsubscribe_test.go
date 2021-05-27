@@ -18,6 +18,7 @@ import (
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -216,7 +217,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// Set it on the host.
 	host := rhp.staticHT.host
-	_, err = host.RegistryUpdate(rv, spk, expiry)
+	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +284,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry)
+	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry)
+	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +498,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry)
+	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +566,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry)
+	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -866,7 +867,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 			host := rhp.staticHT.host
 			rv.Revision++
 			rv = rv.Sign(sk)
-			_, err := host.RegistryUpdate(rv, spk, math.MaxUint64)
+			_, err := host.RegistryUpdate(rv, spk, math.MaxUint64, registry.TypeWithoutPubkey)
 			if err != nil {
 				t.Error(err)
 				return

@@ -18,6 +18,7 @@ import (
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
 )
@@ -1510,7 +1511,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	}
 
 	// Update the registry.
-	_, err = h.RegistryUpdate(rv, spk, 123)
+	_, err = h.RegistryUpdate(rv, spk, 123, registry.TypeWithoutPubkey)
 	if err != nil {
 		t.Fatal(err)
 	}
