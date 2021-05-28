@@ -76,7 +76,25 @@ func TestHasMoreWork(t *testing.T) {
 		t.Fatal("rv1 shouldn't have more work than itself")
 	}
 
-	panic("extend")
+	// Copy rv2 and add a pubkey. This should result in the same amount of work.
+	rvWithPubkey := rv2
+	rvWithPubkey.Type = RegistryTypeWithPubkey
+	var hpk types.SiaPublicKey
+	hpkh := crypto.HashObject(hpk)
+	rvWithPubkey.Data = append(hpkh[:RegistryPubKeyHashSize], rvWithPubkey.Data...)
+
+	// rvWithPubkey should have more work than rv1
+	if !rvWithPubkey.HasMoreWork(rv1) {
+		t.Fatal("rvWithPubkey should have more work than rv1")
+	}
+	// rv1 should have less work than rvWithPubkey
+	if rv1.HasMoreWork(rvWithPubkey) {
+		t.Fatal("rv1 should have less work than rvWithPubkey")
+	}
+	// rvWithPubkey should have the same work as rv2.
+	if rvWithPubkey.work() != rv2.work() {
+		t.Fatal("wrong work")
+	}
 }
 
 // TestRegistryValueSignature tests signature verification on registry values.
