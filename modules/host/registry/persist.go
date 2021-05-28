@@ -179,7 +179,7 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 		return persistedEntry{}, errors.AddContext(err, "newPersistedEntry: failed to compress key")
 	}
 	if value.entryType == modules.RegistryTypeInvalid {
-		err := errInvalidEntryType
+		err := modules.ErrInvalidRegistryEntryType
 		build.Critical(err)
 		return persistedEntry{}, err
 	}
@@ -210,11 +210,11 @@ func (entry persistedEntry) Value(index int64) (*value, error) {
 	}
 	switch entry.Type {
 	case modules.RegistryTypeInvalid:
-		return nil, errInvalidEntryType
+		return nil, modules.ErrInvalidRegistryEntryType
 	case modules.RegistryTypeWithPubkey:
 	case modules.RegistryTypeWithoutPubkey:
 	default:
-		return nil, errInvalidEntryType
+		return nil, modules.ErrInvalidRegistryEntryType
 	}
 	return &value{
 		entryType:   entry.Type,

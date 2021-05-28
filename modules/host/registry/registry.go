@@ -33,10 +33,7 @@ var (
 	errTooMuchData = errors.New("registered data is too large")
 	// errInvalidEntry is returned when trying to update an entry that has been
 	// invalidated on disk and only exists in memory anymore.
-	errInvalidEntry       = errors.New("invalid entry")
-	errInvalidEntryType   = errors.New("invalid entry type")
-	errUnknownEntryType   = errors.New("unknown entry type")
-	ErrEntryDataMalformed = errors.New("entry data is malformed")
+	errInvalidEntry = errors.New("invalid entry")
 	// ErrInvalidTruncate is returned if a truncate would lead to data loss.
 	ErrInvalidTruncate = errors.New("can't truncate registry below the number of used entries")
 	// errPathNotAbsolute is returned if the registry is created from a relative
@@ -373,11 +370,11 @@ func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPubl
 	}
 	switch rv.Type {
 	case modules.RegistryTypeInvalid:
-		return nil, errInvalidEntryType
+		return nil, modules.ErrInvalidRegistryEntryType
 	case modules.RegistryTypeWithPubkey:
 	case modules.RegistryTypeWithoutPubkey:
 	default:
-		return nil, errInvalidEntryType
+		return nil, modules.ErrInvalidRegistryEntryType
 	}
 	v := &value{
 		entryType:   rv.Type,

@@ -34,12 +34,21 @@ const (
 )
 
 const (
+	// RegistryTypeInvalid is the type of an entry that didn't have it's type
+	// field initialized correctly.
 	RegistryTypeInvalid = RegistryEntryType(iota)
+	// RegistryTypeWithoutPubkey is the type of an entry that doesn't contain a
+	// pubkey. All of the data is considered to be arbitrary.
 	RegistryTypeWithoutPubkey
+	// RegistryTypeWithPubkey is the type of an entry which is expected to have
+	// a RegistryPubKeyHashSize long hash of a host's pubkey at the beginning of
+	// its data. The key is used to determine whether an entry is considered a
+	// primary or secondary entry on a host.
 	RegistryTypeWithPubkey
 )
 
 type (
+	// RegistryEntryType signals the type of a registry entry.
 	RegistryEntryType uint8
 )
 
@@ -54,10 +63,16 @@ var (
 	// ErrSameRevNum is returned if the revision number of the data to register
 	// is already registered.
 	ErrSameRevNum = errors.New("provided revision number is already registered")
-
+	// ErrRegistryEntryDataMalformed is returned when a registry entry contains
+	// unexpected data. e.g. when a pubkey is expected but the data is too
+	// short.
 	ErrRegistryEntryDataMalformed = errors.New("entry data is malformed")
-	ErrInvalidRegistryEntryType   = errors.New("invalid entry type")
-	ErrUnknownRegistryEntryType   = errors.New("unknown entry type")
+	// ErrInvalidRegistryEntryType is returned when an entry with the
+	// RegistryTypeInvalid is encountered.
+	ErrInvalidRegistryEntryType = errors.New("invalid entry type")
+	// ErrUnknownRegistryEntryType is returned when an entry has an unknown
+	// entry type.
+	ErrUnknownRegistryEntryType = errors.New("unknown entry type")
 )
 
 // RoundRegistrySize is a helper to correctly round up the size of a registry to
@@ -150,10 +165,9 @@ func (entry *RegistryValue) ShouldUpdateWith(entry2 *RegistryValue, hpk types.Si
 	return false, ErrSameRevNum
 }
 
-// isPrimaryEntry returns true if an entry is primary. This means that the entry
+// IsPrimaryEntry returns true if an entry is primary. This means that the entry
 // was specifically intended for this host. Only an entry containing a partial
-// hash of the provided pubkey can be primary so only entries of type
-// 'modules.RegistryTypeWithPubkey'.
+// hash of the provided pubkey can be primary.
 func (entry RegistryValue) IsPrimaryEntry(hpk types.SiaPublicKey) bool {
 	if entry.Type != RegistryTypeWithPubkey {
 		return false // if the entry doesn't have a pubkey it can't be a primary entry
