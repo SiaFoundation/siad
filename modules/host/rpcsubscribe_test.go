@@ -18,7 +18,6 @@ import (
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -35,7 +34,7 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	return rv, spk, sk
 }
 
@@ -217,7 +216,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// Set it on the host.
 	host := rhp.staticHT.host
-	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
+	_, err = host.RegistryUpdate(rv, spk, expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +283,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
+	_, err = host.RegistryUpdate(rv, spk, expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +351,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
+	_, err = host.RegistryUpdate(rv, spk, expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +497,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
+	_, err = host.RegistryUpdate(rv, spk, expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,7 +565,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	// Update the entry on the host.
 	rv.Revision++
 	rv = rv.Sign(sk)
-	_, err = host.RegistryUpdate(rv, spk, expiry, registry.TypeWithoutPubkey)
+	_, err = host.RegistryUpdate(rv, spk, expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -867,7 +866,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 			host := rhp.staticHT.host
 			rv.Revision++
 			rv = rv.Sign(sk)
-			_, err := host.RegistryUpdate(rv, spk, math.MaxUint64, registry.TypeWithoutPubkey)
+			_, err := host.RegistryUpdate(rv, spk, math.MaxUint64)
 			if err != nil {
 				t.Error(err)
 				return

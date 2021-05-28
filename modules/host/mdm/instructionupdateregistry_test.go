@@ -22,7 +22,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	tweak := crypto.Hash{1, 2, 3}
 	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := uint64(0)
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],

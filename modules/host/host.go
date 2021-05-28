@@ -780,7 +780,7 @@ func (h *Host) RegistryGet(sid modules.RegistryEntryID) (types.SiaPublicKey, mod
 }
 
 // RegistryUpdate updates a value in the registry.
-func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight, entryType uint8) (modules.SignedRegistryValue, error) {
+func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
 	err := h.tg.Add()
 	if err != nil {
 		return modules.SignedRegistryValue{}, err
@@ -799,7 +799,7 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 		return modules.SignedRegistryValue{}, nil
 	}
 	// Update the registry.
-	existingSRV, err := h.staticRegistry.Update(rv, pubKey, expiry, entryType)
+	existingSRV, err := h.staticRegistry.Update(rv, pubKey, expiry)
 	if err != nil {
 		return existingSRV, errors.AddContext(err, "failed to update registry")
 	}
@@ -847,7 +847,7 @@ func (h *Host) managedInitRegistry() error {
 	}
 
 	// Load the registry.
-	registry, err := registry.New(path, settingsEntries, false)
+	registry, err := registry.New(path, settingsEntries, false, h.publicKey)
 	if err != nil {
 		return errors.AddContext(err, "failed to load host registry")
 	}

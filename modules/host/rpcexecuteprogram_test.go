@@ -18,7 +18,6 @@ import (
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/siatest/dependencies"
 	"go.sia.tech/siad/types"
 )
@@ -1247,7 +1246,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	tweak := crypto.Hash{1, 2, 3}
 	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := uint64(1)
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -1378,7 +1377,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
 	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
 	data2 := resp.Output[crypto.SignatureSize+8:]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
 	if !reflect.DeepEqual(rv, rv2) {
 		t.Log(rv)
 		t.Log(rv2)
@@ -1449,7 +1448,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
 	rev2 = binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
 	data2 = resp.Output[crypto.SignatureSize+8:]
-	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
 	if !reflect.DeepEqual(rv, rv2) {
 		t.Log(rv)
 		t.Log(rv2)
@@ -1504,14 +1503,14 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	tweak := crypto.Hash{1, 2, 3}
 	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := uint64(0)
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
 
 	// Update the registry.
-	_, err = h.RegistryUpdate(rv, spk, 123, registry.TypeWithoutPubkey)
+	_, err = h.RegistryUpdate(rv, spk, 123)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1599,7 +1598,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
 	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
 	data2 := resp.Output[crypto.SignatureSize+8:]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
 	if rv2.Verify(pk) != nil {
 		t.Fatal("verification failed", err)
 	}

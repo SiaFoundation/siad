@@ -21,7 +21,6 @@ import (
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/consensus"
 	"go.sia.tech/siad/modules/gateway"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/modules/miner"
 	"go.sia.tech/siad/persist"
 
@@ -1118,8 +1117,8 @@ func TestHostRegistry(t *testing.T) {
 		spk.Key = pk[:]
 		var tweak crypto.Hash
 		fastrand.Read(tweak[:])
-		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0).Sign(sk)
-		_, err := h.RegistryUpdate(rv, spk, 1337, registry.TypeWithoutPubkey)
+		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+		_, err := h.RegistryUpdate(rv, spk, 1337)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -93,8 +92,8 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	newExpiry := i.staticState.host.BlockHeight() + types.BlocksPerYear
 
 	// Try updating the registry.
-	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
-	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry, registry.TypeWithoutPubkey)
+	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature, modules.RegistryTypeWithoutPubkey)
+	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
 	if modules.IsRegistryEntryExistErr(err) {
 		// If we weren't able to update the registry because the entry already
 		// exists, we need to return a proof.

@@ -31,7 +31,7 @@ type (
 	TestRegistryValue struct {
 		modules.SignedRegistryValue
 		spk       types.SiaPublicKey
-		entryType uint8
+		entryType modules.RegistryEntryType
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
@@ -95,7 +95,7 @@ func (h *TestHost) RegistryGet(sid modules.RegistryEntryID) (types.SiaPublicKey,
 }
 
 // RegistryUpdate updates a value in the registry.
-func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight, entryType uint8) (modules.SignedRegistryValue, error) {
+func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	key := modules.DeriveRegistryEntryID(pubKey, rv.Tweak)
@@ -109,7 +109,7 @@ func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.S
 	}
 
 	h.registry[key] = TestRegistryValue{
-		entryType:           entryType,
+		entryType:           rv.Type,
 		SignedRegistryValue: rv,
 		spk:                 pubKey,
 	}

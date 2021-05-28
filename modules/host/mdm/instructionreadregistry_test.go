@@ -7,7 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -27,8 +26,8 @@ func TestInstructionReadRegistry(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)), registry.TypeWithoutPubkey)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +58,7 @@ func TestInstructionReadRegistry(t *testing.T) {
 	copy(sig2[:], output.Output[:crypto.SignatureSize])
 	rev2 := binary.LittleEndian.Uint64(output.Output[crypto.SignatureSize:])
 	data2 := output.Output[crypto.SignatureSize+8:]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
 	if rv2.Verify(pk) != nil {
 		t.Fatal("verification failed", err)
 	}

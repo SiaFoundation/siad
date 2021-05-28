@@ -56,7 +56,7 @@ func TestRegistryCache(t *testing.T) {
 	registryValue := func(tweak, revNum uint64) modules.SignedRegistryValue {
 		var t crypto.Hash
 		binary.LittleEndian.PutUint64(t[:], tweak)
-		return modules.NewSignedRegistryValue(t, []byte{}, revNum, crypto.Signature{})
+		return modules.NewSignedRegistryValue(t, []byte{}, revNum, crypto.Signature{}, modules.RegistryTypeWithoutPubkey)
 	}
 
 	// Set an entry.

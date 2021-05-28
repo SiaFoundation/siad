@@ -28,15 +28,8 @@ var noKey = compressedPublicKey{}
 // for future compatibility changes.
 var registryVersion = types.NewSpecifier("1.0.0")
 
-// persistedEntryType is the type of the entry. Right now there is only a single
-// type and that's 1.
-const (
-	TypeInvalid = iota
-	TypeWithoutPubkey
-	TypeWithPubkey
-)
-
 type (
+
 	// pesistedEntry is an entry
 	// Size on disk: (1 + 32) + 32 + 4 + 1 + 113 + 8 + 64 + 1 = 256
 	persistedEntry struct {
@@ -54,7 +47,7 @@ type (
 		// utility fields
 		// Type is the type of the entry. Right now only a single one exists
 		// which will probably change in the future.
-		Type uint8
+		Type modules.RegistryEntryType
 	}
 
 	// compressedPublicKey is a version of the types.SiaPublicKey which is
@@ -157,8 +150,8 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield, repair bool)
 			continue // ignore unused entries
 		}
 		// Set the type if it's not set.
-		if repair && pe.Type == TypeInvalid {
-			pe.Type = TypeWithoutPubkey
+		if repair && pe.Type == modules.RegistryTypeInvalid {
+			pe.Type = modules.RegistryTypeWithoutPubkey
 		}
 		// Add the entry to the store.
 		v, err := pe.Value(index)
@@ -185,7 +178,7 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 	if err != nil {
 		return persistedEntry{}, errors.AddContext(err, "newPersistedEntry: failed to compress key")
 	}
-	if value.entryType == TypeInvalid {
+	if value.entryType == modules.RegistryTypeInvalid {
 		err := errInvalidEntryType
 		build.Critical(err)
 		return persistedEntry{}, err
@@ -216,10 +209,10 @@ func (entry persistedEntry) Value(index int64) (*value, error) {
 		return nil, errors.AddContext(err, "Value: failed to convert compressed key to SiaPublicKey")
 	}
 	switch entry.Type {
-	case TypeInvalid:
+	case modules.RegistryTypeInvalid:
 		return nil, errInvalidEntryType
-	case TypeWithPubkey:
-	case TypeWithoutPubkey:
+	case modules.RegistryTypeWithPubkey:
+	case modules.RegistryTypeWithoutPubkey:
 	default:
 		return nil, errInvalidEntryType
 	}
@@ -250,7 +243,7 @@ func (entry persistedEntry) Marshal() ([]byte, error) {
 	copy(b[77:], entry.Signature[:])
 	b[141] = byte(entry.DataLen)
 	copy(b[142:], entry.Data[:])
-	b[PersistedEntrySize-1] = entry.Type
+	b[PersistedEntrySize-1] = uint8(entry.Type)
 	return b, nil
 }
 
@@ -271,7 +264,7 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 		return errTooMuchData
 	}
 	copy(entry.Data[:], b[142:PersistedEntrySize-1])
-	entry.Type = b[PersistedEntrySize-1]
+	entry.Type = modules.RegistryEntryType(b[PersistedEntrySize-1])
 	return nil
 }
 

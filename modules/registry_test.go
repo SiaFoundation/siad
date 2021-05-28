@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestHashRegistryValue tests that signing registry values results in expected
@@ -18,11 +19,13 @@ func TestHashRegistryValue(t *testing.T) {
 	data := []byte("abc")
 	revision := uint64(123456789)
 
-	value := NewRegistryValue(tweak, data, revision)
+	value := NewRegistryValue(tweak, data, revision, RegistryEntryType(RegistryTypeWithoutPubkey))
 	hash := value.hash()
 	if hash.String() != expected {
 		t.Fatalf("expected hash %v, got %v", expected, hash.String())
 	}
+
+	panic("extend")
 }
 
 // TestHasMoreWork is a unit test for the registry entry's HasMoreWork method.
@@ -37,8 +40,8 @@ func TestHasMoreWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv1 := NewRegistryValue(crypto.Hash{}, rv1Data, 0)
-	rv2 := NewRegistryValue(crypto.Hash{}, rv2Data, 0)
+	rv1 := NewRegistryValue(crypto.Hash{}, rv1Data, 0, RegistryTypeWithoutPubkey)
+	rv2 := NewRegistryValue(crypto.Hash{}, rv2Data, 0, RegistryTypeWithoutPubkey)
 
 	// Make sure the hashes match our expectations.
 	rv1Hash := "659f49276a066a4b2434c9ffb953efee63d255e69c5541fb1785b54ebc10fbad"
@@ -62,13 +65,15 @@ func TestHasMoreWork(t *testing.T) {
 	if rv1.HasMoreWork(rv1) {
 		t.Fatal("rv1 shouldn't have more work than itself")
 	}
+
+	panic("extend")
 }
 
 // TestRegistryValueSignature tests signature verification on registry values.
 func TestRegistryValueSignature(t *testing.T) {
 	signedRV := func() (SignedRegistryValue, crypto.PublicKey) {
 		sk, pk := crypto.GenerateKeyPair()
-		rv := NewRegistryValue(crypto.Hash{1}, fastrand.Bytes(100), 2).Sign(sk)
+		rv := NewRegistryValue(crypto.Hash{1}, fastrand.Bytes(100), 2, RegistryTypeWithoutPubkey).Sign(sk)
 		return rv, pk
 	}
 
@@ -106,6 +111,8 @@ func TestRegistryValueSignature(t *testing.T) {
 	if err := rv.Verify(pk); err == nil {
 		t.Fatal("verification succeeded")
 	}
+
+	panic("extend")
 }
 
 // TestShouldUpdateWith is a unit test for ShouldUpdateWith.
@@ -167,9 +174,10 @@ func TestShouldUpdateWith(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		result, err := test.existing.ShouldUpdateWith(test.new)
+		result, err := test.existing.ShouldUpdateWith(test.new, types.SiaPublicKey{})
 		if result != test.result || err != test.err {
 			t.Errorf("%v: wrong result/error expected %v and %v but was %v and %v", i, test.result, test.err, result, err)
 		}
+		panic("extend")
 	}
 }

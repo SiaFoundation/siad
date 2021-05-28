@@ -23,7 +23,7 @@ func (h *Host) upgradeFromV151ToV160(registryPath string) error {
 	}
 
 	// Repair the registry.
-	r, err := registry.New(registryPath, math.MaxUint64, true)
+	r, err := registry.New(registryPath, math.MaxUint64, true, h.publicKey)
 	if err != nil {
 		return errors.AddContext(err, "failed to repair registry")
 	}

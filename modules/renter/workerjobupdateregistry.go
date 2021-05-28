@@ -124,7 +124,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid, check if our suggested can actually not be
 		// used to update rv.
-		shouldUpdate, shouldUpdateErr := rv.ShouldUpdateWith(&j.staticSignedRegistryValue.RegistryValue)
+		shouldUpdate, shouldUpdateErr := rv.ShouldUpdateWith(&j.staticSignedRegistryValue.RegistryValue, w.staticHostPubKey)
 		if shouldUpdate {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
@@ -219,7 +219,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		}
 		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
-			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)
+			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak, modules.RegistryTypeWithoutPubkey)
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {

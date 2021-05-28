@@ -9,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 )
 
@@ -29,8 +28,8 @@ func TestInstructionReadRegistryEID(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)), registry.TypeWithoutPubkey)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +74,7 @@ func TestInstructionReadRegistryEID(t *testing.T) {
 		t.Fatal(err)
 	}
 	data2 = data2[:n]
-	rv2 := modules.NewSignedRegistryValue(tweak2, data2, rev2, sig2)
+	rv2 := modules.NewSignedRegistryValue(tweak2, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
 	if err := rv2.Verify(spk2.ToPublicKey()); err != nil {
 		t.Fatal("verification failed", err)
 	}
@@ -133,8 +132,8 @@ func TestInstructionReadRegistryEIDNoPubkeyAndTweak(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)), registry.TypeWithoutPubkey)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +172,7 @@ func TestInstructionReadRegistryEIDNoPubkeyAndTweak(t *testing.T) {
 		t.Fatal(err)
 	}
 	data2 = data2[:n]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
 	if err := rv2.Verify(pk); err != nil {
 		t.Fatal("verification failed", err)
 	}

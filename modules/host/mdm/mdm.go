@@ -35,7 +35,7 @@ type Host interface {
 	BlockHeight() types.BlockHeight
 	HasSector(crypto.Hash) bool
 	ReadSector(sectorRoot crypto.Hash) ([]byte, error)
-	RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight, entryType uint8) (modules.SignedRegistryValue, error)
+	RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error)
 	RegistryGet(sid modules.RegistryEntryID) (types.SiaPublicKey, modules.SignedRegistryValue, bool)
 }
 

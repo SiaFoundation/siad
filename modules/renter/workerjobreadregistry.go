@@ -55,7 +55,7 @@ type (
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash, entryType modules.RegistryEntryType) (modules.SignedRegistryValue, error) {
 	if len(resp) < crypto.SignatureSize+8 {
 		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
 	}
@@ -63,7 +63,7 @@ func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.S
 	copy(sig[:], resp[:crypto.SignatureSize])
 	rev := binary.LittleEndian.Uint64(resp[crypto.SignatureSize:])
 	data := resp[crypto.SignatureSize+8:]
-	return modules.NewSignedRegistryValue(tweak, data, rev, sig), nil
+	return modules.NewSignedRegistryValue(tweak, data, rev, sig, entryType), nil
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
@@ -114,7 +114,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	}
 
 	// Parse response.
-	rv, err := parseSignedRegistryValueResponse(resp.Output, tweak)
+	rv, err := parseSignedRegistryValueResponse(resp.Output, tweak, modules.RegistryTypeWithoutPubkey)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}

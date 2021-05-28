@@ -30,14 +30,14 @@ func randomValue(index int64) (modules.SignedRegistryValue, *value, crypto.Secre
 		staticIndex: index,
 		data:        fastrand.Bytes(fastrand.Intn(modules.RegistryDataSize) + 1),
 		revision:    fastrand.Uint64n(math.MaxUint64 - 100), // Leave some room for incrementing the revision during tests
-		entryType:   TypeWithoutPubkey,
+		entryType:   modules.RegistryTypeWithoutPubkey,
 	}
 	v.key.Algorithm = types.SignatureEd25519
 	v.key.Key = pk[:]
 	fastrand.Read(v.tweak[:])
 
 	// Then the RegistryValue.
-	rv := modules.NewRegistryValue(v.tweak, v.data, v.revision).Sign(sk)
+	rv := modules.NewRegistryValue(v.tweak, v.data, v.revision, v.entryType).Sign(sk)
 	v.signature = rv.Signature
 	return rv, &v, sk
 }
@@ -135,7 +135,7 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 		Expiry:   compressedBlockHeight(fastrand.Uint64n(math.MaxUint32)),
 		DataLen:  modules.RegistryDataSize,
 		Revision: fastrand.Uint64n(math.MaxUint64),
-		Type:     TypeWithoutPubkey,
+		Type:     modules.RegistryTypeWithoutPubkey,
 	}
 	fastrand.Read(entry.Key.Key[:])
 	fastrand.Read(entry.Tweak[:])
@@ -241,7 +241,7 @@ func TestSaveEntry(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, testingDefaultMaxEntries, false)
+	r, err := New(registryPath, testingDefaultMaxEntries, false, types.SiaPublicKey{})
 	if err != nil {
 		t.Fatal(err)
 	}

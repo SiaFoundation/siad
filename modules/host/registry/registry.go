@@ -2,7 +2,6 @@ package registry
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -23,11 +22,6 @@ import (
 const (
 	// PersistedEntrySize is the size of a marshaled entry on disk.
 	PersistedEntrySize = modules.RegistryEntrySize
-
-	// PubKeyHashSize defines the number of bytes taken from the beginning of a
-	// PubKey hash that are expected at the beginning of a registry entry with
-	// pubkey.
-	PubKeyHashSize = 20
 )
 
 var (
@@ -61,6 +55,7 @@ type (
 	// register data with a given pubkey and secondary key (tweak).
 	Registry struct {
 		entries    map[modules.RegistryEntryID]*value
+		staticHPK  types.SiaPublicKey
 		staticPath string
 		staticFile *os.File
 		usage      bitfield
@@ -81,105 +76,13 @@ type (
 		revision  uint64
 		signature crypto.Signature
 
-		entryType uint8
+		entryType modules.RegistryEntryType
 
 		// utilities
 		mu      sync.Mutex
 		invalid bool
 	}
-
-	registryValue struct {
-		modules.RegistryValue
-		entryType uint8
-	}
-
-	signedRegistryValue struct {
-		modules.SignedRegistryValue
-		entryType uint8
-	}
 )
-
-// newSignedRegistryValue wraps a modules.SignedRegistryValue with additional
-// information used within the registry. It implicitly validates the wrapped
-// entry.
-func newSignedRegistryValue(srv modules.SignedRegistryValue, pk crypto.PublicKey, entryType uint8) (signedRegistryValue, error) {
-	rv := signedRegistryValue{
-		SignedRegistryValue: srv,
-		entryType:           entryType,
-	}
-	// Check the signature against the pubkey.
-	if err := rv.Verify(pk); err != nil {
-		err = errors.Compose(err, errInvalidSignature)
-		return signedRegistryValue{}, errors.AddContext(err, "Update: failed to verify signature")
-	}
-	// Check the integrity of the data.
-	switch entryType {
-	case TypeInvalid:
-		return signedRegistryValue{}, errInvalidEntryType
-	case TypeWithoutPubkey:
-		// nothing to verify
-		return rv, nil
-	case TypeWithPubkey:
-		// verify data length
-		if len(rv.Data) < PubKeyHashSize {
-			return signedRegistryValue{}, ErrEntryDataMalformed
-		}
-		return rv, nil
-	default:
-		return signedRegistryValue{}, errUnknownEntryType
-	}
-}
-
-// isPrimaryEntry returns true if an entry is primary. This means that the entry
-// was specifically intended for this host. Only an entry containing a partial
-// hash of the provided pubkey can be primary so only entries of type
-// 'TypeWithPubkey'.
-func (rv *signedRegistryValue) isPrimaryEntry(hpk types.SiaPublicKey) bool {
-	if rv.entryType != TypeWithPubkey {
-		return false // if the entry doesn't have a pubkey it can't be a primary entry
-	}
-	hpkh := crypto.HashObject(hpk)
-	return bytes.Equal(hpkh[:PubKeyHashSize], rv.Data[:PubKeyHashSize])
-}
-
-// shouldUpdateWith wraps the registry value's ShouldUpdateWith method and adds
-// special checks around whether or not an entry is considered a primary or
-// secondary entry.
-func (rv *signedRegistryValue) shouldUpdateWith(rv2 signedRegistryValue, hpk types.SiaPublicKey) (bool, error) {
-	// Check against the regular helper. If it return true, we are done.
-	shouldUpdate, updateErr := rv.ShouldUpdateWith(&rv2.RegistryValue)
-	if shouldUpdate {
-		return true, nil
-	}
-
-	// Otherwise, if it returned any error besides ErrSameRevNum, there is no
-	// need to check the pubkey.
-	if !errors.Contains(updateErr, modules.ErrSameRevNum) {
-		return false, updateErr
-	}
-
-	// If it doesn't have a pubkey we are done as well.
-	if rv.entryType != TypeWithPubkey {
-		return false, updateErr
-	}
-
-	// If revision and pow match and the entry has a pubkey, check if it's a primary
-	// key.
-	rvPrimary := rv.isPrimaryEntry(hpk)
-	rv2Primary := rv.isPrimaryEntry(hpk)
-
-	// If both are either primary or secondary, we can't update the entry.
-	if rvPrimary == rv2Primary {
-		return false, updateErr
-	}
-	// If the existing one is primary and the new entry is secondary, also don't
-	// update.
-	if rvPrimary && !rv2Primary {
-		return false, updateErr
-	}
-	// If the existing one isn't primary but the new one is, update.
-	return true, nil
-}
 
 // mapKey creates a key usable in in-memory maps from the value.
 func (v *value) mapKey() modules.RegistryEntryID {
@@ -187,7 +90,7 @@ func (v *value) mapKey() modules.RegistryEntryID {
 }
 
 // update updates a value with a new revision, expiry and data.
-func (v *value) update(rv signedRegistryValue, newExpiry types.BlockHeight, init bool) error {
+func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool, hpk types.SiaPublicKey) error {
 	// Check if the entry has been invalidated. This should only ever be the
 	// case when an entry is updated at the same time as its pruned so its
 	// incredibly unlikely to happen. Usually entries would be updated long
@@ -197,15 +100,10 @@ func (v *value) update(rv signedRegistryValue, newExpiry types.BlockHeight, init
 	}
 
 	// Check if the new revision number is valid.
-	oldRV, err := newSignedRegistryValue(modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), v.key.ToPublicKey(), v.entryType)
-	if err != nil {
-		err = errors.AddContext(err, "failed to validate oldRV - should never happen")
-		build.Critical(err)
-		return err
-	}
+	oldRV := modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature, v.entryType)
 	if !init {
 		s := fmt.Sprintf("%v <= %v", oldRV.Revision, rv.Revision)
-		update, err := oldRV.shouldUpdateWith(rv, types.SiaPublicKey{})
+		update, err := oldRV.ShouldUpdateWith(&rv.RegistryValue, hpk)
 		if err != nil {
 			return errors.AddContext(err, s)
 		}
@@ -244,7 +142,7 @@ func (r *Registry) Get(sid modules.RegistryEntryID) (types.SiaPublicKey, modules
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.key, modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
+	return v.key, modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature, v.entryType), true
 }
 
 // Len returns the length of the registry.
@@ -334,7 +232,7 @@ func (r *Registry) Truncate(newMaxEntries uint64, force bool) error {
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, maxEntries uint64, repair bool) (_ *Registry, err error) {
+func New(path string, maxEntries uint64, repair bool, hpk types.SiaPublicKey) (_ *Registry, err error) {
 	// The path should be an absolute path.
 	if !filepath.IsAbs(path) {
 		return nil, errPathNotAbsolute
@@ -379,6 +277,7 @@ func New(path string, maxEntries uint64, repair bool) (_ *Registry, err error) {
 	// Create the registry.
 	reg := &Registry{
 		staticFile: f,
+		staticHPK:  hpk,
 		staticPath: path,
 		usage:      b,
 	}
@@ -394,16 +293,14 @@ func New(path string, maxEntries uint64, repair bool) (_ *Registry, err error) {
 // This will also verify the revision number of the new value and the signature.
 // If an existing entry was updated it will return that entry, otherwise it
 // returns the default value for a SignedRevisionValue.
-func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight, entryType uint8) (srv modules.SignedRegistryValue, _ error) {
+func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (srv modules.SignedRegistryValue, _ error) {
 	// Check the data against the limit.
 	if len(rv.Data) > modules.RegistryDataSize {
 		return modules.SignedRegistryValue{}, errTooMuchData
 	}
 
-	// Create the internal signed registry value type. This implicitly validates
-	// its signature and data.
-	registryValue, err := newSignedRegistryValue(rv, pubKey.ToPublicKey(), entryType)
-	if err != nil {
+	// Verify the registry value.
+	if err := rv.Verify(pubKey.ToPublicKey()); err != nil {
 		return modules.SignedRegistryValue{}, err
 	}
 
@@ -414,9 +311,10 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 	// Check if the entry exists already. If it does and the new revision is
 	// larger than the last one, we update it.
 	entry, exists := r.entries[modules.DeriveRegistryEntryID(pubKey, rv.Tweak)]
+	var err error
 	if !exists {
 		// If it doesn't exist we create a new entry.
-		entry, err = r.newValue(rv, pubKey, expiry, entryType)
+		entry, err = r.newValue(rv, pubKey, expiry)
 		if err != nil {
 			r.mu.Unlock()
 			return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to create new value")
@@ -429,10 +327,10 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 	entry.mu.Lock()
 	// If the entry existed, remember it before updating it.
 	if exists {
-		srv = modules.NewSignedRegistryValue(entry.tweak, entry.data, entry.revision, entry.signature)
+		srv = modules.NewSignedRegistryValue(entry.tweak, entry.data, entry.revision, entry.signature, entry.entryType)
 	}
 	// Update the entry.
-	err = entry.update(registryValue, expiry, !exists)
+	err = entry.update(rv, expiry, !exists, r.staticHPK)
 	if err != nil {
 		entry.mu.Unlock()
 		return srv, errors.AddContext(err, "failed to update entry")
@@ -471,21 +369,21 @@ func (r *Registry) managedDeleteFromMemory(v *value) {
 
 // newValue creates a new value and assigns it a free bit from the bitfield. It
 // adds the new value to the registry as well.
-func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight, entryType uint8) (*value, error) {
+func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
 	bit, err := r.usage.SetRandom()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to obtain free slot")
 	}
-	switch entryType {
-	case TypeInvalid:
+	switch rv.Type {
+	case modules.RegistryTypeInvalid:
 		return nil, errInvalidEntryType
-	case TypeWithPubkey:
-	case TypeWithoutPubkey:
+	case modules.RegistryTypeWithPubkey:
+	case modules.RegistryTypeWithoutPubkey:
 	default:
 		return nil, errInvalidEntryType
 	}
 	v := &value{
-		entryType:   uint8(entryType),
+		entryType:   rv.Type,
 		key:         pubKey,
 		tweak:       rv.Tweak,
 		expiry:      expiry,
