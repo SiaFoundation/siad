@@ -28,9 +28,6 @@ var (
 	// errEntryWrongSize is returned when a marshaled entry doesn't have a size
 	// of persistedEntrySize. This should never happen.
 	errEntryWrongSize = errors.New("marshaled entry has wrong size")
-	// errInvalidSignature is returned when the signature doesn't match a
-	// registry value.
-	errInvalidSignature = errors.New("provided signature is invalid")
 	// errTooMuchData is returned when the data to register is larger than
 	// RegistryDataSize.
 	errTooMuchData = errors.New("registered data is too large")

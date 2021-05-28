@@ -409,7 +409,7 @@ func TestUpdate(t *testing.T) {
 	// number without resigning. This should fail.
 	rv3.Revision++
 	_, err = r.Update(rv3, v3.key, v3.expiry)
-	if !errors.Contains(err, errInvalidSignature) {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) {
 		t.Fatal(err)
 	}
 
