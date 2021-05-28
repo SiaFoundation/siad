@@ -170,8 +170,8 @@ func IsRegistryEntryExistErr(err error) bool {
 
 // HasMoreWork returns 'true' if the hash of entry is larger than target's.
 func (entry RegistryValue) HasMoreWork(target RegistryValue) bool {
-	hEntry := entry.hash()
-	hTarget := target.hash()
+	hEntry := entry.work()
+	hTarget := target.work()
 	return bytes.Compare(hTarget[:], hEntry[:]) > 0
 }
 

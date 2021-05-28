@@ -115,8 +115,42 @@ func TestRegistryValueSignature(t *testing.T) {
 	panic("extend")
 }
 
+// TestIsPrimaryKey is a unit test for the IsPrimaryKey method.
+func TestIsPrimaryKey(t *testing.T) {
+	t.Parallel()
+
+	// Create primary entry.
+	_, pk := crypto.GenerateKeyPair()
+	hpk := types.Ed25519PublicKey(pk)
+	hpkh := crypto.HashObject(hpk)
+	rv := NewRegistryValue(crypto.Hash{}, hpkh[:RegistryPubKeyHashSize], 0, RegistryTypeWithPubkey)
+	primary := rv.IsPrimaryEntry(hpk)
+	if !primary {
+		t.Fatal("should be primary")
+	}
+
+	// Try a different hostkey. Shouldn't be primary anymore.
+	primary = rv.IsPrimaryEntry(types.SiaPublicKey{})
+	if primary {
+		t.Fatal("shouldn't be primary")
+	}
+
+	// Change the type to something else without pubkey. Shouldn't be primary
+	// anymore.
+	rvWrongType := rv
+	rvWrongType.Type = RegistryTypeWithoutPubkey
+	primary = rv.IsPrimaryEntry(hpk)
+	if !primary {
+		t.Fatal("shouldn't be primary")
+	}
+}
+
 // TestShouldUpdateWith is a unit test for ShouldUpdateWith.
 func TestShouldUpdateWith(t *testing.T) {
+	_, pk := crypto.GenerateKeyPair()
+	hpk := types.Ed25519PublicKey(pk)
+	hpkh := crypto.HashObject(hpk)
+
 	tests := []struct {
 		existing *RegistryValue
 		new      *RegistryValue
@@ -171,13 +205,30 @@ func TestShouldUpdateWith(t *testing.T) {
 			result:   false,
 			err:      ErrSameRevNum,
 		},
+		{
+			existing: &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			new:      &RegistryValue{Type: RegistryTypeWithoutPubkey},
+			result:   false,
+			err:      ErrSameRevNum,
+		},
+		{
+			existing: &RegistryValue{Type: RegistryTypeWithoutPubkey},
+			new:      &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			result:   true,
+			err:      nil,
+		},
+		{
+			existing: &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			new:      &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			result:   false,
+			err:      ErrSameRevNum,
+		},
 	}
 
 	for i, test := range tests {
-		result, err := test.existing.ShouldUpdateWith(test.new, types.SiaPublicKey{})
+		result, err := test.existing.ShouldUpdateWith(test.new, hpk)
 		if result != test.result || err != test.err {
 			t.Errorf("%v: wrong result/error expected %v and %v but was %v and %v", i, test.result, test.err, result, err)
 		}
-		panic("extend")
 	}
 }
