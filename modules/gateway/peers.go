@@ -19,6 +19,10 @@ import (
 var (
 	errPeerExists       = errors.New("already connected to this peer")
 	errPeerRejectedConn = errors.New("peer rejected connection")
+
+	// ErrPeerNotConnected is returned when trying to disconnect from a peer
+	// that the gateway is not connected to.
+	ErrPeerNotConnected = errors.New("not connected to that node")
 )
 
 // insufficientVersionError indicates a peer's version is insufficient.
@@ -546,7 +550,7 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 	p, exists := g.peers[addr]
 	g.mu.RUnlock()
 	if !exists {
-		err := errors.New("not connected to that node")
+		err := ErrPeerNotConnected
 		g.log.Debugln("Unable to disconnect to", addr, "error:", err)
 		return err
 	}

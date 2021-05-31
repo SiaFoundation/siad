@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/modules/gateway"
 	"go.sia.tech/siad/types"
 )
 
@@ -453,11 +455,11 @@ func TestDatabaseUpgrade(t *testing.T) {
 
 	// disconnect the testers
 	err = tpt2.gateway.Disconnect(tpt.gateway.Address())
-	if err != nil {
+	if err != nil && !errors.Contains(err, gateway.ErrPeerNotConnected) {
 		t.Fatal(err)
 	}
 	err = tpt.gateway.Disconnect(tpt2.gateway.Address())
-	if err != nil {
+	if err != nil && !errors.Contains(err, gateway.ErrPeerNotConnected) {
 		t.Fatal(err)
 	}
 
