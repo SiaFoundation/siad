@@ -24,9 +24,19 @@ const (
 // reclaimed.
 var noKey = compressedPublicKey{}
 
+// registryVersionV100 is the initial version of the registry which only
+// supported a single type but didn't always set that type correctly. Upgrading
+// from that version causes all entries without a type to receive the
+// RegistryTypeWithoutPubkey.
+var registryVersionV100 = types.NewSpecifier("1.0.0")
+
 // registryVersion is the version at the beginning of the registry on disk
 // for future compatibility changes.
-var registryVersion = types.NewSpecifier("1.0.0")
+var registryVersion = types.NewSpecifier("1.6.0")
+
+// errCompat100 is returned to indicate that the registry file needs to be
+// upgraded from 1.0.0 to 1.6.0.
+var errCompat100 = errors.New("registry metadata version 1.0.0 detected - upgrade needed")
 
 type (
 
@@ -100,16 +110,11 @@ func initRegistry(path string, maxEntries uint64) (*os.File, error) {
 		return nil, errors.AddContext(err, "failed to preallocate registry disk space")
 	}
 
-	// The first entry is reserved for metadata. Right now only the version
-	// number.
-	initData := make([]byte, PersistedEntrySize)
-	copy(initData[:], registryVersion[:])
-
-	// Write data to disk.
-	_, err = f.WriteAt(initData, 0)
+	// Write metadata.
+	err = writeMetadata(f)
 	if err != nil {
 		err = errors.Compose(err, f.Close()) // close the file on error
-		return nil, errors.AddContext(err, "failed to write initial data to registry")
+		return nil, errors.AddContext(err, "failed to write initial metadata")
 	}
 	return f, f.Sync()
 }
@@ -125,6 +130,9 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 		return errors.AddContext(err, "failed to read metadata page")
 	}
 	version := entry[:types.SpecifierLen]
+	if bytes.Equal(version, registryVersionV100[:]) {
+		return errCompat100
+	}
 	if !bytes.Equal(version, registryVersion[:]) {
 		return fmt.Errorf("expected store version %v but got %v", registryVersion, version)
 	}
@@ -132,7 +140,7 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 }
 
 // loadRegistryEntries reads the currently in use registry entries from disk.
-func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield, repair bool) (map[modules.RegistryEntryID]*value, error) {
+func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield, upgradeV100 bool) (map[modules.RegistryEntryID]*value, error) {
 	// Load the remaining entries.
 	var entry [PersistedEntrySize]byte
 	entries := make(map[modules.RegistryEntryID]*value)
@@ -150,8 +158,10 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield, repair bool)
 			continue // ignore unused entries
 		}
 		// Set the type if it's not set.
-		if repair && pe.Type == modules.RegistryTypeInvalid {
+		if upgradeV100 && pe.Type == modules.RegistryTypeInvalid {
 			pe.Type = modules.RegistryTypeWithoutPubkey
+		} else if pe.Type == modules.RegistryTypeInvalid {
+			return nil, modules.ErrInvalidRegistryEntryType
 		}
 		// Add the entry to the store.
 		v, err := pe.Value(index)
@@ -195,6 +205,21 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 	}
 	copy(pe.Data[:], value.data)
 	return pe, nil
+}
+
+// writeMetadata writes the metadata containing the recent version to disk.
+func writeMetadata(f *os.File) error {
+	// The first entry is reserved for metadata. Right now only the version
+	// number.
+	initData := make([]byte, PersistedEntrySize)
+	copy(initData[:], registryVersion[:])
+
+	// Write data to disk.
+	_, err := f.WriteAt(initData, 0)
+	if err != nil {
+		return errors.AddContext(err, "failed to write metadata to registry")
+	}
+	return err
 }
 
 // Value converts a persistedEntry into a value type.

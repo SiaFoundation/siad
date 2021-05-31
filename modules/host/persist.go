@@ -169,7 +169,7 @@ func (h *Host) load() error {
 	// the most recent version, but older versions need to be updated to the
 	// more recent structures.
 	p := new(persistence)
-	err = h.dependencies.LoadFile(modules.Hostv160PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
+	err = h.dependencies.LoadFile(modules.Hostv151PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err == nil {
 		// Copy in the persistence.
 		h.loadPersistObject(p)
@@ -188,12 +188,6 @@ func (h *Host) load() error {
 			h.log.Println("WARNING: v120 to v143 host upgrade failed, trying v143 to v151 next", err)
 		}
 		// Attempt an upgrade from V143 to V151.
-		err = h.upgradeFromV143ToV151()
-		if err != nil {
-			h.log.Println("WARNING: v143 to v151 host upgrade failed, nothing left to try", err)
-			return err
-		}
-		// Attempt an upgrade from V151 to V160.
 		err = h.upgradeFromV143ToV151()
 		if err != nil {
 			h.log.Println("WARNING: v143 to v151 host upgrade failed, nothing left to try", err)
@@ -265,5 +259,5 @@ func (h *Host) load() error {
 
 // saveSync stores all of the persist data to disk and then syncs to disk.
 func (h *Host) saveSync() error {
-	return persist.SaveJSON(modules.Hostv160PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
+	return persist.SaveJSON(modules.Hostv151PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 }

@@ -226,7 +226,7 @@ func (r *Registry) Truncate(newMaxEntries uint64, force bool) error {
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, maxEntries uint64, repair bool, hpk types.SiaPublicKey) (_ *Registry, err error) {
+func New(path string, maxEntries uint64, hpk types.SiaPublicKey) (_ *Registry, err error) {
 	// The path should be an absolute path.
 	if !filepath.IsAbs(path) {
 		return nil, errPathNotAbsolute
@@ -264,8 +264,10 @@ func New(path string, maxEntries uint64, repair bool, hpk types.SiaPublicKey) (_
 		return nil, errors.AddContext(err, "failed to create bitfield")
 	}
 	// Load and verify the metadata.
+	compatV100 := false
 	err = loadRegistryMetadata(r, b)
-	if err != nil {
+	compatV100 = errors.Contains(err, errCompat100)
+	if err != nil && !compatV100 {
 		return nil, errors.AddContext(err, "failed to load and verify metadata")
 	}
 	// Create the registry.
@@ -276,9 +278,31 @@ func New(path string, maxEntries uint64, repair bool, hpk types.SiaPublicKey) (_
 		usage:      b,
 	}
 	// Load the remaining entries.
-	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b, repair)
+	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b, compatV100)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load registry entries")
+	}
+	// If an upgrade happened, sync the body and upgrade the metadata
+	// afterwards. Then sync again.
+	if compatV100 {
+		for _, entry := range reg.entries {
+			err = reg.staticSaveEntry(entry, true)
+			if err != nil {
+				return nil, errors.AddContext(err, "failed to save entry")
+			}
+		}
+		err = reg.staticFile.Sync()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to sync file after upgrade")
+		}
+		err = writeMetadata(reg.staticFile)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to update metadata")
+		}
+		err = reg.staticFile.Sync()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to sync file after writing metadata")
+		}
 	}
 	return reg, nil
 }

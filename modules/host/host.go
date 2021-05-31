@@ -847,7 +847,7 @@ func (h *Host) managedInitRegistry() error {
 	}
 
 	// Load the registry.
-	registry, err := registry.New(path, settingsEntries, false, h.publicKey)
+	registry, err := registry.New(path, settingsEntries, h.publicKey)
 	if err != nil {
 		return errors.AddContext(err, "failed to load host registry")
 	}
