@@ -106,7 +106,7 @@ func TestInitRegistry(t *testing.T) {
 	// Compare the contents to what we expect. The version is hardcoded to
 	// prevent us from accidentally changing it without breaking this test.
 	expected := make([]byte, PersistedEntrySize)
-	v := types.Specifier{'1', '.', '0', '.', '0', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	v := types.Specifier{'1', '.', '6', '.', '0', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	copy(expected[:], v[:])
 	b, err := ioutil.ReadFile(registryPath)
 	if err != nil {
