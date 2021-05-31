@@ -204,7 +204,7 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 		spk.Key = pk[:]
 		var tweak crypto.Hash
 		fastrand.Read(tweak[:])
-		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0).Sign(sk)
+		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
 		_, err := host.RegistryUpdate(rv, spk, 1337)
 		if err != nil {
 			t.Fatal(err)

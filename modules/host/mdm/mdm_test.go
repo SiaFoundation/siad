@@ -30,7 +30,8 @@ type (
 	}
 	TestRegistryValue struct {
 		modules.SignedRegistryValue
-		spk types.SiaPublicKey
+		spk       types.SiaPublicKey
+		entryType modules.RegistryEntryType
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
@@ -108,6 +109,7 @@ func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.S
 	}
 
 	h.registry[key] = TestRegistryValue{
+		entryType:           rv.Type,
 		SignedRegistryValue: rv,
 		spk:                 pubKey,
 	}

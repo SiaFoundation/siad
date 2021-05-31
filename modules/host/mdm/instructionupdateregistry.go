@@ -92,7 +92,7 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	newExpiry := i.staticState.host.BlockHeight() + types.BlocksPerYear
 
 	// Try updating the registry.
-	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
+	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature, modules.RegistryTypeWithoutPubkey)
 	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
 	if modules.IsRegistryEntryExistErr(err) {
 		// If we weren't able to update the registry because the entry already

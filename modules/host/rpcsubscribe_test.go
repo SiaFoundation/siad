@@ -34,7 +34,7 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	return rv, spk, sk
 }
 

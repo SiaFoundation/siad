@@ -187,7 +187,7 @@ func (h *Host) load() error {
 		if err != nil {
 			h.log.Println("WARNING: v120 to v143 host upgrade failed, trying v143 to v151 next", err)
 		}
-		// Then upgrade from V143 to V151.
+		// Attempt an upgrade from V143 to V151.
 		err = h.upgradeFromV143ToV151()
 		if err != nil {
 			h.log.Println("WARNING: v143 to v151 host upgrade failed, nothing left to try", err)

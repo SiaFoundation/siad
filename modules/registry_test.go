@@ -7,19 +7,30 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
 )
 
 // TestHashRegistryValue tests that signing registry values results in expected
 // values.
 func TestHashRegistryValue(t *testing.T) {
+	t.Parallel()
+
 	expected := "788dddf5232807611557a3dc0fa5f34012c2650526ba91d55411a2b04ba56164"
 	dataKey := "HelloWorld"
 	tweak := crypto.HashAll(dataKey)
 	data := []byte("abc")
 	revision := uint64(123456789)
 
-	value := NewRegistryValue(tweak, data, revision)
+	value := NewRegistryValue(tweak, data, revision, RegistryEntryType(RegistryTypeWithoutPubkey))
 	hash := value.hash()
+	if hash.String() != expected {
+		t.Fatalf("expected hash %v, got %v", expected, hash.String())
+	}
+
+	// Test again for entries with pubkey.
+	expected = "f76214bd0a2aae1783027124c587b741398dd268cce9a3457ac434af620a8f86"
+	value.Type = RegistryTypeWithPubkey
+	hash = value.hash()
 	if hash.String() != expected {
 		t.Fatalf("expected hash %v, got %v", expected, hash.String())
 	}
@@ -27,6 +38,8 @@ func TestHashRegistryValue(t *testing.T) {
 
 // TestHasMoreWork is a unit test for the registry entry's HasMoreWork method.
 func TestHasMoreWork(t *testing.T) {
+	t.Parallel()
+
 	// Create the rv's from hardcoded values for which we know the resulting
 	// hash.
 	rv1Data, err := hex.DecodeString("9c0e0775d2176f1f9984")
@@ -37,8 +50,8 @@ func TestHasMoreWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv1 := NewRegistryValue(crypto.Hash{}, rv1Data, 0)
-	rv2 := NewRegistryValue(crypto.Hash{}, rv2Data, 0)
+	rv1 := NewRegistryValue(crypto.Hash{}, rv1Data, 0, RegistryTypeWithoutPubkey)
+	rv2 := NewRegistryValue(crypto.Hash{}, rv2Data, 0, RegistryTypeWithoutPubkey)
 
 	// Make sure the hashes match our expectations.
 	rv1Hash := "659f49276a066a4b2434c9ffb953efee63d255e69c5541fb1785b54ebc10fbad"
@@ -62,54 +75,116 @@ func TestHasMoreWork(t *testing.T) {
 	if rv1.HasMoreWork(rv1) {
 		t.Fatal("rv1 shouldn't have more work than itself")
 	}
+
+	// Copy rv2 and add a pubkey. This should result in the same amount of work.
+	rvWithPubkey := rv2
+	rvWithPubkey.Type = RegistryTypeWithPubkey
+	var hpk types.SiaPublicKey
+	hpkh := crypto.HashObject(hpk)
+	rvWithPubkey.Data = append(hpkh[:RegistryPubKeyHashSize], rvWithPubkey.Data...)
+
+	// rvWithPubkey should have more work than rv1
+	if !rvWithPubkey.HasMoreWork(rv1) {
+		t.Fatal("rvWithPubkey should have more work than rv1")
+	}
+	// rv1 should have less work than rvWithPubkey
+	if rv1.HasMoreWork(rvWithPubkey) {
+		t.Fatal("rv1 should have less work than rvWithPubkey")
+	}
+	// rvWithPubkey should have the same work as rv2.
+	if rvWithPubkey.work() != rv2.work() {
+		t.Fatal("wrong work")
+	}
 }
 
 // TestRegistryValueSignature tests signature verification on registry values.
 func TestRegistryValueSignature(t *testing.T) {
-	signedRV := func() (SignedRegistryValue, crypto.PublicKey) {
+	t.Parallel()
+
+	signedRV := func(entryType RegistryEntryType) (SignedRegistryValue, crypto.PublicKey) {
 		sk, pk := crypto.GenerateKeyPair()
-		rv := NewRegistryValue(crypto.Hash{1}, fastrand.Bytes(100), 2).Sign(sk)
+		rv := NewRegistryValue(crypto.Hash{1}, fastrand.Bytes(100), 2, entryType).Sign(sk)
 		return rv, pk
 	}
 
-	// Check signed.
-	rv, _ := signedRV()
-	if rv.Signature == (crypto.Signature{}) {
-		t.Fatal("signing failed")
+	test := func(entryType RegistryEntryType) {
+		// Check signed.
+		rv, _ := signedRV(entryType)
+		if rv.Signature == (crypto.Signature{}) {
+			t.Fatal("signing failed")
+		}
+		// Verify valid
+		rv, pk := signedRV(entryType)
+		if err := rv.Verify(pk); err != nil {
+			t.Fatal("verification failed")
+		}
+		// Verify invalid - no sig
+		rv, pk = signedRV(entryType)
+		rv.Signature = crypto.Signature{}
+		if err := rv.Verify(pk); err == nil {
+			t.Fatal("verification succeeded")
+		}
+		// Verify invalid - wrong tweak
+		rv, pk = signedRV(entryType)
+		fastrand.Read(rv.Tweak[:])
+		if err := rv.Verify(pk); err == nil {
+			t.Fatal("verification succeeded")
+		}
+		// Verify invalid - wrong data
+		rv, pk = signedRV(entryType)
+		rv.Data = fastrand.Bytes(100)
+		if err := rv.Verify(pk); err == nil {
+			t.Fatal("verification succeeded")
+		}
+		// Verify invalid - wrong revision
+		rv, pk = signedRV(entryType)
+		rv.Revision = fastrand.Uint64n(math.MaxUint64)
+		if err := rv.Verify(pk); err == nil {
+			t.Fatal("verification succeeded")
+		}
 	}
-	// Verify valid
-	rv, pk := signedRV()
-	if err := rv.Verify(pk); err != nil {
-		t.Fatal("verification failed")
+	test(RegistryTypeWithPubkey)
+	test(RegistryTypeWithoutPubkey)
+}
+
+// TestIsPrimaryKey is a unit test for the IsPrimaryKey method.
+func TestIsPrimaryKey(t *testing.T) {
+	t.Parallel()
+
+	// Create primary entry.
+	_, pk := crypto.GenerateKeyPair()
+	hpk := types.Ed25519PublicKey(pk)
+	hpkh := crypto.HashObject(hpk)
+	rv := NewRegistryValue(crypto.Hash{}, hpkh[:RegistryPubKeyHashSize], 0, RegistryTypeWithPubkey)
+	primary := rv.IsPrimaryEntry(hpk)
+	if !primary {
+		t.Fatal("should be primary")
 	}
-	// Verify invalid - no sig
-	rv, pk = signedRV()
-	rv.Signature = crypto.Signature{}
-	if err := rv.Verify(pk); err == nil {
-		t.Fatal("verification succeeded")
+
+	// Try a different hostkey. Shouldn't be primary anymore.
+	primary = rv.IsPrimaryEntry(types.SiaPublicKey{})
+	if primary {
+		t.Fatal("shouldn't be primary")
 	}
-	// Verify invalid - wrong tweak
-	rv, pk = signedRV()
-	fastrand.Read(rv.Tweak[:])
-	if err := rv.Verify(pk); err == nil {
-		t.Fatal("verification succeeded")
-	}
-	// Verify invalid - wrong data
-	rv, pk = signedRV()
-	rv.Data = fastrand.Bytes(100)
-	if err := rv.Verify(pk); err == nil {
-		t.Fatal("verification succeeded")
-	}
-	// Verify invalid - wrong revision
-	rv, pk = signedRV()
-	rv.Revision = fastrand.Uint64n(math.MaxUint64)
-	if err := rv.Verify(pk); err == nil {
-		t.Fatal("verification succeeded")
+
+	// Change the type to something else without pubkey. Shouldn't be primary
+	// anymore.
+	rvWrongType := rv
+	rvWrongType.Type = RegistryTypeWithoutPubkey
+	primary = rv.IsPrimaryEntry(hpk)
+	if !primary {
+		t.Fatal("shouldn't be primary")
 	}
 }
 
 // TestShouldUpdateWith is a unit test for ShouldUpdateWith.
 func TestShouldUpdateWith(t *testing.T) {
+	t.Parallel()
+
+	_, pk := crypto.GenerateKeyPair()
+	hpk := types.Ed25519PublicKey(pk)
+	hpkh := crypto.HashObject(hpk)
+
 	tests := []struct {
 		existing *RegistryValue
 		new      *RegistryValue
@@ -164,10 +239,28 @@ func TestShouldUpdateWith(t *testing.T) {
 			result:   false,
 			err:      ErrSameRevNum,
 		},
+		{
+			existing: &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			new:      &RegistryValue{Type: RegistryTypeWithoutPubkey},
+			result:   false,
+			err:      ErrSameRevNum,
+		},
+		{
+			existing: &RegistryValue{Type: RegistryTypeWithoutPubkey},
+			new:      &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			result:   true,
+			err:      nil,
+		},
+		{
+			existing: &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			new:      &RegistryValue{Data: hpkh[:RegistryPubKeyHashSize], Type: RegistryTypeWithPubkey},
+			result:   false,
+			err:      ErrSameRevNum,
+		},
 	}
 
 	for i, test := range tests {
-		result, err := test.existing.ShouldUpdateWith(test.new)
+		result, err := test.existing.ShouldUpdateWith(test.new, hpk)
 		if result != test.result || err != test.err {
 			t.Errorf("%v: wrong result/error expected %v and %v but was %v and %v", i, test.result, test.err, result, err)
 		}

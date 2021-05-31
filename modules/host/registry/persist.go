@@ -24,15 +24,22 @@ const (
 // reclaimed.
 var noKey = compressedPublicKey{}
 
+// registryVersionV100 is the initial version of the registry which only
+// supported a single type but didn't always set that type correctly. Upgrading
+// from that version causes all entries without a type to receive the
+// RegistryTypeWithoutPubkey.
+var registryVersionV100 = types.NewSpecifier("1.0.0")
+
 // registryVersion is the version at the beginning of the registry on disk
 // for future compatibility changes.
-var registryVersion = types.NewSpecifier("1.0.0")
+var registryVersion = types.NewSpecifier("1.6.0")
 
-// persistedEntryType is the type of the entry. Right now there is only a single
-// type and that's 1.
-var persistedEntryType = uint8(1)
+// errCompat100 is returned to indicate that the registry file needs to be
+// upgraded from 1.0.0 to 1.6.0.
+var errCompat100 = errors.New("registry metadata version 1.0.0 detected - upgrade needed")
 
 type (
+
 	// pesistedEntry is an entry
 	// Size on disk: (1 + 32) + 32 + 4 + 1 + 113 + 8 + 64 + 1 = 256
 	persistedEntry struct {
@@ -50,7 +57,7 @@ type (
 		// utility fields
 		// Type is the type of the entry. Right now only a single one exists
 		// which will probably change in the future.
-		Type uint8
+		Type modules.RegistryEntryType
 	}
 
 	// compressedPublicKey is a version of the types.SiaPublicKey which is
@@ -103,16 +110,11 @@ func initRegistry(path string, maxEntries uint64) (*os.File, error) {
 		return nil, errors.AddContext(err, "failed to preallocate registry disk space")
 	}
 
-	// The first entry is reserved for metadata. Right now only the version
-	// number.
-	initData := make([]byte, PersistedEntrySize)
-	copy(initData[:], registryVersion[:])
-
-	// Write data to disk.
-	_, err = f.WriteAt(initData, 0)
+	// Write metadata.
+	err = writeMetadata(f)
 	if err != nil {
 		err = errors.Compose(err, f.Close()) // close the file on error
-		return nil, errors.AddContext(err, "failed to write initial data to registry")
+		return nil, errors.AddContext(err, "failed to write initial metadata")
 	}
 	return f, f.Sync()
 }
@@ -128,6 +130,9 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 		return errors.AddContext(err, "failed to read metadata page")
 	}
 	version := entry[:types.SpecifierLen]
+	if bytes.Equal(version, registryVersionV100[:]) {
+		return errCompat100
+	}
 	if !bytes.Equal(version, registryVersion[:]) {
 		return fmt.Errorf("expected store version %v but got %v", registryVersion, version)
 	}
@@ -135,7 +140,7 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 }
 
 // loadRegistryEntries reads the currently in use registry entries from disk.
-func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[modules.RegistryEntryID]*value, error) {
+func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield, upgradeV100 bool) (map[modules.RegistryEntryID]*value, error) {
 	// Load the remaining entries.
 	var entry [PersistedEntrySize]byte
 	entries := make(map[modules.RegistryEntryID]*value)
@@ -153,8 +158,10 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[modules
 			continue // ignore unused entries
 		}
 		// Set the type if it's not set.
-		if pe.Type == 0 {
-			pe.Type = persistedEntryType
+		if upgradeV100 && pe.Type == modules.RegistryTypeInvalid {
+			pe.Type = modules.RegistryTypeWithoutPubkey
+		} else if pe.Type == modules.RegistryTypeInvalid {
+			return nil, modules.ErrInvalidRegistryEntryType
 		}
 		// Add the entry to the store.
 		v, err := pe.Value(index)
@@ -181,10 +188,16 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 	if err != nil {
 		return persistedEntry{}, errors.AddContext(err, "newPersistedEntry: failed to compress key")
 	}
+	if value.entryType == modules.RegistryTypeInvalid {
+		err := modules.ErrInvalidRegistryEntryType
+		build.Critical(err)
+		return persistedEntry{}, err
+	}
 	pe := persistedEntry{
 		Key:       cpk,
 		Signature: value.signature,
 		Tweak:     value.tweak,
+		Type:      value.entryType,
 
 		DataLen:  uint8(len(value.data)),
 		Expiry:   compressedBlockHeight(value.expiry),
@@ -192,6 +205,21 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 	}
 	copy(pe.Data[:], value.data)
 	return pe, nil
+}
+
+// writeMetadata writes the metadata containing the recent version to disk.
+func writeMetadata(f *os.File) error {
+	// The first entry is reserved for metadata. Right now only the version
+	// number.
+	initData := make([]byte, PersistedEntrySize)
+	copy(initData[:], registryVersion[:])
+
+	// Write data to disk.
+	_, err := f.WriteAt(initData, 0)
+	if err != nil {
+		return errors.AddContext(err, "failed to write metadata to registry")
+	}
+	return err
 }
 
 // Value converts a persistedEntry into a value type.
@@ -205,7 +233,16 @@ func (entry persistedEntry) Value(index int64) (*value, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "Value: failed to convert compressed key to SiaPublicKey")
 	}
+	switch entry.Type {
+	case modules.RegistryTypeInvalid:
+		return nil, modules.ErrInvalidRegistryEntryType
+	case modules.RegistryTypeWithPubkey:
+	case modules.RegistryTypeWithoutPubkey:
+	default:
+		return nil, modules.ErrInvalidRegistryEntryType
+	}
 	return &value{
+		entryType:   entry.Type,
 		key:         spk,
 		tweak:       entry.Tweak,
 		expiry:      types.BlockHeight(entry.Expiry),
@@ -231,7 +268,7 @@ func (entry persistedEntry) Marshal() ([]byte, error) {
 	copy(b[77:], entry.Signature[:])
 	b[141] = byte(entry.DataLen)
 	copy(b[142:], entry.Data[:])
-	b[PersistedEntrySize-1] = entry.Type
+	b[PersistedEntrySize-1] = uint8(entry.Type)
 	return b, nil
 }
 
@@ -252,7 +289,7 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 		return errTooMuchData
 	}
 	copy(entry.Data[:], b[142:PersistedEntrySize-1])
-	entry.Type = b[PersistedEntrySize-1]
+	entry.Type = modules.RegistryEntryType(b[PersistedEntrySize-1])
 	return nil
 }
 

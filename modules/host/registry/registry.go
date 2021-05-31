@@ -28,9 +28,6 @@ var (
 	// errEntryWrongSize is returned when a marshaled entry doesn't have a size
 	// of persistedEntrySize. This should never happen.
 	errEntryWrongSize = errors.New("marshaled entry has wrong size")
-	// errInvalidSignature is returned when the signature doesn't match a
-	// registry value.
-	errInvalidSignature = errors.New("provided signature is invalid")
 	// errTooMuchData is returned when the data to register is larger than
 	// RegistryDataSize.
 	errTooMuchData = errors.New("registered data is too large")
@@ -52,6 +49,7 @@ type (
 	// register data with a given pubkey and secondary key (tweak).
 	Registry struct {
 		entries    map[modules.RegistryEntryID]*value
+		staticHPK  types.SiaPublicKey
 		staticPath string
 		staticFile *os.File
 		usage      bitfield
@@ -72,6 +70,8 @@ type (
 		revision  uint64
 		signature crypto.Signature
 
+		entryType modules.RegistryEntryType
+
 		// utilities
 		mu      sync.Mutex
 		invalid bool
@@ -84,7 +84,7 @@ func (v *value) mapKey() modules.RegistryEntryID {
 }
 
 // update updates a value with a new revision, expiry and data.
-func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool) error {
+func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool, hpk types.SiaPublicKey) error {
 	// Check if the entry has been invalidated. This should only ever be the
 	// case when an entry is updated at the same time as its pruned so its
 	// incredibly unlikely to happen. Usually entries would be updated long
@@ -94,10 +94,10 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	}
 
 	// Check if the new revision number is valid.
-	oldRV := modules.NewRegistryValue(v.tweak, v.data, v.revision)
+	oldRV := modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature, v.entryType)
 	if !init {
 		s := fmt.Sprintf("%v <= %v", oldRV.Revision, rv.Revision)
-		update, err := oldRV.ShouldUpdateWith(&rv.RegistryValue)
+		update, err := oldRV.ShouldUpdateWith(&rv.RegistryValue, hpk)
 		if err != nil {
 			return errors.AddContext(err, s)
 		}
@@ -136,7 +136,7 @@ func (r *Registry) Get(sid modules.RegistryEntryID) (types.SiaPublicKey, modules
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.key, modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
+	return v.key, modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature, v.entryType), true
 }
 
 // Len returns the length of the registry.
@@ -226,7 +226,7 @@ func (r *Registry) Truncate(newMaxEntries uint64, force bool) error {
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, maxEntries uint64) (_ *Registry, err error) {
+func New(path string, maxEntries uint64, hpk types.SiaPublicKey) (_ *Registry, err error) {
 	// The path should be an absolute path.
 	if !filepath.IsAbs(path) {
 		return nil, errPathNotAbsolute
@@ -264,20 +264,45 @@ func New(path string, maxEntries uint64) (_ *Registry, err error) {
 		return nil, errors.AddContext(err, "failed to create bitfield")
 	}
 	// Load and verify the metadata.
+	compatV100 := false
 	err = loadRegistryMetadata(r, b)
-	if err != nil {
+	compatV100 = errors.Contains(err, errCompat100)
+	if err != nil && !compatV100 {
 		return nil, errors.AddContext(err, "failed to load and verify metadata")
 	}
 	// Create the registry.
 	reg := &Registry{
 		staticFile: f,
+		staticHPK:  hpk,
 		staticPath: path,
 		usage:      b,
 	}
 	// Load the remaining entries.
-	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b)
+	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b, compatV100)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load registry entries")
+	}
+	// If an upgrade happened, sync the body and upgrade the metadata
+	// afterwards. Then sync again.
+	if compatV100 {
+		for _, entry := range reg.entries {
+			err = reg.staticSaveEntry(entry, true)
+			if err != nil {
+				return nil, errors.AddContext(err, "failed to save entry")
+			}
+		}
+		err = reg.staticFile.Sync()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to sync file after upgrade")
+		}
+		err = writeMetadata(reg.staticFile)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to update metadata")
+		}
+		err = reg.staticFile.Sync()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to sync file after writing metadata")
+		}
 	}
 	return reg, nil
 }
@@ -292,10 +317,9 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 		return modules.SignedRegistryValue{}, errTooMuchData
 	}
 
-	// Check the signature against the pubkey.
+	// Verify the registry value.
 	if err := rv.Verify(pubKey.ToPublicKey()); err != nil {
-		err = errors.Compose(err, errInvalidSignature)
-		return modules.SignedRegistryValue{}, errors.AddContext(err, "Update: failed to verify signature")
+		return modules.SignedRegistryValue{}, err
 	}
 
 	// Lock the registry until we have found the existing entry or a new index
@@ -304,8 +328,8 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 
 	// Check if the entry exists already. If it does and the new revision is
 	// larger than the last one, we update it.
-	var err error
 	entry, exists := r.entries[modules.DeriveRegistryEntryID(pubKey, rv.Tweak)]
+	var err error
 	if !exists {
 		// If it doesn't exist we create a new entry.
 		entry, err = r.newValue(rv, pubKey, expiry)
@@ -321,10 +345,10 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 	entry.mu.Lock()
 	// If the entry existed, remember it before updating it.
 	if exists {
-		srv = modules.NewSignedRegistryValue(entry.tweak, entry.data, entry.revision, entry.signature)
+		srv = modules.NewSignedRegistryValue(entry.tweak, entry.data, entry.revision, entry.signature, entry.entryType)
 	}
 	// Update the entry.
-	err = entry.update(rv, expiry, !exists)
+	err = entry.update(rv, expiry, !exists, r.staticHPK)
 	if err != nil {
 		entry.mu.Unlock()
 		return srv, errors.AddContext(err, "failed to update entry")
@@ -368,7 +392,16 @@ func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPubl
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to obtain free slot")
 	}
+	switch rv.Type {
+	case modules.RegistryTypeInvalid:
+		return nil, modules.ErrInvalidRegistryEntryType
+	case modules.RegistryTypeWithPubkey:
+	case modules.RegistryTypeWithoutPubkey:
+	default:
+		return nil, modules.ErrInvalidRegistryEntryType
+	}
 	v := &value{
+		entryType:   rv.Type,
 		key:         pubKey,
 		tweak:       rv.Tweak,
 		expiry:      expiry,

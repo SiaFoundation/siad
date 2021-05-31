@@ -43,7 +43,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -229,7 +229,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -296,7 +296,7 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
