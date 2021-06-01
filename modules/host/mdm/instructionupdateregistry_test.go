@@ -5,14 +5,29 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
-// TestInstructionUpdateRegistry tests the update registry instruction.
+// TestInstructionUpdateRegistry tests the update registry instruction with
+// different types of entries.
 func TestInstructionUpdateRegistry(t *testing.T) {
+	t.Run("NoPubkey", func(t *testing.T) {
+		testInstructionUpdateRegistry(t, modules.RegistryTypeWithoutPubkey)
+	})
+	t.Run("WithPubkey", func(t *testing.T) {
+		testInstructionUpdateRegistry(t, modules.RegistryTypeWithPubkey)
+	})
+	t.Run("Invalid", func(t *testing.T) {
+		testInstructionUpdateRegistry(t, modules.RegistryTypeInvalid)
+	})
+}
+
+// testInstructionUpdateRegistry tests the update registry instruction.
+func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntryType) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -22,7 +37,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	tweak := crypto.Hash{1, 2, 3}
 	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := uint64(0)
-	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, entryType).Sign(sk)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -49,11 +64,18 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	if !ok {
 		t.Fatal("registry doesn't contain entry")
 	}
-	if err := rv2.Verify(pk); err != nil {
+	err = rv2.Verify(pk)
+	if entryType == modules.RegistryTypeInvalid && !errors.Contains(err, modules.ErrInvalidRegistryEntryType) {
+		t.Fatal("wrong error")
+	} else if entryType != modules.RegistryTypeInvalid && err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(rv2, rv) {
 		t.Fatal("registry returned wrong data")
+	}
+
+	if entryType == modules.RegistryTypeInvalid {
+		return // test for invalid entry is over
 	}
 
 	// Execute it again. This should fail with ErrSameRevNum.
@@ -102,6 +124,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	// Update the revision to 0. This should fail again but provide the right
 	// proof.
 	tb = newTestProgramBuilder(pt, 0)
+	oldRevision := rv.Revision
 	rv.Revision = 0
 	rv = rv.Sign(sk)
 	tb.AddUpdateRegistryInstruction(spk, rv)
@@ -118,5 +141,38 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrLowerRevNum)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Update the value again but with an empty registry entry.
+	tb = newTestProgramBuilder(pt, 0)
+	rv.Revision = oldRevision + 1
+	rv.Data = []byte{}
+	rv = rv.Sign(sk)
+	tb.AddUpdateRegistryInstruction(spk, rv)
+
+	// Execute it.
+	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Assert output.
+	output = outputs[0]
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, []byte{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Registry should contain correct value.
+	_, rv2, ok = host.RegistryGet(modules.DeriveRegistryEntryID(spk, rv.Tweak))
+	if !ok {
+		t.Fatal("registry doesn't contain entry")
+	}
+	err = rv2.Verify(pk)
+	if entryType == modules.RegistryTypeWithPubkey && !errors.Contains(err, modules.ErrRegistryEntryDataMalformed) {
+		t.Fatal("wrong error", err)
+	} else if entryType != modules.RegistryTypeWithPubkey && err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rv2, rv) {
+		t.Fatal("registry returned wrong data")
 	}
 }

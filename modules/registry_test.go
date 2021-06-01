@@ -142,6 +142,18 @@ func TestRegistryValueSignature(t *testing.T) {
 		if err := rv.Verify(pk); err == nil {
 			t.Fatal("verification succeeded")
 		}
+		// Verify invalid - wrong type.
+		rv, pk = signedRV(entryType)
+		if rv.Type == RegistryEntryType(RegistryTypeWithPubkey) {
+			rv.Type = RegistryEntryType(RegistryTypeWithoutPubkey)
+		} else if rv.Type == RegistryEntryType(RegistryTypeWithoutPubkey) {
+			rv.Type = RegistryEntryType(RegistryTypeWithPubkey)
+		} else {
+			t.Fatal("unknown type")
+		}
+		if err := rv.Verify(pk); err == nil {
+			t.Fatal("verification succeeded")
+		}
 	}
 	test(RegistryTypeWithPubkey)
 	test(RegistryTypeWithoutPubkey)
