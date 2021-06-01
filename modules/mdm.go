@@ -123,6 +123,13 @@ const (
 	// pubKeyLength + dataOffset + dataLength = 7 * 8 bytes = 56 byte
 	RPCIUpdateRegistryLen = 56
 
+	// RPCIUpdateRegistryWithVersionLen is the expected length of the 'Args' of
+	// an UpdateRegistry instruction with a version byte at the end.
+	// tweakOffset + revisionOffset + signatureOffset + pubKeyOffset +
+	// pubKeyLength + dataOffset + dataLength + version = 7 * 8 + 1 bytes = 57
+	// byte
+	RPCIUpdateRegistryWithVersionLen = 57
+
 	// RPCIReadRegistryLen is the expected length of the 'Args' of an
 	// ReadRegistry instruction.
 	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte

@@ -20,6 +20,7 @@ type instructionUpdateRegistry struct {
 	pubKeyLength    uint64
 	dataOffset      uint64
 	dataLen         uint64
+	staticEntryType modules.RegistryEntryType
 }
 
 // staticDecodeUpdateRegistryInstruction creates a new 'UpdateRegistry' instruction from the
@@ -31,9 +32,10 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 			modules.SpecifierUpdateRegistry, instruction.Specifier)
 	}
 	// Check args.
-	if len(instruction.Args) != modules.RPCIUpdateRegistryLen {
-		return nil, fmt.Errorf("expected instruction to have len %v but was %v",
-			modules.RPCIUpdateRegistryLen, len(instruction.Args))
+	if len(instruction.Args) != modules.RPCIUpdateRegistryLen &&
+		len(instruction.Args) != modules.RPCIUpdateRegistryWithVersionLen {
+		return nil, fmt.Errorf("expected instruction to have len %v or %v but was %v",
+			modules.RPCIUpdateRegistryLen, modules.RPCIUpdateRegistryWithVersionLen, len(instruction.Args))
 	}
 	// Read args.
 	tweakOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
@@ -43,6 +45,10 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 	pubKeyLength := binary.LittleEndian.Uint64(instruction.Args[32:40])
 	dataOffset := binary.LittleEndian.Uint64(instruction.Args[40:48])
 	dataLength := binary.LittleEndian.Uint64(instruction.Args[48:56])
+	entryType := modules.RegistryTypeWithoutPubkey
+	if len(instruction.Args) == modules.RPCIUpdateRegistryWithVersionLen {
+		entryType = modules.RegistryEntryType(instruction.Args[56])
+	}
 	return &instructionUpdateRegistry{
 		commonInstruction: commonInstruction{
 			staticData:  p.staticData,
@@ -55,6 +61,7 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 		pubKeyLength:    pubKeyLength,
 		dataOffset:      dataOffset,
 		dataLen:         dataLength,
+		staticEntryType: entryType,
 	}, nil
 }
 
@@ -92,7 +99,7 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 	newExpiry := i.staticState.host.BlockHeight() + types.BlocksPerYear
 
 	// Try updating the registry.
-	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature, modules.RegistryTypeWithoutPubkey)
+	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature, i.staticEntryType)
 	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
 	if modules.IsRegistryEntryExistErr(err) {
 		// If we weren't able to update the registry because the entry already

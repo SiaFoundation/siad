@@ -203,7 +203,7 @@ func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, r
 		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen)
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, rv.Type)
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
@@ -238,7 +238,9 @@ func (pb *ProgramBuilder) V154AddUpdateRegistryInstruction(spk types.SiaPublicKe
 		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen)
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, RegistryTypeWithoutPubkey)
+	// Trim off the version byte to be compatible with v154.
+	i.Args = i.Args[:RPCIUpdateRegistryLen]
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
@@ -379,10 +381,10 @@ func NewAppendInstruction(dataOffset uint64, merkleProof bool) Instruction {
 }
 
 // NewUpdateRegistryInstruction creates an Instruction from arguments.
-func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen uint64) Instruction {
+func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen uint64, entryType RegistryEntryType) Instruction {
 	i := Instruction{
 		Specifier: SpecifierUpdateRegistry,
-		Args:      make([]byte, RPCIUpdateRegistryLen),
+		Args:      make([]byte, RPCIUpdateRegistryWithVersionLen),
 	}
 	binary.LittleEndian.PutUint64(i.Args[:8], tweakOff)
 	binary.LittleEndian.PutUint64(i.Args[8:16], revisionOff)
@@ -391,6 +393,7 @@ func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff
 	binary.LittleEndian.PutUint64(i.Args[32:40], pubKeyLen)
 	binary.LittleEndian.PutUint64(i.Args[40:48], dataOff)
 	binary.LittleEndian.PutUint64(i.Args[48:56], dataLen)
+	i.Args[56] = byte(entryType)
 	return i
 }
 
