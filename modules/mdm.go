@@ -28,6 +28,22 @@ type (
 	// MDMCancellationToken is a token that can be used to request cancellation
 	// of a program
 	MDMCancellationToken [MDMCancellationTokenLen]byte
+
+	// ReadRegistryVersion specifies the version of a read registry instruction.
+	ReadRegistryVersion uint8
+)
+
+const (
+	// ReadRegistryVersionInvalid is an uninitialized read registry version.
+	ReadRegistryVersionInvalid ReadRegistryVersion = iota
+
+	// ReadRegistryVersionNoType specifies a read registry instruction that
+	// doesn't return the type of the fetched entry at the end of the output.
+	ReadRegistryVersionNoType
+
+	// ReadRegistryVersionWithType specifies a read registry instruction that
+	// returns the type of the fetched entry at the end of the output.
+	ReadRegistryVersionWithType
 )
 
 const (
@@ -135,10 +151,21 @@ const (
 	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
 	RPCIReadRegistryLen = 24
 
+	// RPCIReadRegistryWithVersionLen is the expected length of the 'Args' of an
+	// ReadRegistry instruction.
+	// tweakOffset + pubKeyOffset + pubKeyLength + version = 3 * 8 bytes + 1 =
+	// 25 byte
+	RPCIReadRegistryWithVersionLen = 25
+
 	// RPCIReadRegistryEIDLen is the expected length of the 'Args' of an
 	// ReadRegistryEID instruction.
 	// sidOffset = 8 bytes + pubkey bool 1 byte
 	RPCIReadRegistryEIDLen = 9
+
+	// RPCIReadRegistryEIDWithVersionLen is the expected length of the 'Args' of
+	// an ReadRegistryEID instruction.
+	// sidOffset = 8 bytes + pubkey bool 1 byte + 1 version byte
+	RPCIReadRegistryEIDWithVersionLen = 10
 )
 
 var (

@@ -75,8 +75,10 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	var err error
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		refund, err = pb.V154AddReadRegistryInstruction(spk, tweak)
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.6") < 0 {
+		refund, err = pb.V156AddReadRegistryInstruction(spk, tweak)
 	} else {
-		refund, err = pb.AddReadRegistryInstruction(spk, tweak)
+		refund, err = pb.AddReadRegistryInstruction(spk, tweak, modules.ReadRegistryVersionNoType)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")

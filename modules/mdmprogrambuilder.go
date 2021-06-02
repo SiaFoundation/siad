@@ -181,7 +181,43 @@ func (pb *ProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx uint64
 	pb.readonly = false
 }
 
-// AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the program.
+// V156AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
+// program.
+func (pb *ProgramBuilder) V156AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv SignedRegistryValue) error {
+	// Marshal pubKey.
+	pk := encoding.Marshal(spk)
+	// Compute the argument offsets.
+	tweakOff := uint64(pb.programData.Len())
+	revisionOff := tweakOff + crypto.HashSize
+	signatureOff := revisionOff + 8
+	pubKeyOff := signatureOff + crypto.SignatureSize
+	pubKeyLen := uint64(len(pk))
+	dataOff := pubKeyOff + pubKeyLen
+	dataLen := uint64(len(rv.Data))
+	// Extend the programData.
+	_, err1 := pb.programData.Write(rv.Tweak[:])
+	err2 := binary.Write(pb.programData, binary.LittleEndian, rv.Revision)
+	_, err3 := pb.programData.Write(rv.Signature[:])
+	_, err4 := pb.programData.Write(pk)
+	_, err5 := pb.programData.Write(rv.Data)
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, nil)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMUpdateRegistryCollateral()
+	cost, refund := MDMUpdateRegistryCost(pb.staticPT)
+	memory := MDMUpdateRegistryMemory()
+	time := uint64(MDMTimeUpdateRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return nil
+}
+
+// AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
+// program.
 func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv SignedRegistryValue) error {
 	// Marshal pubKey.
 	pk := encoding.Marshal(spk)
@@ -203,7 +239,7 @@ func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, r
 		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, rv.Type)
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, &rv.Type)
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
@@ -238,7 +274,7 @@ func (pb *ProgramBuilder) V154AddUpdateRegistryInstruction(spk types.SiaPublicKe
 		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, RegistryTypeWithoutPubkey)
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen, nil)
 	// Trim off the version byte to be compatible with v154.
 	i.Args = i.Args[:RPCIUpdateRegistryLen]
 	// Append instruction
@@ -268,7 +304,7 @@ func (pb *ProgramBuilder) V154AddReadRegistryInstruction(spk types.SiaPublicKey,
 		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff)
+	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff, nil)
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Read cost, collateral and memory usage.
@@ -282,7 +318,7 @@ func (pb *ProgramBuilder) V154AddReadRegistryInstruction(spk types.SiaPublicKey,
 }
 
 // AddReadRegistryInstruction adds an ReadRegistry instruction to the program.
-func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) (types.Currency, error) {
+func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash, version ReadRegistryVersion) (types.Currency, error) {
 	// Marshal pubKey.
 	pk := encoding.Marshal(spk)
 	// Compute the argument offsets.
@@ -296,7 +332,34 @@ func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, twe
 		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff)
+	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff, &version)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Read cost, collateral and memory usage.
+	collateral := MDMReadRegistryCollateral()
+	cost, refund := MDMReadRegistryCost(pb.staticPT)
+	memory := MDMReadRegistryMemory()
+	time := uint64(MDMTimeReadRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return refund, nil
+}
+
+// V156AddReadRegistryInstruction adds an ReadRegistry instruction to the program.
+func (pb *ProgramBuilder) V156AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) (types.Currency, error) {
+	// Marshal pubKey.
+	pk := encoding.Marshal(spk)
+	// Compute the argument offsets.
+	pubKeyOff := uint64(pb.programData.Len())
+	pubKeyLen := uint64(len(pk))
+	tweakOff := pubKeyOff + pubKeyLen
+	// Extend the programData.
+	_, err1 := pb.programData.Write(pk)
+	_, err2 := pb.programData.Write(tweak[:])
+	if err := errors.Compose(err1, err2); err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff, nil)
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Read cost, collateral and memory usage.
@@ -309,7 +372,7 @@ func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, twe
 }
 
 // AddReadRegistryEIDInstruction adds an ReadRegistry instruction to the program.
-func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid RegistryEntryID, needPKAndTweak bool) (types.Currency, error) {
+func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid RegistryEntryID, needPKAndTweak bool, version ReadRegistryVersion) (types.Currency, error) {
 	// Marshal sid.
 	subID := encoding.Marshal(sid)
 	// Compute the argument offsets.
@@ -320,7 +383,31 @@ func (pb *ProgramBuilder) AddReadRegistryEIDInstruction(sid RegistryEntryID, nee
 		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryEIDInstruction: failed to extend programData")
 	}
 	// Create the instruction.
-	i := NewReadRegistryEIDInstruction(subIDOff, needPKAndTweak)
+	i := NewReadRegistryEIDInstruction(subIDOff, needPKAndTweak, &version)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Read cost, collateral and memory usage.
+	collateral := MDMReadRegistryCollateral()
+	cost, refund := MDMReadRegistryCost(pb.staticPT)
+	memory := MDMReadRegistryMemory()
+	time := uint64(MDMTimeReadRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return refund, nil
+}
+
+// V156AddReadRegistryEIDInstruction adds an ReadRegistry instruction to the program.
+func (pb *ProgramBuilder) V156AddReadRegistryEIDInstruction(sid RegistryEntryID, needPKAndTweak bool) (types.Currency, error) {
+	// Marshal sid.
+	subID := encoding.Marshal(sid)
+	// Compute the argument offsets.
+	subIDOff := uint64(pb.programData.Len())
+	// Extend the programData.
+	_, err := pb.programData.Write(subID)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryEIDInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewReadRegistryEIDInstruction(subIDOff, needPKAndTweak, nil)
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Read cost, collateral and memory usage.
@@ -381,10 +468,15 @@ func NewAppendInstruction(dataOffset uint64, merkleProof bool) Instruction {
 }
 
 // NewUpdateRegistryInstruction creates an Instruction from arguments.
-func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen uint64, entryType RegistryEntryType) Instruction {
+func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen uint64, entryType *RegistryEntryType) Instruction {
 	i := Instruction{
 		Specifier: SpecifierUpdateRegistry,
-		Args:      make([]byte, RPCIUpdateRegistryWithVersionLen),
+	}
+	if entryType == nil {
+		i.Args = make([]byte, RPCIUpdateRegistryLen)
+	} else {
+		i.Args = make([]byte, RPCIUpdateRegistryWithVersionLen)
+		i.Args[56] = byte(*entryType)
 	}
 	binary.LittleEndian.PutUint64(i.Args[:8], tweakOff)
 	binary.LittleEndian.PutUint64(i.Args[8:16], revisionOff)
@@ -393,15 +485,19 @@ func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff
 	binary.LittleEndian.PutUint64(i.Args[32:40], pubKeyLen)
 	binary.LittleEndian.PutUint64(i.Args[40:48], dataOff)
 	binary.LittleEndian.PutUint64(i.Args[48:56], dataLen)
-	i.Args[56] = byte(entryType)
 	return i
 }
 
 // NewReadRegistryInstruction creates an Instruction from arguments.
-func NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff uint64) Instruction {
+func NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff uint64, version *ReadRegistryVersion) Instruction {
 	i := Instruction{
 		Specifier: SpecifierReadRegistry,
-		Args:      make([]byte, RPCIReadRegistryLen),
+	}
+	if version == nil {
+		i.Args = make([]byte, RPCIReadRegistryLen)
+	} else {
+		i.Args = make([]byte, RPCIReadRegistryWithVersionLen)
+		i.Args[24] = uint8(*version)
 	}
 	binary.LittleEndian.PutUint64(i.Args[:8], pubKeyOff)
 	binary.LittleEndian.PutUint64(i.Args[8:16], pubKeyLen)
@@ -410,10 +506,15 @@ func NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff uint64) Instructi
 }
 
 // NewReadRegistryEIDInstruction creates an Instruction from arguments.
-func NewReadRegistryEIDInstruction(sidOffset uint64, needPKAndTweakOffset bool) Instruction {
+func NewReadRegistryEIDInstruction(sidOffset uint64, needPKAndTweakOffset bool, version *ReadRegistryVersion) Instruction {
 	i := Instruction{
 		Specifier: SpecifierReadRegistryEID,
-		Args:      make([]byte, RPCIReadRegistryEIDLen),
+	}
+	if version == nil {
+		i.Args = make([]byte, RPCIReadRegistryEIDLen)
+	} else {
+		i.Args = make([]byte, RPCIReadRegistryEIDWithVersionLen)
+		i.Args[9] = uint8(*version)
 	}
 	binary.LittleEndian.PutUint64(i.Args[:8], sidOffset)
 	if needPKAndTweakOffset {
