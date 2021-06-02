@@ -49,6 +49,12 @@ func testInstructionReadRegistry(t *testing.T, addReadRegistryInstruction func(t
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	if fastrand.Intn(2) == 0 {
+		rv.Type = modules.RegistryTypeWithPubkey
+		spkh := crypto.HashObject(spk)
+		rv.Data = append(spkh[:modules.RegistryPubKeyHashSize], rv.Data...)
+		rv = rv.Sign(sk)
+	}
 	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
 	if err != nil {
 		t.Fatal(err)

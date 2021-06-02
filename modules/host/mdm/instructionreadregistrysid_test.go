@@ -51,6 +51,12 @@ func testInstructionReadRegistryEID(t *testing.T, addReadRegistryEIDInstruction 
 		Key:       pk[:],
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	if fastrand.Intn(2) == 0 {
+		rv.Type = modules.RegistryTypeWithPubkey
+		spkh := crypto.HashObject(spk)
+		rv.Data = append(spkh[:modules.RegistryPubKeyHashSize], rv.Data...)
+		rv = rv.Sign(sk)
+	}
 	_, err := host.RegistryUpdate(rv, spk, types.BlockHeight(fastrand.Uint64n(1000)))
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +112,7 @@ func testInstructionReadRegistryEID(t *testing.T, addReadRegistryEIDInstruction 
 		}
 		data2 = data2[:len(data2)-1]
 	}
-	rv2 := modules.NewSignedRegistryValue(tweak2, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
+	rv2 := modules.NewSignedRegistryValue(tweak2, data2, rev2, sig2, rv.Type)
 	if err := rv2.Verify(spk2.ToPublicKey()); err != nil {
 		t.Fatal("verification failed", err)
 	}
@@ -204,7 +210,7 @@ func TestInstructionReadRegistryEIDNoPubkeyAndTweak(t *testing.T) {
 		t.Fatal(err)
 	}
 	data2 = data2[:n]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, rv.Type)
 	if err := rv2.Verify(pk); err != nil {
 		t.Fatal("verification failed", err)
 	}
