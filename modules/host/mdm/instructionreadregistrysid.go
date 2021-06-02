@@ -38,7 +38,7 @@ func (p *program) staticDecodeReadRegistryEIDInstruction(instruction modules.Ins
 	needPubKeyAndTweak := instruction.Args[8] == 1
 	iType := modules.ReadRegistryVersionNoType
 	if len(instruction.Args) == modules.RPCIReadRegistryEIDWithVersionLen {
-		iType = modules.ReadRegistryVersion(instruction.Args[8])
+		iType = modules.ReadRegistryVersion(instruction.Args[9])
 	}
 	return &instructionReadRegistryEID{
 		commonInstruction: commonInstruction{
