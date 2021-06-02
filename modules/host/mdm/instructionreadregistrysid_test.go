@@ -14,6 +14,25 @@ import (
 
 // TestInstructionReadRegistryEID tests the ReadRegistryEID instruction.
 func TestInstructionReadRegistryEID(t *testing.T) {
+	t.Run("NoTypeV156", func(t *testing.T) {
+		testInstructionReadRegistryEID(t, func(tb *testProgramBuilder, rid modules.RegistryEntryID) {
+			tb.AddReadRegistryEIDInstructionV156(rid, false, true)
+		})
+	})
+	t.Run("NoType", func(t *testing.T) {
+		testInstructionReadRegistryEID(t, func(tb *testProgramBuilder, rid modules.RegistryEntryID) {
+			tb.AddReadRegistryEIDInstruction(rid, false, true, modules.ReadRegistryVersionNoType)
+		})
+	})
+	t.Run("WithType", func(t *testing.T) {
+		testInstructionReadRegistryEID(t, func(tb *testProgramBuilder, rid modules.RegistryEntryID) {
+			tb.AddReadRegistryEIDInstruction(rid, false, true, modules.ReadRegistryVersionWithType)
+		})
+	})
+}
+
+// TestInstructionReadRegistryEID tests the ReadRegistryEID instruction.
+func testInstructionReadRegistryEID(t *testing.T, addReadRegistryEIDInstruction func(tb *testProgramBuilder, rid modules.RegistryEntryID)) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -37,7 +56,7 @@ func TestInstructionReadRegistryEID(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistryEIDInstruction(modules.DeriveRegistryEntryID(spk, tweak), false, true)
+	addReadRegistryEIDInstruction(tb, modules.DeriveRegistryEntryID(spk, tweak))
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -97,7 +116,7 @@ func TestInstructionReadRegistryEIDNotFound(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	refund := tb.AddReadRegistryEIDInstruction(modules.DeriveRegistryEntryID(spk, crypto.Hash{}), true, true)
+	refund := tb.AddReadRegistryEIDInstruction(modules.DeriveRegistryEntryID(spk, crypto.Hash{}), true, true, modules.ReadRegistryVersionWithType)
 
 	// Execute it.
 	outputs, remainingBudget, err := mdm.ExecuteProgramWithBuilderCustomBudget(tb, so, 0, false)
@@ -141,7 +160,7 @@ func TestInstructionReadRegistryEIDNoPubkeyAndTweak(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistryEIDInstruction(modules.DeriveRegistryEntryID(spk, tweak), false, false)
+	tb.AddReadRegistryEIDInstruction(modules.DeriveRegistryEntryID(spk, tweak), false, false, modules.ReadRegistryVersionWithType)
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)

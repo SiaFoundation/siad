@@ -15,19 +15,34 @@ import (
 // TestInstructionUpdateRegistry tests the update registry instruction with
 // different types of entries.
 func TestInstructionUpdateRegistry(t *testing.T) {
+	t.Run("NoPubkeyV156", func(t *testing.T) {
+		entryType := modules.RegistryTypeWithoutPubkey
+		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+			tb.AddUpdateRegistryInstructionV156(spk, rv)
+		})
+	})
 	t.Run("NoPubkey", func(t *testing.T) {
-		testInstructionUpdateRegistry(t, modules.RegistryTypeWithoutPubkey)
+		entryType := modules.RegistryTypeWithoutPubkey
+		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+			tb.AddUpdateRegistryInstruction(spk, rv)
+		})
 	})
 	t.Run("WithPubkey", func(t *testing.T) {
-		testInstructionUpdateRegistry(t, modules.RegistryTypeWithPubkey)
+		entryType := modules.RegistryTypeWithPubkey
+		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+			tb.AddUpdateRegistryInstruction(spk, rv)
+		})
 	})
 	t.Run("Invalid", func(t *testing.T) {
-		testInstructionUpdateRegistry(t, modules.RegistryTypeInvalid)
+		entryType := modules.RegistryTypeInvalid
+		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+			tb.AddUpdateRegistryInstruction(spk, rv)
+		})
 	})
 }
 
 // testInstructionUpdateRegistry tests the update registry instruction.
-func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntryType) {
+func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntryType, addUpdateRegistryInstruction func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue)) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -45,7 +60,7 @@ func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntry
 
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddUpdateRegistryInstruction(spk, rv)
+	addUpdateRegistryInstruction(tb, spk, rv)
 
 	// Execute it.
 	so := host.newTestStorageObligation(true)
@@ -98,7 +113,7 @@ func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntry
 	tb = newTestProgramBuilder(pt, 0)
 	rv.Revision++
 	rv = rv.Sign(sk)
-	tb.AddUpdateRegistryInstruction(spk, rv)
+	addUpdateRegistryInstruction(tb, spk, rv)
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +142,7 @@ func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntry
 	oldRevision := rv.Revision
 	rv.Revision = 0
 	rv = rv.Sign(sk)
-	tb.AddUpdateRegistryInstruction(spk, rv)
+	addUpdateRegistryInstruction(tb, spk, rv)
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +163,7 @@ func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntry
 	rv.Revision = oldRevision + 1
 	rv.Data = []byte{}
 	rv = rv.Sign(sk)
-	tb.AddUpdateRegistryInstruction(spk, rv)
+	addUpdateRegistryInstruction(tb, spk, rv)
 
 	// Execute it.
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)

@@ -15,6 +15,8 @@ type instructionReadRegistryEID struct {
 
 	subscriptionIDOffset uint64
 	needPubKeyAndTweak   bool
+
+	staticType modules.ReadRegistryVersion
 }
 
 // staticDecodeReadRegistryEIDInstruction creates a new 'ReadRegistryEID'
@@ -26,13 +28,18 @@ func (p *program) staticDecodeReadRegistryEIDInstruction(instruction modules.Ins
 			modules.SpecifierReadRegistryEID, instruction.Specifier)
 	}
 	// Check args.
-	if len(instruction.Args) != modules.RPCIReadRegistryEIDLen {
-		return nil, fmt.Errorf("expected instruction to have len %v but was %v",
-			modules.RPCIReadRegistryEIDLen, len(instruction.Args))
+	if len(instruction.Args) != modules.RPCIReadRegistryEIDLen &&
+		len(instruction.Args) != modules.RPCIReadRegistryEIDWithVersionLen {
+		return nil, fmt.Errorf("expected instruction to have len %v or %v but was %v",
+			modules.RPCIReadRegistryEIDLen, modules.RPCIReadRegistryEIDWithVersionLen, len(instruction.Args))
 	}
 	// Read args.
 	eidOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
 	needPubKeyAndTweak := instruction.Args[8] == 1
+	iType := modules.ReadRegistryVersionNoType
+	if len(instruction.Args) == modules.RPCIReadRegistryEIDWithVersionLen {
+		iType = modules.ReadRegistryVersion(instruction.Args[8])
+	}
 	return &instructionReadRegistryEID{
 		commonInstruction: commonInstruction{
 			staticData:  p.staticData,
@@ -40,6 +47,7 @@ func (p *program) staticDecodeReadRegistryEIDInstruction(instruction modules.Ins
 		},
 		needPubKeyAndTweak:   needPubKeyAndTweak,
 		subscriptionIDOffset: eidOffset,
+		staticType:           iType,
 	}, nil
 }
 
@@ -50,7 +58,7 @@ func (i *instructionReadRegistryEID) Execute(prevOutput output) (output, types.C
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
-	return executeReadRegistry(prevOutput, i.staticState, modules.RegistryEntryID(sid), i.needPubKeyAndTweak)
+	return executeReadRegistry(prevOutput, i.staticState, modules.RegistryEntryID(sid), i.needPubKeyAndTweak, i.staticType)
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.

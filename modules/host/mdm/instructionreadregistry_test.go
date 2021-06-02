@@ -12,6 +12,25 @@ import (
 
 // TestInstructionReadRegistry tests the ReadRegistry instruction.
 func TestInstructionReadRegistry(t *testing.T) {
+	t.Run("NoTypeV156", func(t *testing.T) {
+		testInstructionReadRegistry(t, func(tb *testProgramBuilder, spk types.SiaPublicKey, tweak crypto.Hash) {
+			tb.AddReadRegistryInstructionV156(spk, tweak, false)
+		})
+	})
+	t.Run("NoType", func(t *testing.T) {
+		testInstructionReadRegistry(t, func(tb *testProgramBuilder, spk types.SiaPublicKey, tweak crypto.Hash) {
+			tb.AddReadRegistryInstruction(spk, tweak, false, modules.ReadRegistryVersionNoType)
+		})
+	})
+	t.Run("WithType", func(t *testing.T) {
+		testInstructionReadRegistry(t, func(tb *testProgramBuilder, spk types.SiaPublicKey, tweak crypto.Hash) {
+			tb.AddReadRegistryInstruction(spk, tweak, false, modules.ReadRegistryVersionWithType)
+		})
+	})
+}
+
+// testInstructionReadRegistry tests the ReadRegistry instruction.
+func testInstructionReadRegistry(t *testing.T, addReadRegistryInstruction func(tb *testProgramBuilder, spk types.SiaPublicKey, tweak crypto.Hash)) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -35,7 +54,7 @@ func TestInstructionReadRegistry(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistryInstruction(spk, tweak, false)
+	addReadRegistryInstruction(tb, spk, tweak)
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -81,7 +100,7 @@ func TestInstructionReadRegistryNotFound(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	refund := tb.AddReadRegistryInstruction(spk, crypto.Hash{}, true)
+	refund := tb.AddReadRegistryInstruction(spk, crypto.Hash{}, true, modules.ReadRegistryVersionWithType)
 
 	// Execute it.
 	outputs, remainingBudget, err := mdm.ExecuteProgramWithBuilderCustomBudget(tb, so, 0, false)

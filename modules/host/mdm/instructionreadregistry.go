@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -17,6 +18,8 @@ type instructionReadRegistry struct {
 	pubKeyOffset uint64
 	pubKeyLength uint64
 	tweakOffset  uint64
+
+	staticType modules.ReadRegistryVersion
 }
 
 // staticDecodeReadRegistryInstruction creates a new 'ReadRegistry' instruction
@@ -28,14 +31,19 @@ func (p *program) staticDecodeReadRegistryInstruction(instruction modules.Instru
 			modules.SpecifierReadRegistry, instruction.Specifier)
 	}
 	// Check args.
-	if len(instruction.Args) != modules.RPCIReadRegistryLen {
-		return nil, fmt.Errorf("expected instruction to have len %v but was %v",
-			modules.RPCIReadRegistryLen, len(instruction.Args))
+	if len(instruction.Args) != modules.RPCIReadRegistryLen &&
+		len(instruction.Args) != modules.RPCIReadRegistryWithVersionLen {
+		return nil, fmt.Errorf("expected instruction to have len %v or %v but was %v",
+			modules.RPCIReadRegistryLen, modules.RPCIReadRegistryWithVersionLen, len(instruction.Args))
 	}
 	// Read args.
 	pubKeyOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
 	pubKeyLength := binary.LittleEndian.Uint64(instruction.Args[8:16])
 	tweakOffset := binary.LittleEndian.Uint64(instruction.Args[16:24])
+	iType := modules.ReadRegistryVersionNoType
+	if len(instruction.Args) == modules.RPCIReadRegistryWithVersionLen {
+		iType = modules.ReadRegistryVersion(instruction.Args[24])
+	}
 	return &instructionReadRegistry{
 		commonInstruction: commonInstruction{
 			staticData:  p.staticData,
@@ -44,11 +52,20 @@ func (p *program) staticDecodeReadRegistryInstruction(instruction modules.Instru
 		pubKeyOffset: pubKeyOffset,
 		pubKeyLength: pubKeyLength,
 		tweakOffset:  tweakOffset,
+		staticType:   iType,
 	}, nil
 }
 
 // executeReadRegistry executes a registry lookup.
-func executeReadRegistry(prevOutput output, ps *programState, sid modules.RegistryEntryID, needPubKeyAndTweak bool) (output, types.Currency) {
+func executeReadRegistry(prevOutput output, ps *programState, sid modules.RegistryEntryID, needPubKeyAndTweak bool, version modules.ReadRegistryVersion) (output, types.Currency) {
+	// Check version.
+	switch version {
+	case modules.ReadRegistryVersionNoType:
+	case modules.ReadRegistryVersionWithType:
+	default:
+		return errOutput(errors.New("invalid read registry type")), types.ZeroCurrency
+	}
+
 	// Prepare the output. An empty output.Output means the data wasn't found.
 	out := output{
 		NewSize:       prevOutput.NewSize,
@@ -75,6 +92,9 @@ func executeReadRegistry(prevOutput output, ps *programState, sid modules.Regist
 	out.Output = append(out.Output, rv.Signature[:]...)
 	out.Output = append(out.Output, rev...)
 	out.Output = append(out.Output, rv.Data...)
+	if version == modules.ReadRegistryVersionWithType {
+		out.Output = append(out.Output, byte(rv.Type))
+	}
 	return out, types.ZeroCurrency
 }
 
@@ -89,7 +109,7 @@ func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Curr
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
 	}
-	return executeReadRegistry(prevOutput, i.staticState, modules.DeriveRegistryEntryID(pubKey, tweak), false)
+	return executeReadRegistry(prevOutput, i.staticState, modules.DeriveRegistryEntryID(pubKey, tweak), false, i.staticType)
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.
