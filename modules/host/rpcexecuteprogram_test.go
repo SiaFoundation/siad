@@ -1469,6 +1469,37 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+
+	// Regular cases.
+	t.Run("NoPubkeyNoType", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithoutPubkey, modules.ReadRegistryVersionNoType, false)
+	})
+	t.Run("NoPubkeyWithType", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithoutPubkey, modules.ReadRegistryVersionWithType, false)
+	})
+	t.Run("WithPubkeyNoType", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithPubkey, modules.ReadRegistryVersionNoType, false)
+	})
+	t.Run("WithPubkeyWithType", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithPubkey, modules.ReadRegistryVersionWithType, false)
+	})
+	t.Run("NoPubkeyV156Update", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithoutPubkey, modules.ReadRegistryVersionWithType, false)
+	})
+
+	// Special v156 cases.
+	//
+	t.Run("WithPubkeyV156", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithPubkey, modules.ReadRegistryVersionNoType, true)
+	})
+	t.Run("WithoutPubkeyV156", func(t *testing.T) {
+		testExecuteReadRegistryProgram(t, modules.RegistryTypeWithoutPubkey, modules.ReadRegistryVersionNoType, true)
+	})
+}
+
+// testExecuteReadRegistryProgram tests the managedRPCExecuteProgram with a
+// valid 'ReadRegistry' program.
+func testExecuteReadRegistryProgram(t *testing.T, regEntryType modules.RegistryEntryType, regReadVersion modules.ReadRegistryVersion, v156Read bool) {
 	t.Parallel()
 
 	// create a blank host tester
@@ -1503,7 +1534,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	tweak := crypto.Hash{1, 2, 3}
 	data := fastrand.Bytes(modules.RegistryDataSize)
 	rev := uint64(0)
-	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, regEntryType).Sign(sk)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -1518,7 +1549,11 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	// Create the 'UpdateRegistry' program.
 	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadRegistry doesn't depend on duration.
-	_, err = pb.AddReadRegistryInstruction(spk, rv.Tweak, modules.ReadRegistryVersionWithType)
+	if v156Read {
+		_, err = pb.V156AddReadRegistryInstruction(spk, rv.Tweak)
+	} else {
+		_, err = pb.AddReadRegistryInstruction(spk, rv.Tweak, regReadVersion)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1582,9 +1617,12 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if len(resp.Output) != 185 {
-		// 185 = 64 (sig) + 8 (revision) + 113 (data)
-		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
+	expectedOutputLength := 185 // 185 = 64 (sig) + 8 (revision) + 113 (data)
+	if regReadVersion == modules.ReadRegistryVersionWithType {
+		expectedOutputLength++
+	}
+	if len(resp.Output) != expectedOutputLength {
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), expectedOutputLength)
 	}
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
@@ -1598,8 +1636,15 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
 	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
 	data2 := resp.Output[crypto.SignatureSize+8:]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
-	if rv2.Verify(pk) != nil {
+	if regReadVersion == modules.ReadRegistryVersionWithType {
+		// The last byte might be the entry type.
+		if data2[len(data2)-1] != byte(rv.Type) {
+			t.Fatal("wrong type")
+		}
+		data2 = data2[:len(data2)-1]
+	}
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, rv.Type)
+	if err := rv2.Verify(pk); err != nil {
 		t.Fatal("verification failed", err)
 	}
 
