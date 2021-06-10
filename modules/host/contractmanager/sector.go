@@ -169,6 +169,9 @@ func (cm *ContractManager) deleteSector(id sectorID) {
 	delete(cm.sectorLocations, id)
 }
 
+// SetSubSector tells the host to track the data within the sector given by the
+// root in an in-memory map, allowing for downloading from that sub sector by
+// its root. The sub sector will be deleted once the parent sector is deleted.
 func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32) error {
 	id := cm.managedSectorID(root)
 	cm.wal.managedLockSector(id)
@@ -227,8 +230,8 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	return cm.managedReadPartialSector(root, sl, offset, length)
 }
 
-// ReadSector will read a sector from the storage manager, returning the bytes
-// that match the input sector root.
+// ReadPartialSector will read a sector from the storage manager, returning the
+// 'length' bytes at offset 'offset' that match the input sector root.
 func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	id := cm.managedSectorID(root)
 	cm.wal.managedLockSector(id)
