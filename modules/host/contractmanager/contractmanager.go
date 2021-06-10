@@ -86,6 +86,7 @@ type ContractManager struct {
 	// BenchmarkStorageFolders.
 	sectorSalt                   crypto.Hash
 	sectorLocations              map[sectorID]sectorLocation
+	subSectorLocations           map[sectorID]subSectorLocation
 	sectorLocationsCountOverflow *overflowMap
 	storageFolders               map[uint16]*storageFolder
 

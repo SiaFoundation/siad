@@ -249,7 +249,7 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 		})
 
 		// Delete the sector and mark the usage as available.
-		delete(wal.cm.sectorLocations, id)
+		wal.cm.deleteSector(id)
 		sf.availableSectors[id] = location.index
 
 		// Block until the change has been committed.
@@ -310,7 +310,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		// Update the in-memeory representation of the sector.
 		if location.count == 0 {
 			// Delete the sector and mark it as available.
-			delete(wal.cm.sectorLocations, id)
+			wal.cm.deleteSector(id)
 			sf.availableSectors[id] = location.index
 		} else {
 			// Reduce the sector usage.

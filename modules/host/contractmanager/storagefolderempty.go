@@ -131,7 +131,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				SectorUpdates: []sectorUpdate{oldSU, su},
 			})
 			oldFolder.clearUsage(oldLocation.index)
-			delete(wal.cm.sectorLocations, oldSU.ID)
+			wal.cm.deleteSector(oldSU.ID)
 			delete(sf.availableSectors, id)
 			wal.cm.sectorLocations[id] = sl
 			wal.mu.Unlock()

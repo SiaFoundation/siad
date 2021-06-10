@@ -39,6 +39,14 @@ type (
 		// sectors are allowed for each sector. Proper use by the renter should
 		// mean that the host never has more than 3 virtual sectors for any sector.
 		count uint64
+
+		children map[sectorID]struct{}
+	}
+
+	subSectorLocation struct {
+		offset uint32
+		length uint32
+		parent sectorID
 	}
 
 	// sectorLock contains a lock plus a count of the number of threads
@@ -118,27 +126,20 @@ func (cm *ContractManager) managedSectorID(sectorRoot crypto.Hash) (id sectorID)
 	return id
 }
 
-// ReadPartialSector will read a sector from the storage manager, returning the
+// managedReadPartialSector will read a sector from the storage manager, returning the
 // 'length' bytes at offset 'offset' that match the input sector root.
-func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length uint64) ([]byte, error) {
+func (cm *ContractManager) managedReadPartialSector(root crypto.Hash, sl sectorLocation, offset, length uint64) ([]byte, error) {
 	err := cm.tg.Add()
 	if err != nil {
 		return nil, err
 	}
 	defer cm.tg.Done()
-	id := cm.managedSectorID(root)
-	cm.wal.managedLockSector(id)
-	defer cm.wal.managedUnlockSector(id)
 
 	// Fetch the sector metadata.
 	cm.wal.mu.Lock()
-	sl, exists1 := cm.sectorLocations[id]
-	sf, exists2 := cm.storageFolders[sl.storageFolder]
+	sf, exists := cm.storageFolders[sl.storageFolder]
 	cm.wal.mu.Unlock()
-	if !exists1 {
-		return nil, ErrSectorNotFound
-	}
-	if !exists2 {
+	if !exists {
 		cm.log.Critical("Unable to load storage folder despite having sector metadata")
 		return nil, ErrSectorNotFound
 	}
@@ -157,10 +158,95 @@ func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length ui
 	return sectorData, nil
 }
 
+func (cm *ContractManager) deleteSector(id sectorID) {
+	sl, exists := cm.sectorLocations[id]
+	if !exists {
+		return // done
+	}
+	for childID := range sl.children {
+		delete(cm.subSectorLocations, childID)
+	}
+	delete(cm.sectorLocations, id)
+}
+
+func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32) error {
+	id := cm.managedSectorID(root)
+	cm.wal.managedLockSector(id)
+	defer cm.wal.managedUnlockSector(id)
+
+	// Get the sector location.
+	cm.wal.mu.Lock()
+	sl, exists := cm.sectorLocations[id]
+	cm.wal.mu.Unlock()
+	if !exists {
+		return ErrSectorNotFound
+	}
+
+	// Read the sub sector and compute its id.
+	data, err := cm.managedReadPartialSector(root, sl, uint64(offset), uint64(length))
+	if err != nil {
+		return err
+	}
+	subID := cm.managedSectorID(crypto.MerkleRoot(data))
+
+	// Set the sub sector.
+	cm.wal.mu.Lock()
+	defer cm.wal.mu.Unlock()
+	cm.subSectorLocations[subID] = subSectorLocation{
+		offset: offset,
+		length: length,
+		parent: id,
+	}
+	// Set the sub sector's id on the parent.
+	sl.children[subID] = struct{}{}
+	return nil
+}
+
 // ReadSector will read a sector from the storage manager, returning the bytes
 // that match the input sector root.
 func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
-	return cm.ReadPartialSector(root, 0, modules.SectorSize)
+	id := cm.managedSectorID(root)
+	cm.wal.managedLockSector(id)
+	defer cm.wal.managedUnlockSector(id)
+	cm.wal.mu.Lock()
+	sl, exists1 := cm.sectorLocations[id]
+	ssl, exists2 := cm.subSectorLocations[id]
+	cm.wal.mu.Unlock()
+	if !exists1 && !exists2 {
+		return nil, ErrSectorNotFound
+	}
+	if exists1 && exists2 {
+		cm.log.Critical("found sector id in sectorLocations and smallSectorLocations")
+	}
+	var offset uint64
+	length := uint64(modules.SectorSize)
+	if exists2 {
+		offset += uint64(ssl.offset)
+		length = uint64(ssl.length)
+	}
+	return cm.managedReadPartialSector(root, sl, offset, length)
+}
+
+// ReadSector will read a sector from the storage manager, returning the bytes
+// that match the input sector root.
+func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length uint64) ([]byte, error) {
+	id := cm.managedSectorID(root)
+	cm.wal.managedLockSector(id)
+	defer cm.wal.managedUnlockSector(id)
+	cm.wal.mu.Lock()
+	sl, exists1 := cm.sectorLocations[id]
+	ssl, exists2 := cm.subSectorLocations[id]
+	cm.wal.mu.Unlock()
+	if !exists1 && !exists2 {
+		return nil, ErrSectorNotFound
+	}
+	if exists1 && exists2 {
+		cm.log.Critical("found sector id in sectorLocations and smallSectorLocations")
+	}
+	if exists2 {
+		offset += uint64(ssl.offset)
+	}
+	return cm.managedReadPartialSector(root, sl, offset, length)
 }
 
 // HasSector indicates whether the contract manager stores a sector with
