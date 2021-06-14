@@ -11,7 +11,6 @@ package contractmanager
 
 import (
 	"bytes"
-	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -19,6 +18,7 @@ import (
 	"sync"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"go.sia.tech/siad/crypto"
@@ -2200,5 +2200,160 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 	}
 	if err := loaded.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSetSubSector is a unit test for setting and reading sub sectors in the
+// host.
+func TestSetSubSector(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cmt, err := newContractManagerTester("TestAddSector")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cmt.panicClose()
+
+	// Add a storage folder to the contract manager tester.
+	storageFolderDir := filepath.Join(cmt.persistDir, "storageFolderOne")
+	// Create the storage folder dir.
+	err = os.MkdirAll(storageFolderDir, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmt.cm.AddStorageFolder(storageFolderDir, modules.SectorSize*64)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fabricate a sector and add it to the contract manager.
+	root, data := randSector()
+	err = cmt.cm.AddSector(root, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add it again.
+	err = cmt.cm.AddSector(root, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sector locations should have 1 entry.
+	if len(cmt.cm.sectorLocations) != 1 {
+		t.Fatal("wrong number of sector locations")
+	}
+	if len(cmt.cm.subSectorLocations) != 0 {
+		t.Fatal("wrong number of sub sector locations")
+	}
+
+	// Try to set a sub sector for a non-existent sector.
+	_, err = cmt.cm.SetSubSector(crypto.Hash{}, 0, 0)
+	if !errors.Contains(err, ErrSectorNotFound) {
+		t.Fatal("wrong error", err)
+	}
+
+	// Set a sub sector for the first half of the data and the second half.
+	data1 := data[:modules.SectorSize/2]
+	root1 := crypto.MerkleRoot(data1)
+	data2 := data[modules.SectorSize/2:]
+	root2 := crypto.MerkleRoot(data2)
+
+	r1, err := cmt.cm.SetSubSector(root, 0, uint32(modules.SectorSize)/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1 != root1 {
+		t.Fatal("wrong root", r1, root1)
+	}
+	r2, err := cmt.cm.SetSubSector(root, uint32(modules.SectorSize)/2, uint32(modules.SectorSize)/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2 != root2 {
+		t.Fatal("wrong root")
+	}
+
+	// Sector locations should have 1 entry and the subSectorLocations 2.
+	if len(cmt.cm.sectorLocations) != 1 {
+		t.Fatal("wrong number of sector locations")
+	}
+	if len(cmt.cm.subSectorLocations) != 2 {
+		t.Fatal("wrong number of sub sector locations")
+	}
+
+	// Get the location.
+	var sl sectorLocation
+	var sid sectorID
+	for sectorID, location := range cmt.cm.sectorLocations {
+		sid = sectorID
+		sl = location
+		break
+	}
+
+	// It should have 2 children.
+	if len(sl.children) != 2 {
+		t.Fatal("wrong number of children", len(sl.children))
+	}
+	for childSectorID := range sl.children {
+		ssl, exists := cmt.cm.subSectorLocations[childSectorID]
+		if !exists {
+			t.Fatal("child doesn't exist")
+		}
+		if ssl.parent != sid {
+			t.Fatal("wrong parent sid")
+		}
+		if childSectorID == cmt.cm.managedSectorID(root1) && ssl.offset != 0 {
+			t.Fatal("ssl has wrong offset", ssl.offset)
+		}
+		if childSectorID == cmt.cm.managedSectorID(root2) && ssl.offset != uint32(modules.SectorSize)/2 {
+			t.Fatal("ssl has wrong offset", ssl.offset)
+		}
+		if ssl.length != uint32(modules.SectorSize)/2 {
+			t.Fatal("ssl has wrong length", ssl.length)
+		}
+	}
+
+	// Read the sectors.
+	childData1, err := cmt.cm.ReadSector(root1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(childData1, data1) {
+		t.Fatal("wrong data")
+	}
+	childData2, err := cmt.cm.ReadPartialSector(root2, 0, modules.SectorSize/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(childData2, data2) {
+		t.Fatal("wrong data")
+	}
+
+	// Remove the sector. Shouldn't change anything since we added it
+	// twice.
+	err = cmt.cm.RemoveSector(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmt.cm.sectorLocations) != 1 {
+		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
+	}
+	if len(cmt.cm.subSectorLocations) != 2 {
+		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
+	}
+
+	// Remove the sector again.
+	err = cmt.cm.RemoveSector(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmt.cm.sectorLocations) != 0 {
+		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
+	}
+	if len(cmt.cm.subSectorLocations) != 0 {
+		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
 	}
 }

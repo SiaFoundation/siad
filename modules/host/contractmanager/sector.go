@@ -172,7 +172,7 @@ func (cm *ContractManager) deleteSector(id sectorID) {
 // SetSubSector tells the host to track the data within the sector given by the
 // root in an in-memory map, allowing for downloading from that sub sector by
 // its root. The sub sector will be deleted once the parent sector is deleted.
-func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32) error {
+func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32) (crypto.Hash, error) {
 	id := cm.managedSectorID(root)
 	cm.wal.managedLockSector(id)
 	defer cm.wal.managedUnlockSector(id)
@@ -182,15 +182,16 @@ func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32)
 	sl, exists := cm.sectorLocations[id]
 	cm.wal.mu.Unlock()
 	if !exists {
-		return ErrSectorNotFound
+		return crypto.Hash{}, ErrSectorNotFound
 	}
 
 	// Read the sub sector and compute its id.
 	data, err := cm.managedReadPartialSector(root, sl, uint64(offset), uint64(length))
 	if err != nil {
-		return err
+		return crypto.Hash{}, err
 	}
-	subID := cm.managedSectorID(crypto.MerkleRoot(data))
+	subRoot := crypto.MerkleRoot(data)
+	subID := cm.managedSectorID(subRoot)
 
 	// Set the sub sector.
 	cm.wal.mu.Lock()
@@ -201,8 +202,12 @@ func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32)
 		parent: id,
 	}
 	// Set the sub sector's id on the parent.
+	if sl.children == nil {
+		sl.children = make(map[sectorID]struct{})
+	}
 	sl.children[subID] = struct{}{}
-	return nil
+	cm.sectorLocations[id] = sl
+	return subRoot, nil
 }
 
 // ReadSector will read a sector from the storage manager, returning the bytes
@@ -214,6 +219,7 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	cm.wal.mu.Lock()
 	sl, exists1 := cm.sectorLocations[id]
 	ssl, exists2 := cm.subSectorLocations[id]
+	sslParent, exists3 := cm.sectorLocations[ssl.parent]
 	cm.wal.mu.Unlock()
 	if !exists1 && !exists2 {
 		return nil, ErrSectorNotFound
@@ -221,11 +227,16 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	if exists1 && exists2 {
 		cm.log.Critical("found sector id in sectorLocations and smallSectorLocations")
 	}
+	if exists2 && !exists3 {
+		cm.log.Critical("found subsector but not parent")
+		return nil, errors.New("found subsector but not parent")
+	}
 	var offset uint64
 	length := uint64(modules.SectorSize)
 	if exists2 {
 		offset += uint64(ssl.offset)
 		length = uint64(ssl.length)
+		sl = sslParent
 	}
 	return cm.managedReadPartialSector(root, sl, offset, length)
 }
@@ -239,6 +250,7 @@ func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length ui
 	cm.wal.mu.Lock()
 	sl, exists1 := cm.sectorLocations[id]
 	ssl, exists2 := cm.subSectorLocations[id]
+	sslParent, exists3 := cm.sectorLocations[ssl.parent]
 	cm.wal.mu.Unlock()
 	if !exists1 && !exists2 {
 		return nil, ErrSectorNotFound
@@ -246,8 +258,13 @@ func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length ui
 	if exists1 && exists2 {
 		cm.log.Critical("found sector id in sectorLocations and smallSectorLocations")
 	}
+	if exists2 && !exists3 {
+		cm.log.Critical("found subsector but not parent")
+		return nil, errors.New("found subsector but not parent")
+	}
 	if exists2 {
 		offset += uint64(ssl.offset)
+		sl = sslParent
 	}
 	return cm.managedReadPartialSector(root, sl, offset, length)
 }
