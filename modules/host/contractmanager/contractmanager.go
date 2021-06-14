@@ -86,7 +86,7 @@ type ContractManager struct {
 	// BenchmarkStorageFolders.
 	sectorSalt                   crypto.Hash
 	sectorLocations              map[sectorID]sectorLocation
-	subSectorLocations           map[sectorID]subSectorLocation
+	subSectorLocations           map[sectorID][]subSectorLocation
 	sectorLocationsCountOverflow *overflowMap
 	storageFolders               map[uint16]*storageFolder
 
@@ -114,7 +114,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 	cm := &ContractManager{
 		storageFolders:     make(map[uint16]*storageFolder),
 		sectorLocations:    make(map[sectorID]sectorLocation),
-		subSectorLocations: make(map[sectorID]subSectorLocation),
+		subSectorLocations: make(map[sectorID][]subSectorLocation),
 
 		lockedSectors: make(map[sectorID]*sectorLock),
 

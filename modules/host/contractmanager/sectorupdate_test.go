@@ -2298,21 +2298,111 @@ func TestSetSubSector(t *testing.T) {
 		t.Fatal("wrong number of children", len(sl.children))
 	}
 	for childSectorID := range sl.children {
-		ssl, exists := cmt.cm.subSectorLocations[childSectorID]
+		ssls, exists := cmt.cm.subSectorLocations[childSectorID]
 		if !exists {
 			t.Fatal("child doesn't exist")
 		}
-		if ssl.parent != sid {
-			t.Fatal("wrong parent sid")
+		if len(ssls) != 1 {
+			t.Fatal("wrong number of sub sector locations", len(ssls))
 		}
-		if childSectorID == cmt.cm.managedSectorID(root1) && ssl.offset != 0 {
-			t.Fatal("ssl has wrong offset", ssl.offset)
+		for _, ssl := range ssls {
+			if ssl.parent != sid {
+				t.Fatal("wrong parent sid")
+			}
+			if childSectorID == cmt.cm.managedSectorID(root1) && ssl.offset != 0 {
+				t.Fatal("ssl has wrong offset", ssl.offset)
+			}
+			if childSectorID == cmt.cm.managedSectorID(root2) && ssl.offset != uint32(modules.SectorSize)/2 {
+				t.Fatal("ssl has wrong offset", ssl.offset)
+			}
+			if ssl.length != uint32(modules.SectorSize)/2 {
+				t.Fatal("ssl has wrong length", ssl.length)
+			}
 		}
-		if childSectorID == cmt.cm.managedSectorID(root2) && ssl.offset != uint32(modules.SectorSize)/2 {
-			t.Fatal("ssl has wrong offset", ssl.offset)
+	}
+
+	// Add a sector where the first and second half are reversed.
+	dataRev := append(data2, data1...)
+	rootRev := crypto.MerkleRoot(dataRev)
+	sidRev := cmt.cm.managedSectorID(rootRev)
+	err = cmt.cm.AddSector(rootRev, dataRev)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sector locations should have 1 entry and the subSectorLocations 2.
+	if len(cmt.cm.sectorLocations) != 2 {
+		t.Fatal("wrong number of sector locations")
+	}
+	if len(cmt.cm.subSectorLocations) != 2 {
+		t.Fatal("wrong number of sub sector locations")
+	}
+
+	// Set sub sectors again.
+	r1, err = cmt.cm.SetSubSector(rootRev, 0, uint32(modules.SectorSize)/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1 != root2 {
+		t.Fatal("wrong root", r1, root1)
+	}
+	r2, err = cmt.cm.SetSubSector(rootRev, uint32(modules.SectorSize)/2, uint32(modules.SectorSize)/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2 != root1 {
+		t.Fatal("wrong root")
+	}
+
+	// Get the location again.
+	for sectorID, location := range cmt.cm.sectorLocations {
+		sid = sectorID
+		sl = location
+		break
+	}
+
+	// It should have 2 children.
+	if len(sl.children) != 2 {
+		t.Fatal("wrong number of children", len(sl.children))
+	}
+	for childSectorID := range sl.children {
+		ssls, exists := cmt.cm.subSectorLocations[childSectorID]
+		if !exists {
+			t.Fatal("child doesn't exist")
 		}
-		if ssl.length != uint32(modules.SectorSize)/2 {
-			t.Fatal("ssl has wrong length", ssl.length)
+		if len(ssls) != 2 {
+			t.Fatal("wrong number of sub sector locations", len(ssls))
+		}
+		// Guarantee deterministic ordering
+		if ssls[0].parent != sid {
+			ssls[0], ssls[1] = ssls[1], ssls[0]
+		}
+
+		for i, ssl := range ssls {
+			if i == 0 && ssl.parent != sid {
+				t.Fatal("wrong parent sid")
+			}
+			if i == 1 && ssl.parent != sidRev {
+				t.Fatal("wrong parent sid")
+			}
+			// For the first entry it's the same as before.
+			if i == 0 && childSectorID == cmt.cm.managedSectorID(root1) && ssl.offset != 0 {
+				t.Fatal("ssl has wrong offset", ssl.offset)
+			}
+			if i == 0 && childSectorID == cmt.cm.managedSectorID(root2) && ssl.offset != uint32(modules.SectorSize)/2 {
+				t.Fatal("ssl has wrong offset", ssl.offset)
+			}
+			// The second one is reversed.
+			if i == 1 && childSectorID == cmt.cm.managedSectorID(root1) && ssl.offset != uint32(modules.SectorSize)/2 {
+				t.Fatal("ssl has wrong offset", ssl.offset)
+			}
+			if i == 1 && childSectorID == cmt.cm.managedSectorID(root2) && ssl.offset != 0 {
+				t.Fatal("ssl has wrong offset", ssl.offset)
+			}
+			// Length is still the same for all.
+			if ssl.length != uint32(modules.SectorSize)/2 {
+				t.Fatal("ssl has wrong length", ssl.length)
+			}
 		}
 	}
 
@@ -2338,15 +2428,37 @@ func TestSetSubSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(cmt.cm.sectorLocations) != 2 {
+		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
+	}
+	if len(cmt.cm.subSectorLocations) != 2 {
+		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
+	}
+	for _, ssls := range cmt.cm.subSectorLocations {
+		if len(ssls) != 2 {
+			t.Fatal("ssls have wrong length", len(ssls))
+		}
+	}
+
+	// Remove the sector again.
+	err = cmt.cm.RemoveSector(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(cmt.cm.sectorLocations) != 1 {
 		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
 	}
 	if len(cmt.cm.subSectorLocations) != 2 {
 		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
 	}
+	for _, ssls := range cmt.cm.subSectorLocations {
+		if len(ssls) != 1 {
+			t.Fatal("ssls have wrong length", len(ssls))
+		}
+	}
 
-	// Remove the sector again.
-	err = cmt.cm.RemoveSector(root)
+	// Remove the reversed sector.
+	err = cmt.cm.RemoveSector(rootRev)
 	if err != nil {
 		t.Fatal(err)
 	}
