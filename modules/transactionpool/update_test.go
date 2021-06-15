@@ -220,11 +220,11 @@ func TestValidRevertedTransaction(t *testing.T) {
 
 	// disconnect the testers
 	err = tpt2.gateway.Disconnect(tpt.gateway.Address())
-	if err != nil {
+	if err != nil && !errors.Contains(err, gateway.ErrPeerNotConnected) {
 		t.Fatal(err)
 	}
 	err = tpt.gateway.Disconnect(tpt2.gateway.Address())
-	if err != nil {
+	if err != nil && !errors.Contains(err, gateway.ErrPeerNotConnected) {
 		t.Fatal(err)
 	}
 
