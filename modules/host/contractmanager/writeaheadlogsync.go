@@ -3,7 +3,6 @@ package contractmanager
 import (
 	"encoding/json"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -171,7 +170,7 @@ func (wal *writeAheadLog) commit() {
 		defer wg.Done()
 
 		newSettings := wal.cm.savedSettings()
-		if reflect.DeepEqual(newSettings, wal.committedSettings) {
+		if wal.committedSettings.equals(newSettings) {
 			// no need to write the settings file
 			wal.fileSettingsTmp = nil
 			return

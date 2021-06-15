@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -30,6 +31,29 @@ type (
 		StorageFolders []savedStorageFolder
 	}
 )
+
+// equals tests if all settings are equal between two savedSettings.
+func (s *savedSettings) equals(sb savedSettings) bool {
+	if s.SectorSalt != sb.SectorSalt || len(s.StorageFolders) != len(sb.StorageFolders) {
+		return false
+	}
+
+	for i, sf := range s.StorageFolders {
+		sfb := sb.StorageFolders[i]
+
+		if sf.Index != sfb.Index || sf.Path != sfb.Path || len(sf.Usage) != len(sfb.Usage) {
+			return false
+		}
+
+		for i := range sf.Usage {
+			if sf.Usage[i] != sfb.Usage[i] {
+				return false
+			}
+		}
+	}
+
+	return true
+}
 
 // savedStorageFolder returns the persistent version of the storage folder.
 func (sf *storageFolder) savedStorageFolder() savedStorageFolder {
@@ -162,5 +186,11 @@ func (cm *ContractManager) savedSettings() savedSettings {
 			sf.setUsage(sectorIndex)
 		}
 	}
+
+	// canonicalize storage folder ordering; otherwise savedSettings.equals
+	// could return false for equivalent settings
+	sort.Slice(ss.StorageFolders, func(i, j int) bool {
+		return ss.StorageFolders[i].Index < ss.StorageFolders[j].Index
+	})
 	return ss
 }

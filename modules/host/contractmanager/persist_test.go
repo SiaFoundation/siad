@@ -26,6 +26,148 @@ func (*dependencyNoRecheck) Disrupt(s string) bool {
 	return false
 }
 
+func TestSavedSettingsEquals(t *testing.T) {
+	tests := []struct {
+		name string
+		a    savedSettings
+		b    savedSettings
+		want bool
+	}{
+		{
+			name: "equal",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "diff salt",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.HashBytes([]byte{2}),
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "diff folder count",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "diff folder path",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/03", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "diff folder index",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 2, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 1, Path: "/tmp/storage/03", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "diff folder usage",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/03", Usage: []uint64{2, 3, 4, 5, 6}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3, 4, 5}},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "diff usage len",
+			a: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/03", Usage: []uint64{2, 3, 4, 5, 6}},
+				},
+			},
+			b: savedSettings{
+				SectorSalt: crypto.Hash{1},
+				StorageFolders: []savedStorageFolder{
+					{Index: 1, Path: "/tmp/storage/01", Usage: []uint64{5, 1, 2, 3, 4}},
+					{Index: 2, Path: "/tmp/storage/02", Usage: []uint64{1, 2, 3}},
+				},
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.a.equals(tt.b); got != tt.want {
+				t.Errorf("savedSettings.equals() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestLoadMissingStorageFolder checks that loading a storage folder which is
 // missing doesn't result in a complete loss of the storage folder on subsequent
 // startups.
