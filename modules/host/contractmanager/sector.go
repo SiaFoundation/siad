@@ -45,12 +45,6 @@ type (
 		children map[sectorID]struct{}
 	}
 
-	subSectorLocation struct {
-		offset uint32
-		length uint32
-		parent sectorID
-	}
-
 	// sectorLock contains a lock plus a count of the number of threads
 	// currently waiting to access the lock.
 	sectorLock struct {
@@ -169,21 +163,9 @@ func (cm *ContractManager) deleteSector(id sectorID) {
 		return // done
 	}
 	for childID := range sl.children {
-		ssls, exists := cm.subSectorLocations[childID]
-		if !exists {
-			continue
-		}
-		var newSSLs []subSectorLocation
-		for _, ssl := range ssls {
-			if ssl.parent == id {
-				continue // ignore the ones for the deleted parent
-			}
-			newSSLs = append(newSSLs, ssl)
-		}
-		if len(newSSLs) == 0 {
-			delete(cm.subSectorLocations, childID)
-		} else {
-			cm.subSectorLocations[childID] = newSSLs
+		err := cm.subSectorLocations.RemoveParent(childID, id)
+		if err != nil {
+			cm.log.Print("deleteSector: failed to remove parent: ", err)
 		}
 	}
 	delete(cm.sectorLocations, id)
@@ -216,12 +198,14 @@ func (cm *ContractManager) SetSubSector(root crypto.Hash, offset, length uint32)
 	// Set the sub sector.
 	cm.wal.mu.Lock()
 	defer cm.wal.mu.Unlock()
-	_, exists = cm.subSectorLocations[subID]
-	cm.subSectorLocations[subID] = append(cm.subSectorLocations[subID], subSectorLocation{
+	err = cm.subSectorLocations.AddLocation(subID, subSectorLocation{
 		offset: offset,
 		length: length,
 		parent: id,
 	})
+	if err != nil {
+		return crypto.Hash{}, err
+	}
 	// Set the sub sector's id on the parent.
 	if sl.children == nil {
 		sl.children = make(map[sectorID]struct{})
@@ -239,13 +223,11 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	defer cm.wal.managedUnlockSector(id)
 	cm.wal.mu.Lock()
 	sl, exists1 := cm.sectorLocations[id]
-	ssls, exists2 := cm.subSectorLocations[id]
+	ssl, exists2 := cm.subSectorLocations.First(id)
 	var exists3 bool
 	var sslParent sectorLocation
-	var ssl subSectorLocation
-	if len(ssls) > 0 {
-		sslParent, exists3 = cm.sectorLocations[ssls[0].parent]
-		ssl = ssls[0]
+	if exists2 {
+		sslParent, exists3 = cm.sectorLocations[ssl.parent]
 	}
 	cm.wal.mu.Unlock()
 	if !exists1 && !exists2 {
@@ -276,13 +258,11 @@ func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length ui
 	defer cm.wal.managedUnlockSector(id)
 	cm.wal.mu.Lock()
 	sl, exists1 := cm.sectorLocations[id]
-	ssls, exists2 := cm.subSectorLocations[id]
+	ssl, exists2 := cm.subSectorLocations.First(id)
 	var exists3 bool
 	var sslParent sectorLocation
-	var ssl subSectorLocation
-	if len(ssls) > 0 {
-		sslParent, exists3 = cm.sectorLocations[ssls[0].parent]
-		ssl = ssls[0]
+	if exists2 {
+		sslParent, exists3 = cm.sectorLocations[ssl.parent]
 	}
 	cm.wal.mu.Unlock()
 	if !exists1 && !exists2 {

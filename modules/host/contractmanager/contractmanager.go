@@ -86,7 +86,7 @@ type ContractManager struct {
 	// BenchmarkStorageFolders.
 	sectorSalt                   crypto.Hash
 	sectorLocations              map[sectorID]sectorLocation
-	subSectorLocations           map[sectorID][]subSectorLocation
+	subSectorLocations           *subSectors
 	sectorLocationsCountOverflow *overflowMap
 	storageFolders               map[uint16]*storageFolder
 
@@ -112,9 +112,8 @@ func (cm *ContractManager) Close() error {
 // the provided dependencies.
 func newContractManager(dependencies modules.Dependencies, persistDir string) (_ *ContractManager, err error) {
 	cm := &ContractManager{
-		storageFolders:     make(map[uint16]*storageFolder),
-		sectorLocations:    make(map[sectorID]sectorLocation),
-		subSectorLocations: make(map[sectorID][]subSectorLocation),
+		storageFolders:  make(map[uint16]*storageFolder),
+		sectorLocations: make(map[sectorID]sectorLocation),
 
 		lockedSectors: make(map[sectorID]*sectorLock),
 
@@ -161,6 +160,16 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 	// Set up the clean shutdown of the overflow file.
 	cm.tg.AfterStop(func() {
 		err = errors.Compose(cm.sectorLocationsCountOverflow.Close(), err)
+	})
+
+	// Load the sub sectors.
+	cm.subSectorLocations, err = newSubSectors(filepath.Join(persistDir, subSectorFile))
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create/read sub sectors")
+	}
+	// Set up the clean shutdown of the sub sectors.
+	cm.tg.AfterStop(func() {
+		err = errors.Compose(cm.subSectorLocations.Close(), err)
 	})
 
 	// Load the atomic state of the contract manager. Unclean shutdown may have

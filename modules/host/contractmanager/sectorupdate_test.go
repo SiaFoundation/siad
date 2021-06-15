@@ -2245,7 +2245,7 @@ func TestSetSubSector(t *testing.T) {
 	if len(cmt.cm.sectorLocations) != 1 {
 		t.Fatal("wrong number of sector locations")
 	}
-	if len(cmt.cm.subSectorLocations) != 0 {
+	if cmt.cm.subSectorLocations.Len() != 0 {
 		t.Fatal("wrong number of sub sector locations")
 	}
 
@@ -2280,7 +2280,7 @@ func TestSetSubSector(t *testing.T) {
 	if len(cmt.cm.sectorLocations) != 1 {
 		t.Fatal("wrong number of sector locations")
 	}
-	if len(cmt.cm.subSectorLocations) != 2 {
+	if cmt.cm.subSectorLocations.Len() != 2 {
 		t.Fatal("wrong number of sub sector locations")
 	}
 
@@ -2298,7 +2298,7 @@ func TestSetSubSector(t *testing.T) {
 		t.Fatal("wrong number of children", len(sl.children))
 	}
 	for childSectorID := range sl.children {
-		ssls, exists := cmt.cm.subSectorLocations[childSectorID]
+		ssls, exists := cmt.cm.subSectorLocations.All(childSectorID)
 		if !exists {
 			t.Fatal("child doesn't exist")
 		}
@@ -2334,7 +2334,7 @@ func TestSetSubSector(t *testing.T) {
 	if len(cmt.cm.sectorLocations) != 2 {
 		t.Fatal("wrong number of sector locations")
 	}
-	if len(cmt.cm.subSectorLocations) != 2 {
+	if cmt.cm.subSectorLocations.Len() != 2 {
 		t.Fatal("wrong number of sub sector locations")
 	}
 
@@ -2366,7 +2366,7 @@ func TestSetSubSector(t *testing.T) {
 		t.Fatal("wrong number of children", len(sl.children))
 	}
 	for childSectorID := range sl.children {
-		ssls, exists := cmt.cm.subSectorLocations[childSectorID]
+		ssls, exists := cmt.cm.subSectorLocations.All(childSectorID)
 		if !exists {
 			t.Fatal("child doesn't exist")
 		}
@@ -2431,10 +2431,10 @@ func TestSetSubSector(t *testing.T) {
 	if len(cmt.cm.sectorLocations) != 2 {
 		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
 	}
-	if len(cmt.cm.subSectorLocations) != 2 {
-		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
+	if cmt.cm.subSectorLocations.Len() != 2 {
+		t.Fatal("wrong number of sub sector locations", cmt.cm.subSectorLocations.Len())
 	}
-	for _, ssls := range cmt.cm.subSectorLocations {
+	for _, ssls := range cmt.cm.subSectorLocations.subSectorLocation {
 		if len(ssls) != 2 {
 			t.Fatal("ssls have wrong length", len(ssls))
 		}
@@ -2448,10 +2448,10 @@ func TestSetSubSector(t *testing.T) {
 	if len(cmt.cm.sectorLocations) != 1 {
 		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
 	}
-	if len(cmt.cm.subSectorLocations) != 2 {
-		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
+	if cmt.cm.subSectorLocations.Len() != 2 {
+		t.Fatal("wrong number of sub sector locations", cmt.cm.subSectorLocations.Len())
 	}
-	for _, ssls := range cmt.cm.subSectorLocations {
+	for _, ssls := range cmt.cm.subSectorLocations.subSectorLocation {
 		if len(ssls) != 1 {
 			t.Fatal("ssls have wrong length", len(ssls))
 		}
@@ -2465,7 +2465,7 @@ func TestSetSubSector(t *testing.T) {
 	if len(cmt.cm.sectorLocations) != 0 {
 		t.Fatal("wrong number of sector locations", len(cmt.cm.sectorLocations))
 	}
-	if len(cmt.cm.subSectorLocations) != 0 {
-		t.Fatal("wrong number of sub sector locations", len(cmt.cm.subSectorLocations))
+	if cmt.cm.subSectorLocations.Len() != 0 {
+		t.Fatal("wrong number of sub sector locations", cmt.cm.subSectorLocations.Len())
 	}
 }
