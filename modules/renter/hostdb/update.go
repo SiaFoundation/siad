@@ -90,31 +90,9 @@ func (hdb *HostDB) ProcessConsensusChange(cc modules.ConsensusChange) {
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 
-	// Update the hostdb's understanding of the block height.
-	for _, block := range cc.RevertedBlocks {
-		// Only doing the block check if the height is above zero saves hashing
-		// and saves a nontrivial amount of time during IBD.
-		if hdb.blockHeight > 0 || block.ID() != types.GenesisID {
-			hdb.blockHeight--
-		} else if hdb.blockHeight != 0 {
-			// Sanity check - if the current block is the genesis block, the
-			// hostdb height should be set to zero.
-			hdb.staticLog.Critical("Hostdb has detected a genesis block, but the height of the hostdb is set to ", hdb.blockHeight)
-			hdb.blockHeight = 0
-		}
-	}
-	for _, block := range cc.AppliedBlocks {
-		// Only doing the block check if the height is above zero saves hashing
-		// and saves a nontrivial amount of time during IBD.
-		if hdb.blockHeight > 0 || block.ID() != types.GenesisID {
-			hdb.blockHeight++
-		} else if hdb.blockHeight != 0 {
-			// Sanity check - if the current block is the genesis block, the
-			// hostdb height should be set to zero.
-			hdb.staticLog.Critical("Hostdb has detected a genesis block, but the height of the hostdb is set to ", hdb.blockHeight)
-			hdb.blockHeight = 0
-		}
-	}
+	// Set the block height before applying blocks to preserve previous
+	// behavior.
+	hdb.blockHeight = cc.BlockHeight
 
 	// Add hosts announced in blocks that were applied.
 	for _, block := range cc.AppliedBlocks {

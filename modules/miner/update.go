@@ -256,32 +256,7 @@ func (m *Miner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Update the miner's understanding of the block height.
-	for _, block := range cc.RevertedBlocks {
-		// Only doing the block check if the height is above zero saves hashing
-		// and saves a nontrivial amount of time during IBD.
-		if m.persist.Height > 0 || block.ID() != types.GenesisID {
-			m.persist.Height--
-		} else if m.persist.Height != 0 {
-			// Sanity check - if the current block is the genesis block, the
-			// miner height should be set to zero.
-			m.log.Critical("Miner has detected a genesis block, but the height of the miner is set to ", m.persist.Height)
-			m.persist.Height = 0
-		}
-	}
-	for _, block := range cc.AppliedBlocks {
-		// Only doing the block check if the height is above zero saves hashing
-		// and saves a nontrivial amount of time during IBD.
-		if m.persist.Height > 0 || block.ID() != types.GenesisID {
-			m.persist.Height++
-		} else if m.persist.Height != 0 {
-			// Sanity check - if the current block is the genesis block, the
-			// miner height should be set to zero.
-			m.log.Critical("Miner has detected a genesis block, but the height of the miner is set to ", m.persist.Height)
-			m.persist.Height = 0
-		}
-	}
-
+	m.persist.Height = cc.BlockHeight
 	// Update the unsolved block.
 	m.persist.UnsolvedBlock.ParentID = cc.AppliedBlocks[len(cc.AppliedBlocks)-1].ID()
 	m.persist.Target = cc.ChildTarget

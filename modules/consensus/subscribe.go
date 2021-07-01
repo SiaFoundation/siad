@@ -91,8 +91,10 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 	if err != nil {
 		cs.log.Critical("could not find process block for known block")
 	}
+
 	cc.ChildTarget = pb.ChildTarget
 	cc.MinimumValidChildTimestamp = cs.blockRuleHelper.minimumValidChildTimestamp(tx.Bucket(BlockMap), pb)
+	cc.BlockHeight = pb.Height
 
 	currentBlock := currentBlockID(tx)
 	if cs.synced && recentBlock == currentBlock {
