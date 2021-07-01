@@ -202,7 +202,7 @@ func TestInterruptBackup(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   3,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -300,7 +300,6 @@ func TestRemoteBackup(t *testing.T) {
 	filesSize := int(20e3)
 
 	// Create a testgroup.
-	//
 	// Need 5 hosts to address an NDF with the snapshot upload code.
 	groupParams := siatest.GroupParams{
 		Hosts:   5,
