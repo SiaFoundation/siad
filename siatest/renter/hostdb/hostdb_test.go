@@ -683,7 +683,7 @@ func TestFilterMode(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:  10,
+		Hosts:  6,
 		Miners: 1,
 	}
 	testDir := hostdbTestDir(t.Name())
@@ -697,12 +697,12 @@ func TestFilterMode(t *testing.T) {
 		}
 	}()
 
-	// Create renter. Set allowance of 2 with 10 total hosts, this will allow a
+	// Create renter. Set allowance of 2 with 6 total hosts, this will allow a
 	// blacklist or whitelist of 2, and a number of extra hosts to potentially
 	// cancel contracts with
 	renterParams := node.Renter(testDir + "/renter")
 	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = uint64(2)
+	renterParams.Allowance.Hosts = 2
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)

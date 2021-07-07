@@ -60,6 +60,8 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
 		{Name: "TestPriceTablesUpdated", Test: testPriceTablesUpdated},
+		{Name: "TestFileAvailableAndRecoverable", Test: testFileAvailableAndRecoverable},
+		{Name: "TestReceivedFieldEqualsFileSize", Test: testReceivedFieldEqualsFileSize},
 	}
 
 	// Run tests
@@ -78,7 +80,7 @@ func TestRenterTwo(t *testing.T) {
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   3,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -86,7 +88,6 @@ func TestRenterTwo(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "TestReceivedFieldEqualsFileSize", Test: testReceivedFieldEqualsFileSize},
 		{Name: "TestRemoteRepair", Test: testRemoteRepair},
 		{Name: "TestSingleFileGet", Test: testSingleFileGet},
 		{Name: "TestSiaFileTimestamps", Test: testSiafileTimestamps},
@@ -235,7 +236,7 @@ func TestRenterThree(t *testing.T) {
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   3,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -244,7 +245,6 @@ func TestRenterThree(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestAllowanceDefaultSet", Test: testAllowanceDefaultSet},
-		{Name: "TestFileAvailableAndRecoverable", Test: testFileAvailableAndRecoverable},
 		{Name: "TestSetFileStuck", Test: testSetFileStuck},
 		{Name: "TestCancelAsyncDownload", Test: testCancelAsyncDownload},
 		{Name: "TestUploadDownload", Test: testUploadDownload}, // Needs to be last as it impacts hosts
@@ -266,7 +266,7 @@ func TestRenterFour(t *testing.T) {
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   2,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -1885,7 +1885,7 @@ func TestRenterAddNodes2(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   4,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -3176,7 +3176,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 
 	// Create a testgroup.
 	gp := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   3,
 		Renters: 1,
 		Miners:  1,
 	}
