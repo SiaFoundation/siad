@@ -1158,7 +1158,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 	})
 	h.mu.RUnlock()
 	if err != nil {
-		h.log.Println("Could not get storage obligation:", err)
+		h.log.Printf("contract %s action: Could not get storage obligation: %s", soid, err)
 		return
 	}
 
@@ -1176,7 +1176,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		// confirmed.
 		err := h.tpool.AcceptTransactionSet(so.OriginTransactionSet)
 		if err != nil {
-			h.log.Debugln("Could not get origin transaction set accepted", err)
+			h.log.Debugf("contract %s action: Could not get origin transaction set accepted: %s", soid, err)
 
 			// Check if the transaction is invalid with the current consensus set.
 			// If so, the transaction is highly unlikely to ever be confirmed, and
@@ -1188,7 +1188,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			// parents are confirmed, might be some difficulty.
 			_, t := err.(modules.ConsensusConflict)
 			if t {
-				h.log.Println("Consensus conflict on the origin transaction set, id", so.id())
+				h.log.Printf("contract %s action: Consensus conflict on the origin transaction set", so.id())
 				h.mu.Lock()
 				err = h.removeStorageObligation(so, obligationRejected)
 				h.mu.Unlock()
@@ -1204,7 +1204,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		err = h.queueActionItem(h.blockHeight+resubmissionTimeout, so.id())
 		h.mu.Unlock()
 		if err != nil {
-			h.log.Println("Error queuing action item:", err)
+			h.log.Printf("contract %s action: Error queuing action item: %s", soid, err)
 		}
 	}
 
@@ -1225,7 +1225,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			// be confirmed, and the origin transaction may be confirmed, which
 			// would confuse the revenue stuff a bit. Might happen frequently
 			// due to the dynamic fee pool.
-			h.log.Println("Full time has elapsed, but the revision transaction could not be submitted to consensus, id", so.id())
+			h.log.Printf("contract %s action: Full time has elapsed, but the revision transaction could not be submitted to consensus", so.id())
 			h.mu.Lock()
 			h.removeStorageObligation(so, obligationRejected)
 			h.mu.Unlock()
@@ -1237,7 +1237,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		err := h.queueActionItem(blockHeight+resubmissionTimeout, so.id())
 		h.mu.Unlock()
 		if err != nil {
-			h.log.Println("Error queuing action item:", err)
+			h.log.Printf("contract %s action: Error queuing action item: %s", soid, err)
 		}
 
 		// Add a miner fee to the transaction and submit it to the blockchain.
@@ -1246,7 +1246,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		revisionTxn := so.RevisionTransactionSet[revisionTxnIndex]
 		builder, err := h.wallet.RegisterTransaction(revisionTxn, revisionParents)
 		if err != nil {
-			h.log.Println("Error registering transaction:", err)
+			h.log.Printf("contract %s action: Error registering transaction: %s", soid, err)
 			return
 		}
 		_, feeRecommendation := h.tpool.FeeEstimation()
@@ -1262,22 +1262,22 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		requiredFee := feeRecommendation.Mul64(txnSize)
 		err = builder.FundSiacoins(requiredFee)
 		if err != nil {
-			h.log.Println("Error funding transaction fees", err)
+			h.log.Printf("contract %s action: failed to build revision txn: Error funding transaction fees: %s", soid, err)
 			builder.Drop()
 		}
 		builder.AddMinerFee(requiredFee)
 		if err != nil {
-			h.log.Println("Error adding miner fees", err)
+			h.log.Printf("contract %s action: failed to build revision txn: Error adding miner fees: %s", soid, err)
 			builder.Drop()
 		}
 		feeAddedRevisionTransactionSet, err := builder.Sign(true)
 		if err != nil {
-			h.log.Println("Error signing transaction", err)
+			h.log.Printf("contract %s action: failed to build revision txn: Error signing transaction: %s", soid, err)
 			builder.Drop()
 		}
 		err = h.tpool.AcceptTransactionSet(feeAddedRevisionTransactionSet)
 		if err != nil {
-			h.log.Println("Error submitting transaction to transaction pool", err)
+			h.log.Printf("contract %s action: failed to build revision txn: Error submitting transaction to transaction pool: %s", soid, err)
 			builder.Drop()
 		}
 		so.TransactionFeesAdded = so.TransactionFeesAdded.Add(requiredFee)
@@ -1294,12 +1294,12 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		// host payout for the contract includes the contract cost and locked
 		// collateral.
 		if !so.requiresProof() {
-			h.log.Debugln("storage proof not submitted for unrevised contract, id", so.id())
+			h.log.Debugf("contract %s action: storage proof not required for unrevised contract", so.id())
 			h.mu.Lock()
 			err := h.removeStorageObligation(so, obligationSucceeded)
 			h.mu.Unlock()
 			if err != nil {
-				h.log.Println("Error removing storage obligation:", err)
+				h.log.Printf("contract %s action: Error removing storage obligation: %s", soid, err)
 			}
 			return
 		}
@@ -1311,7 +1311,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			err := h.removeStorageObligation(so, obligationFailed)
 			h.mu.Unlock()
 			if err != nil {
-				h.log.Println("Error removing storage obligation:", err)
+				h.log.Printf("contract %s action: Error removing failed storage obligation: %s", soid, err)
 			}
 			return
 		}
@@ -1319,21 +1319,21 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		// Get the index of the segment for which to build the proof.
 		segmentIndex, err := h.cs.StorageProofSegment(so.id())
 		if err != nil {
-			h.log.Debugln("Host got an error when fetching a storage proof segment:", err)
+			h.log.Printf("contract %s action: Host got an error when fetching a storage proof segment: %s", soid, err)
 			return
 		}
 
 		// Build StorageProof.
 		sp, err := h.managedBuildStorageProof(so, segmentIndex)
 		if err != nil {
-			h.log.Debugln("Host encountered an error when building the storage proof", err)
+			h.log.Printf("contract %s action: Host encountered an error when building the storage proof: %s", soid, err)
 			return
 		}
 
 		// Create and build the transaction with the storage proof.
 		builder, err := h.wallet.StartTransaction()
 		if err != nil {
-			h.log.Println("Failed to start transaction:", err)
+			h.log.Printf("contract %s action: Failed to start storage proof transaction: %s", soid, err)
 			return
 		}
 		_, feeRecommendation := h.tpool.FeeEstimation()
@@ -1342,13 +1342,13 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		if so.value().Cmp(requiredFee) < 0 {
 			// There's no sense submitting the storage proof if the fee is more
 			// than the anticipated revenue.
-			h.log.Debugln("Host not submitting storage proof due to a value that does not sufficiently exceed the fee cost")
+			h.log.Printf("contract %s action: Host not submitting storage proof due to a value that does not sufficiently exceed the fee cost", soid)
 			builder.Drop()
 			return
 		}
 		err = builder.FundSiacoins(requiredFee)
 		if err != nil {
-			h.log.Println("Host error when funding a storage proof transaction fee:", err)
+			h.log.Printf("contract %s action: failed to build storage proof trransaction: Host error when funding a storage proof transaction fee: %s", soid, err)
 			builder.Drop()
 			return
 		}
@@ -1356,13 +1356,13 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		builder.AddStorageProof(sp)
 		storageProofSet, err := builder.Sign(true)
 		if err != nil {
-			h.log.Println("Host error when signing the storage proof transaction:", err)
+			h.log.Printf("contract %s action: failed to build storage proof trransaction: Host error when signing the storage proof transaction: %s", soid, err)
 			builder.Drop()
 			return
 		}
 		err = h.tpool.AcceptTransactionSet(storageProofSet)
 		if err != nil {
-			h.log.Println("Host unable to submit storage proof transaction to transaction pool:", err)
+			h.log.Printf("contract %s action: failed to build storage proof trransaction: Host unable to submit storage proof transaction to transaction pool: %s", soid, err)
 			builder.Drop()
 			return
 		}
@@ -1374,7 +1374,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		err = h.queueActionItem(so.proofDeadline(), so.id())
 		h.mu.Unlock()
 		if err != nil {
-			h.log.Println("Error queuing action item:", err)
+			h.log.Printf("contract %s action: Error queuing action item: %s", soid, err)
 		}
 	}
 
@@ -1387,7 +1387,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		return tx.Bucket(bucketStorageObligations).Put(soid[:], soBytes)
 	})
 	if err != nil {
-		h.log.Println("Error updating the storage obligations", err)
+		h.log.Printf("contract %s action: Error updating the storage obligations: %s", soid, err)
 	}
 
 	// Check if all items have succeeded with the required confirmations. Report
