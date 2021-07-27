@@ -200,13 +200,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 			}
 		}
 
-		// Calculate the block height before blocks are applied. If this is the
-		// genesis block, set the height to 0.
-		h.blockHeight = cc.BlockHeight - types.BlockHeight(len(cc.AppliedBlocks))
-		if cc.BlockHeight == 0 {
-			h.blockHeight = 0
-		}
-
+		h.blockHeight = cc.InitialHeight()
 		for _, block := range cc.AppliedBlocks {
 			// Look for transactions relevant to open storage obligations.
 			for _, txn := range block.Transactions {

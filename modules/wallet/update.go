@@ -474,12 +474,7 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 func (w *Wallet) applyHistory(tx *bolt.Tx, cc modules.ConsensusChange) error {
 	spentSiacoinOutputs := computeSpentSiacoinOutputSet(cc.SiacoinOutputDiffs)
 	spentSiafundOutputs := computeSpentSiafundOutputSet(cc.SiafundOutputDiffs)
-	// Calculate the consensus height before blocks are applied by this change.
-	// If this is the genesis block, height will be 0.
-	consensusHeight := cc.BlockHeight - types.BlockHeight(len(cc.AppliedBlocks))
-	if cc.BlockHeight == 0 {
-		consensusHeight = 0
-	}
+	consensusHeight := cc.InitialHeight()
 
 	for _, block := range cc.AppliedBlocks {
 		// Increment the consensus height.

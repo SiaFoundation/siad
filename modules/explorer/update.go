@@ -114,13 +114,7 @@ func (e *Explorer) ProcessConsensusChange(cc modules.ConsensusChange) {
 			dbRemoveBlockFacts(tx, bid)
 		}
 
-		// Calculate the block height before blocks are applied. If this is the
-		// genesis change, set the height to 0.
-		blockheight := cc.BlockHeight - types.BlockHeight(len(cc.AppliedBlocks))
-		if cc.BlockHeight == 0 {
-			blockheight = 0
-		}
-
+		blockheight := cc.InitialHeight()
 		// Update cumulative stats for applied blocks.
 		for _, block := range cc.AppliedBlocks {
 			bid := block.ID()

@@ -272,6 +272,14 @@ func (cc *ConsensusChange) AppendDiffs(diffs ConsensusChangeDiffs) {
 	cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
 }
 
+// InitialHeight returns the height of the consensus before blocks are applied.
+func (cc *ConsensusChange) InitialHeight() types.BlockHeight {
+	if cc.BlockHeight == 0 {
+		return 0
+	}
+	return cc.BlockHeight - types.BlockHeight(len(cc.AppliedBlocks))
+}
+
 // MarshalSia implements encoding.SiaMarshaler.
 func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 	return encoding.NewEncoder(w).EncodeAll(

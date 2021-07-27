@@ -94,13 +94,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		c.removeRecoverableContracts(block)
 	}
 
-	// Calculate the height before the blocks were applied. If this is the
-	// genesis change set the height to 0.
-	c.blockHeight = cc.BlockHeight - types.BlockHeight(len(cc.AppliedBlocks))
-	if cc.BlockHeight == 0 {
-		c.blockHeight = 0
-	}
-
+	c.blockHeight = cc.InitialHeight()
 	for _, block := range cc.AppliedBlocks {
 		if block.ID() != types.GenesisID {
 			c.blockHeight++
