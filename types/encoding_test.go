@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -491,6 +492,14 @@ func TestSiaPublicKeyString(t *testing.T) {
 	}
 
 	if spk.String() != "ed25519:0000000000000000000000000000000000000000000000000000000000000000" {
+		t.Error("got wrong value for spk.String():", spk.String())
+	}
+
+	// Try long key. This shouldn't panic.
+	spk.Algorithm = SignatureEd25519
+	spk.Key = make([]byte, ed25519.PublicKeySize+1)
+
+	if spk.String() != "ed25519:000000000000000000000000000000000000000000000000000000000000000000" {
 		t.Error("got wrong value for spk.String():", spk.String())
 	}
 }
