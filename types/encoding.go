@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -582,8 +583,8 @@ func (spk *SiaPublicKey) LoadString(s string) error {
 // compact during logging. The key type prefix and lack of a checksum help to
 // separate it from a sia address.
 func (spk SiaPublicKey) String() string {
-	if spk.Algorithm == SignatureEd25519 {
-		buf := make([]byte, 72)
+	if spk.Algorithm == SignatureEd25519 && len(spk.Key) == ed25519.PublicKeySize {
+		buf := make([]byte, 8+2*ed25519.PublicKeySize)
 		copy(buf[:8], "ed25519:")
 		hex.Encode(buf[8:], spk.Key)
 		return string(buf)
