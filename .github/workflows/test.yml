@@ -23,26 +23,10 @@ jobs:
         run: make fmt
       - name: go vet
         run: make vet
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        os: [ darwin, linux, windows ]
-        arch: [ arm64, amd64 ]
-        exclude:
-          - os: windows
-            arch: arm64
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v2
-        with:
-          go-version: ^v1.16
-      - name: build ${{ matrix.os }}/${{ matrix.arch }}
-        run: GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} make static
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    needs: [ lint, build ]
+    needs: [ lint ]
     steps:
       - uses: actions/checkout@v2
       - name: test

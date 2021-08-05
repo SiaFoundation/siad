@@ -1,9 +1,11 @@
-name: Docker Publish
+name: Publish
 
 # Controls when the action will run. 
 on:
   # Triggers the workflow on new SemVer tags
   push:
+    branches:
+      - master
     tags: 
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+'
@@ -20,12 +22,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: crazy-max/ghaction-docker-meta@ae431178c17085afd420fdf7ca88b37bd32e3d7d
+      - uses: docker/metadata-action@v3.4.1
         name: generate tags
         id: meta
         with:
           images: ghcr.io/siafoundation/siad
           tags: |
+            type=ref,event=branch
+            type=sha,prefix=
             type=semver,pattern={{version}}
       - uses: docker/build-push-action@v2
         with:
@@ -33,3 +37,27 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ darwin, linux, windows ]
+        arch: [ arm64, amd64 ]
+        exclude:
+          - os: windows
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: ^v1.16
+      - name: build ${{ matrix.os }}/${{ matrix.arch }}
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: make static
+      - uses: actions/upload-artifact@v2
+        with:
+          name: sia-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/*
+          retention-days: 30
