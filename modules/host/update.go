@@ -120,17 +120,15 @@ func (h *Host) initConsensusSubscription() error {
 // ProcessConsensusChange will be called by the consensus set every time there
 // is a change to the blockchain.
 func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
-	var oldHeight, newHeight types.BlockHeight
-
 	// Add is called at the beginning of the function, but Done cannot be
 	// called until all of the threads spawned by this function have also
 	// terminated. This function should not block while these threads wait to
 	// terminate.
 	h.mu.Lock()
 	// Notify the account manager of an update to the consensus.
-	oldHeight = h.blockHeight
+	oldHeight := h.blockHeight
 	defer func() {
-		h.staticAccountManager.callConsensusChanged(cc, oldHeight, newHeight)
+		h.staticAccountManager.callConsensusChanged(cc, oldHeight)
 	}()
 	defer h.mu.Unlock()
 
@@ -200,15 +198,9 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 					}
 				}
 			}
-
-			// Height is not adjusted when dealing with the genesis block because
-			// the default height is 0 and the genesis block height is 0. If
-			// removing the genesis block, height will already be at height 0 and
-			// should not update, lest an underflow occur.
-			if block.ID() != types.GenesisID {
-				h.blockHeight--
-			}
 		}
+
+		h.blockHeight = cc.InitialHeight()
 		for _, block := range cc.AppliedBlocks {
 			// Look for transactions relevant to open storage obligations.
 			for _, txn := range block.Transactions {
@@ -317,6 +309,4 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if err != nil {
 		h.log.Println("ERROR: could not save during ProcessConsensusChange:", err)
 	}
-
-	newHeight = h.blockHeight
 }

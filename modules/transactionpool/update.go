@@ -205,9 +205,6 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 		recentID = block.ParentID
 
-		if tp.blockHeight > 0 || block.ID() != types.GenesisID {
-			tp.blockHeight--
-		}
 		for _, txn := range block.Transactions {
 			err := tp.deleteTransaction(tp.dbTx, txn.ID())
 			if err != nil {
@@ -224,6 +221,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 			tp.recentMedians = tp.recentMedians[:len(tp.recentMedians)-1]
 		}
 	}
+
 	for _, block := range cc.AppliedBlocks {
 		// Sanity check - the parent id of each block should match the current
 		// block id.
@@ -232,9 +230,6 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 		}
 		recentID = block.ID()
 
-		if tp.blockHeight > 0 || block.ID() != types.GenesisID {
-			tp.blockHeight++
-		}
 		for _, txn := range block.Transactions {
 			err := tp.putTransaction(tp.dbTx, txn.ID())
 			if err != nil {
@@ -308,6 +303,7 @@ func (tp *TransactionPool) ProcessConsensusChange(cc modules.ConsensusChange) {
 	tp.recentMedianFee = safeMedians[len(safeMedians)/2]
 
 	// Update all the on-disk structures.
+	tp.blockHeight = cc.BlockHeight
 	err = tp.putRecentConsensusChange(tp.dbTx, cc.ID)
 	if err != nil {
 		tp.log.Println("ERROR: could not update the recent consensus change:", err)

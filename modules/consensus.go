@@ -93,6 +93,10 @@ type (
 		// and applied blocks.
 		ID ConsensusChangeID
 
+		// BlockHeight is the height of the chain after all blocks included in
+		// this change have been reverted and applied.
+		BlockHeight types.BlockHeight
+
 		// RevertedBlocks is the list of blocks that were reverted by the change.
 		// The reverted blocks were always all reverted before the applied blocks
 		// were applied. The revered blocks are presented in the order that they
@@ -266,6 +270,14 @@ func (cc *ConsensusChange) AppendDiffs(diffs ConsensusChangeDiffs) {
 	cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
 	cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
 	cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
+}
+
+// InitialHeight returns the height of the consensus before blocks are applied.
+func (cc *ConsensusChange) InitialHeight() types.BlockHeight {
+	if cc.BlockHeight == 0 {
+		return 0
+	}
+	return cc.BlockHeight - types.BlockHeight(len(cc.AppliedBlocks))
 }
 
 // MarshalSia implements encoding.SiaMarshaler.

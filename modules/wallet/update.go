@@ -196,18 +196,6 @@ func (w *Wallet) revertHistory(tx *bolt.Tx, reverted []types.Block) error {
 				break // there will only ever be one miner transaction
 			}
 		}
-
-		// decrement the consensus height
-		if block.ID() != types.GenesisID {
-			consensusHeight, err := dbGetConsensusHeight(tx)
-			if err != nil {
-				return err
-			}
-			err = dbPutConsensusHeight(tx, consensusHeight-1)
-			if err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }
@@ -486,19 +474,12 @@ func (w *Wallet) computeProcessedTransactionsFromBlock(tx *bolt.Tx, block types.
 func (w *Wallet) applyHistory(tx *bolt.Tx, cc modules.ConsensusChange) error {
 	spentSiacoinOutputs := computeSpentSiacoinOutputSet(cc.SiacoinOutputDiffs)
 	spentSiafundOutputs := computeSpentSiafundOutputSet(cc.SiafundOutputDiffs)
+	consensusHeight := cc.InitialHeight()
 
 	for _, block := range cc.AppliedBlocks {
-		consensusHeight, err := dbGetConsensusHeight(tx)
-		if err != nil {
-			return errors.AddContext(err, "failed to consensus height")
-		}
 		// Increment the consensus height.
 		if block.ID() != types.GenesisID {
 			consensusHeight++
-			err = dbPutConsensusHeight(tx, consensusHeight)
-			if err != nil {
-				return errors.AddContext(err, "failed to store consensus height in database")
-			}
 		}
 
 		pts := w.computeProcessedTransactionsFromBlock(tx, block, spentSiacoinOutputs, spentSiafundOutputs, consensusHeight)
@@ -544,6 +525,10 @@ func (w *Wallet) ProcessConsensusChange(cc modules.ConsensusChange) {
 	}
 	if err := dbPutConsensusChangeID(w.dbTx, cc.ID); err != nil {
 		w.log.Severe("ERROR: failed to update consensus change ID:", err)
+		w.dbRollback = true
+	}
+	if err := dbPutConsensusHeight(w.dbTx, cc.BlockHeight); err != nil {
+		w.log.Severe("ERROR: failed to update consensus block height:", err)
 		w.dbRollback = true
 	}
 

@@ -47,6 +47,7 @@ func TestUpdate(t *testing.T) {
 	// revert the block
 	wt.wallet.ProcessConsensusChange(modules.ConsensusChange{
 		RevertedBlocks: []types.Block{b},
+		BlockHeight:    8,
 	})
 	// transaction should no longer be present
 	_, ok, err = wt.wallet.Transaction(types.TransactionID(b.ID()))
@@ -65,7 +66,9 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// mine blocks until transaction is confirmed, while building up a cc that will revert all the blocks we add
-	var revertCC modules.ConsensusChange
+	revertCC := modules.ConsensusChange{
+		BlockHeight: 11,
+	}
 	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
 		b, _ := wt.miner.FindBlock()
 		if err := wt.cs.AcceptBlock(b); err != nil {

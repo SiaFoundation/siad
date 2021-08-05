@@ -90,12 +90,11 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	c.mu.Lock()
 	for _, block := range cc.RevertedBlocks {
-		if block.ID() != types.GenesisID {
-			c.blockHeight--
-		}
 		// Remove recoverable contracts found in reverted block.
 		c.removeRecoverableContracts(block)
 	}
+
+	c.blockHeight = cc.InitialHeight()
 	for _, block := range cc.AppliedBlocks {
 		if block.ID() != types.GenesisID {
 			c.blockHeight++

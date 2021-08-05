@@ -1,13 +1,16 @@
 package consensus
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 
+	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -311,4 +314,67 @@ func TestPerBlockDiffs(t *testing.T) {
 			t.Error("per-block diffs did not match")
 		}
 	}
+}
+
+func TestConsensusBlockHeight(t *testing.T) {
+	cst, err := blankConsensusSetTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = cst.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	ms := newMockSubscriber()
+	err = cst.cs.ConsensusSetSubscribe(&ms, modules.ConsensusChangeBeginning, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check that the genesis update has been applied
+	err = build.Retry(3, 10*time.Millisecond, func() error {
+		if len(ms.updates) != 1 {
+			return fmt.Errorf("expected to have single genesis update")
+		}
+
+		if ms.updates[0].BlockHeight != 0 {
+			return fmt.Errorf("expected genesis block height to be 0")
+		}
+
+		if ms.updates[0].AppliedBlocks[0].ID() != types.GenesisID {
+			return fmt.Errorf("expected genesis block to be applied")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// helper to compare the last update's height to the expected height.
+	testExpectedHeight := func(expected types.BlockHeight) {
+		err = build.Retry(3, 10*time.Millisecond, func() error {
+			if height := ms.updates[len(ms.updates)-1].BlockHeight; height != expected {
+				return fmt.Errorf("got height %d expected %d", height, expected)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// mine 5 blocks to put the height at 5
+	for i := 0; i < 5; i++ {
+		cst.testSimpleBlock()
+	}
+	testExpectedHeight(5)
+
+	// mine 10 more blocks to put the height at 15
+	for i := 0; i < 10; i++ {
+		cst.testSimpleBlock()
+	}
+	testExpectedHeight(15)
 }

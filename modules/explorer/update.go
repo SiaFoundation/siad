@@ -26,19 +26,11 @@ func (e *Explorer) ProcessConsensusChange(cc modules.ConsensusChange) {
 			}
 		}()
 
-		// get starting block height
-		var blockheight types.BlockHeight
-		err = dbGetInternal(internalBlockHeight, &blockheight)(tx)
-		if err != nil {
-			return err
-		}
-
 		// Update cumulative stats for reverted blocks.
 		for _, block := range cc.RevertedBlocks {
 			bid := block.ID()
 			tbid := types.TransactionID(bid)
 
-			blockheight--
 			dbRemoveBlockID(tx, bid)
 			dbRemoveTransactionID(tx, tbid) // Miner payouts are a transaction
 
@@ -122,6 +114,7 @@ func (e *Explorer) ProcessConsensusChange(cc modules.ConsensusChange) {
 			dbRemoveBlockFacts(tx, bid)
 		}
 
+		blockheight := cc.InitialHeight()
 		// Update cumulative stats for applied blocks.
 		for _, block := range cc.AppliedBlocks {
 			bid := block.ID()

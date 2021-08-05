@@ -83,11 +83,9 @@ func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 		rs.c.mu.Lock()
 		rs.c.findRecoverableContracts(rs.rs, block)
 		rs.c.mu.Unlock()
-		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, 1)
 	}
-	for range cc.RevertedBlocks {
-		atomic.AddInt64(&rs.c.atomicRecoveryScanHeight, -1)
-	}
+
+	atomic.StoreInt64(&rs.c.atomicRecoveryScanHeight, int64(cc.BlockHeight))
 	// Update the recentRecoveryChange
 	rs.c.mu.Lock()
 	rs.c.recentRecoveryChange = cc.ID
