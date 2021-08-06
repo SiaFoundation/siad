@@ -1376,8 +1376,9 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	var sig2 crypto.Signature
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
 	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
-	data2 := resp.Output[crypto.SignatureSize+8:]
-	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
+	data2 := resp.Output[crypto.SignatureSize+8 : len(resp.Output)-1]
+	entryType := modules.RegistryEntryType(resp.Output[len(resp.Output)-1])
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, entryType)
 	if !reflect.DeepEqual(rv, rv2) {
 		t.Log(rv)
 		t.Log(rv2)
@@ -1447,8 +1448,9 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	// Parse response.
 	copy(sig2[:], resp.Output[:crypto.SignatureSize])
 	rev2 = binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
-	data2 = resp.Output[crypto.SignatureSize+8:]
-	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, modules.RegistryTypeWithoutPubkey)
+	data2 = resp.Output[crypto.SignatureSize+8 : len(resp.Output)-1]
+	entryType = modules.RegistryEntryType(resp.Output[len(resp.Output)-1])
+	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2, entryType)
 	if !reflect.DeepEqual(rv, rv2) {
 		t.Log(rv)
 		t.Log(rv2)
