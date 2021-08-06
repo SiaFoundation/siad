@@ -13,14 +13,15 @@ import (
 type instructionUpdateRegistry struct {
 	commonInstruction
 
-	tweakOffset     uint64
-	revisionOffset  uint64
-	signatureOffset uint64
-	pubKeyOffset    uint64
-	pubKeyLength    uint64
-	dataOffset      uint64
-	dataLen         uint64
-	staticEntryType modules.RegistryEntryType
+	tweakOffset      uint64
+	revisionOffset   uint64
+	signatureOffset  uint64
+	pubKeyOffset     uint64
+	pubKeyLength     uint64
+	dataOffset       uint64
+	dataLen          uint64
+	staticEntryType  modules.RegistryEntryType
+	staticReturnType bool
 }
 
 // staticDecodeUpdateRegistryInstruction creates a new 'UpdateRegistry' instruction from the
@@ -46,7 +47,9 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 	dataOffset := binary.LittleEndian.Uint64(instruction.Args[40:48])
 	dataLength := binary.LittleEndian.Uint64(instruction.Args[48:56])
 	entryType := modules.RegistryTypeWithoutPubkey
+	var returnType bool
 	if len(instruction.Args) == modules.RPCIUpdateRegistryWithVersionLen {
+		returnType = true
 		entryType = modules.RegistryEntryType(instruction.Args[56])
 	}
 	return &instructionUpdateRegistry{
@@ -54,14 +57,15 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 			staticData:  p.staticData,
 			staticState: p.staticProgramState,
 		},
-		tweakOffset:     tweakOffset,
-		revisionOffset:  revisionOffset,
-		signatureOffset: signatureOffset,
-		pubKeyOffset:    pubKeyOffset,
-		pubKeyLength:    pubKeyLength,
-		dataOffset:      dataOffset,
-		dataLen:         dataLength,
-		staticEntryType: entryType,
+		tweakOffset:      tweakOffset,
+		revisionOffset:   revisionOffset,
+		signatureOffset:  signatureOffset,
+		pubKeyOffset:     pubKeyOffset,
+		pubKeyLength:     pubKeyLength,
+		dataOffset:       dataOffset,
+		dataLen:          dataLength,
+		staticEntryType:  entryType,
+		staticReturnType: returnType,
 	}, nil
 }
 
@@ -106,12 +110,16 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) (output, types.Cu
 		// exists, we need to return a proof.
 		rev := make([]byte, 8)
 		binary.LittleEndian.PutUint64(rev, existingRV.Revision)
-		return output{
+		out := output{
 			NewSize:       prevOutput.NewSize,
 			NewMerkleRoot: prevOutput.NewMerkleRoot,
 			Output:        append(existingRV.Signature[:], append(rev, existingRV.Data...)...),
 			Error:         err,
-		}, types.ZeroCurrency
+		}
+		if i.staticReturnType {
+			out.Output = append(out.Output, byte(existingRV.Type))
+		}
+		return out, types.ZeroCurrency
 	}
 	if err != nil {
 		return errOutput(err), types.ZeroCurrency
