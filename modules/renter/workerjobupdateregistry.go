@@ -184,11 +184,13 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
+	version := modules.ReadRegistryVersionNoType
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.6") < 0 {
 		pb.V156AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else {
+		version = modules.ReadRegistryVersionWithType
 		pb.AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	}
 	program, programData := pb.Program()
@@ -221,7 +223,8 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		}
 		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
-			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak, modules.RegistryTypeWithoutPubkey)
+			_, _, data, revision, sig, entryType, parseErr := parseSignedRegistryValueResponse(resp.Output, false, version)
+			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig, entryType)
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {
