@@ -1,8 +1,9 @@
 package renter
 
 import (
+	"bytes"
 	"context"
-	"encoding/binary"
+	"io/ioutil"
 	"time"
 
 	"go.sia.tech/siad/build"
@@ -10,6 +11,7 @@ import (
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -55,15 +57,29 @@ type (
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash, entryType modules.RegistryEntryType) (modules.SignedRegistryValue, error) {
-	if len(resp) < crypto.SignatureSize+8 {
-		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
+func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool, version modules.ReadRegistryVersion) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, rrv modules.RegistryEntryType, err error) {
+	dec := encoding.NewDecoder(bytes.NewReader(resp), encoding.DefaultAllocLimit)
+	if needPKAndTweak {
+		err = dec.DecodeAll(&spk, &tweak, &sig, &rev)
+	} else {
+		err = dec.DecodeAll(&sig, &rev)
 	}
-	var sig crypto.Signature
-	copy(sig[:], resp[:crypto.SignatureSize])
-	rev := binary.LittleEndian.Uint64(resp[crypto.SignatureSize:])
-	data := resp[crypto.SignatureSize+8:]
-	return modules.NewSignedRegistryValue(tweak, data, rev, sig, entryType), nil
+	if err != nil {
+		return
+	}
+	data, err = ioutil.ReadAll(dec)
+
+	// Last byte might be the entry type.
+	rrv = modules.RegistryTypeWithoutPubkey
+	if version == modules.ReadRegistryVersionWithType {
+		if len(data) < 1 {
+			err = errors.New("parsing the registry value failed - not enough data to contain entry type")
+			return
+		}
+		rrv = modules.RegistryEntryType(data[len(data)-1])
+		data = data[:len(data)-1]
+	}
+	return
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
@@ -116,10 +132,11 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modu
 	}
 
 	// Parse response.
-	rv, err := parseSignedRegistryValueResponse(resp.Output, tweak, modules.RegistryTypeWithoutPubkey)
+	_, _, data, revision, sig, entryType, err := parseSignedRegistryValueResponse(resp.Output, false, modules.ReadRegistryVersionNoType)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}
+	rv := modules.NewSignedRegistryValue(tweak, data, revision, sig, entryType)
 
 	// Verify signature.
 	if rv.Verify(spk.ToPublicKey()) != nil {

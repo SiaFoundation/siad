@@ -17,32 +17,32 @@ import (
 func TestInstructionUpdateRegistry(t *testing.T) {
 	t.Run("NoPubkeyV156", func(t *testing.T) {
 		entryType := modules.RegistryTypeWithoutPubkey
-		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+		testInstructionUpdateRegistry(t, entryType, false, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
 			tb.AddUpdateRegistryInstructionV156(spk, rv)
 		})
 	})
 	t.Run("NoPubkey", func(t *testing.T) {
 		entryType := modules.RegistryTypeWithoutPubkey
-		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+		testInstructionUpdateRegistry(t, entryType, true, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
 			tb.AddUpdateRegistryInstruction(spk, rv)
 		})
 	})
 	t.Run("WithPubkey", func(t *testing.T) {
 		entryType := modules.RegistryTypeWithPubkey
-		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+		testInstructionUpdateRegistry(t, entryType, true, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
 			tb.AddUpdateRegistryInstruction(spk, rv)
 		})
 	})
 	t.Run("Invalid", func(t *testing.T) {
 		entryType := modules.RegistryTypeInvalid
-		testInstructionUpdateRegistry(t, entryType, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+		testInstructionUpdateRegistry(t, entryType, true, func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
 			tb.AddUpdateRegistryInstruction(spk, rv)
 		})
 	})
 }
 
 // testInstructionUpdateRegistry tests the update registry instruction.
-func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntryType, addUpdateRegistryInstruction func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue)) {
+func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntryType, expectType bool, addUpdateRegistryInstruction func(tb *testProgramBuilder, spk types.SiaPublicKey, rv modules.SignedRegistryValue)) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -102,6 +102,9 @@ func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntry
 	revBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(revBytes, rv.Revision)
 	expectedOutput := append(rv.Signature[:], append(revBytes, rv.Data...)...)
+	if expectType {
+		expectedOutput = append(expectedOutput, byte(entryType))
+	}
 	// Assert output.
 	output = outputs[0]
 	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrSameRevNum)
@@ -151,6 +154,9 @@ func testInstructionUpdateRegistry(t *testing.T, entryType modules.RegistryEntry
 	revBytes = make([]byte, 8)
 	binary.LittleEndian.PutUint64(revBytes, rv2.Revision)
 	expectedOutput = append(rv2.Signature[:], append(revBytes, rv2.Data...)...)
+	if expectType {
+		expectedOutput = append(expectedOutput, byte(entryType))
+	}
 	// Assert output.
 	output = outputs[0]
 	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, modules.ErrLowerRevNum)
