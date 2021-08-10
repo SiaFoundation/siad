@@ -1,0 +1,1 @@
+- Fixed an issue with contractmanager.json being written to disk when the host is idle.
