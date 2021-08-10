@@ -1,0 +1,1 @@
+- Fixed an issue with the wallet block height not being updated correctly in some situations.

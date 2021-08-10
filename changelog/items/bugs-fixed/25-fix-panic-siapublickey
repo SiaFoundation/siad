@@ -1,0 +1,1 @@
+- Fix panic in SiaPublicKey.String when the key is too long.
