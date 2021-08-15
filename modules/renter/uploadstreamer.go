@@ -218,6 +218,15 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 	}()
 
+	// Check if stream has at least one byte. No need to upload empty data.
+	peek := []byte{0}
+	_, err = io.ReadFull(reader, peek)
+	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
+		return fileNode, nil
+	} else if err != nil {
+		return nil, err
+	}
+
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
 	for _, pk := range fileNode.HostPublicKeys() {
@@ -239,7 +248,6 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
-	var peek []byte
 	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing
