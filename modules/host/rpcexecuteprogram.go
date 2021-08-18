@@ -17,6 +17,16 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+const (
+	// maxRPCExecuteProgramRequestSize is the max size we allocate for
+	// reading a RPCExecuteProgramRequest.
+	maxRPCExecuteProgramRequestSize = 1 << 22 // 4 MiB
+
+	// maxRPCExecuteProgramRevisionSigningRequestSize is the max size we
+	// allocate for reading a RPCExecuteProgramRevisionSigningRequest.
+	maxRPCExecuteProgramRevisionSigningRequestSize = 1 << 20 // 1 MiB
+)
+
 // managedRPCExecuteProgram handles incoming ExecuteProgram RPCs.
 func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// read the price table
@@ -62,7 +72,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 	// Read request
 	var epr modules.RPCExecuteProgramRequest
-	err = modules.RPCRead(stream, &epr)
+	err = modules.RPCReadMaxLen(stream, &epr, maxRPCExecuteProgramRequestSize)
 	if err != nil {
 		return errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
 	}
@@ -284,7 +294,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 
 	// Get the new revision from the renter.
 	var req modules.RPCExecuteProgramRevisionSigningRequest
-	err = modules.RPCRead(stream, &req)
+	err = modules.RPCReadMaxLen(stream, &req, maxRPCExecuteProgramRevisionSigningRequestSize)
 	if err != nil {
 		return errors.AddContext(err, "failed to get new revision from renter")
 	}
