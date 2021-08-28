@@ -5,7 +5,7 @@ GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 
 ldflags= \
 -X "go.sia.tech/siad/build.BinaryName=siad" \
--X "go.sia.tech/siad/build.NodeVersion=1.5.6" \
+-X "go.sia.tech/siad/build.NodeVersion=1.5.7" \
 -X "go.sia.tech/siad/build.GitRevision=${GIT_DIRTY}${GIT_REVISION}" \
 -X "go.sia.tech/siad/build.BuildTime=${BUILD_TIME}"
 
