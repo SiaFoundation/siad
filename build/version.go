@@ -22,10 +22,6 @@ var (
 	// NodeVersion is the current version of the node software. It is supplied
 	// at compile time via ldflags.
 	NodeVersion string = "?.?.?"
-
-	// ReleaseTag contains the release tag, such as "rc3". It is supplied at build
-	// time. For full releases, this string is blank.
-	ReleaseTag string = "master"
 )
 
 // IsVersion returns whether str is a valid version number.

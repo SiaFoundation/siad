@@ -481,11 +481,7 @@ func (api *API) daemonStopProfileHandlerPOST(w http.ResponseWriter, _ *http.Requ
 
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (api *API) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	version := build.NodeVersion
-	if build.ReleaseTag != "" {
-		version += "-" + build.ReleaseTag
-	}
-	WriteJSON(w, DaemonVersion{Version: version, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
+	WriteJSON(w, DaemonVersion{Version: build.NodeVersion, GitRevision: build.GitRevision, BuildTime: build.BuildTime})
 }
 
 // daemonStopHandler handles the API call to stop the daemon cleanly.
