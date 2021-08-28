@@ -10,6 +10,26 @@ Version History
 
 Latest:
 
+## Aug 27, 2021:
+### v1.5.7
+**Key Updates**
+- Remove Skynet API and references.
+- Add support for registry entries with public keys for recovery.
+- Updated the bootstrap peers to include only active v1.5.4+ peers.
+- Add dockerfile and automatic builds to ghcr.io/siafoundation/siad
+
+**Bugs Fixed**
+- Fixed an issue with contractmanager.json being written to disk when the host is idle.
+- Fixed an issue with the wallet block height not being updated correctly in some situations.
+- Fix panic in SiaPublicKey.String when the key is too long.
+- Fix critical error triggering in uploadchunkdistribution
+- Fix contracts past their proof deadline remaining "unresolved".
+
+**Other**
+- Add --insecure-input flag to disable wallet unlock passwork masking
+- Added contract ID to all contract lifecycle log messages in host.log
+- Upgrade siamux dependency.
+
 ## Apr 7, 2021:
 ### v1.5.6
 **Key Updates**
