@@ -1,7 +1,11 @@
 # These variables get inserted into ./build/commit.go
-BUILD_TIME=$(shell date)
 GIT_REVISION=$(shell git rev-parse --short HEAD)
 GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
+ifeq ("$(GIT_DIRTY)", "✗-")
+	BUILD_TIME=$(shell date)
+else
+	BUILD_TIME=$(shell git show -s --format=%ci HEAD)
+endif
 
 ldflags= \
 -X "go.sia.tech/siad/build.BinaryName=siad" \

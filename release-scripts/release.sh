@@ -9,8 +9,10 @@ if [[ -z $version ]]; then
 	exit 1
 fi
 
-# setup build-time vars
-ldflags="-s -w -X 'go.sia.tech/siad/build.GitRevision=`git rev-parse --short HEAD`' -X 'go.sia.tech/siad/build.BuildTime=`git show -s --format=%ci HEAD`' -X 'go.sia.tech/siad/build.ReleaseTag=${rc}'"
+# get the current directory to preserve paths.
+dir=$(pwd)/release
+# go up one directory to the makefile.
+cd ..
 
 function build {
   os=$1
@@ -18,23 +20,30 @@ function build {
 
 	echo Building ${os}...
 	# create workspace
-	folder=release/Sia-$version-$os-$arch
+	folder=$dir/Sia-$version-$os-$arch
 	rm -rf $folder
 	mkdir -p $folder
+
+	GOOS=$1 GOARCH=$2 make static
+	mv release/* $folder
+
 	# compile and hash binaries
 	for pkg in siac siad; do
 		bin=$pkg
 		if [ "$os" == "windows" ]; then
 			bin=${pkg}.exe
 		fi
-		GOOS=${os} GOARCH=${arch} go build -a -tags 'netgo' -trimpath -ldflags="$ldflags" -o $folder/$bin ./cmd/$pkg
+
 		(
-			cd release/
-			sha256sum Sia-$version-$os-$arch/$bin >> Sia-$version-SHA256SUMS.txt
+			cd $dir
+			sha256sum Sia-$version-$os-$arch/$bin >> $dir/Sia-$version-SHA256SUMS.txt
 		)
-  done
+  	done
 
 	cp -r doc LICENSE README.md $folder
+
+	# delete the top-level release folder from the makefile.
+	rm -rf release
 }
 
 # Build amd64 binaries.
