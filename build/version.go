@@ -22,13 +22,9 @@ var (
 	// NodeVersion is the current version of the node software. It is supplied
 	// at compile time via ldflags.
 	NodeVersion string = "?.?.?"
-
-	// ReleaseTag contains the release tag, such as "rc3". It is supplied at build
-	// time. For full releases, this string is blank.
-	ReleaseTag string = "master"
 )
 
-// IsVersion returns whether str is a valid version number.
+// IsVersion returns whether str is a valid release version with no -rc component.
 func IsVersion(str string) bool {
 	for _, n := range strings.Split(str, ".") {
 		if _, err := strconv.Atoi(n); err != nil {
@@ -46,6 +42,24 @@ func min(a, b int) int {
 	return b
 }
 
+// splitVersion splits a version string into it's version and optional rc component.
+// full releases are considered rc 0.
+func splitVersion(v string) (version []int, rc int) {
+	parts := strings.Split(v, "-rc")
+	for _, s := range strings.Split(parts[0], ".") {
+		n, _ := strconv.Atoi(s)
+		version = append(version, n)
+	}
+	if len(parts) == 1 { // if we don't have an rc part, we're done
+		return
+	} else if len(parts[1]) == 0 { // -rc is equivalent to -rc1 since rc0 is a full release
+		return version, 1
+	}
+
+	rc, _ = strconv.Atoi(parts[1])
+	return
+}
+
 // VersionCmp returns an int indicating the difference between a and b. It
 // follows the convention of bytes.Compare and big.Cmp:
 //
@@ -56,24 +70,33 @@ func min(a, b int) int {
 // One important quirk is that "1.1.0" is considered newer than "1.1", despite
 // being numerically equal.
 func VersionCmp(a, b string) int {
-	aNums := strings.Split(a, ".")
-	bNums := strings.Split(b, ".")
-	for i := 0; i < min(len(aNums), len(bNums)); i++ {
-		// assume that both version strings are valid
-		aInt, _ := strconv.Atoi(aNums[i])
-		bInt, _ := strconv.Atoi(bNums[i])
-		if aInt < bInt {
+	va, rca := splitVersion(a)
+	vb, rcb := splitVersion(b)
+
+	for i := 0; i < min(len(va), len(vb)); i++ {
+		if va[i] < vb[i] {
 			return -1
-		} else if aInt > bInt {
+		} else if va[i] > vb[i] {
 			return 1
 		}
 	}
-	// all shared digits are equal, but lengths may not be equal
-	if len(aNums) < len(bNums) {
+
+	switch {
+	case len(va) < len(vb): // a has fewer digits than b
 		return -1
-	} else if len(aNums) > len(bNums) {
+	case len(va) > len(vb): // a has more digits than b
 		return 1
+	case rca == rcb: // length is equal and rcs are equal
+		return 0
+	case rca == 0: // a is a full release
+		return 1
+	case rcb == 0: // b is a full release
+		return -1
+	case rca > rcb:
+		return 1
+	case rca < rcb:
+		return -1
 	}
-	// strings are identical
+
 	return 0
 }

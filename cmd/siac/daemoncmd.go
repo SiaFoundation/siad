@@ -178,11 +178,7 @@ func profilestopcmd() {
 // version prints the version of siac and siad.
 func versioncmd() {
 	fmt.Println("Sia Client")
-	if build.ReleaseTag == "" {
-		fmt.Println("\tVersion " + build.NodeVersion)
-	} else {
-		fmt.Println("\tVersion " + build.NodeVersion + "-" + build.ReleaseTag)
-	}
+	fmt.Println("\tVersion " + build.NodeVersion)
 	if build.GitRevision != "" {
 		fmt.Println("\tGit Revision " + build.GitRevision)
 		fmt.Println("\tBuild Time   " + build.BuildTime)

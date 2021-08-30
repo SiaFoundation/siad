@@ -17,6 +17,20 @@ func TestVersionCmp(t *testing.T) {
 		{"0.1", "0.1.0", -1},
 		{"0.1", "1.1", -1},
 		{"0.1.1.0", "0.1.1", 1},
+		{"2.3.7", "2.3.7-rc1", 1},
+		{"2.3.7-rc2", "2.3.7", -1},
+		{"1.1.0-rc2", "1.1.0-rc1", 1},
+		{"1.1.0-rc1", "1.1.0-rc2", -1},
+		{"2.5.5", "2.5.4-rc1", 1},
+		{"2.5.4-rc1", "2.5.5", -1},
+		{"2.5.4-rc1", "2.5.4-rc1", 0},
+		{"2.5.4.0-rc1", "2.5.4-rc1", 1},
+		{"2.5.4-rc1", "2.5.4.0-rc1", -1},
+		// version strings are unvalidated
+		{"x.y.z", "2.5.4", -1},
+		{"1.0.0", "x.y.z-rc1", 1},
+		{"0.0.0-rc1", "x.y.z-rc1", 0},
+		{"rc0", "rc1", 0},
 	}
 
 	for _, test := range versionTests {
@@ -35,6 +49,7 @@ func TestIsVersion(t *testing.T) {
 		{"1.0", true},
 		{"1", true},
 		{"0.1.2.3.4.5", true},
+		{"2.5.4", true},
 
 		{"foo", false},
 		{".1", false},
@@ -43,6 +58,9 @@ func TestIsVersion(t *testing.T) {
 		{"1.o", false},
 		{".", false},
 		{"", false},
+		{"-rc1", false},
+		{"2.5.6-rc1", false},
+		{"2.5.6-rc1-rc1", false},
 	}
 
 	for _, test := range versionTests {

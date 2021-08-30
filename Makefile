@@ -1,7 +1,11 @@
 # These variables get inserted into ./build/commit.go
-BUILD_TIME=$(shell date)
 GIT_REVISION=$(shell git rev-parse --short HEAD)
 GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
+ifeq ("$(GIT_DIRTY)", "✗-")
+	BUILD_TIME=$(shell date)
+else
+	BUILD_TIME=$(shell git show -s --format=%ci HEAD)
+endif
 
 ldflags= \
 -X "go.sia.tech/siad/build.BinaryName=siad" \
@@ -149,7 +153,7 @@ dev-race:
 	GORACE='$(racevars)' go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 static:
-	go build -o release/ -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+	go build -trimpath -o release/ -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 
 # release builds and installs release binaries.
 release:

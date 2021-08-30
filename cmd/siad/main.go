@@ -65,19 +65,15 @@ func die(args ...interface{}) {
 
 // versionCmd is a cobra command that prints the version of siad.
 func versionCmd(*cobra.Command, []string) {
-	version := build.NodeVersion
-	if build.ReleaseTag != "" {
-		version += "-" + build.ReleaseTag
-	}
 	switch build.Release {
 	case "dev":
-		fmt.Println("siad v" + version + "-dev")
+		fmt.Println("siad v" + build.NodeVersion + "-dev")
 	case "standard":
-		fmt.Println("siad v" + version)
+		fmt.Println("siad v" + build.NodeVersion)
 	case "testing":
-		fmt.Println("siad v" + version + "-testing")
+		fmt.Println("siad v" + build.NodeVersion + "-testing")
 	default:
-		fmt.Println("siad v" + version + "-???")
+		fmt.Println("siad v" + build.NodeVersion + "-???")
 	}
 }
 
