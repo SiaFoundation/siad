@@ -12,10 +12,6 @@ jobs:
         uses: golangci/golangci-lint-action@5c56cd6c9dc07901af25baab6f2b0d9f3b7c3018
         with:
           version: v1.37.1
-      - name: analyze
-        run: |
-          go get gitlab.com/NebulousLabs/analyze
-          make analyze
       - name: gofmt 
         run: make fmt
       - name: go vet

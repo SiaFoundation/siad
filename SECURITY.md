@@ -30,10 +30,11 @@ There is nothing considered out-of-scope for testers and researchers following
 the rules outlined in this policy.
 
 ### Rewards
-Nebulous has no formal reward policy and researchers should not expect a reward
-for discovering a vulnerability. Nebulous is nonetheless grateful for all
-legitimate discoveries of vulnerabilities, and is happy to acknowledge the
-vulnerability and the researchers after a fix has been widely deployed.
+The Sia Foundation has no formal reward policy and researchers should not expect
+a reward for discovering a vulnerability. The Sia Foundation is nonetheless
+grateful for all legitimate discoveries of vulnerabilities, and is happy to
+acknowledge the vulnerability and the researchers after a fix has been widely
+deployed.
 
 
 ### Official Communication Channel
