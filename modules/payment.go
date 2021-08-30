@@ -22,6 +22,9 @@ var (
 	// under "Payment identifiers".
 	ErrUnknownPaymentMethod = errors.New("unknown payment method")
 
+	// ErrInvalidAccount occurs when the account specified in the WithdrawalMessage
+	// is invalid.
+	ErrInvalidAccount = errors.New("invalid account")
 	// ErrInvalidPaymentMethod occurs when the payment method is not accepted
 	// for a specific RPC.
 	ErrInvalidPaymentMethod = errors.New("invalid payment method")
@@ -191,16 +194,6 @@ func (aid *AccountID) UnmarshalSia(r io.Reader) error {
 	return err
 }
 
-// PK returns the id as a crypto.PublicKey.
-func (aid AccountID) PK() (pk crypto.PublicKey) {
-	spk := aid.SPK()
-	if len(spk.Key) != len(pk) {
-		panic("key len mismatch between crypto.Publickey and types.SiaPublicKey")
-	}
-	copy(pk[:], spk.Key)
-	return
-}
-
 // SPK returns the account id as a types.SiaPublicKey.
 func (aid AccountID) SPK() (spk types.SiaPublicKey) {
 	if aid.IsZeroAccount() {
@@ -239,7 +232,17 @@ func (wm *WithdrawalMessage) ValidateExpiry(blockHeight, expiry types.BlockHeigh
 
 // ValidateSignature returns an error if the provided signature is invalid
 func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Signature) error {
-	err := crypto.VerifyHash(hash, wm.Account.PK(), sig)
+	var pk crypto.PublicKey
+	if wm.Account.IsZeroAccount() {
+		return errors.AddContext(ErrInvalidAccount, "cannot withdraw from zero account")
+	}
+	spk := wm.Account.SPK()
+	if len(spk.Key) != crypto.PublicKeySize {
+		return errors.AddContext(ErrInvalidAccount, "incorrect public key size")
+	}
+	copy(pk[:], spk.Key)
+
+	err := crypto.VerifyHash(hash, pk, sig)
 	if err != nil {
 		return errors.Compose(err, ErrWithdrawalInvalidSignature)
 	}

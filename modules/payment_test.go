@@ -14,7 +14,7 @@ import (
 // TestNewAccountID tests the NewAccountID utility method.
 func TestNewAccountID(t *testing.T) {
 	t.Parallel()
-	aid, sk := NewAccountID()
+	aid, _ := NewAccountID()
 
 	// verify it's not the zero account
 	if aid.IsZeroAccount() {
@@ -22,14 +22,9 @@ func TestNewAccountID(t *testing.T) {
 	}
 
 	// verify the account ID is valid by converting it to a SiaPublicKey
-	_ = aid.SPK()
-
-	// verify we can use the secret key for signing and verification
-	hash := crypto.HashBytes(fastrand.Bytes(10))
-	signature := crypto.SignHash(hash, sk)
-	err := crypto.VerifyHash(hash, aid.PK(), signature)
-	if err != nil {
-		t.Fatal("The secret key does not correspond with the public key used to create the AccountID with")
+	spk := aid.SPK()
+	if spk.String() != aid.spk {
+		t.Fatal("expected SiaPublicKey to match account id string")
 	}
 }
 
@@ -116,24 +111,6 @@ func TestAccountID_SPK(t *testing.T) {
 	}
 }
 
-// TestAccountID_PK tests the PK method.
-func TestAccountID_PK(t *testing.T) {
-	t.Parallel()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       fastrand.Bytes(32),
-	}
-	// Load key.
-	var aid AccountID
-	aid.FromSPK(spk)
-	// Check PK.
-	var pk crypto.PublicKey
-	copy(pk[:], spk.Key)
-	if !reflect.DeepEqual(aid.PK(), pk) {
-		t.Fatal("Expected keys to be equal")
-	}
-}
-
 // TestAccountID_MarshalSia tests the SiaMarshaler implementation.
 func TestAccountID_MarshalSia(t *testing.T) {
 	t.Parallel()
@@ -181,5 +158,106 @@ func TestAccountIDCompatSiaMarhsal(t *testing.T) {
 		t.Log(b)
 		t.Log(b2)
 		t.Fatal("persistence doesn't match")
+	}
+}
+
+func TestWithdrawalMessageValidate(t *testing.T) {
+	t.Parallel()
+	aid, sk := NewAccountID()
+	sk2, _ := crypto.GenerateKeyPair()
+
+	// verify it's not the zero account
+	if aid.IsZeroAccount() {
+		t.Fatal("NewAccountID should not return the ZeroAccount")
+	}
+
+	var nonce [WithdrawalNonceSize]byte
+	fastrand.Read(nonce[:])
+
+	tests := []struct {
+		desc    string
+		sk      crypto.SecretKey
+		message WithdrawalMessage
+		current types.BlockHeight
+		wantErr bool
+	}{
+		{
+			"already expired",
+			sk,
+			WithdrawalMessage{
+				Account: aid,
+				Expiry:  3,
+				Nonce:   nonce,
+			},
+			6,
+			true,
+		},
+		{
+			"extreme future",
+			sk,
+			WithdrawalMessage{
+				Account: aid,
+				Expiry:  50,
+			},
+			5,
+			true,
+		},
+		{
+			"zero account",
+			sk,
+			WithdrawalMessage{
+				Account: ZeroAccountID,
+				Expiry:  10,
+			},
+			5,
+			true,
+		},
+		{
+			"pubkey length",
+			sk,
+			WithdrawalMessage{
+				Account: AccountID{
+					spk: aid.spk[:len(aid.spk)-2],
+				},
+				Expiry: 10,
+			},
+			5,
+			true,
+		},
+		{
+			"invalid signature",
+			sk2,
+			WithdrawalMessage{
+				Account: aid,
+				Expiry:  10,
+				Amount:  types.NewCurrency64(1),
+				Nonce:   nonce,
+			},
+			5,
+			true,
+		},
+		{
+			"valid withdrawal message",
+			sk,
+			WithdrawalMessage{
+				Account: aid,
+				Expiry:  10,
+				Amount:  types.NewCurrency64(1),
+				Nonce:   nonce,
+			},
+			5,
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			fingerprint := crypto.HashAll(tt.message)
+			sig := crypto.SignHash(fingerprint, tt.sk)
+			err := tt.message.Validate(tt.current, tt.current+20, fingerprint, sig)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("WithdrawalMessage.Validate() error = %v, wantErr %t", err, tt.wantErr)
+			}
+		})
 	}
 }
