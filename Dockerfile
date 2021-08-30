@@ -7,7 +7,7 @@ COPY . .
 
 # need to run git status first to fix GIT_DIRTY detection in makefile
 RUN apk update \
-	&& apk add --no-cache git make ca-certificates \
+	&& apk add --no-cache build-base git make ca-certificates \
 	&& update-ca-certificates \
 	&& git status > /dev/null \
 	&& make static
