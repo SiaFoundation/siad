@@ -9,23 +9,17 @@ if [[ -z $version ]]; then
 	exit 1
 fi
 
-# get the current directory to preserve paths.
-dir=$(pwd)/release
-# go up one directory to the makefile.
-cd ..
-
 function build {
   os=$1
   arch=$2
 
 	echo Building ${os}...
 	# create workspace
-	folder=$dir/Sia-$version-$os-$arch
+	folder=release/Sia-$version-$os-$arch
 	rm -rf $folder
 	mkdir -p $folder
 
 	GOOS=$1 GOARCH=$2 make static
-	mv release/* $folder
 
 	# compile and hash binaries
 	for pkg in siac siad; do
@@ -34,16 +28,15 @@ function build {
 			bin=${pkg}.exe
 		fi
 
+		mv release/$bin $folder
+
 		(
-			cd $dir
-			sha256sum Sia-$version-$os-$arch/$bin >> $dir/Sia-$version-SHA256SUMS.txt
+			cd release/
+			sha256sum Sia-$version-$os-$arch/$bin >> Sia-$version-SHA256SUMS.txt
 		)
   	done
 
 	cp -r doc LICENSE README.md $folder
-
-	# delete the top-level release folder from the makefile.
-	rm -rf release
 }
 
 # Build amd64 binaries.
