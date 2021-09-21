@@ -1,14 +1,15 @@
-FROM golang@sha256:1e9c36b3fd7d7f9ab95835fb1ed898293ec0917e44c7e7d2766b4a2d9aa43da6
-# golang:1.14.4-buster
+FROM golang@sha256:0bf61ce389ea41b61ea9f2b2c8eb15824838782df0c9c302dc284f0d6792caf9
+# golang:1.16.7-buster
 
 ARG branch
 ARG version
 
 RUN useradd -ms /bin/bash builder
+RUN chown -R builder:builder /home/builder
 USER builder
 WORKDIR /home/builder
 
-RUN git clone https://github.com/SiaFoundation/siad
+RUN git clone https://github.com/SiaFoundation/siad /home/builder/Sia
 WORKDIR /home/builder/Sia
 RUN git fetch --all && git checkout $branch
 
