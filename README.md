@@ -115,4 +115,4 @@ Official binaries can be found under
 [sia.tech](https://sia.tech/get-started).
 
 Additionally, an official Docker image can be found
-[here](https://hub.docker.com/r/nebulouslabs/sia).
+[here](https://github.com/SiaFoundation/siad/pkgs/container/siad).
