@@ -103,6 +103,7 @@ type NodeParams struct {
 	// Custom settings for modules
 	Allowance   modules.Allowance
 	Bootstrap   bool
+	UseUPNP     bool
 	HostAddress string
 	HostStorage uint64
 	RPCAddress  string
@@ -280,7 +281,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
-		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir), gatewayDeps)
+		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, params.UseUPNP, filepath.Join(dir, modules.GatewayDir), gatewayDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create gateway"))

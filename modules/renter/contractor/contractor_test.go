@@ -40,7 +40,7 @@ func tryClose(cf closeFn, t *testing.T) {
 
 // newModules initializes the modules needed to test creating a new contractor
 func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, *siamux.SiaMux, modules.HostDB, closeFn, error) {
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}

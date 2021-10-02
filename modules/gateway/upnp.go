@@ -45,6 +45,25 @@ func myExternalIP() (_ string, err error) {
 	return strings.TrimSpace(string(buf)), nil
 }
 
+// managedIPFromUPNP attempts learn the Gateway's external IP address via UPnP.
+func (g *Gateway) managedIPFromUPNP(ctx context.Context) (string, error) {
+	d, err := upnp.Load(g.persist.RouterURL)
+	if err != nil {
+		d, err = upnp.DiscoverCtx(ctx)
+		if err != nil {
+			return "", err
+		}
+		loc := d.Location()
+		g.mu.Lock()
+		g.persist.RouterURL = loc
+		if err = g.saveSync(); err != nil {
+			g.log.Panicln("WARN: could not save the gateway:", err)
+		}
+		g.mu.Unlock()
+	}
+	return d.ExternalIP()
+}
+
 // managedLearnHostname tries to discover the external ip of the machine. If
 // discovering the address failed or if it is invalid, an error is returned.
 func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (net.IP, error) {
@@ -61,26 +80,17 @@ func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (net.IP, error) {
 		}
 	}()
 
-	// try UPnP first, then fallback to myexternalip.com and peer-to-peer
-	// discovery.
+	// try UPnP first (unless disabled), then peer-to-peer discovery, then
+	// myexternalip.com.
 	var host string
-	d, err := upnp.Load(g.persist.RouterURL)
-	if err != nil {
-		d, err = upnp.DiscoverCtx(ctx)
+	var err error
+	if g.staticUseUPNP {
+		host, err = g.managedIPFromUPNP(ctx)
 	}
-	if err == nil {
-		g.mu.Lock()
-		g.persist.RouterURL = d.Location()
-		if err = g.saveSync(); err != nil {
-			g.log.Panicln("WARN: could not save the gateway:", err)
-		}
-		g.mu.Unlock()
-		host, err = d.ExternalIP()
-	}
-	if err != nil {
+	if err != nil || host == "" {
 		host, err = g.managedIPFromPeers(ctx.Done())
 	}
-	if !build.DEBUG && err != nil {
+	if !build.DEBUG && (err != nil || host == "") {
 		host, err = myExternalIP()
 	}
 	if err != nil {

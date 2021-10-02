@@ -31,7 +31,7 @@ func TestSaveLoad(t *testing.T) {
 
 	// Reassigning this will lose subscribers and such, but we
 	// just want to call load and get a hash
-	g, err := gateway.New("localhost:0", false, build.TempDir(modules.ConsensusDir, t.Name(), modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, false, build.TempDir(modules.ConsensusDir, t.Name(), modules.GatewayDir))
 	if err != nil {
 		t.Fatal(err)
 	}
