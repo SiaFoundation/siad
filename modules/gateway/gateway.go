@@ -162,6 +162,8 @@ type Gateway struct {
 
 	// Unique ID
 	staticID gatewayID
+
+	staticUseUPNP bool
 }
 
 type gatewayID [8]byte
@@ -358,12 +360,12 @@ func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 }
 
 // New returns an initialized Gateway.
-func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
-	return NewCustomGateway(addr, bootstrap, persistDir, modules.ProdDependencies)
+func New(addr string, bootstrap bool, useUPNP bool, persistDir string) (*Gateway, error) {
+	return NewCustomGateway(addr, bootstrap, useUPNP, persistDir, modules.ProdDependencies)
 }
 
 // NewCustomGateway returns an initialized Gateway with custom dependencies.
-func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modules.Dependencies) (*Gateway, error) {
+func NewCustomGateway(addr string, bootstrap bool, useUPNP bool, persistDir string, deps modules.Dependencies) (*Gateway, error) {
 	// Create the directory if it doesn't exist.
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
@@ -381,6 +383,7 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 		persistDir:    persistDir,
 		staticAlerter: modules.NewAlerter("gateway"),
 		staticDeps:    deps,
+		staticUseUPNP: useUPNP,
 	}
 
 	// Set Unique GatewayID

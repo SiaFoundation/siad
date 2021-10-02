@@ -41,6 +41,7 @@ type Config struct {
 
 		Modules           string
 		NoBootstrap       bool
+		UseUPNP           bool
 		RequiredUserAgent string
 		AuthenticateAPI   bool
 		TempPassword      bool
@@ -194,6 +195,7 @@ func main() {
 	root.Flags().StringVarP(&globalConfig.Siad.APIaddr, "api-addr", "", "localhost:9980", "which host:port the API server listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.Flags().BoolVarP(&globalConfig.Siad.NoBootstrap, "no-bootstrap", "", false, "disable bootstrapping on this run")
+	root.Flags().BoolVarP(&globalConfig.Siad.UseUPNP, "upnp", "", true, "use UPnP for port forwarding and external IP discovery")
 	root.Flags().StringVarP(&globalConfig.Siad.Profile, "profile", "", "", "enable profiling with flags 'cmt' for CPU, memory, trace")
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxTCPAddr, "siamux-addr", "", ":9983", "which port the SiaMux listens on")
