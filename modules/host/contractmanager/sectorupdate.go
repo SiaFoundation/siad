@@ -551,17 +551,22 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 	var wg sync.WaitGroup
 	// Ensure only 'maxSectorBatchThreads' goroutines are running at a time.
 	semaphore := make(chan struct{}, maxSectorBatchThreads)
+	i := 0
 	for _, root := range sectorRoots {
 		wg.Add(1)
 		semaphore <- struct{}{}
-		go func(root crypto.Hash) {
+		i++
+		go func(root crypto.Hash, i int) {
 			id := cm.managedSectorID(root)
 			cm.wal.managedLockSector(id)
 			cm.wal.managedRemoveSector(id) // Error is ignored.
 			cm.wal.managedUnlockSector(id)
+			if i % 1000 == 0 {
+				cm.log.Printf("Finished %v sectors\n", i)
+			}
 			<-semaphore
 			wg.Done()
-		}(root)
+		}(root, i)
 	}
 	wg.Wait()
 	return nil
