@@ -6,7 +6,7 @@ language_tabs: # must be one of https://git.io/vQNgJ
 
 toc_footers:
   - <a href='https://sia.tech'>The Official Sia Website
-  - <a href='https://github.com/SiaFoundation/siad'>Sia on GitLab</a>
+  - <a href='https://github.com/SiaFoundation/siad'>Sia on GitHub</a>
 
 search: true
 ---
