@@ -561,7 +561,7 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 			cm.wal.managedLockSector(id)
 			cm.wal.managedRemoveSector(id) // Error is ignored.
 			cm.wal.managedUnlockSector(id)
-			if i % 1000 == 0 {
+			if i%1000 == 0 {
 				cm.log.Printf("Finished %v sectors\n", i)
 			}
 			<-semaphore

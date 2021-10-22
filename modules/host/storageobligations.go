@@ -986,7 +986,7 @@ func (h *Host) PruneStaleStorageObligations() error {
 func (h *Host) removeStorageObligation(so storageObligation, sos storageObligationStatus) error {
 	// Error is not checked, we want to call remove on every sector even if
 	// there are problems - disk health information will be updated.
-        h.log.Printf("Removing %v sectors for %v\n", len(so.SectorRoots), so.id)
+	h.log.Printf("Removing %v sectors.\n", len(so.SectorRoots))
 	_ = h.RemoveSectorBatch(so.SectorRoots)
 
 	// Update the host revenue metrics based on the status of the obligation.
