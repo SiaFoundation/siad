@@ -1,11 +1,15 @@
 package contractmanager
 
 import (
+	"encoding/hex"
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -547,26 +551,34 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 	}
 	defer cm.tg.Done()
 
+	// unique alert id for each call
+	alertID := modules.AlertID("cm-removing-sectors-" + hex.EncodeToString(fastrand.Bytes(12)))
+	start := time.Now()
+	// helper to format the alert.
+	updateRemovalAlert := func(i, n int) {
+		cm.staticAlerter.RegisterAlert(alertID, fmt.Sprintf("Removed %v/%v sectors in %v", i, n, time.Since(start)), "", modules.SeverityWarning)
+	}
+	// unregister the alert.
+	defer cm.staticAlerter.UnregisterAlert(alertID)
+
 	// Add each sector in a separate goroutine.
 	var wg sync.WaitGroup
 	// Ensure only 'maxSectorBatchThreads' goroutines are running at a time.
 	semaphore := make(chan struct{}, maxSectorBatchThreads)
-	i := 0
+	i, n := 0, len(sectorRoots)
 	for _, root := range sectorRoots {
 		wg.Add(1)
 		semaphore <- struct{}{}
 		i++
-		go func(root crypto.Hash, i int) {
+		updateRemovalAlert(i, n)
+		go func(root crypto.Hash) {
 			id := cm.managedSectorID(root)
 			cm.wal.managedLockSector(id)
 			cm.wal.managedRemoveSector(id) // Error is ignored.
 			cm.wal.managedUnlockSector(id)
-			if i%1000 == 0 {
-				cm.log.Printf("Finished %v sectors\n", i)
-			}
 			<-semaphore
 			wg.Done()
-		}(root, i)
+		}(root)
 	}
 	wg.Wait()
 	return nil
