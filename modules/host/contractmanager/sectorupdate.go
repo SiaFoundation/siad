@@ -554,10 +554,6 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 	// unique alert id for each call
 	alertID := modules.AlertID("cm-removing-sectors-" + hex.EncodeToString(fastrand.Bytes(12)))
 	start := time.Now()
-	// helper to format the alert.
-	updateRemovalAlert := func(i, n int) {
-		cm.staticAlerter.RegisterAlert(alertID, fmt.Sprintf("Removed %v/%v sectors in %v", i, n, time.Since(start)), "", modules.SeverityWarning)
-	}
 	// unregister the alert.
 	defer cm.staticAlerter.UnregisterAlert(alertID)
 
@@ -565,20 +561,18 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 	var wg sync.WaitGroup
 	// Ensure only 'maxSectorBatchThreads' goroutines are running at a time.
 	semaphore := make(chan struct{}, maxSectorBatchThreads)
-	i, n := 0, len(sectorRoots)
-	for _, root := range sectorRoots {
+	for i := range sectorRoots {
 		wg.Add(1)
 		semaphore <- struct{}{}
-		i++
-		updateRemovalAlert(i, n)
-		go func(root crypto.Hash) {
-			id := cm.managedSectorID(root)
+		go func(i int) {
+			id := cm.managedSectorID(sectorRoots[i])
 			cm.wal.managedLockSector(id)
-			cm.wal.managedRemoveSector(id) // Error is ignored.
+			_ = cm.wal.managedRemoveSector(id)
 			cm.wal.managedUnlockSector(id)
+			cm.staticAlerter.RegisterAlert(alertID, fmt.Sprintf("Removed %v/%v sectors in %v", i, len(sectorRoots), time.Since(start)), "", modules.SeverityWarning)
 			<-semaphore
 			wg.Done()
-		}(root)
+		}(i)
 	}
 	wg.Wait()
 	return nil

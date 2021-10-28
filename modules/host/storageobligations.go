@@ -987,9 +987,9 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 	// Error is not checked, we want to call remove on every sector even if
 	// there are problems - disk health information will be updated.
 	start := time.Now()
-	h.log.Printf("Removing %v sectors for contract %v.\n", len(so.SectorRoots), so.id())
+	h.log.Printf("Removing %v sectors for contract %v", len(so.SectorRoots), so.id())
 	_ = h.RemoveSectorBatch(so.SectorRoots)
-	h.log.Printf("Removing %v sectors for contract %v finished in %v.\n", len(so.SectorRoots), so.id(),
+	h.log.Printf("Removing %v sectors for contract %v finished in %v", len(so.SectorRoots), so.id(),
 		time.Since(start))
 
 	// Update the host revenue metrics based on the status of the obligation.
