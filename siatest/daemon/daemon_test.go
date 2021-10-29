@@ -12,7 +12,6 @@ import (
 
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/node"
 	"go.sia.tech/siad/node/api/client"
 	"go.sia.tech/siad/profile"
@@ -186,74 +185,6 @@ func TestGlobalRatelimitRenter(t *testing.T) {
 	if timePassed < time.Second*time.Duration(expectedSeconds) {
 		t.Errorf("download took %v but should've been at least %v",
 			timePassed, time.Second*time.Duration(expectedSeconds))
-	}
-}
-
-// testAlertFields tests that preregistered alerts are returned correctly.
-func TestAlertFields(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a group for the subtests
-	groupParams := siatest.GroupParams{
-		Hosts:   1,
-		Renters: 1,
-		Miners:  1,
-	}
-	testDir := daemonTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// The renter shouldn't have any alerts apart from the pre-registered
-	// testing alerts.
-	r := tg.Renters()[0]
-	dag, err := r.DaemonAlertsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check alerts field
-	if len(dag.Alerts) != 12 {
-		t.Fatal("number of alerts is not 12")
-	}
-
-	// Check criticalalerts field severity and total count
-	for _, a := range dag.CriticalAlerts {
-		if a.Severity != modules.SeverityCritical {
-			t.Fatal("criticalalerts field contains alert which has not critical severity")
-		}
-	}
-	if len(dag.CriticalAlerts) != 4 {
-		t.Fatal("number of critical alerts is not 4")
-	}
-
-	// Check erroralerts field severity and total count
-	for _, a := range dag.ErrorAlerts {
-		if a.Severity != modules.SeverityError {
-			t.Fatal("erroralerts field contains alert which has not error severity")
-		}
-	}
-	if len(dag.ErrorAlerts) != 4 {
-		t.Fatal("number of error alerts is not 4")
-	}
-
-	// Check warningalerts field severity and total count
-	for _, a := range dag.WarningAlerts {
-		if a.Severity != modules.SeverityWarning {
-			t.Fatal("warningalerts field contains alert which has not warning severity")
-		}
-	}
-	if len(dag.WarningAlerts) != 4 {
-		t.Fatal("number of warning alerts is not 4")
 	}
 }
 

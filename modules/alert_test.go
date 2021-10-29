@@ -2,6 +2,7 @@ package modules
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 )
 
@@ -64,21 +65,16 @@ func TestMarshalUnmarshalAlertSeverity(t *testing.T) {
 func TestAlertsSorted(t *testing.T) {
 	alerter := NewAlerter(t.Name())
 
-	// Register some alerts in no particular order.
-	alerter.RegisterAlert(AlertID("1"), "msg1", "cause1", SeverityWarning)
-	alerter.RegisterAlert(AlertID("2"), "msg2", "cause2", SeverityError)
-	alerter.RegisterAlert(AlertID("3"), "msg3", "cause3", SeverityCritical)
-	alerter.RegisterAlert(AlertID("4"), "msg4", "cause1", SeverityWarning)
-	alerter.RegisterAlert(AlertID("5"), "msg5", "cause2", SeverityError)
-	alerter.RegisterAlert(AlertID("6"), "msg6", "cause3", SeverityCritical)
-	alerter.RegisterAlert(AlertID("7"), "msg7", "cause1", SeverityWarning)
-	alerter.RegisterAlert(AlertID("8"), "msg8", "cause2", SeverityError)
-	alerter.RegisterAlert(AlertID("9"), "msg9", "cause3", SeverityCritical)
+	// Register some alerts
+	for i := 0; i < 20; i++ {
+		id := strconv.Itoa(i)
+		alerter.RegisterAlert(AlertID(id), "msg"+id, "cause"+id, AlertSeverity(i%4+1))
+	}
 
-	crit, err, warn := alerter.Alerts()
-	// 4 due to the already registered test alerts.
-	if len(crit) != 4 || len(err) != 4 || len(warn) != 4 {
-		t.Fatalf("returned slices have wrong lengths %v %v %v", len(crit), len(err), len(warn))
+	crit, err, warn, info := alerter.Alerts()
+	// 5 due to the already registered test alerts.
+	if len(crit) != 5 || len(err) != 5 || len(warn) != 5 || len(info) != 5 {
+		t.Fatalf("returned slices have wrong lengths %v %v %v %v", len(crit), len(err), len(warn), len(info))
 	}
 	for _, alert := range crit {
 		if alert.Severity != SeverityCritical {
@@ -92,6 +88,11 @@ func TestAlertsSorted(t *testing.T) {
 	}
 	for _, alert := range warn {
 		if alert.Severity != SeverityWarning {
+			t.Fatal("alert has wrong severity")
+		}
+	}
+	for _, alert := range info {
+		if alert.Severity != SeverityInfo {
 			t.Fatal("alert has wrong severity")
 		}
 	}

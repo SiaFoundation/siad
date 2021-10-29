@@ -1,10 +1,13 @@
 package contractmanager
 
 import (
+	"encoding/hex"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 )
@@ -186,10 +189,16 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulReads, 1)
 
+	var errCount, movedCount uint64
+	totalSectors := (64 * uint64(len(sf.usage))) - uint64(startingPoint)
+
+	// create a unique alert ID per empty and unregister it after completion.
+	alertID := modules.AlertID("cm-empty-folder-" + hex.EncodeToString(fastrand.Bytes(12)))
+	defer wal.cm.staticAlerter.UnregisterAlert(alertID)
+
 	// Before iterating through the sectors and moving them, set up a thread
 	// pool that can parallelize the transfers without spinning up 250,000
 	// goroutines per TB.
-	var errCount uint64
 	var wg sync.WaitGroup
 	workers := 250
 	workChan := make(chan sectorID)
@@ -206,7 +215,17 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 					if err != nil {
 						atomic.AddUint64(&errCount, 1)
 						wal.cm.log.Println("Unable to write sector:", err)
+					} else {
+						atomic.AddUint64(&movedCount, 1)
 					}
+
+					wal.cm.staticAlerter.RegisterAlert(alertID,
+						fmt.Sprintf("Migrating %d sectors from %s: %d migrated, %d errored",
+							totalSectors,
+							sf.path,
+							atomic.LoadUint64(&movedCount),
+							atomic.LoadUint64(&errCount)),
+						"folder op", modules.SeverityInfo)
 
 					wg.Done()
 				case <-doneChan:

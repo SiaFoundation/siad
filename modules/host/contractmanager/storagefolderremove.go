@@ -1,7 +1,12 @@
 package contractmanager
 
 import (
+	"encoding/hex"
+	"fmt"
 	"path/filepath"
+
+	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/modules"
 )
 
 type (
@@ -66,6 +71,16 @@ func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
 	// Lock the storage folder for the duration of the operation.
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+
+	// create a unique alert ID per storage folder remove and unregister it after completion.
+	alertID := modules.AlertID("cm-remove-folder-" + hex.EncodeToString(fastrand.Bytes(12)))
+	defer cm.staticAlerter.UnregisterAlert(alertID)
+
+	cm.staticAlerter.RegisterAlert(alertID,
+		fmt.Sprintf("Removing %s folder %s",
+			modules.FilesizeUnits(uint64(len(sf.usage))*64*modules.SectorSize),
+			sf.path),
+		"folder op", modules.SeverityInfo)
 
 	// Clear out the sectors in the storage folder.
 	_, err = cm.wal.managedEmptyStorageFolder(index, 0)

@@ -1,6 +1,7 @@
 package contractmanager
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -393,6 +394,18 @@ func (cm *ContractManager) ResizeStorageFolder(index uint16, newSize uint64, for
 	if oldSize == newSize {
 		return ErrNoResize
 	}
+
+	// create a unique alert ID per storage folder resize and unregister it after completion.
+	alertID := modules.AlertID("cm-resize-folder-" + hex.EncodeToString(fastrand.Bytes(12)))
+	defer cm.staticAlerter.UnregisterAlert(alertID)
+
+	cm.staticAlerter.RegisterAlert(alertID,
+		fmt.Sprintf("Resizing folder %s from %s to %s",
+			sf.path,
+			modules.FilesizeUnits(uint64(len(sf.usage))*64*modules.SectorSize),
+			modules.FilesizeUnits(newSize)),
+		"folder op", modules.SeverityInfo)
+
 	newSectorCount := uint32(newSize / modules.SectorSize)
 	if oldSize > newSize {
 		return cm.wal.shrinkStorageFolder(index, newSectorCount, force)

@@ -569,7 +569,7 @@ func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
 			cm.wal.managedLockSector(id)
 			_ = cm.wal.managedRemoveSector(id)
 			cm.wal.managedUnlockSector(id)
-			cm.staticAlerter.RegisterAlert(alertID, fmt.Sprintf("Removed %v/%v sectors in %v", i, len(sectorRoots), time.Since(start)), "", modules.SeverityWarning)
+			cm.staticAlerter.RegisterAlert(alertID, fmt.Sprintf("Removed %v/%v sectors in %v", i, len(sectorRoots), time.Since(start)), "", modules.SeverityInfo)
 			<-semaphore
 			wg.Done()
 		}(i)

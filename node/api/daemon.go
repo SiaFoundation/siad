@@ -71,6 +71,7 @@ type (
 		CriticalAlerts []modules.Alert `json:"criticalalerts"`
 		ErrorAlerts    []modules.Alert `json:"erroralerts"`
 		WarningAlerts  []modules.Alert `json:"warningalerts"`
+		InfoAlerts     []modules.Alert `json:"infoalerts"`
 	}
 
 	// DaemonVersionGet contains information about the running daemon's version.
@@ -306,49 +307,57 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 	crit := make([]modules.Alert, 0, 6)
 	err := make([]modules.Alert, 0, 6)
 	warn := make([]modules.Alert, 0, 6)
+	info := make([]modules.Alert, 0, 6)
 	if api.gateway != nil {
-		c, e, w := api.gateway.Alerts()
+		c, e, w, i := api.gateway.Alerts()
 		crit = append(crit, c...)
 		err = append(err, e...)
 		warn = append(warn, w...)
+		info = append(info, i...)
 	}
 	if api.cs != nil {
-		c, e, w := api.cs.Alerts()
+		c, e, w, i := api.cs.Alerts()
 		crit = append(crit, c...)
 		err = append(err, e...)
 		warn = append(warn, w...)
+		info = append(info, i...)
 	}
 	if api.tpool != nil {
-		c, e, w := api.tpool.Alerts()
+		c, e, w, i := api.tpool.Alerts()
 		crit = append(crit, c...)
 		err = append(err, e...)
 		warn = append(warn, w...)
+		info = append(info, i...)
 	}
 	if api.wallet != nil {
-		c, e, w := api.wallet.Alerts()
+		c, e, w, i := api.wallet.Alerts()
 		crit = append(crit, c...)
 		err = append(err, e...)
 		warn = append(warn, w...)
+		info = append(info, i...)
 	}
 	if api.renter != nil {
-		c, e, w := api.renter.Alerts()
+		c, e, w, i := api.renter.Alerts()
 		crit = append(crit, c...)
 		err = append(err, e...)
 		warn = append(warn, w...)
+		info = append(info, i...)
 	}
 	if api.host != nil {
-		c, e, w := api.host.Alerts()
+		c, e, w, i := api.host.Alerts()
 		crit = append(crit, c...)
 		err = append(err, e...)
 		warn = append(warn, w...)
+		info = append(info, i...)
 	}
 	// Sort alerts by severity. Critical first, then Error and finally Warning.
-	alerts := append(crit, append(err, warn...)...)
+	alerts := append(append(crit, append(err, warn...)...), info...)
 	WriteJSON(w, DaemonAlertsGet{
 		Alerts:         alerts,
 		CriticalAlerts: crit,
 		ErrorAlerts:    err,
 		WarningAlerts:  warn,
+		InfoAlerts:     info,
 	})
 }
 
