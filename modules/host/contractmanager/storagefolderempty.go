@@ -23,10 +23,10 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 	defer wal.managedUnlockSector(id)
 
 	// Find the sector to be moved.
-	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	oldLocation, exists1 := wal.cm.sectorLocations[id]
 	oldFolder, exists2 := wal.cm.storageFolders[oldLocation.storageFolder]
-	wal.mu.Unlock()
+	wal.cm.sectorMu.Unlock()
 	if !exists1 || !exists2 || atomic.LoadUint64(&oldFolder.atomicUnavailable) == 1 {
 		return errors.New("unable to find sector that is targeted for move")
 	}
@@ -127,6 +127,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				count:         oldLocation.count,
 			}
 			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
 			wal.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{oldSU, su},
 			})
@@ -134,6 +135,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			delete(wal.cm.sectorLocations, oldSU.ID)
 			delete(sf.availableSectors, id)
 			wal.cm.sectorLocations[id] = sl
+			wal.cm.sectorMu.Unlock()
 			wal.mu.Unlock()
 			return nil
 		}()
@@ -170,9 +172,9 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 	}
 
 	// Grab the storage folder in question.
-	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	sf, exists := wal.cm.storageFolders[sfIndex]
-	wal.mu.Unlock()
+	wal.cm.sectorMu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return 0, errBadStorageFolderIndex
 	}
@@ -231,9 +233,9 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 				copy(id[:], sectorLookupBytes[readHead:readHead+12])
 				// Reference the sector locations map to get the most
 				// up-to-date status for the sector.
-				wal.mu.Lock()
+				wal.cm.sectorMu.Lock()
 				_, exists := wal.cm.sectorLocations[id]
-				wal.mu.Unlock()
+				wal.cm.sectorMu.Unlock()
 				if !exists {
 					// The sector has been deleted, but the usage has not been
 					// updated yet. Safe to ignore.

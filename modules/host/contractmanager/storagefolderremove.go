@@ -17,6 +17,8 @@ type (
 // contract manager.
 func (wal *writeAheadLog) commitStorageFolderRemoval(sfr storageFolderRemoval) {
 	// Close any open file handles.
+	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 	sf, exists := wal.cm.storageFolders[sfr.Index]
 	if exists {
 		delete(wal.cm.storageFolders, sfr.Index)
@@ -55,13 +57,13 @@ func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
 	defer cm.tg.Done()
 
 	// Retrieve the specified storage folder.
-	cm.wal.mu.Lock()
+	cm.sectorMu.Lock()
 	sf, exists := cm.storageFolders[index]
 	if !exists {
-		cm.wal.mu.Unlock()
+		cm.sectorMu.Unlock()
 		return errStorageFolderNotFound
 	}
-	cm.wal.mu.Unlock()
+	cm.sectorMu.Unlock()
 
 	// Lock the storage folder for the duration of the operation.
 	sf.mu.Lock()

@@ -27,6 +27,7 @@ package contractmanager
 
 import (
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -85,13 +86,33 @@ type ContractManager struct {
 	// which sector slots are available. For performance information, see
 	// BenchmarkStorageFolders.
 	sectorSalt                   crypto.Hash
-	sectorLocations              map[sectorID]sectorLocation
 	sectorLocationsCountOverflow *overflowMap
-	storageFolders               map[uint16]*storageFolder
+
+	// sectorMu is a dedicated lock for lockedSectors, sectorLocations and
+	// storageFolders meant to be usable in combination with cm.wal.mu.
+	//
+	// The goal is to allow for reading these fields without locking wal.mu
+	// which is acquired and released every 500ms in threadedSyncLoop and
+	// also writes to and sync multiple files during that period. This
+	// significantly slows down methods like cm.ReadPartialSector which
+	// don't require waiting for the persistence to by synced to disk and
+	// instead only need to find the sector on disk to serve it to a renter.
+	// We have seen multiple seconds of time wasted during testing on a
+	// local machine doing 150 sector downloads in parallel from a single
+	// host and pulling the locking out into a dedicated lock reduced that
+	// to <1ms times.
+	// When both cm.wal.mu and cm.sectorMu both need to be locked, cm.wal.mu
+	// needs to be locked first. It's also fine to lock cm.sectorMu during
+	// very rare operations such as creating a storage folder or deleting
+	// it, but it's important to avoid locking it during the frequent sync
+	// operation performed by the wal.
+	sectorMu sync.Mutex
 
 	// lockedSectors contains a list of sectors that are currently being read
 	// or modified.
-	lockedSectors map[sectorID]*sectorLock
+	lockedSectors   map[sectorID]*sectorLock
+	sectorLocations map[sectorID]sectorLocation
+	storageFolders  map[uint16]*storageFolder
 
 	// Utilities.
 	dependencies  modules.Dependencies
@@ -181,6 +202,9 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 		cm.wal.mu.Lock()
 		defer cm.wal.mu.Unlock()
 
+		cm.sectorMu.Lock()
+		defer cm.sectorMu.Unlock()
+
 		for _, sf := range cm.storageFolders {
 			// No storage folder to close if the folder is not available.
 			if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
@@ -202,6 +226,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 
 	// The sector location data is loaded last. Any corruption that happened
 	// during unclean shutdown has already been fixed by the WAL.
+	cm.sectorMu.Lock()
 	for _, sf := range cm.storageFolders {
 		if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 			// Metadata unavailable, just count the number of sectors instead of
@@ -211,6 +236,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 		}
 		cm.loadSectorLocations(sf)
 	}
+	cm.sectorMu.Unlock()
 
 	// Launch the sync loop that periodically flushes changes from the WAL to
 	// disk.

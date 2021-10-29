@@ -57,7 +57,13 @@ func (wal *writeAheadLog) syncResources() {
 	}()
 
 	// Sync all of the storage folders.
+	wal.cm.sectorMu.Lock()
+	sfs := make([]*storageFolder, 0, len(wal.cm.storageFolders))
 	for _, sf := range wal.cm.storageFolders {
+		sfs = append(sfs, sf)
+	}
+	wal.cm.sectorMu.Unlock()
+	for _, sf := range sfs {
 		// Skip operation on unavailable storage folders.
 		if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 			continue

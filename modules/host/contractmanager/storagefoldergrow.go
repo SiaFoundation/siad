@@ -60,7 +60,9 @@ func findUnfinishedStorageFolderExtensions(scs []stateChange) []unfinishedStorag
 func (wal *writeAheadLog) cleanupUnfinishedStorageFolderExtensions(scs []stateChange) {
 	usfes := findUnfinishedStorageFolderExtensions(scs)
 	for _, usfe := range usfes {
+		wal.cm.sectorMu.Lock()
 		sf, exists := wal.cm.storageFolders[usfe.Index]
+		wal.cm.sectorMu.Unlock()
 		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 			wal.cm.log.Critical("unfinished storage folder extension exists where the storage folder does not exist")
 			continue
@@ -87,6 +89,8 @@ func (wal *writeAheadLog) cleanupUnfinishedStorageFolderExtensions(scs []stateCh
 // commitStorageFolderExtension will apply a storage folder extension to the
 // state.
 func (wal *writeAheadLog) commitStorageFolderExtension(sfe storageFolderExtension) {
+	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 	sf, exists := wal.cm.storageFolders[sfe.Index]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		wal.cm.log.Critical("ERROR: storage folder extension provided for storage folder that does not exist")
@@ -102,9 +106,9 @@ func (wal *writeAheadLog) commitStorageFolderExtension(sfe storageFolderExtensio
 // more sectors.
 func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32) error {
 	// Retrieve the specified storage folder.
-	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	sf, exists := wal.cm.storageFolders[index]
-	wal.mu.Unlock()
+	wal.cm.sectorMu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return errStorageFolderNotFound
 	}
@@ -218,6 +222,7 @@ func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32)
 	// Storage folder growth has completed successfully, commit through the
 	// WAL.
 	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	wal.cm.storageFolders[sf.index] = sf
 	wal.appendChange(stateChange{
 		StorageFolderExtensions: []storageFolderExtension{{
@@ -226,6 +231,7 @@ func (wal *writeAheadLog) growStorageFolder(index uint16, newSectorCount uint32)
 		}},
 	})
 	syncChan = wal.syncChan
+	wal.cm.sectorMu.Unlock()
 	wal.mu.Unlock()
 
 	// Wait to confirm the storage folder addition has completed until the WAL

@@ -546,11 +546,11 @@ func TestLoadMissingStorageFolder(t *testing.T) {
 		t.Error("folder should be visible again")
 	}
 	if sfOne.Capacity != sfOne.CapacityRemaining+modules.SectorSize {
-		cmt.cm.wal.mu.Lock()
+		cmt.cm.sectorMu.Lock()
 		t.Log("Usage len:", len(cmt.cm.storageFolders[sfOne.Index].usage))
 		t.Log("Reported Sectors:", cmt.cm.storageFolders[sfOne.Index].sectors)
 		t.Log("Avail:", len(cmt.cm.storageFolders[sfOne.Index].availableSectors))
-		cmt.cm.wal.mu.Unlock()
+		cmt.cm.sectorMu.Unlock()
 		t.Error("One sector's worth of capacity should be consumed:", sfOne.Capacity, sfOne.CapacityRemaining)
 	}
 

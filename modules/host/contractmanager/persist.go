@@ -118,7 +118,9 @@ func (cm *ContractManager) loadSettings() error {
 			}
 		}
 		sf.availableSectors = make(map[sectorID]uint32)
+		cm.sectorMu.Lock()
 		cm.storageFolders[sf.index] = sf
+		cm.sectorMu.Unlock()
 	}
 	return nil
 }
@@ -160,7 +162,9 @@ func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 		}
 
 		// Add the sector to the sector location map.
+		cm.sectorMu.Lock()
 		cm.sectorLocations[id] = sl
+		cm.sectorMu.Unlock()
 		sf.sectors++
 	}
 	atomic.StoreUint64(&sf.atomicUnavailable, 0)
@@ -172,6 +176,7 @@ func (cm *ContractManager) savedSettings() savedSettings {
 	ss := savedSettings{
 		SectorSalt: cm.sectorSalt,
 	}
+	cm.sectorMu.Lock()
 	for _, sf := range cm.storageFolders {
 		// Unset all of the usage bits in the storage folder for the queued sectors.
 		for _, sectorIndex := range sf.availableSectors {
@@ -186,6 +191,7 @@ func (cm *ContractManager) savedSettings() savedSettings {
 			sf.setUsage(sectorIndex)
 		}
 	}
+	cm.sectorMu.Unlock()
 
 	// canonicalize storage folder ordering; otherwise savedSettings.equals
 	// could return false for equivalent settings
