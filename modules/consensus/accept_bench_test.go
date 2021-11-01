@@ -29,7 +29,7 @@ func BenchmarkAcceptEmptyBlocks(b *testing.B) {
 	// Create an alternate testing consensus set, which does not
 	// have any subscribers
 	testdir := build.TempDir(modules.ConsensusDir, "BenchmarkEmptyBlocks - 2")
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func BenchmarkAcceptSmallBlocks(b *testing.B) {
 	// Create an alternate testing consensus set, which does not
 	// have any subscribers
 	testdir := build.TempDir(modules.ConsensusDir, "BenchmarkAcceptSmallBlocks - 2")
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		b.Fatal(err)
 	}

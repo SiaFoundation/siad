@@ -37,7 +37,7 @@ func createMinerTester(name string) (*minerTester, error) {
 	testdir := build.TempDir(modules.MinerDir, name)
 
 	// Create the modules.
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}

@@ -97,7 +97,7 @@ func blankConsensusSetTester(name string, deps modules.Dependencies) (*consensus
 	testdir := build.TempDir(modules.ConsensusDir, name)
 
 	// Create modules.
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func TestDatabaseClosing(t *testing.T) {
 	testdir := build.TempDir(modules.ConsensusDir, t.Name())
 
 	// Create the gateway.
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		t.Fatal(err)
 	}

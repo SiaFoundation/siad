@@ -32,7 +32,7 @@ func loadExistingHostWithNewDeps(modulesDir, siaMuxDir, hostDir string) (closeFn
 	}
 
 	// Create the host dependencies.
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(modulesDir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(modulesDir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
 	}
