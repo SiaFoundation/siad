@@ -71,7 +71,7 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 
 // newCustomTestingHost is a helper function that creates a ready-to-use host.
 func newCustomTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux, deps modules.Dependencies) (modules.Host, closeFn, error) {
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -168,7 +168,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps modules.
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

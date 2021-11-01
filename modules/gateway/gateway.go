@@ -360,8 +360,8 @@ func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 }
 
 // New returns an initialized Gateway.
-func New(addr string, bootstrap bool, useUPNP bool, persistDir string) (*Gateway, error) {
-	return NewCustomGateway(addr, bootstrap, useUPNP, persistDir, modules.ProdDependencies)
+func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
+	return NewCustomGateway(addr, bootstrap, true, persistDir, modules.ProdDependencies)
 }
 
 // NewCustomGateway returns an initialized Gateway with custom dependencies.

@@ -292,7 +292,7 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	}
 
 	// Create the modules.
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +377,7 @@ func assembleExplorerServerTester(testdir string) (*serverTester, error) {
 	}
 
 	// Create the modules.
-	g, err := gateway.New("localhost:0", false, false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
