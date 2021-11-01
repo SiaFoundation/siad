@@ -3,10 +3,8 @@ package contractmanager
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
@@ -131,9 +129,7 @@ func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length ui
 	id := cm.managedSectorID(root)
 
 	// Fetch the sector metadata.
-	start := time.Now()
 	cm.sectorMu.Lock()
-	fmt.Println("locked", time.Since(start))
 	cm.wal.lockSector(id)
 	defer cm.wal.managedUnlockSector(id)
 	sl, exists1 := cm.sectorLocations[id]
@@ -200,19 +196,8 @@ func (wal *writeAheadLog) lockSector(id sectorID) {
 // managedLockSector grabs a sector lock.
 func (wal *writeAheadLog) managedLockSector(id sectorID) {
 	wal.cm.sectorMu.Lock()
-	sl, exists := wal.cm.lockedSectors[id]
-	if exists {
-		sl.waiting++
-	} else {
-		sl = &sectorLock{
-			waiting: 1,
-		}
-		wal.cm.lockedSectors[id] = sl
-	}
+	wal.lockSector(id)
 	wal.cm.sectorMu.Unlock()
-
-	// Block until the sector is available.
-	sl.mu.Lock()
 }
 
 // managedUnlockSector releases a sector lock.
