@@ -18,6 +18,8 @@ type (
 // commitStorageFolderReduction commits a storage folder reduction to the state
 // and filesystem.
 func (wal *writeAheadLog) commitStorageFolderReduction(sfr storageFolderReduction) {
+	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 	sf, exists := wal.cm.storageFolders[sfr.Index]
 	if !exists {
 		wal.cm.log.Critical("ERROR: storage folder reduction established for a storage folder that does not exist")
@@ -55,9 +57,9 @@ func (wal *writeAheadLog) commitStorageFolderReduction(sfr storageFolderReductio
 // sectors in the truncated space to new storage folders.
 func (wal *writeAheadLog) shrinkStorageFolder(index uint16, newSectorCount uint32, force bool) error {
 	// Retrieve the specified storage folder.
-	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	sf, exists := wal.cm.storageFolders[index]
-	wal.mu.Unlock()
+	wal.cm.sectorMu.Unlock()
 	if !exists {
 		return errStorageFolderNotFound
 	}

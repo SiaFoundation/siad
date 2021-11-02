@@ -47,6 +47,7 @@ func findUnfinishedStorageFolderAdditions(scs []stateChange) []savedStorageFolde
 func (wal *writeAheadLog) cleanupUnfinishedStorageFolderAdditions(scs []stateChange) {
 	usfs := findUnfinishedStorageFolderAdditions(scs)
 	for _, usf := range usfs {
+		wal.cm.sectorMu.Lock()
 		sf, exists := wal.cm.storageFolders[usf.Index]
 		if exists && atomic.LoadUint64(&sf.atomicUnavailable) == 0 {
 			// Close the storage folder file handles.
@@ -62,6 +63,7 @@ func (wal *writeAheadLog) cleanupUnfinishedStorageFolderAdditions(scs []stateCha
 			// Delete the storage folder from the storage folders map.
 			delete(wal.cm.storageFolders, sf.index)
 		}
+		wal.cm.sectorMu.Unlock()
 
 		// Remove any leftover files.
 		sectorLookupName := filepath.Join(usf.Path, metadataFile)
@@ -111,6 +113,9 @@ func (wal *writeAheadLog) managedAddStorageFolder(sf *storageFolder) error {
 	err := func() error {
 		wal.mu.Lock()
 		defer wal.mu.Unlock()
+
+		wal.cm.sectorMu.Lock()
+		defer wal.cm.sectorMu.Unlock()
 
 		// Check that the storage folder is not a duplicate. That requires
 		// first checking the contract manager and then checking the WAL. The
@@ -203,6 +208,9 @@ func (wal *writeAheadLog) managedAddStorageFolder(sf *storageFolder) error {
 			wal.mu.Lock()
 			defer wal.mu.Unlock()
 
+			wal.cm.sectorMu.Lock()
+			defer wal.cm.sectorMu.Unlock()
+
 			// Delete the storage folder from the storage folders map.
 			delete(wal.cm.storageFolders, sf.index)
 
@@ -282,11 +290,13 @@ func (wal *writeAheadLog) managedAddStorageFolder(sf *storageFolder) error {
 	// Storage folder addition has completed successfully, commit the addition
 	// through the WAL.
 	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	wal.cm.storageFolders[sf.index] = sf
 	wal.appendChange(stateChange{
 		StorageFolderAdditions: []savedStorageFolder{sf.savedStorageFolder()},
 	})
 	syncChan = wal.syncChan
+	wal.cm.sectorMu.Unlock()
 	wal.mu.Unlock()
 
 	// Wait to confirm the storage folder addition has completed until the WAL
@@ -302,6 +312,8 @@ func (wal *writeAheadLog) managedAddStorageFolder(sf *storageFolder) error {
 // commitAddStorageFolder integrates a pending AddStorageFolder call into the
 // state. commitAddStorageFolder should only be called during WAL recovery.
 func (wal *writeAheadLog) commitAddStorageFolder(ssf savedStorageFolder) {
+	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 	sf, exists := wal.cm.storageFolders[ssf.Index]
 	if exists {
 		if sf.metadataFile != nil {

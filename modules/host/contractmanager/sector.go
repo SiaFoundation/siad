@@ -127,14 +127,14 @@ func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length ui
 	}
 	defer cm.tg.Done()
 	id := cm.managedSectorID(root)
-	cm.wal.managedLockSector(id)
-	defer cm.wal.managedUnlockSector(id)
 
 	// Fetch the sector metadata.
-	cm.wal.mu.Lock()
+	cm.sectorMu.Lock()
+	cm.wal.lockSector(id)
+	defer cm.wal.managedUnlockSector(id)
 	sl, exists1 := cm.sectorLocations[id]
 	sf, exists2 := cm.storageFolders[sl.storageFolder]
-	cm.wal.mu.Unlock()
+	cm.sectorMu.Unlock()
 	if !exists1 {
 		return nil, ErrSectorNotFound
 	}
@@ -170,16 +170,15 @@ func (cm *ContractManager) HasSector(sectorRoot crypto.Hash) bool {
 	id := cm.managedSectorID(sectorRoot)
 
 	// Check if it exists
-	cm.wal.mu.Lock()
+	cm.sectorMu.Lock()
 	_, exists := cm.sectorLocations[id]
-	cm.wal.mu.Unlock()
+	cm.sectorMu.Unlock()
 
 	return exists
 }
 
-// managedLockSector grabs a sector lock.
-func (wal *writeAheadLog) managedLockSector(id sectorID) {
-	wal.mu.Lock()
+// lockSector grabs a sector lock.
+func (wal *writeAheadLog) lockSector(id sectorID) {
 	sl, exists := wal.cm.lockedSectors[id]
 	if exists {
 		sl.waiting++
@@ -189,16 +188,22 @@ func (wal *writeAheadLog) managedLockSector(id sectorID) {
 		}
 		wal.cm.lockedSectors[id] = sl
 	}
-	wal.mu.Unlock()
 
 	// Block until the sector is available.
 	sl.mu.Lock()
 }
 
+// managedLockSector grabs a sector lock.
+func (wal *writeAheadLog) managedLockSector(id sectorID) {
+	wal.cm.sectorMu.Lock()
+	wal.lockSector(id)
+	wal.cm.sectorMu.Unlock()
+}
+
 // managedUnlockSector releases a sector lock.
 func (wal *writeAheadLog) managedUnlockSector(id sectorID) {
-	wal.mu.Lock()
-	defer wal.mu.Unlock()
+	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 
 	// Release the lock on the sector.
 	sl, exists := wal.cm.lockedSectors[id]

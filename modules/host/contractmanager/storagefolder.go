@@ -282,6 +282,8 @@ func (sf *storageFolder) setUsage(sectorIndex uint32) {
 // slice, excluding any unavailable storeage folders.
 func (cm *ContractManager) availableStorageFolders() []*storageFolder {
 	sfs := make([]*storageFolder, 0)
+	cm.sectorMu.Lock()
+	defer cm.sectorMu.Unlock()
 	for _, sf := range cm.storageFolders {
 		// Skip unavailable storage folders.
 		if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
@@ -312,7 +314,14 @@ func (cm *ContractManager) threadedFolderRecheck() {
 		// Check all of the storage folders and recover any that have been added
 		// to the contract manager.
 		cm.wal.mu.Lock()
+		cm.sectorMu.Lock()
+		sfs := make([]*storageFolder, 0, len(cm.storageFolders))
 		for _, sf := range cm.storageFolders {
+			sfs = append(sfs, sf)
+		}
+		cm.sectorMu.Unlock()
+
+		for _, sf := range sfs {
 			if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 				var err1, err2 error
 				sf.metadataFile, err1 = cm.dependencies.OpenFile(filepath.Join(sf.path, metadataFile), os.O_RDWR, 0700)
@@ -350,8 +359,8 @@ func (cm *ContractManager) ResetStorageFolderHealth(index uint16) error {
 		return err
 	}
 	defer cm.tg.Done()
-	cm.wal.mu.Lock()
-	defer cm.wal.mu.Unlock()
+	cm.sectorMu.Lock()
+	defer cm.sectorMu.Unlock()
 
 	sf, exists := cm.storageFolders[index]
 	if !exists {
@@ -375,9 +384,9 @@ func (cm *ContractManager) ResizeStorageFolder(index uint16, newSize uint64, for
 	}
 	defer cm.tg.Done()
 
-	cm.wal.mu.Lock()
+	cm.sectorMu.Lock()
 	sf, exists := cm.storageFolders[index]
-	cm.wal.mu.Unlock()
+	cm.sectorMu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		return errStorageFolderNotFound
 	}
@@ -409,8 +418,8 @@ func (cm *ContractManager) StorageFolders() []modules.StorageFolderMetadata {
 		return nil
 	}
 	defer cm.tg.Done()
-	cm.wal.mu.Lock()
-	defer cm.wal.mu.Unlock()
+	cm.sectorMu.Lock()
+	defer cm.sectorMu.Unlock()
 
 	// Iterate over the storage folders that are in memory first, and then
 	// suppliment them with the storage folders that are not in memory.

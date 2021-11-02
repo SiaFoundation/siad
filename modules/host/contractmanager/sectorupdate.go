@@ -19,7 +19,9 @@ import (
 // writing in metadata and usage info if the sector still exists, and deleting
 // the usage info if the sector does not exist. The update is idempotent.
 func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
+	wal.cm.sectorMu.Lock()
 	sf, exists := wal.cm.storageFolders[su.Folder]
+	wal.cm.sectorMu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		wal.cm.log.Printf("ERROR: unable to locate storage folder for a committed sector update.")
 		return
@@ -136,8 +138,10 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 			wal.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{su},
 			})
+			wal.cm.sectorMu.Lock()
 			delete(wal.cm.storageFolders[su.Folder].availableSectors, id)
 			wal.cm.sectorLocations[id] = sl
+			wal.cm.sectorMu.Unlock()
 			syncChan = wal.syncChan
 			wal.mu.Unlock()
 			return nil
@@ -184,6 +188,7 @@ func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLo
 
 	// Append the sector update to the WAL.
 	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	sf, exists := wal.cm.storageFolders[su.Folder]
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		// Need to check that the storage folder exists before syncing the
@@ -195,6 +200,7 @@ func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLo
 		SectorUpdates: []sectorUpdate{su},
 	})
 	wal.cm.sectorLocations[id] = location
+	wal.cm.sectorMu.Unlock()
 	syncChan := wal.syncChan
 	wal.mu.Unlock()
 	<-syncChan
@@ -212,7 +218,9 @@ func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLo
 		wal.appendChange(stateChange{
 			SectorUpdates: []sectorUpdate{su},
 		})
+		wal.cm.sectorMu.Lock()
 		wal.cm.sectorLocations[id] = location
+		wal.cm.sectorMu.Unlock()
 		wal.mu.Unlock()
 		<-syncChan
 		return build.ExtendErr("unable to write sector metadata during addSector call", err)
@@ -229,6 +237,9 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 	err := func() error {
 		wal.mu.Lock()
 		defer wal.mu.Unlock()
+
+		wal.cm.sectorMu.Lock()
+		defer wal.cm.sectorMu.Unlock()
 
 		// Fetch the metadata related to the sector.
 		var exists bool
@@ -286,6 +297,9 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		wal.mu.Lock()
 		defer wal.mu.Unlock()
 
+		wal.cm.sectorMu.Lock()
+		defer wal.cm.sectorMu.Unlock()
+
 		// Grab the number of virtual sectors that have been committed with
 		// this root.
 		var exists bool
@@ -335,12 +349,14 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		if err != nil {
 			// Revert the previous change.
 			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
 			su.Count++
 			location.count++
 			wal.appendChange(stateChange{
 				SectorUpdates: []sectorUpdate{su},
 			})
 			wal.cm.sectorLocations[id] = location
+			wal.cm.sectorMu.Unlock()
 			wal.mu.Unlock()
 			return build.ExtendErr("failed to write sector metadata", err)
 		}
@@ -435,9 +451,9 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	defer cm.wal.managedUnlockSector(id)
 
 	// Determine whether the sector is virtual or physical.
-	cm.wal.mu.Lock()
+	cm.sectorMu.Lock()
 	location, exists := cm.sectorLocations[id]
-	cm.wal.mu.Unlock()
+	cm.sectorMu.Unlock()
 	if exists {
 		err = cm.wal.managedAddVirtualSector(id, location)
 	} else {
@@ -491,9 +507,9 @@ func (cm *ContractManager) AddSectorBatch(sectorRoots []crypto.Hash) error {
 				defer cm.wal.managedUnlockSector(id)
 
 				// Add the sector as virtual.
-				cm.wal.mu.Lock()
+				cm.sectorMu.Lock()
 				location, exists := cm.sectorLocations[id]
-				cm.wal.mu.Unlock()
+				cm.sectorMu.Unlock()
 				if exists {
 					cm.wal.managedAddVirtualSector(id, location)
 				}
