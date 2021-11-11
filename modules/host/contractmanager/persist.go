@@ -162,9 +162,7 @@ func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 		}
 
 		// Add the sector to the sector location map.
-		cm.sectorMu.Lock()
 		cm.sectorLocations[id] = sl
-		cm.sectorMu.Unlock()
 		sf.sectors++
 	}
 	atomic.StoreUint64(&sf.atomicUnavailable, 0)

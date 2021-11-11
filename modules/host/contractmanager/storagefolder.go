@@ -315,30 +315,32 @@ func (cm *ContractManager) threadedFolderRecheck() {
 		// to the contract manager.
 		cm.wal.mu.Lock()
 		cm.sectorMu.Lock()
-		sfs := make([]*storageFolder, 0, len(cm.storageFolders))
+		var unavailable []*storageFolder
 		for _, sf := range cm.storageFolders {
-			sfs = append(sfs, sf)
+			if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
+				unavailable = append(unavailable, sf)
+			}
 		}
 		cm.sectorMu.Unlock()
 
-		for _, sf := range sfs {
-			if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
-				var err1, err2 error
-				sf.metadataFile, err1 = cm.dependencies.OpenFile(filepath.Join(sf.path, metadataFile), os.O_RDWR, 0700)
-				sf.sectorFile, err2 = cm.dependencies.OpenFile(filepath.Join(sf.path, sectorFile), os.O_RDWR, 0700)
-				if err1 == nil && err2 == nil {
-					// The storage folder has been found, and loading can be
-					// completed.
-					cm.loadSectorLocations(sf)
-				} else {
-					// One of the opens failed, close the file handle for the
-					// opens that did not fail.
-					if err1 == nil {
-						sf.metadataFile.Close()
-					}
-					if err2 == nil {
-						sf.sectorFile.Close()
-					}
+		for _, sf := range unavailable {
+			var err1, err2 error
+			sf.metadataFile, err1 = cm.dependencies.OpenFile(filepath.Join(sf.path, metadataFile), os.O_RDWR, 0700)
+			sf.sectorFile, err2 = cm.dependencies.OpenFile(filepath.Join(sf.path, sectorFile), os.O_RDWR, 0700)
+			if err1 == nil && err2 == nil {
+				// The storage folder has been found, and loading can be
+				// completed.
+				cm.sectorMu.Lock()
+				cm.loadSectorLocations(sf)
+				cm.sectorMu.Unlock()
+			} else {
+				// One of the opens failed, close the file handle for the
+				// opens that did not fail.
+				if err1 == nil {
+					sf.metadataFile.Close()
+				}
+				if err2 == nil {
+					sf.sectorFile.Close()
 				}
 			}
 		}
