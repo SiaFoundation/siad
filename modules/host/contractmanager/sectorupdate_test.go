@@ -2186,8 +2186,12 @@ func TestAddVirtualSectorOverflow(t *testing.T) {
 		t.Fatal("overflow entry should be 0", loadedOverflow)
 	}
 
-	// Sync the map to disk before reading it again.
+	// Sync the map to disk before reading it again. Lock the wal mutex before
+	// syncing to prevent data race, threadedSyncLoop() already locks the mutex
+	// before committing the wal.
+	cmt.cm.wal.mu.Lock()
 	cmt.cm.wal.syncResources()
+	cmt.cm.wal.mu.Unlock()
 
 	// Load the overflow file and confirm that the change was persisted.
 	loaded, err = newOverflowMap(overflowFilePath, modules.ProdDependencies)
