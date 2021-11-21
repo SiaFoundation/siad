@@ -1,6 +1,8 @@
 package contractmanager
 
 import (
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -387,6 +389,17 @@ func (cm *ContractManager) AddStorageFolder(path string, size uint64) error {
 
 		availableSectors: make(map[sectorID]uint32),
 	}
+
+	// create a unique alert ID per storage folder add and unregister it after completion.
+	alertID := modules.AlertID("cm-add-folder-" + hex.EncodeToString(fastrand.Bytes(12)))
+	defer cm.staticAlerter.UnregisterAlert(alertID)
+
+	cm.staticAlerter.RegisterAlert(alertID,
+		fmt.Sprintf("Adding %s folder %s",
+			modules.FilesizeUnits(size),
+			newSF.path),
+		"folder op", modules.SeverityInfo)
+
 	err = cm.wal.managedAddStorageFolder(newSF)
 	if err != nil {
 		cm.log.Println("Call to AddStorageFolder has failed:", err)

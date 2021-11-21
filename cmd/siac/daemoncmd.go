@@ -93,6 +93,8 @@ directory in the siad data directory.`,
 // alertscmd prints the alerts from the daemon. This will not print critical
 // alerts as critical alerts are printed on every siac command
 func alertscmd() {
+	const maxAlerts = 1000
+
 	al, err := httpClient.DaemonAlertsGet()
 	if err != nil {
 		fmt.Println("Could not get daemon alerts:", err)
@@ -107,34 +109,33 @@ func alertscmd() {
 		return
 	}
 
-	// Print Error alerts
-	const maxAlerts = 1000
-	remainingAlerts := maxAlerts - len(al.CriticalAlerts)
-	if remainingAlerts <= 0 {
-		fmt.Println("Only first", maxAlerts, "alerts printed")
-		return
-	}
-	alertsToPrint := remainingAlerts
-	if alertsToPrint > len(al.ErrorAlerts) {
-		alertsToPrint = len(al.ErrorAlerts)
-	}
-	printAlerts(al.ErrorAlerts[:alertsToPrint], modules.SeverityError)
+	remaining := maxAlerts
+	for sev := modules.AlertSeverity(modules.SeverityError); sev >= modules.SeverityInfo; sev-- {
+		if remaining <= 0 {
+			return
+		}
 
-	// Print Warning alerts
-	remainingAlerts -= len(al.ErrorAlerts)
-	if remainingAlerts <= 0 {
-		fmt.Println("Only first", maxAlerts, "alerts printed")
-		return
-	}
-	alertsToPrint = remainingAlerts
-	if alertsToPrint > len(al.WarningAlerts) {
-		alertsToPrint = len(al.WarningAlerts)
-	}
-	printAlerts(al.WarningAlerts[:alertsToPrint], modules.SeverityWarning)
+		var alerts []modules.Alert
+		switch sev {
+		case modules.SeverityError:
+			alerts = al.ErrorAlerts
+		case modules.SeverityWarning:
+			alerts = al.WarningAlerts
+		case modules.SeverityInfo:
+			alerts = al.InfoAlerts
+		}
 
-	// Print max alerts message
-	if len(al.CriticalAlerts)+len(al.ErrorAlerts)+len(al.WarningAlerts) > maxAlerts {
-		fmt.Println("Only first", maxAlerts, "alerts printed")
+		n := len(alerts)
+		if n > remaining {
+			n = remaining
+		}
+
+		remaining -= n
+		printAlerts(alerts[:n], sev)
+	}
+
+	if len(al.Alerts) > maxAlerts {
+		fmt.Printf("Only %v/%v alerts are displayed.\n", maxAlerts, len(al.Alerts))
 	}
 }
 

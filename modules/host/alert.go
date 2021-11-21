@@ -3,13 +3,14 @@ package host
 import "go.sia.tech/siad/modules"
 
 // Alerts implements the modules.Alerter interface for the host.
-func (h *Host) Alerts() (crit, err, warn []modules.Alert) {
-	hostCrit, hostErr, hostWarn := h.staticAlerter.Alerts()
-	smCrit, smErr, smWarn := h.StorageManager.Alerts()
+func (h *Host) Alerts() (crit, err, warn, info []modules.Alert) {
+	hostCrit, hostErr, hostWarn, hostInfo := h.staticAlerter.Alerts()
+	smCrit, smErr, smWarn, smInfo := h.StorageManager.Alerts()
 	crit = append(hostCrit, smCrit...)
 	err = append(hostErr, smErr...)
 	warn = append(hostWarn, smWarn...)
-	return crit, err, warn
+	info = append(hostInfo, smInfo...)
+	return
 }
 
 // tryUnregisterInsufficientCollateralBudgetAlert will be called when the host

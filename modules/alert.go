@@ -16,6 +16,9 @@ const (
 	// SeverityUnknown is the value of an uninitialized severity and should never
 	// be used.
 	SeverityUnknown = iota
+	// SeverityInfo shows the user potentially useful information, such as the
+	// status of long running actions.
+	SeverityInfo
 	// SeverityWarning warns the user about potential issues which might require
 	// preventive actions.
 	SeverityWarning
@@ -65,7 +68,7 @@ type (
 	// Alerter is the interface implemented by all top-level modules. It's an
 	// interface that allows for asking a module about potential issues.
 	Alerter interface {
-		Alerts() (crit, err, warn []Alert)
+		Alerts() (crit, err, warn, info []Alert)
 	}
 
 	// Alert is a type that contains essential information about an alert.
@@ -105,6 +108,7 @@ func (x Alert) EqualsWithErrorCause(y Alert, causeErr string) bool {
 // MarshalJSON defines a JSON encoding for the AlertSeverity.
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
 	switch a {
+	case SeverityInfo:
 	case SeverityWarning:
 	case SeverityError:
 	case SeverityCritical:
@@ -121,6 +125,8 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	switch severityStr {
+	case "info":
+		*a = SeverityInfo
 	case "warning":
 		*a = SeverityWarning
 	case "error":
@@ -136,6 +142,8 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 // String converts an alertSeverity to a string
 func (a AlertSeverity) String() string {
 	switch a {
+	case SeverityInfo:
+		return "info"
 	case SeverityWarning:
 		return "warning"
 	case SeverityError:
@@ -164,16 +172,17 @@ func NewAlerter(module string) *GenericAlerter {
 		alerts: make(map[AlertID]Alert),
 		module: module,
 	}
-	a.registerTestAlerts()
 	return a
 }
 
 // Alerts returns the current alerts tracked by the alerter.
-func (a *GenericAlerter) Alerts() (crit, err, warn []Alert) {
+func (a *GenericAlerter) Alerts() (crit, err, warn, info []Alert) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, alert := range a.alerts {
 		switch alert.Severity {
+		case SeverityInfo:
+			info = append(info, alert)
 		case SeverityCritical:
 			crit = append(crit, alert)
 		case SeverityError:
@@ -204,16 +213,6 @@ func (a *GenericAlerter) UnregisterAlert(id AlertID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.alerts, id)
-}
-
-// registerTestAlerts registers one alert of every severity for testing.
-func (a *GenericAlerter) registerTestAlerts() {
-	if build.Release != "testing" {
-		return
-	}
-	a.RegisterAlert(AlertID(a.module+" - Dummy1"), "msg1", "cause1", SeverityWarning)
-	a.RegisterAlert(AlertID(a.module+" - Dummy2"), "msg2", "cause2", SeverityError)
-	a.RegisterAlert(AlertID(a.module+" - Dummy3"), "msg3", "cause3", SeverityCritical)
 }
 
 // PrintAlerts is a helper function to print details of a slice of alerts
