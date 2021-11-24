@@ -8,6 +8,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+
+	"go.sia.tech/core/types"
 )
 
 // A Client communicates with a siad server.
@@ -50,6 +52,61 @@ func (c *Client) delete(route string) error                 { return c.req("DELE
 // WalletBalance returns the current wallet balance.
 func (c *Client) WalletBalance() (resp WalletBalance, err error) {
 	err = c.get("/wallet/balance", &resp)
+	return
+}
+
+// WalletAddress returns an address controlled by the wallet.
+func (c *Client) WalletAddress() (resp WalletAddress, err error) {
+	err = c.get("/wallet/address", &resp)
+	return
+}
+
+// WalletAddresses returns all addresses controlled by the wallet.
+func (c *Client) WalletAddresses() (resp WalletAddresses, err error) {
+	err = c.get("/wallet/addresses", &resp)
+	return
+}
+
+// WalletTransactions returns all transactions relevant to the wallet, ordered
+// oldest-to-newest.
+func (c *Client) WalletTransactions() (resp WalletTransactions, err error) {
+	err = c.get("/wallet/transactions", &resp)
+	return
+}
+
+// WalletSign signs a transaction.
+func (c *Client) WalletSign(txn types.Transaction, toSign []types.ElementID) (resp WalletTransaction, err error) {
+	err = c.post("/wallet/sign", WalletSignData{toSign, txn}, &resp)
+	return
+}
+
+// WalletBroadcastTransaction broadcasts a transaction to the network.
+func (c *Client) WalletBroadcastTransaction(txn types.Transaction) (err error) {
+	err = c.post("/wallet/broadcast", txn, nil)
+	return
+}
+
+// TxpoolTransactions returns all transactions in the transaction pool.
+func (c *Client) TxpoolTransactions() (resp TxpoolTransactions, err error) {
+	err = c.get("/txpool/transactions", &resp)
+	return
+}
+
+// SyncerPeers returns all peers of the syncer.
+func (c *Client) SyncerPeers() (resp SyncerPeers, err error) {
+	err = c.get("/syncer/peers", &resp)
+	return
+}
+
+// SyncerAddress returns the syncer's listening address.
+func (c *Client) SyncerAddress() (resp SyncerAddress, err error) {
+	err = c.get("/syncer/address", &resp)
+	return
+}
+
+// SyncerConnect adds the address as a peer of the syncer.
+func (c *Client) SyncerConnect(addr string) (err error) {
+	err = c.post("/syncer/connect", addr, nil)
 	return
 }
 
