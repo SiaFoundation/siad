@@ -1,10 +1,7 @@
 package api
 
 import (
-	"go.sia.tech/core/net/gateway"
-
 	"go.sia.tech/core/types"
-	"go.sia.tech/siad/v2/wallet"
 )
 
 type WalletBalance struct {
@@ -17,7 +14,7 @@ type WalletAddress struct {
 
 type WalletAddresses []types.Address
 
-type WalletSignData struct {
+type WalletSignRequest struct {
 	ToSign      []types.ElementID `json:"toSign"`
 	Transaction types.Transaction `json:"transaction"`
 }
@@ -26,12 +23,15 @@ type WalletTransaction struct {
 	Transaction types.Transaction `json:"transaction"`
 }
 
-type WalletTransactions []wallet.Transaction
+type TxpoolBroadcastRequest struct {
+	DependsOn   []types.Transaction `json:"dependsOn"`
+	Transaction types.Transaction   `json:"transaction"`
+}
 
-type TxpoolTransactions []types.Transaction
+type SyncerPeer struct {
+	NetAddress string `json:"netAddress"`
+}
 
-type SyncerPeers []gateway.Header
-
-type SyncerAddress struct {
-	Address string `json:"address"`
+type SyncerConnectRequest struct {
+	NetAddress string `json:"netAddress"`
 }

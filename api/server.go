@@ -5,15 +5,12 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/julienschmidt/httprouter"
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/net/gateway"
-	"go.sia.tech/siad/v2/p2p"
-	"go.sia.tech/siad/v2/txpool"
+	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/wallet"
 
-	"go.sia.tech/core/chain"
-	"go.sia.tech/core/types"
+	"github.com/julienschmidt/httprouter"
 )
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -31,6 +28,7 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	enc.Encode(v)
 }
 
+// A Wallet can spend and receive siacoins.
 type Wallet interface {
 	Balance() types.Currency
 	NextAddress() types.Address
@@ -40,6 +38,7 @@ type Wallet interface {
 	SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
 }
 
+// A Syncer can connect to other peers and synchronize the blockchain.
 type Syncer interface {
 	Addr() string
 	Peers() []gateway.Header
@@ -47,16 +46,18 @@ type Syncer interface {
 	BroadcastTransaction(txn types.Transaction, dependsOn []types.Transaction)
 }
 
+// A TransactionPool can validate and relay unconfirmed transactions.
 type TransactionPool interface {
 	Transactions() []types.Transaction
 	AddTransaction(txn types.Transaction) error
 }
 
+// A ChainManager manages blockchain state.
 type ChainManager interface {
-	Tip() types.ChainIndex
-	ValidationContext(index types.ChainIndex) (consensus.ValidationContext, error)
+	TipContext() (consensus.ValidationContext, error)
 }
 
+// A Server serves the siad API.
 type Server struct {
 	w  Wallet
 	s  Syncer
@@ -79,17 +80,17 @@ func (s *Server) walletAddressesHandler(w http.ResponseWriter, req *http.Request
 }
 
 func (s *Server) walletTransactionsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	writeJSON(w, WalletTransactions(s.w.Transactions()))
+	writeJSON(w, s.w.Transactions())
 }
 
 func (s *Server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var sign WalletSignData
-	if err := json.NewDecoder(req.Body).Decode(&sign); err != nil {
+	var wsr WalletSignRequest
+	if err := json.NewDecoder(req.Body).Decode(&wsr); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	txn, toSign := sign.Transaction, sign.ToSign
+	txn, toSign := wsr.Transaction, wsr.ToSign
 	if len(toSign) == 0 {
 		// lazy mode: add standard sigs for every input we own
 		for _, input := range txn.SiacoinInputs {
@@ -97,7 +98,7 @@ func (s *Server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ h
 		}
 	}
 
-	vc, err := s.cm.ValidationContext(s.cm.Tip())
+	vc, err := s.cm.TipContext()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -110,47 +111,55 @@ func (s *Server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ h
 	writeJSON(w, WalletTransaction{txn})
 }
 
-func (s *Server) walletBroadcastTransactionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var txn types.Transaction
-	if err := json.NewDecoder(req.Body).Decode(&txn); err != nil {
+func (s *Server) txpoolBroadcastHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var tbr TxpoolBroadcastRequest
+	if err := json.NewDecoder(req.Body).Decode(&tbr); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	if err := s.tp.AddTransaction(txn); err != nil {
+	for _, txn := range tbr.DependsOn {
+		if err := s.tp.AddTransaction(txn); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	if err := s.tp.AddTransaction(tbr.Transaction); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.s.BroadcastTransaction(txn, nil)
+	s.s.BroadcastTransaction(tbr.Transaction, tbr.DependsOn)
 }
 
 func (s *Server) txpoolTransactionsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	writeJSON(w, TxpoolTransactions(s.tp.Transactions()))
+	writeJSON(w, s.tp.Transactions())
 }
 
 func (s *Server) syncerPeersHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	writeJSON(w, SyncerPeers(s.s.Peers()))
-}
-
-func (s *Server) syncerAddressHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	writeJSON(w, SyncerAddress{s.s.Addr()})
+	ps := s.s.Peers()
+	sps := make([]SyncerPeer, len(ps))
+	for i, peer := range ps {
+		sps[i] = SyncerPeer{
+			NetAddress: peer.NetAddress,
+		}
+	}
+	writeJSON(w, sps)
 }
 
 func (s *Server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var addr string
-	if err := json.NewDecoder(req.Body).Decode(&addr); err != nil {
+	var scr SyncerConnectRequest
+	if err := json.NewDecoder(req.Body).Decode(&scr); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := s.s.Connect(addr); err != nil {
+	if err := s.s.Connect(scr.NetAddress); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 }
 
 // NewServer returns an HTTP handler that serves the siad API.
-func NewServer(w Wallet, s *p2p.Syncer, cm *chain.Manager, tp *txpool.Pool) http.Handler {
+func NewServer(w Wallet, s Syncer, cm ChainManager, tp TransactionPool) http.Handler {
 	srv := Server{
 		w:  w,
 		s:  s,
@@ -159,17 +168,16 @@ func NewServer(w Wallet, s *p2p.Syncer, cm *chain.Manager, tp *txpool.Pool) http
 	}
 	mux := httprouter.New()
 
-	mux.GET("/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/wallet/address", srv.walletAddressHandler)
 	mux.GET("/wallet/addresses", srv.walletAddressesHandler)
+	mux.GET("/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/wallet/transactions", srv.walletTransactionsHandler)
 	mux.POST("/wallet/sign", srv.walletSignHandler)
-	mux.POST("/wallet/broadcast", srv.walletBroadcastTransactionHandler)
 
 	mux.GET("/txpool/transactions", srv.txpoolTransactionsHandler)
+	mux.POST("/txpool/broadcast", srv.txpoolBroadcastHandler)
 
 	mux.GET("/syncer/peers", srv.syncerPeersHandler)
-	mux.GET("/syncer/address", srv.syncerAddressHandler)
 	mux.POST("/syncer/connect", srv.syncerConnectHandler)
 
 	return mux

@@ -67,40 +67,33 @@ func (c *Client) WalletAddresses() (resp WalletAddresses, err error) {
 	return
 }
 
-// WalletTransactions returns all transactions relevant to the wallet, ordered
-// oldest-to-newest.
-func (c *Client) WalletTransactions() (resp WalletTransactions, err error) {
+// WalletTransactions returns all transactions relevant to the wallet.
+func (c *Client) WalletTransactions() (resp []WalletTransaction, err error) {
 	err = c.get("/wallet/transactions", &resp)
 	return
 }
 
 // WalletSign signs a transaction.
-func (c *Client) WalletSign(txn types.Transaction, toSign []types.ElementID) (resp WalletTransaction, err error) {
-	err = c.post("/wallet/sign", WalletSignData{toSign, txn}, &resp)
+func (c *Client) WalletSign(txn *types.Transaction, toSign []types.ElementID) (err error) {
+	err = c.post("/wallet/sign", WalletSignRequest{toSign, *txn}, txn)
 	return
 }
 
-// WalletBroadcastTransaction broadcasts a transaction to the network.
-func (c *Client) WalletBroadcastTransaction(txn types.Transaction) (err error) {
-	err = c.post("/wallet/broadcast", txn, nil)
+// TxpoolBroadcast broadcasts a transaction to the network.
+func (c *Client) TxpoolBroadcast(txn types.Transaction, dependsOn []types.Transaction) (err error) {
+	err = c.post("/txpool/broadcast", TxpoolBroadcastRequest{dependsOn, txn}, nil)
 	return
 }
 
 // TxpoolTransactions returns all transactions in the transaction pool.
-func (c *Client) TxpoolTransactions() (resp TxpoolTransactions, err error) {
+func (c *Client) TxpoolTransactions() (resp []types.Transaction, err error) {
 	err = c.get("/txpool/transactions", &resp)
 	return
 }
 
-// SyncerPeers returns all peers of the syncer.
-func (c *Client) SyncerPeers() (resp SyncerPeers, err error) {
+// SyncerPeers returns the current peers of the syncer.
+func (c *Client) SyncerPeers() (resp []SyncerPeer, err error) {
 	err = c.get("/syncer/peers", &resp)
-	return
-}
-
-// SyncerAddress returns the syncer's listening address.
-func (c *Client) SyncerAddress() (resp SyncerAddress, err error) {
-	err = c.get("/syncer/address", &resp)
 	return
 }
 
