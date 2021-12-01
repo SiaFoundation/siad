@@ -8,6 +8,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+
+	"go.sia.tech/core/types"
 )
 
 // A Client communicates with a siad server.
@@ -50,6 +52,54 @@ func (c *Client) delete(route string) error                 { return c.req("DELE
 // WalletBalance returns the current wallet balance.
 func (c *Client) WalletBalance() (resp WalletBalance, err error) {
 	err = c.get("/wallet/balance", &resp)
+	return
+}
+
+// WalletAddress returns an address controlled by the wallet.
+func (c *Client) WalletAddress() (resp WalletAddress, err error) {
+	err = c.get("/wallet/address", &resp)
+	return
+}
+
+// WalletAddresses returns all addresses controlled by the wallet.
+func (c *Client) WalletAddresses() (resp WalletAddresses, err error) {
+	err = c.get("/wallet/addresses", &resp)
+	return
+}
+
+// WalletTransactions returns all transactions relevant to the wallet.
+func (c *Client) WalletTransactions() (resp []WalletTransaction, err error) {
+	err = c.get("/wallet/transactions", &resp)
+	return
+}
+
+// WalletSign signs a transaction.
+func (c *Client) WalletSign(txn *types.Transaction, toSign []types.ElementID) (err error) {
+	err = c.post("/wallet/sign", WalletSignRequest{toSign, *txn}, txn)
+	return
+}
+
+// TxpoolBroadcast broadcasts a transaction to the network.
+func (c *Client) TxpoolBroadcast(txn types.Transaction, dependsOn []types.Transaction) (err error) {
+	err = c.post("/txpool/broadcast", TxpoolBroadcastRequest{dependsOn, txn}, nil)
+	return
+}
+
+// TxpoolTransactions returns all transactions in the transaction pool.
+func (c *Client) TxpoolTransactions() (resp []types.Transaction, err error) {
+	err = c.get("/txpool/transactions", &resp)
+	return
+}
+
+// SyncerPeers returns the current peers of the syncer.
+func (c *Client) SyncerPeers() (resp []SyncerPeer, err error) {
+	err = c.get("/syncer/peers", &resp)
+	return
+}
+
+// SyncerConnect adds the address as a peer of the syncer.
+func (c *Client) SyncerConnect(addr string) (err error) {
+	err = c.post("/syncer/connect", addr, nil)
 	return
 }
 
