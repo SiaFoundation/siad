@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
@@ -250,7 +252,7 @@ func main() {
 			cmd.Usage()
 			return
 		}
-		addresses, err := getClient().WalletAddresses()
+		addresses, err := getClient().WalletAddresses(0, math.MaxInt64)
 		check("Couldn't get address:", err)
 		for _, address := range addresses {
 			fmt.Println(address)
@@ -274,7 +276,7 @@ func main() {
 			cmd.Usage()
 			return
 		}
-		transactions, err := getClient().WalletTransactions()
+		transactions, err := getClient().WalletTransactions(time.Time{}, 0)
 		check("Couldn't get transactions:", err)
 
 		w := makeTabWriter()

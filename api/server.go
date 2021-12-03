@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strconv"
+	"time"
 
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/net/gateway"
@@ -33,7 +35,7 @@ type Wallet interface {
 	Balance() types.Currency
 	NextAddress() types.Address
 	Addresses() []types.Address
-	Transactions() []wallet.Transaction
+	Transactions(since time.Time, max int) []wallet.Transaction
 	FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error)
 	SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
 }
@@ -76,11 +78,49 @@ func (s *Server) walletAddressHandler(w http.ResponseWriter, req *http.Request, 
 }
 
 func (s *Server) walletAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	writeJSON(w, WalletAddresses(s.w.Addresses()))
+	addresses := s.w.Addresses()
+	start, end := 0, len(addresses)
+	if v := req.FormValue("start"); v != "" {
+		i, err := strconv.Atoi(v)
+		if err != nil || i < 0 || i > len(addresses) {
+			http.Error(w, "invalid start value", http.StatusBadRequest)
+			return
+		}
+		start = i
+	}
+	if v := req.FormValue("end"); v != "" {
+		i, err := strconv.Atoi(v)
+		if err != nil || i < 0 || i < start {
+			http.Error(w, "invalid end value", http.StatusBadRequest)
+			return
+		} else if i > len(addresses) {
+			i = len(addresses)
+		}
+		end = i
+	}
+	writeJSON(w, WalletAddresses(addresses[start:end]))
 }
 
 func (s *Server) walletTransactionsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	writeJSON(w, s.w.Transactions())
+	var since time.Time
+	if v := req.FormValue("since"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			http.Error(w, "invalid since value: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		since = t
+	}
+	max := -1
+	if v := req.FormValue("max"); v != "" {
+		t, err := strconv.Atoi(v)
+		if err != nil {
+			http.Error(w, "invalid max value: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		max = t
+	}
+	writeJSON(w, s.w.Transactions(since, max))
 }
 
 func (s *Server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -168,9 +208,9 @@ func NewServer(w Wallet, s Syncer, cm ChainManager, tp TransactionPool) http.Han
 	}
 	mux := httprouter.New()
 
+	mux.GET("/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/wallet/address", srv.walletAddressHandler)
 	mux.GET("/wallet/addresses", srv.walletAddressesHandler)
-	mux.GET("/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/wallet/transactions", srv.walletTransactionsHandler)
 	mux.POST("/wallet/sign", srv.walletSignHandler)
 

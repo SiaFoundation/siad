@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
@@ -75,7 +76,7 @@ type Store interface {
 	AddAddress(addr types.Address, index uint64) error
 	AddressIndex(addr types.Address) (uint64, bool)
 	SpendableSiacoinElements() []types.SiacoinElement
-	Transactions() []Transaction
+	Transactions(since time.Time, max int) []Transaction
 }
 
 // A HotWallet tracks spendable outputs controlled by in-memory keys. It can
@@ -226,17 +227,18 @@ func (w *HotWallet) SignTransaction(vc consensus.ValidationContext, txn *types.T
 // A Transaction is a transaction relevant to the wallet, paired with useful
 // metadata.
 type Transaction struct {
-	Raw     types.Transaction
-	Index   types.ChainIndex
-	ID      types.TransactionID
-	Inflow  types.Currency
-	Outflow types.Currency
+	Raw       types.Transaction
+	Index     types.ChainIndex
+	ID        types.TransactionID
+	Inflow    types.Currency
+	Outflow   types.Currency
+	Timestamp time.Time
 }
 
 // Transactions returns all transactions relevant to the wallet, ordered
 // oldest-to-newest.
-func (w *HotWallet) Transactions() []Transaction {
-	return w.store.Transactions()
+func (w *HotWallet) Transactions(since time.Time, max int) []Transaction {
+	return w.store.Transactions(since, max)
 }
 
 // NewHotWallet returns a hot wallet using the provided Store and seed.

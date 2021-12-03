@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"go.sia.tech/core/chain"
 	"go.sia.tech/core/types"
@@ -65,10 +66,17 @@ func (s *EphemeralStore) SpendableSiacoinElements() []types.SiacoinElement {
 
 // Transactions returns all transactions relevant to the wallet, ordered
 // oldest-to-newest.
-func (s *EphemeralStore) Transactions() []wallet.Transaction {
+func (s *EphemeralStore) Transactions(since time.Time, max int) (txns []wallet.Transaction) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]wallet.Transaction(nil), s.txns...)
+	for _, txn := range s.txns {
+		if len(txns) == max {
+			return
+		} else if txn.Timestamp.After(since) {
+			txns = append(txns, txn)
+		}
+	}
+	return
 }
 
 // ProcessChainApplyUpdate implements chain.Subscriber.
@@ -114,11 +122,12 @@ func (s *EphemeralStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool)
 		}
 		if !inflow.IsZero() || !outflow.IsZero() {
 			s.txns = append(s.txns, wallet.Transaction{
-				Raw:     txn.DeepCopy(),
-				Index:   cau.Context.Index, // same as cau.Block.Index()
-				ID:      txn.ID(),
-				Inflow:  inflow,
-				Outflow: outflow,
+				Raw:       txn.DeepCopy(),
+				Index:     cau.Context.Index, // same as cau.Block.Index()
+				ID:        txn.ID(),
+				Inflow:    inflow,
+				Outflow:   outflow,
+				Timestamp: cau.Block.Header.Timestamp,
 			})
 		}
 	}

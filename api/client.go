@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"go.sia.tech/core/types"
 )
@@ -62,14 +63,14 @@ func (c *Client) WalletAddress() (resp WalletAddress, err error) {
 }
 
 // WalletAddresses returns all addresses controlled by the wallet.
-func (c *Client) WalletAddresses() (resp WalletAddresses, err error) {
-	err = c.get("/wallet/addresses", &resp)
+func (c *Client) WalletAddresses(start, end int) (resp WalletAddresses, err error) {
+	err = c.get(fmt.Sprintf("/wallet/addresses?start=%d&end=%d", start, end), &resp)
 	return
 }
 
 // WalletTransactions returns all transactions relevant to the wallet.
-func (c *Client) WalletTransactions() (resp []WalletTransaction, err error) {
-	err = c.get("/wallet/transactions", &resp)
+func (c *Client) WalletTransactions(since time.Time, max int) (resp []WalletTransaction, err error) {
+	err = c.get(fmt.Sprintf("/wallet/transactions?since=%s&max=%d", since.Format(time.RFC3339), max), &resp)
 	return
 }
 
