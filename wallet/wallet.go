@@ -70,7 +70,7 @@ func NewSeed() Seed {
 	return SeedFromEntropy(entropy)
 }
 
-// A Store stores wallet state.
+// A Store stores wallet state. Implementations are assumed to be thread safe.
 type Store interface {
 	SeedIndex() uint64
 	AddAddress(addr types.Address, index uint64) error

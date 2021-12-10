@@ -11,6 +11,7 @@ import (
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/siad/v2/internal/chainutil"
 	"go.sia.tech/siad/v2/internal/cpuminer"
+	"go.sia.tech/siad/v2/internal/p2putil"
 	"go.sia.tech/siad/v2/internal/walletutil"
 	"go.sia.tech/siad/v2/p2p"
 	"go.sia.tech/siad/v2/txpool"
@@ -80,6 +81,15 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	}
 	seed := wallet.NewSeed()
 
+	syncerDir := filepath.Join(dir, "p2p")
+	if err := os.MkdirAll(p2pDir, 0700); err != nil {
+		return nil, err
+	}
+	syncerStore, err := p2putil.NewJSONStore(syncerDir)
+	if err != nil {
+		return nil, err
+	}
+
 	cm := chain.NewManager(chainStore, tip.Context)
 	tp := txpool.New(tip.Context)
 	cm.AddSubscriber(tp, cm.Tip())
@@ -91,7 +101,7 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	m := cpuminer.New(tip.Context, w.NextAddress(), tp)
 	cm.AddSubscriber(m, cm.Tip())
 
-	s, err := p2p.NewSyncer(addr, genesisBlock.ID(), cm, tp)
+	s, err := p2p.NewSyncer(addr, genesisBlock.ID(), cm, tp, syncerStore)
 	if err != nil {
 		return nil, err
 	}
