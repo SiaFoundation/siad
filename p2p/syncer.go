@@ -234,11 +234,19 @@ func rpcDeadline(id rpc.Specifier) time.Duration {
 	}
 }
 
+// A SyncerStore stores peer addresses. Implementations are assumed to be thread
+// safe.
+type SyncerStore interface {
+	AddPeer(addr string) error
+	RandomPeer() (string, error)
+}
+
 type Syncer struct {
 	l      net.Listener
 	cm     *chain.Manager
 	tp     *txpool.Pool
 	header gateway.Header
+	store  SyncerStore
 
 	cond  sync.Cond
 	mu    sync.Mutex
@@ -536,6 +544,26 @@ func (s *Syncer) syncToPeer(peer gateway.Header) {
 	}
 }
 
+// maintainHealthyPeerSet tries to add peers to the syncer until it has 8.
+func (s *Syncer) maintainHealthyPeerSet() {
+	seen := make(map[string]bool)
+	for {
+		s.cond.L.Lock()
+		for len(s.peers) >= 8 {
+			s.cond.Wait()
+		}
+		s.cond.L.Unlock()
+		peer, err := s.store.RandomPeer()
+		if err == nil && !seen[peer] {
+			s.Connect(peer)
+			seen[peer] = true
+		} else {
+			// sleep on failure to avoid spinning unproductively
+			time.Sleep(time.Second)
+		}
+	}
+}
+
 func (s *Syncer) listen() {
 	for {
 		conn, err := s.l.Accept()
@@ -548,6 +576,7 @@ func (s *Syncer) listen() {
 
 func (s *Syncer) Run() error {
 	go s.listen()
+	go s.maintainHealthyPeerSet()
 
 	s.cond.L.Lock()
 	defer s.cond.L.Unlock()
@@ -582,6 +611,10 @@ func (s *Syncer) Connect(addr string) error {
 	s.mu.Unlock()
 	s.handleNewPeer(sess.Peer)
 	go s.handleStreams(sess)
+	if err := s.store.AddPeer(addr); err != nil {
+		conn.Close()
+		return err
+	}
 	return nil
 }
 
@@ -592,6 +625,7 @@ func (s *Syncer) Disconnect(peer gateway.Header) error {
 	if !ok {
 		return errors.New("unknown peer")
 	}
+	s.cond.Broadcast() // wake maintainHealthyPeerSet
 	return sess.Close()
 }
 
@@ -612,15 +646,16 @@ func (s *Syncer) Close() error {
 	return s.l.Close()
 }
 
-func NewSyncer(addr string, genesisID types.BlockID, cm *chain.Manager, tp *txpool.Pool) (*Syncer, error) {
+func NewSyncer(addr string, genesisID types.BlockID, cm *chain.Manager, tp *txpool.Pool, store SyncerStore) (*Syncer, error) {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	s := &Syncer{
-		l:  l,
-		cm: cm,
-		tp: tp,
+		l:     l,
+		cm:    cm,
+		tp:    tp,
+		store: store,
 		header: gateway.Header{
 			GenesisID:  genesisID,
 			NetAddress: l.Addr().String(),
