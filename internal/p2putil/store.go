@@ -32,6 +32,20 @@ func (s *EphemeralStore) RandomPeer() (string, error) {
 	return "", errors.New("no peers in list")
 }
 
+// RandomPeers implements p2p.SyncerStore.
+func (s *EphemeralStore) RandomPeers(n int) (peers []string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for peer := range s.peers {
+		if n <= 0 {
+			break
+		}
+		peers = append(peers, peer)
+		n--
+	}
+	return
+}
+
 // NewEphemeralStore returns a new EphemeralStore.
 func NewEphemeralStore() *EphemeralStore {
 	return &EphemeralStore{

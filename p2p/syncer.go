@@ -27,11 +27,15 @@ var errInternalError = errors.New("could not complete request due to internal er
 
 var (
 	rpcGetHeaders    = rpc.NewSpecifier("GetHeaders")
+	rpcGetPeers      = rpc.NewSpecifier("GetPeers")
 	rpcGetBlocks     = rpc.NewSpecifier("GetBlocks")
 	rpcGetCheckpoint = rpc.NewSpecifier("GetCheckpoint")
 	rpcRelayBlock    = rpc.NewSpecifier("RelayBlock")
 	rpcRelayTxn      = rpc.NewSpecifier("RelayTxn")
 )
+
+// Maximum number of peers a getPeers request can return.
+const maxGetPeers = 100
 
 type msgGetHeaders struct {
 	History []types.ChainIndex
@@ -75,6 +79,33 @@ func (m *msgHeaders) DecodeFrom(d *types.Decoder) {
 
 func (m *msgHeaders) MaxLen() int {
 	return 10e6 // arbitrary
+}
+
+type msgGetPeers struct{}
+
+func (m *msgGetPeers) EncodeTo(e *types.Encoder)   {}
+func (m *msgGetPeers) DecodeFrom(d *types.Decoder) {}
+func (m *msgGetPeers) MaxLen() int                 { return 0 }
+
+type msgPeers []string
+
+func (m *msgPeers) EncodeTo(e *types.Encoder) {
+	e.WritePrefix(len(*m))
+	for i := range *m {
+		e.WriteString((*m)[i])
+	}
+}
+
+func (m *msgPeers) DecodeFrom(d *types.Decoder) {
+	*m = make([]string, d.ReadPrefix())
+	for i := range *m {
+		(*m)[i] = d.ReadString()
+	}
+}
+
+func (m *msgPeers) MaxLen() int {
+	const maxDomainLen = 256 // See https://www.freesoft.org/CIE/RFC/1035/9.htm
+	return 8 + maxGetPeers*maxDomainLen
 }
 
 type msgGetBlocks struct {
@@ -201,15 +232,13 @@ func (m *msgRelayTxn) MaxLen() int {
 
 func isRelay(msg rpc.Object) bool {
 	switch msg.(type) {
-	case *msgGetHeaders:
+	case *msgGetHeaders,
+		*msgGetPeers,
+		*msgGetBlocks,
+		*msgGetCheckpoint:
 		return false
-	case *msgGetBlocks:
-		return false
-	case *msgGetCheckpoint:
-		return false
-	case *msgRelayBlock:
-		return true
-	case *msgRelayTxn:
+	case *msgRelayBlock,
+		*msgRelayTxn:
 		return true
 	default:
 		panic(fmt.Sprintf("unhandled type %T", msg))
@@ -220,6 +249,8 @@ func rpcDeadline(id rpc.Specifier) time.Duration {
 	// TODO: pick reasonable values for these
 	switch id {
 	case rpcGetHeaders:
+		return time.Minute
+	case rpcGetPeers:
 		return time.Minute
 	case rpcGetBlocks:
 		return 10 * time.Minute
@@ -234,11 +265,12 @@ func rpcDeadline(id rpc.Specifier) time.Duration {
 	}
 }
 
-// A SyncerStore stores peer addresses. Implementations are assumed to be thread
-// safe.
+// A SyncerStore stores peer addresses. Implementations are assumed to be
+// thread-safe.
 type SyncerStore interface {
 	AddPeer(addr string) error
 	RandomPeer() (string, error)
+	RandomPeers(n int) ([]string, error)
 }
 
 type Syncer struct {
@@ -328,6 +360,15 @@ func (s *Syncer) getHeaders(peer gateway.Header, req *msgGetHeaders) (resp msgHe
 	return
 }
 
+func (s *Syncer) getPeers(peer gateway.Header) (resp msgPeers, err error) {
+	p, ok := s.peers[peer]
+	if !ok {
+		return msgPeers{}, errors.New("unknown peer")
+	}
+	err = s.rpc(p, rpcGetPeers, &msgGetPeers{}, &resp)
+	return
+}
+
 func (s *Syncer) getBlocks(peer gateway.Header, req *msgGetBlocks) (resp msgBlocks, err error) {
 	p, ok := s.peers[peer]
 	if !ok {
@@ -407,6 +448,15 @@ func (s *Syncer) handleConn(conn net.Conn) error {
 }
 
 func (s *Syncer) handleNewPeer(peer gateway.Header) {
+	// request potentially-connectable node addresses
+	go func() {
+		// TODO: logging
+		peers, _ := s.getPeers(peer)
+		for _, peer := range peers {
+			s.store.AddPeer(peer)
+		}
+	}()
+
 	go s.syncToPeer(peer)
 }
 
@@ -441,6 +491,13 @@ func (s *Syncer) handleRPC(peer gateway.Header, msg rpc.Object) (resp rpc.Object
 			return nil, errInternalError
 		}
 		return &msgHeaders{Headers: headers}, nil
+
+	case *msgGetPeers:
+		peers, err := s.store.RandomPeers(maxGetPeers)
+		if err != nil {
+			return nil, errInternalError
+		}
+		return (*msgPeers)(&peers), nil
 
 	case *msgGetBlocks:
 
@@ -546,13 +603,17 @@ func (s *Syncer) syncToPeer(peer gateway.Header) {
 
 // maintainHealthyPeerSet tries to add peers to the syncer until it has 8.
 func (s *Syncer) maintainHealthyPeerSet() {
+	const healthyPeerCount = 8
 	seen := make(map[string]bool)
 	for {
 		s.cond.L.Lock()
-		for len(s.peers) >= 8 {
+		for s.err == nil && len(s.peers) >= healthyPeerCount {
 			s.cond.Wait()
 		}
 		s.cond.L.Unlock()
+		if s.err != nil {
+			return
+		}
 		peer, err := s.store.RandomPeer()
 		if err == nil && !seen[peer] {
 			s.Connect(peer)
