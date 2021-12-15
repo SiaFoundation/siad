@@ -82,7 +82,7 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	seed := wallet.NewSeed()
 
 	syncerDir := filepath.Join(dir, "p2p")
-	if err := os.MkdirAll(p2pDir, 0700); err != nil {
+	if err := os.MkdirAll(syncerDir, 0700); err != nil {
 		return nil, err
 	}
 	syncerStore, err := p2putil.NewJSONStore(syncerDir)
