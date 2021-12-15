@@ -1,7 +1,6 @@
 package wallet
 
 import (
-	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -23,13 +22,11 @@ type Seed struct {
 func (s Seed) String() string { return hex.EncodeToString(s.entropy[:]) }
 
 // deriveKeyPair derives the keypair for the specified index.
-func (s Seed) deriveKeyPair(index uint64) (keypair [64]byte) {
+func (s Seed) deriveKeyPair(index uint64) types.PrivateKey {
 	buf := make([]byte, len(s.entropy)+8)
 	n := copy(buf, s.entropy[:])
 	binary.LittleEndian.PutUint64(buf[n:], index)
-	seed := types.HashBytes(buf)
-	copy(keypair[:], ed25519.NewKeyFromSeed(seed[:]))
-	return
+	return types.NewPrivateKeyFromSeed(types.HashBytes(buf))
 }
 
 // PublicKey derives the types.SiaPublicKey for the specified index.
@@ -40,9 +37,8 @@ func (s Seed) PublicKey(index uint64) (pk types.PublicKey) {
 }
 
 // PrivateKey derives the ed25519 private key for the specified index.
-func (s Seed) PrivateKey(index uint64) ed25519.PrivateKey {
-	key := s.deriveKeyPair(index)
-	return key[:]
+func (s Seed) PrivateKey(index uint64) types.PrivateKey {
+	return s.deriveKeyPair(index)
 }
 
 // SeedFromEntropy returns the Seed derived from the supplied entropy.
@@ -219,7 +215,7 @@ func (w *HotWallet) SignTransaction(vc consensus.ValidationContext, txn *types.T
 		if !ok {
 			return errors.New("no key for specified input")
 		}
-		in.Signatures = append(in.Signatures, types.InputSignature(types.SignHash(w.seed.PrivateKey(index), sigHash)))
+		in.Signatures = append(in.Signatures, types.InputSignature(w.seed.PrivateKey(index).SignHash(sigHash)))
 	}
 	return nil
 }
