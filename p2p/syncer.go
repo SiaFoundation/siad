@@ -37,6 +37,7 @@ type msgGetHeaders struct {
 	History []types.ChainIndex
 }
 
+// EncodeTo encodes the chain indices to an encoder. Implements types.EncoderTo.
 func (m *msgGetHeaders) EncodeTo(e *types.Encoder) {
 	e.WritePrefix(len(m.History))
 	for i := range m.History {
@@ -44,6 +45,8 @@ func (m *msgGetHeaders) EncodeTo(e *types.Encoder) {
 	}
 }
 
+// DecodeFrom decodes the chain indices from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgGetHeaders) DecodeFrom(d *types.Decoder) {
 	m.History = make([]types.ChainIndex, d.ReadPrefix())
 	for i := range m.History {
@@ -51,6 +54,8 @@ func (m *msgGetHeaders) DecodeFrom(d *types.Decoder) {
 	}
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgGetHeaders) MaxLen() int {
 	return 10e6 // arbitrary
 }
@@ -59,6 +64,7 @@ type msgHeaders struct {
 	Headers []types.BlockHeader
 }
 
+// EncodeTo encodes the block headers to an encoder. Implements types.EncoderTo.
 func (m *msgHeaders) EncodeTo(e *types.Encoder) {
 	e.WritePrefix(len(m.Headers))
 	for i := range m.Headers {
@@ -66,6 +72,8 @@ func (m *msgHeaders) EncodeTo(e *types.Encoder) {
 	}
 }
 
+// DecodeFrom decodes the block headers from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgHeaders) DecodeFrom(d *types.Decoder) {
 	m.Headers = make([]types.BlockHeader, d.ReadPrefix())
 	for i := range m.Headers {
@@ -73,6 +81,8 @@ func (m *msgHeaders) DecodeFrom(d *types.Decoder) {
 	}
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgHeaders) MaxLen() int {
 	return 10e6 // arbitrary
 }
@@ -81,6 +91,7 @@ type msgGetBlocks struct {
 	Blocks []types.ChainIndex
 }
 
+// Encodes the block indices to an encoder. Implements types.EncoderTo.
 func (m *msgGetBlocks) EncodeTo(e *types.Encoder) {
 	e.WritePrefix(len(m.Blocks))
 	for i := range m.Blocks {
@@ -88,6 +99,8 @@ func (m *msgGetBlocks) EncodeTo(e *types.Encoder) {
 	}
 }
 
+// DecodeFrom decodes the block indices from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgGetBlocks) DecodeFrom(d *types.Decoder) {
 	m.Blocks = make([]types.ChainIndex, d.ReadPrefix())
 	for i := range m.Blocks {
@@ -95,6 +108,8 @@ func (m *msgGetBlocks) DecodeFrom(d *types.Decoder) {
 	}
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgGetBlocks) MaxLen() int {
 	return 10e6 // arbitrary
 }
@@ -103,6 +118,7 @@ type msgBlocks struct {
 	Blocks []types.Block
 }
 
+// EncodeTo encodes the msgBlocks to an encoder. Implements types.EncoderTo.
 func (m *msgBlocks) EncodeTo(e *types.Encoder) {
 	e.WritePrefix(len(m.Blocks))
 	for i := range m.Blocks {
@@ -110,6 +126,8 @@ func (m *msgBlocks) EncodeTo(e *types.Encoder) {
 	}
 }
 
+// DecoderFrom decodes the msgBlocks from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgBlocks) DecodeFrom(d *types.Decoder) {
 	m.Blocks = make([]types.Block, d.ReadPrefix())
 	for i := range m.Blocks {
@@ -117,6 +135,8 @@ func (m *msgBlocks) DecodeFrom(d *types.Decoder) {
 	}
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgBlocks) MaxLen() int {
 	return 100e6 // arbitrary
 }
@@ -125,14 +145,19 @@ type msgGetCheckpoint struct {
 	Index types.ChainIndex
 }
 
+// EncodeTo encodes the msgCheckpoint to an encoder. Implements types.EncoderTo.
 func (m *msgGetCheckpoint) EncodeTo(e *types.Encoder) {
 	m.Index.EncodeTo(e)
 }
 
+// DecoderFrom decodes the msgCheckpoint from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgGetCheckpoint) DecodeFrom(d *types.Decoder) {
 	m.Index.DecodeFrom(d)
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgGetCheckpoint) MaxLen() int {
 	return 40
 }
@@ -144,16 +169,21 @@ type msgCheckpoint struct {
 	ParentContext consensus.ValidationContext
 }
 
+// EncodeTo encodes the msgCheckpoint to an encoder. Implements types.EncoderTo.
 func (m *msgCheckpoint) EncodeTo(e *types.Encoder) {
 	merkle.CompressedBlock(m.Block).EncodeTo(e)
 	m.ParentContext.EncodeTo(e)
 }
 
+// DecoderFrom decodes the msgCheckpoint from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgCheckpoint) DecodeFrom(d *types.Decoder) {
 	(*merkle.CompressedBlock)(&m.Block).DecodeFrom(d)
 	m.ParentContext.DecodeFrom(d)
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgCheckpoint) MaxLen() int {
 	return 10e6 // arbitrary
 }
@@ -162,14 +192,19 @@ type msgRelayBlock struct {
 	Block types.Block
 }
 
+// EncodeTo encodes the msgRelayBlock to an encoder. Implements types.EncoderTo.
 func (m *msgRelayBlock) EncodeTo(e *types.Encoder) {
 	merkle.CompressedBlock(m.Block).EncodeTo(e)
 }
 
+// DecoderFrom decodes the msgRelayBlock from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgRelayBlock) DecodeFrom(d *types.Decoder) {
 	(*merkle.CompressedBlock)(&m.Block).DecodeFrom(d)
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgRelayBlock) MaxLen() int {
 	return 10e6 // arbitrary
 }
@@ -179,6 +214,7 @@ type msgRelayTxn struct {
 	DependsOn   []types.Transaction
 }
 
+// EncodeTo encodes the msgRelayTxn to an encoder. Implements types.EncoderTo.
 func (m *msgRelayTxn) EncodeTo(e *types.Encoder) {
 	m.Transaction.EncodeTo(e)
 	e.WritePrefix(len(m.DependsOn))
@@ -187,6 +223,8 @@ func (m *msgRelayTxn) EncodeTo(e *types.Encoder) {
 	}
 }
 
+// DecoderFrom decodes the msgRelayTxn from a decoder. Implements
+// types.DecoderFrom.
 func (m *msgRelayTxn) DecodeFrom(d *types.Decoder) {
 	m.Transaction.DecodeFrom(d)
 	m.DependsOn = make([]types.Transaction, d.ReadPrefix())
@@ -195,6 +233,8 @@ func (m *msgRelayTxn) DecodeFrom(d *types.Decoder) {
 	}
 }
 
+// MaxLen returns the maximum length of the encoded message. Implements
+// rpc.Object.
 func (m *msgRelayTxn) MaxLen() int {
 	return 10e6 // arbitrary
 }
@@ -241,6 +281,7 @@ type SyncerStore interface {
 	RandomPeer() (string, error)
 }
 
+// A Syncer manages peers and relays new blocks and transactions.
 type Syncer struct {
 	l      net.Listener
 	cm     *chain.Manager
@@ -307,12 +348,14 @@ func (s *Syncer) broadcast(id rpc.Specifier, msg rpc.Object) {
 	}
 }
 
+// BroadcastBlock broadcasts a block to all peers.
 func (s *Syncer) BroadcastBlock(block types.Block) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.broadcast(rpcRelayBlock, &msgRelayBlock{block})
 }
 
+// BroadcastTransaction broadcasts a transaction to all connected peers.
 func (s *Syncer) BroadcastTransaction(txn types.Transaction, dependsOn []types.Transaction) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -370,7 +413,9 @@ func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 			s.handleRelay(peer.Peer, msg)
 		} else {
 			resp, rerr := s.handleRPC(peer.Peer, msg)
-			if err := rpc.WriteResponse(stream, resp, rerr); err != nil {
+			if rerr != nil {
+				return rpc.WriteResponseErr(stream, rerr)
+			} else if err := rpc.WriteResponse(stream, resp); err != nil {
 				return err
 			}
 		}
@@ -574,6 +619,7 @@ func (s *Syncer) listen() {
 	}
 }
 
+// Run starts the syncer and blocks until it is stopped.
 func (s *Syncer) Run() error {
 	go s.listen()
 	go s.maintainHealthyPeerSet()
@@ -589,10 +635,12 @@ func (s *Syncer) Run() error {
 	return nil
 }
 
+// Addr returns the address of the node.
 func (s *Syncer) Addr() string {
 	return s.header.NetAddress
 }
 
+// Connect attempts to connect to a peer.
 func (s *Syncer) Connect(addr string) error {
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
@@ -618,6 +666,7 @@ func (s *Syncer) Connect(addr string) error {
 	return nil
 }
 
+// Disconnect disconnects from a peer.
 func (s *Syncer) Disconnect(peer gateway.Header) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -629,6 +678,7 @@ func (s *Syncer) Disconnect(peer gateway.Header) error {
 	return sess.Close()
 }
 
+// Peers returns the set of peers currently connected to the node.
 func (s *Syncer) Peers() []gateway.Header {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -639,6 +689,7 @@ func (s *Syncer) Peers() []gateway.Header {
 	return peers
 }
 
+// Close closes the sync and stops the listener.
 func (s *Syncer) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -646,6 +697,7 @@ func (s *Syncer) Close() error {
 	return s.l.Close()
 }
 
+// NewSyncer creates a new syncer listening on the given address.
 func NewSyncer(addr string, genesisID types.BlockID, cm *chain.Manager, tp *txpool.Pool, store SyncerStore) (*Syncer, error) {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
