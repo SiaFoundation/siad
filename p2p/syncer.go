@@ -294,9 +294,16 @@ func (s *Syncer) setErr(err error) error {
 	return s.err
 }
 
-func (s *Syncer) rpc(peer *gateway.Session, id rpc.Specifier, req rpc.Object, resp rpc.Object) error {
+func (s *Syncer) rpc(peer gateway.Header, id rpc.Specifier, req rpc.Object, resp rpc.Object) error {
 	// TODO: consider rate-limiting RPCs, i.e. allowing only n inflight
-	stream, err := peer.DialStream()
+
+	s.mu.Lock()
+	sess, ok := s.peers[peer]
+	s.mu.Unlock()
+	if !ok {
+		return errors.New("unknown peer")
+	}
+	stream, err := sess.DialStream()
 	if err != nil {
 		return err
 	}
@@ -314,76 +321,56 @@ func (s *Syncer) rpc(peer *gateway.Session, id rpc.Specifier, req rpc.Object, re
 }
 
 func (s *Syncer) relay(id rpc.Specifier, msg rpc.Object, sourcePeer gateway.Header) {
-	for peer, sess := range s.peers {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for peer := range s.peers {
 		if peer != sourcePeer {
-			go s.rpc(sess, id, msg, nil)
+			go s.rpc(peer, id, msg, nil)
 		}
 	}
 }
 
-func (s *Syncer) relayBlock(block types.Block, sourcePeer gateway.Header) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.relay(rpcRelayBlock, &msgRelayBlock{block}, sourcePeer)
-}
-
-func (s *Syncer) relayTransaction(txn types.Transaction, dependsOn []types.Transaction, sourcePeer gateway.Header) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.relay(rpcRelayTxn, &msgRelayTxn{txn, dependsOn}, sourcePeer)
-}
-
 func (s *Syncer) broadcast(id rpc.Specifier, msg rpc.Object) {
-	for _, peer := range s.peers {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for peer := range s.peers {
 		go s.rpc(peer, id, msg, nil)
 	}
 }
 
+func (s *Syncer) relayBlock(block types.Block, sourcePeer gateway.Header) {
+	s.relay(rpcRelayBlock, &msgRelayBlock{block}, sourcePeer)
+}
+
+func (s *Syncer) relayTransaction(txn types.Transaction, dependsOn []types.Transaction, sourcePeer gateway.Header) {
+	s.relay(rpcRelayTxn, &msgRelayTxn{txn, dependsOn}, sourcePeer)
+}
+
 func (s *Syncer) BroadcastBlock(block types.Block) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.broadcast(rpcRelayBlock, &msgRelayBlock{block})
 }
 
 func (s *Syncer) BroadcastTransaction(txn types.Transaction, dependsOn []types.Transaction) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.broadcast(rpcRelayTxn, &msgRelayTxn{txn, dependsOn})
 }
 
 func (s *Syncer) getHeaders(peer gateway.Header, req *msgGetHeaders) (resp msgHeaders, err error) {
-	p, ok := s.peers[peer]
-	if !ok {
-		return msgHeaders{}, errors.New("unknown peer")
-	}
-	err = s.rpc(p, rpcGetHeaders, req, &resp)
+	err = s.rpc(peer, rpcGetHeaders, req, &resp)
 	return
 }
 
 func (s *Syncer) getPeers(peer gateway.Header) (resp msgPeers, err error) {
-	p, ok := s.peers[peer]
-	if !ok {
-		return msgPeers{}, errors.New("unknown peer")
-	}
-	err = s.rpc(p, rpcGetPeers, &msgGetPeers{}, &resp)
+	err = s.rpc(peer, rpcGetPeers, &msgGetPeers{}, &resp)
 	return
 }
 
 func (s *Syncer) getBlocks(peer gateway.Header, req *msgGetBlocks) (resp msgBlocks, err error) {
-	p, ok := s.peers[peer]
-	if !ok {
-		return msgBlocks{}, errors.New("unknown peer")
-	}
-	err = s.rpc(p, rpcGetBlocks, req, &resp)
+	err = s.rpc(peer, rpcGetBlocks, req, &resp)
 	return
 }
 
 func (s *Syncer) getCheckpoint(peer gateway.Header, req *msgGetCheckpoint) (resp msgCheckpoint, err error) {
-	p, ok := s.peers[peer]
-	if !ok {
-		return msgCheckpoint{}, errors.New("unknown peer")
-	}
-	err = s.rpc(p, rpcGetCheckpoint, req, &resp)
+	err = s.rpc(peer, rpcGetCheckpoint, req, &resp)
 	return
 }
 
