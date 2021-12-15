@@ -11,6 +11,7 @@ import (
 	"lukechampine.com/frand"
 )
 
+// TransactionPool is an interface for getting transactions from the txpool.
 type TransactionPool interface {
 	Transactions() []types.Transaction
 }
