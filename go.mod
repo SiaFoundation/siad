@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/julienschmidt/httprouter v1.3.0
-	go.sia.tech/core v0.0.0-20211025210944-581086879adf
+	go.sia.tech/core v0.0.0-20211215021004-3391c920fbcb
 	lukechampine.com/flagg v1.1.1
 	lukechampine.com/frand v1.4.2
 )
@@ -14,5 +14,3 @@ require (
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
 	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
 )
-
-replace go.sia.tech/core => ../core

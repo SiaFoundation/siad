@@ -1,7 +1,6 @@
 package chainutil
 
 import (
-	"crypto/ed25519"
 	"time"
 
 	"go.sia.tech/core/consensus"
@@ -68,7 +67,7 @@ type ChainSim struct {
 
 	// for simulating transactions
 	pubkey  types.PublicKey
-	privkey ed25519.PrivateKey
+	privkey types.PrivateKey
 	outputs []types.SiacoinElement
 }
 
@@ -157,7 +156,7 @@ func (cs *ChainSim) TxnWithSiacoinOutputs(scos ...types.SiacoinOutput) types.Tra
 	// sign
 	sigHash := cs.Context.SigHash(txn)
 	for i := range txn.SiacoinInputs {
-		txn.SiacoinInputs[i].Signatures = []types.InputSignature{types.InputSignature(types.SignHash(cs.privkey, sigHash))}
+		txn.SiacoinInputs[i].Signatures = []types.InputSignature{types.InputSignature(cs.privkey.SignHash(sigHash))}
 	}
 	return txn
 }
@@ -203,7 +202,7 @@ func (cs *ChainSim) MineBlockWithSiacoinOutputs(scos ...types.SiacoinOutput) typ
 	// sign and mine
 	sigHash := cs.Context.SigHash(txn)
 	for i := range txn.SiacoinInputs {
-		txn.SiacoinInputs[i].Signatures = []types.InputSignature{types.InputSignature(types.SignHash(cs.privkey, sigHash))}
+		txn.SiacoinInputs[i].Signatures = []types.InputSignature{types.InputSignature(cs.privkey.SignHash(sigHash))}
 	}
 	return cs.MineBlockWithTxns(txn)
 }
@@ -226,7 +225,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 		}
 		sigHash := cs.Context.SigHash(txn)
 		for i := range txn.SiacoinInputs {
-			txn.SiacoinInputs[i].Signatures = []types.InputSignature{types.InputSignature(types.SignHash(cs.privkey, sigHash))}
+			txn.SiacoinInputs[i].Signatures = []types.InputSignature{types.InputSignature(cs.privkey.SignHash(sigHash))}
 		}
 
 		txns = append(txns, txn)
@@ -247,9 +246,8 @@ func (cs *ChainSim) MineBlocks(n int) []types.Block {
 // NewChainSim returns a new ChainSim useful for simulating forks.
 func NewChainSim() *ChainSim {
 	// gift ourselves some coins in the genesis block
-	privkey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-	var pubkey types.PublicKey
-	copy(pubkey[:], privkey[32:])
+	privkey := types.NewPrivateKeyFromSeed([32]byte{})
+	pubkey := privkey.PublicKey()
 	ourAddr := types.StandardAddress(pubkey)
 	gift := make([]types.SiacoinOutput, 10)
 	for i := range gift {
