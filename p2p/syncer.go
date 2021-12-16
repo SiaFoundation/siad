@@ -547,9 +547,8 @@ func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer ga
 	return resp.Headers, err
 }
 
-func (s *Syncer) downloadBlocks(sc *consensus.ScratchChain, syncPeer gateway.Header) ([]types.Block, error) {
-	unvalidated := sc.Unvalidated()
-	resp, err := s.getBlocks(syncPeer, &msgGetBlocks{Blocks: unvalidated})
+func (s *Syncer) downloadBlocks(blocks []types.ChainIndex, syncPeer gateway.Header) ([]types.Block, error) {
+	resp, err := s.getBlocks(syncPeer, &msgGetBlocks{Blocks: blocks})
 	return resp.Blocks, err
 }
 
@@ -567,9 +566,15 @@ func (s *Syncer) syncToPeer(peer gateway.Header) {
 		return
 	}
 
-	// TODO: multiple syncToPeer goroutines can race on sc here
-
+	// TODO: this awkward locking is necessary because multiple syncToPeer
+	// goroutines can race on sc.
+	var unvalidated []types.ChainIndex
+	s.mu.Lock()
 	sc, err := s.cm.AddHeaders(headers)
+	if sc != nil {
+		unvalidated = append(unvalidated, sc.Unvalidated()...)
+	}
+	s.mu.Unlock()
 	if err != nil {
 		return
 	} else if sc == nil {
@@ -578,7 +583,7 @@ func (s *Syncer) syncToPeer(peer gateway.Header) {
 		return
 	}
 
-	blocks, err := s.downloadBlocks(sc, peer)
+	blocks, err := s.downloadBlocks(unvalidated, peer)
 	if err != nil {
 		return
 	}
@@ -597,10 +602,11 @@ func (s *Syncer) maintainHealthyPeerSet() {
 		for s.err == nil && len(s.peers) >= healthyPeerCount {
 			s.cond.Wait()
 		}
-		s.cond.L.Unlock()
 		if s.err != nil {
+			s.cond.L.Unlock()
 			return
 		}
+		s.cond.L.Unlock()
 		peer, err := s.store.RandomPeer()
 		if err == nil && !seen[peer] {
 			s.Connect(peer)
