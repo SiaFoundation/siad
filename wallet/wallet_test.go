@@ -2,6 +2,7 @@ package wallet_test
 
 import (
 	"testing"
+	"time"
 
 	"go.sia.tech/core/chain"
 	"go.sia.tech/core/types"
@@ -27,8 +28,8 @@ func TestWallet(t *testing.T) {
 	}
 
 	// wallet should now have a transaction, one element, and a non-zero balance
-	if len(store.Transactions()) != 1 {
-		t.Fatal("expected a single transaction, got", store.Transactions())
+	if len(store.Transactions(time.Time{}, -1)) != 1 {
+		t.Fatal("expected a single transaction, got", store.Transactions(time.Time{}, -1))
 	} else if len(store.SpendableSiacoinElements()) != 1 {
 		t.Fatal("expected a single spendable element, got", store.SpendableSiacoinElements())
 	} else if w.Balance().IsZero() {
