@@ -593,7 +593,20 @@ func (s *Syncer) syncToPeer(peer gateway.Header) {
 		return
 	}
 
-	if _, err := s.cm.AddBlocks(blocks); err != nil {
+	s.mu.Lock()
+	sc, err = s.cm.AddHeaders(headers)
+	if err != nil {
+		s.mu.Unlock()
+		return
+	} else if sc == nil {
+		s.mu.Unlock()
+		// chain is not the best; keep the headers around (since this chain
+		// might become the best later), but don't bother downloading blocks
+		return
+	}
+	_, err = s.cm.AddBlocks(blocks)
+	s.mu.Unlock()
+	if err != nil {
 		return
 	}
 }

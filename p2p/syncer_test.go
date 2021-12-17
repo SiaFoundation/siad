@@ -182,7 +182,7 @@ func TestNetwork(t *testing.T) {
 
 	// nodes should synchronize within 1 second
 	var synced bool
-	for start := time.Now(); !synced && time.Since(start) < time.Second; {
+	for start := time.Now(); !synced && time.Since(start) < 5*time.Second; {
 		time.Sleep(5 * time.Millisecond)
 		synced = n1.c.Tip() == n2.c.Tip()
 	}
