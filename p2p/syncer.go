@@ -397,9 +397,14 @@ func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 		if isRelay(msg) {
 			s.handleRelay(peer.Peer, msg)
 		} else {
-			resp, rerr := s.handleRPC(peer.Peer, msg)
-			if err := rpc.WriteResponse(stream, resp, rerr); err != nil {
-				return err
+			if resp, rerr := s.handleRPC(peer.Peer, msg); rerr != nil {
+				if err := rpc.WriteResponseErr(stream, rerr); err != nil {
+					return err
+				}
+			} else {
+				if err := rpc.WriteResponse(stream, resp); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
