@@ -157,7 +157,7 @@ func (p *Pool) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 
 	// put reverted txns back in the pool
 	for _, txn := range cru.Block.Transactions {
-		p.txns[txn.ID()] = txn
+		p.txns[txn.ID()] = txn.DeepCopy()
 	}
 
 	// update unconfirmed txns
