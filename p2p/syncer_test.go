@@ -78,6 +78,7 @@ again:
 		return err
 	}
 	tn.s.BroadcastBlock(b)
+	time.Sleep(10 * time.Millisecond)
 	return nil
 }
 
@@ -168,26 +169,28 @@ func TestNetwork(t *testing.T) {
 	}
 	n1.stopMining()
 	n2.stopMining()
+	time.Sleep(10 * time.Millisecond)
 
-	// disconnect and reconnect to trigger resync
-	for _, p := range n1.s.Peers() {
-		n1.s.Disconnect(p)
-	}
-	for _, p := range n2.s.Peers() {
-		n2.s.Disconnect(p)
-	}
-	if err := n1.s.Connect(n2.s.Addr()); err != nil {
-		t.Fatal(err)
+	// since we are mining with low difficulty, the chains may have an identical
+	// amount of work; if so, mine a little more on one chain
+	vc1, _ := n1.c.TipContext()
+	vc2, _ := n1.c.TipContext()
+	if vc1.TotalWork.Cmp(vc2.TotalWork) == 0 {
+		n1.startMining()
+		for n1.c.Tip() == vc1.Index {
+			time.Sleep(5 * time.Millisecond)
+		}
+		n1.stopMining()
 	}
 
-	// nodes should synchronize within 1 second
+	// nodes should synchronize within 5 seconds
 	var synced bool
 	for start := time.Now(); !synced && time.Since(start) < 5*time.Second; {
 		time.Sleep(5 * time.Millisecond)
 		synced = n1.c.Tip() == n2.c.Tip()
 	}
 	if !synced {
-		t.Fatal("nodes not synchronized", "\n", n1.s.Addr(), n1.c.Tip(), "\n", n2.s.Addr(), n2.c.Tip())
+		t.Fatal("nodes not synchronized:", "\n", n1.s.Addr(), n1.c.Tip(), "\n", n2.s.Addr(), n2.c.Tip())
 	}
 }
 

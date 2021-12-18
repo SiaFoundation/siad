@@ -549,7 +549,21 @@ func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer ga
 		return nil, err
 	}
 	resp, err := s.getHeaders(syncPeer, &msgGetHeaders{History: history})
-	return resp.Headers, err
+	if err != nil {
+		return nil, err
+	}
+	headers := resp.Headers
+	// continue downloading until the peer has no more to give us
+	//
+	// TODO: this is a DoS vector (host can send us infinite headers)
+	for len(resp.Headers) == 2000 {
+		resp, err = s.getHeaders(syncPeer, &msgGetHeaders{History: []types.ChainIndex{headers[len(headers)-1].Index()}})
+		if err != nil {
+			return nil, err
+		}
+		headers = append(headers, resp.Headers...)
+	}
+	return headers, err
 }
 
 func (s *Syncer) downloadBlocks(blocks []types.ChainIndex, syncPeer gateway.Header) ([]types.Block, error) {
@@ -595,16 +609,9 @@ func (s *Syncer) syncToPeer(peer gateway.Header) {
 
 	s.mu.Lock()
 	sc, err = s.cm.AddHeaders(headers)
-	if err != nil {
-		s.mu.Unlock()
-		return
-	} else if sc == nil {
-		s.mu.Unlock()
-		// chain is not the best; keep the headers around (since this chain
-		// might become the best later), but don't bother downloading blocks
-		return
+	if sc != nil {
+		_, err = s.cm.AddBlocks(blocks)
 	}
-	_, err = s.cm.AddBlocks(blocks)
 	s.mu.Unlock()
 	if err != nil {
 		return
