@@ -2,30 +2,33 @@ name: Test
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ v2-devel ]
   push:
-    branches: [ master ]
+    branches: [ v2-devel ]
 
 jobs:
   lint:
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: lint
-        uses: golangci/golangci-lint-action@5c56cd6c9dc07901af25baab6f2b0d9f3b7c3018
-        with:
-          version: v1.37.1
-      - name: gofmt 
-        run: make fmt
-      - name: go vet
-        run: make vet
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    needs: [ lint ]
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        go-version: [ '1.16', '1.17' ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v2
-      - name: test
-        uses: n8maninger/action-golang-test@503bdd1b410aa26740cad03f1214abc8beef5496
+      - uses: actions/setup-go@v2
         with:
-          args: "-race;-failfast;-tags=testing debug netgo"
+          go-version: ${{ matrix.go-version }}
+      - name: test
+        uses: n8maninger/action-golang-test@v1
+        with:
+          args: "-race"
+          skip-go-install: true
+          show-package-output: true
