@@ -6,62 +6,95 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"go.sia.tech/siad/v2/p2p"
 )
 
-// EphemeralStore implements p2p.SyncerStore in memory.
+// EphemeralStore implements p2p.PeerStore in memory.
 type EphemeralStore struct {
+	peers map[string]p2p.PeerInfo
 	mu    sync.Mutex
-	peers map[string]struct{}
 }
 
-// AddPeer implements p2p.SyncerStore.
+// AddPeer implements p2p.PeerStore.
 func (s *EphemeralStore) AddPeer(addr string) error {
 	s.mu.Lock()
-	s.peers[addr] = struct{}{}
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+	p := p2p.PeerInfo{
+		NetAddress: addr,
+	}
+	if _, ok := s.peers[addr]; !ok {
+		s.peers[addr] = p
+	}
 	return nil
 }
 
-// RandomPeer implements p2p.SyncerStore.
-func (s *EphemeralStore) RandomPeer() (string, error) {
+// Info implements p2p.PeerStore.
+func (s *EphemeralStore) Info(addr string) p2p.PeerInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for peer := range s.peers {
-		return peer, nil
+	p, ok := s.peers[addr]
+	if !ok {
+		p = p2p.PeerInfo{
+			NetAddress: addr,
+		}
 	}
-	return "", errors.New("no peers in list")
+	return p
 }
 
-// RandomPeers implements p2p.SyncerStore.
-func (s *EphemeralStore) RandomPeers(n int) (peers []string, err error) {
+// UpdatePeer implements p2p.PeerStore.
+func (s *EphemeralStore) UpdatePeer(addr string, fn func(*p2p.PeerInfo)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for peer := range s.peers {
+	p, ok := s.peers[addr]
+	if !ok {
+		return errors.New("unknown peer")
+	}
+	fn(&p)
+	s.peers[addr] = p
+	return nil
+}
+
+// RandomPeers implements p2p.PeerStore.
+func (s *EphemeralStore) RandomPeers(n int, filter func(p2p.PeerInfo) bool) ([]p2p.PeerInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var peers []p2p.PeerInfo
+	for _, peer := range s.peers {
 		if n <= 0 {
 			break
+		} else if filter(peer) {
+			peers = append(peers, peer)
+			n--
 		}
-		peers = append(peers, peer)
-		n--
 	}
-	return
+	return peers, nil
 }
 
 // NewEphemeralStore returns a new EphemeralStore.
 func NewEphemeralStore() *EphemeralStore {
 	return &EphemeralStore{
-		peers: make(map[string]struct{}),
+		peers: make(map[string]p2p.PeerInfo),
 	}
 }
 
-// JSONStore implements p2p.SyncerStore in memory, backed by a JSON file.
+// JSONStore implements p2p.PeerStore in memory, backed by a JSON file.
 type JSONStore struct {
 	*EphemeralStore
 	dir string
 }
 
-// AddPeer implements p2p.SyncerStore.
+// AddPeer implements p2p.PeerStore.
 func (s *JSONStore) AddPeer(addr string) error {
 	s.EphemeralStore.AddPeer(addr)
+	return s.save()
+}
+
+// UpdatePeer implements p2p.PeerStore.
+func (s *JSONStore) UpdatePeer(addr string, fn func(*p2p.PeerInfo)) error {
+	if err := s.EphemeralStore.UpdatePeer(addr, fn); err != nil {
+		return err
+	}
 	return s.save()
 }
 

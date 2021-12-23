@@ -1,4 +1,4 @@
-package p2p
+package p2p_test
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"go.sia.tech/siad/v2/internal/cpuminer"
 	"go.sia.tech/siad/v2/internal/p2putil"
 	"go.sia.tech/siad/v2/internal/walletutil"
+	"go.sia.tech/siad/v2/p2p"
 	"go.sia.tech/siad/v2/txpool"
 	"go.sia.tech/siad/v2/wallet"
 )
@@ -23,7 +24,7 @@ type testNode struct {
 	c      *chain.Manager
 	cs     chain.ManagerStore
 	tp     *txpool.Pool
-	s      *Syncer
+	s      *p2p.Syncer
 	w      *wallet.HotWallet
 	m      *cpuminer.CPUMiner
 }
@@ -106,7 +107,7 @@ func newTestNode(tb testing.TB, genesisID types.BlockID, c consensus.Checkpoint)
 	cm.AddSubscriber(ws, cm.Tip())
 	m := cpuminer.New(c.Context, w.NextAddress(), tp)
 	cm.AddSubscriber(m, cm.Tip())
-	s, err := NewSyncer(":0", genesisID, cm, tp, p2putil.NewEphemeralStore())
+	s, err := p2p.NewSyncer(":0", genesisID, cm, tp, p2putil.NewEphemeralStore())
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -220,7 +221,7 @@ func TestCheckpoint(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	checkpointIndex := n1.c.Tip()
-	checkpoint, err := DownloadCheckpoint(ctx, n1.s.Addr(), genesisBlock.ID(), checkpointIndex)
+	checkpoint, err := p2p.DownloadCheckpoint(ctx, n1.s.Addr(), genesisBlock.ID(), checkpointIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
