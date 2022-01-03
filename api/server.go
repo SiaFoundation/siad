@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.sia.tech/core/consensus"
-	"go.sia.tech/core/net/gateway"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/wallet"
 
@@ -43,7 +42,7 @@ type Wallet interface {
 // A Syncer can connect to other peers and synchronize the blockchain.
 type Syncer interface {
 	Addr() string
-	Peers() []gateway.Header
+	Peers() []string
 	Connect(addr string) error
 	BroadcastTransaction(txn types.Transaction, dependsOn []types.Transaction)
 }
@@ -179,7 +178,7 @@ func (s *Server) syncerPeersHandler(w http.ResponseWriter, req *http.Request, _ 
 	sps := make([]SyncerPeer, len(ps))
 	for i, peer := range ps {
 		sps[i] = SyncerPeer{
-			NetAddress: peer.NetAddress,
+			NetAddress: peer,
 		}
 	}
 	writeJSON(w, sps)
