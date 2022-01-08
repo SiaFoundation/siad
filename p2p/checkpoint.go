@@ -10,7 +10,6 @@ import (
 	"go.sia.tech/core/net/gateway"
 	"go.sia.tech/core/net/rpc"
 	"go.sia.tech/core/types"
-	"lukechampine.com/frand"
 )
 
 // DownloadCheckpoint connects to addr and downloads the checkpoint at the
@@ -31,12 +30,7 @@ func DownloadCheckpoint(ctx context.Context, addr string, genesisID types.BlockI
 		<-ctx.Done()
 		conn.Close()
 	}()
-	ourHeader := gateway.Header{
-		GenesisID:  genesisID,
-		NetAddress: conn.LocalAddr().String(),
-	}
-	frand.Read(ourHeader.UniqueID[:])
-	peer, err := gateway.DialSession(conn, ourHeader)
+	peer, err := gateway.DialSession(conn, genesisID, gateway.GenerateUniqueID())
 	if err != nil {
 		return consensus.Checkpoint{}, fmt.Errorf("couldn't establish session with peer: %w", err)
 	}

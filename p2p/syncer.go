@@ -16,7 +16,6 @@ import (
 	"go.sia.tech/core/net/rpc"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/txpool"
-	"lukechampine.com/frand"
 )
 
 var (
@@ -318,35 +317,35 @@ func rpcDeadline(id rpc.Specifier) time.Duration {
 
 // A Syncer manages peers and relays new blocks and transactions.
 type Syncer struct {
-	l      net.Listener
-	cm     *chain.Manager
-	tp     *txpool.Pool
-	header gateway.Header
-	pm     *PeerManager
+	l  net.Listener
+	cm *chain.Manager
+	tp *txpool.Pool
+	pm *PeerManager
+
+	// for gateway handshake
+	genesisID types.BlockID
+	uniqueID  gateway.UniqueID
 
 	cond  sync.Cond
 	mu    sync.Mutex
-	peers map[string]*gateway.Session
+	peers map[gateway.UniqueID]*gateway.Session
 	err   error
 }
 
 func (s *Syncer) setErr(err error) error {
 	if s.err == nil {
 		s.err = err
+		for _, peer := range s.peers {
+			peer.Close()
+		}
 		s.cond.Broadcast()
 	}
 	return s.err
 }
 
-func (s *Syncer) rpc(addr string, id rpc.Specifier, req rpc.Object, resp rpc.Object) error {
+func (s *Syncer) rpc(peer *gateway.Session, id rpc.Specifier, req rpc.Object, resp rpc.Object) error {
 	// TODO: consider rate-limiting RPCs, i.e. allowing only n inflight
 
-	s.mu.Lock()
-	peer, ok := s.peers[addr]
-	s.mu.Unlock()
-	if !ok {
-		return errors.New("unknown peer")
-	}
 	stream, err := peer.DialStream()
 	if err != nil {
 		return err
@@ -364,11 +363,11 @@ func (s *Syncer) rpc(addr string, id rpc.Specifier, req rpc.Object, resp rpc.Obj
 	return nil
 }
 
-func (s *Syncer) relay(id rpc.Specifier, msg rpc.Object, sourcePeer string) {
+func (s *Syncer) relay(id rpc.Specifier, msg rpc.Object, sourcePeer gateway.UniqueID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for peer := range s.peers {
-		if peer != sourcePeer {
+	for _, peer := range s.peers {
+		if peer.RemoteID != sourcePeer {
 			go s.rpc(peer, id, msg, nil)
 		}
 	}
@@ -377,16 +376,16 @@ func (s *Syncer) relay(id rpc.Specifier, msg rpc.Object, sourcePeer string) {
 func (s *Syncer) broadcast(id rpc.Specifier, msg rpc.Object) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for peer := range s.peers {
+	for _, peer := range s.peers {
 		go s.rpc(peer, id, msg, nil)
 	}
 }
 
-func (s *Syncer) relayBlock(block types.Block, sourcePeer string) {
+func (s *Syncer) relayBlock(block types.Block, sourcePeer gateway.UniqueID) {
 	s.relay(rpcRelayBlock, &msgRelayBlock{block}, sourcePeer)
 }
 
-func (s *Syncer) relayTransaction(txn types.Transaction, dependsOn []types.Transaction, sourcePeer string) {
+func (s *Syncer) relayTransaction(txn types.Transaction, dependsOn []types.Transaction, sourcePeer gateway.UniqueID) {
 	s.relay(rpcRelayTxn, &msgRelayTxn{txn, dependsOn}, sourcePeer)
 }
 
@@ -400,29 +399,27 @@ func (s *Syncer) BroadcastTransaction(txn types.Transaction, dependsOn []types.T
 	s.broadcast(rpcRelayTxn, &msgRelayTxn{txn, dependsOn})
 }
 
-func (s *Syncer) getHeaders(addr string, req *msgGetHeaders) (resp msgHeaders, err error) {
-	err = s.rpc(addr, rpcGetHeaders, req, &resp)
+func (s *Syncer) getHeaders(peer *gateway.Session, req *msgGetHeaders) (resp msgHeaders, err error) {
+	err = s.rpc(peer, rpcGetHeaders, req, &resp)
 	return
 }
 
-func (s *Syncer) getPeers(addr string) (resp msgPeers, err error) {
-	err = s.rpc(addr, rpcGetPeers, &msgGetPeers{}, &resp)
+func (s *Syncer) getPeers(peer *gateway.Session) (resp msgPeers, err error) {
+	err = s.rpc(peer, rpcGetPeers, &msgGetPeers{}, &resp)
 	return
 }
 
-func (s *Syncer) getBlocks(addr string, req *msgGetBlocks) (resp msgBlocks, err error) {
-	err = s.rpc(addr, rpcGetBlocks, req, &resp)
+func (s *Syncer) getBlocks(peer *gateway.Session, req *msgGetBlocks) (resp msgBlocks, err error) {
+	err = s.rpc(peer, rpcGetBlocks, req, &resp)
 	return
 }
 
-func (s *Syncer) getCheckpoint(addr string, req *msgGetCheckpoint) (resp msgCheckpoint, err error) {
-	err = s.rpc(addr, rpcGetCheckpoint, req, &resp)
+func (s *Syncer) getCheckpoint(peer *gateway.Session, req *msgGetCheckpoint) (resp msgCheckpoint, err error) {
+	err = s.rpc(peer, rpcGetCheckpoint, req, &resp)
 	return
 }
 
 func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
-	addr := peer.Peer.NetAddress
-
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(5 * time.Minute))
 	err := func() error {
@@ -431,6 +428,7 @@ func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 			return err
 		}
 		msg := map[rpc.Specifier]rpc.Object{
+			rpcGetPeers:      new(msgGetPeers),
 			rpcGetHeaders:    new(msgGetHeaders),
 			rpcGetBlocks:     new(msgGetBlocks),
 			rpcGetCheckpoint: new(msgGetCheckpoint),
@@ -443,9 +441,9 @@ func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 			return err
 		}
 		if isRelay(msg) {
-			s.handleRelay(addr, msg)
+			s.handleRelay(peer, msg)
 		} else {
-			resp, err := s.handleRPC(addr, msg)
+			resp, err := s.handleRPC(peer, msg)
 			if err == nil {
 				err = rpc.WriteResponse(stream, resp)
 			} else {
@@ -458,13 +456,13 @@ func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 		return nil
 	}()
 	if err != nil {
-		s.pm.IncreaseBanscore(addr, 20)
+		s.pm.IncreaseBanscore(peer.RemoteAddr, 20)
 	}
 }
 
 func (s *Syncer) handleStreams(peer *gateway.Session) error {
 	for {
-		s.pm.NoteSeen(peer.Peer.NetAddress)
+		s.pm.NoteSeen(peer.RemoteAddr)
 		stream, err := peer.AcceptStream()
 		if err != nil {
 			return err
@@ -484,7 +482,7 @@ func (s *Syncer) handleConn(conn net.Conn) error {
 	}
 
 	conn.SetDeadline(time.Now().Add(time.Minute))
-	peer, err := gateway.AcceptSession(conn, s.header)
+	sess, err := gateway.AcceptSession(conn, s.genesisID, s.uniqueID)
 	if err != nil {
 		conn.Close()
 		return err
@@ -492,45 +490,50 @@ func (s *Syncer) handleConn(conn net.Conn) error {
 	conn.SetDeadline(time.Time{})
 
 	s.mu.Lock()
-	s.peers[peer.Peer.NetAddress] = peer
+	if _, ok := s.peers[sess.RemoteID]; ok {
+		s.mu.Unlock()
+		conn.Close()
+		return errors.New("already connected to that peer")
+	}
+	s.peers[sess.RemoteID] = sess
 	s.mu.Unlock()
-	s.handleNewPeer(peer.Peer.NetAddress)
-	return s.handleStreams(peer)
+	s.handleNewPeer(sess)
+	return s.handleStreams(sess)
 }
 
-func (s *Syncer) handleNewPeer(addr string) {
+func (s *Syncer) handleNewPeer(peer *gateway.Session) {
 	// request potentially-connectable node addresses
 	go func() {
 		// TODO: logging
-		peers, _ := s.getPeers(addr)
+		peers, _ := s.getPeers(peer)
 		for _, addr := range peers {
 			s.pm.AddPeer(addr)
 		}
 	}()
 
-	go s.syncToPeer(addr)
+	go s.syncToPeer(peer)
 }
 
-func (s *Syncer) handleRelay(addr string, msg rpc.Object) {
+func (s *Syncer) handleRelay(peer *gateway.Session, msg rpc.Object) {
 	switch msg := msg.(type) {
 	case *msgRelayBlock:
 		err := s.cm.AddTipBlock(msg.Block)
 		if err == nil {
-			go s.relayBlock(msg.Block, addr)
+			go s.relayBlock(msg.Block, peer.RemoteID)
 		} else if errors.Is(err, chain.ErrUnknownIndex) {
-			go s.syncToPeer(addr)
+			go s.syncToPeer(peer)
 		}
 	case *msgRelayTxn:
 		err := s.tp.AddTransaction(msg.Transaction)
 		if err == nil {
-			go s.relayTransaction(msg.Transaction, msg.DependsOn, addr)
+			go s.relayTransaction(msg.Transaction, msg.DependsOn, peer.RemoteID)
 		}
 	default:
 		panic(fmt.Sprintf("unhandled type %T", msg))
 	}
 }
 
-func (s *Syncer) handleRPC(addr string, msg rpc.Object) (resp rpc.Object, err error) {
+func (s *Syncer) handleRPC(peer *gateway.Session, msg rpc.Object) (resp rpc.Object, err error) {
 	switch msg := msg.(type) {
 	case *msgGetHeaders:
 		sort.Slice(msg.History, func(i, j int) bool {
@@ -544,7 +547,7 @@ func (s *Syncer) handleRPC(addr string, msg rpc.Object) (resp rpc.Object, err er
 		return &msgHeaders{Headers: headers}, nil
 
 	case *msgGetPeers:
-		peers := s.pm.RandomGoodPeers(maxGetPeers)
+		peers := append(s.pm.RandomGoodPeers(maxGetPeers-1), s.Addr()) // include our own address
 		return (*msgPeers)(&peers), nil
 
 	case *msgGetBlocks:
@@ -595,11 +598,11 @@ func (s *Syncer) handleRPC(addr string, msg rpc.Object) (resp rpc.Object, err er
 	}
 }
 
-func (s *Syncer) getCheckpointsForSync(peer string) ([]consensus.Checkpoint, error) {
+func (s *Syncer) getCheckpointsForSync(peer *gateway.Session) ([]consensus.Checkpoint, error) {
 	return nil, nil
 }
 
-func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer string) ([]types.BlockHeader, error) {
+func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer *gateway.Session) ([]types.BlockHeader, error) {
 	history, err := s.cm.History()
 	if err != nil {
 		return nil, err
@@ -619,15 +622,15 @@ func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer st
 		}
 		headers = append(headers, resp.Headers...)
 	}
-	return headers, err
+	return headers, nil
 }
 
-func (s *Syncer) downloadBlocks(blocks []types.ChainIndex, syncPeer string) ([]types.Block, error) {
+func (s *Syncer) downloadBlocks(blocks []types.ChainIndex, syncPeer *gateway.Session) ([]types.Block, error) {
 	resp, err := s.getBlocks(syncPeer, &msgGetBlocks{Blocks: blocks})
 	return resp.Blocks, err
 }
 
-func (s *Syncer) syncToPeer(peer string) {
+func (s *Syncer) syncToPeer(peer *gateway.Session) {
 	// request checkpoints from the sync peer
 	checkpoints, err := s.getCheckpointsForSync(peer)
 	if err != nil {
@@ -638,6 +641,8 @@ func (s *Syncer) syncToPeer(peer string) {
 	// from multiple peers, but fall back to the sync peer if necessary
 	headers, err := s.downloadHeaders(checkpoints, peer)
 	if err != nil {
+		return
+	} else if len(headers) == 0 {
 		return
 	}
 
@@ -651,7 +656,7 @@ func (s *Syncer) syncToPeer(peer string) {
 	}
 	s.mu.Unlock()
 	if err != nil {
-		s.pm.IncreaseBanscore(peer, 20)
+		s.pm.IncreaseBanscore(peer.RemoteAddr, 20)
 		return
 	} else if sc == nil {
 		// chain is not the best; keep the headers around (since this chain
@@ -671,7 +676,7 @@ func (s *Syncer) syncToPeer(peer string) {
 	}
 	s.mu.Unlock()
 	if err != nil {
-		s.pm.IncreaseBanscore(peer, 20)
+		s.pm.IncreaseBanscore(peer.RemoteAddr, 20)
 		return
 	}
 }
@@ -727,13 +732,28 @@ func (s *Syncer) Run() error {
 	return nil
 }
 
-// Addr returns the address of the node.
+// Addr returns the listening address of the Syncer.
 func (s *Syncer) Addr() string {
-	return s.header.NetAddress
+	return s.l.Addr().String()
 }
 
 // Connect attempts to connect to a peer.
 func (s *Syncer) Connect(addr string) error {
+	s.mu.Lock()
+	alreadyConnected := false
+	for _, peer := range s.peers {
+		if peer.RemoteAddr == addr {
+			alreadyConnected = true
+			break
+		}
+	}
+	s.mu.Unlock()
+	if alreadyConnected {
+		return errors.New("already connected to that peer")
+	} else if addr == s.Addr() {
+		return errors.New("refusing to connect to our own address")
+	}
+
 	if p := s.pm.Info(addr); p.Blacklisted {
 		return errBlacklistedPeer
 	} else if err := s.pm.AddPeer(addr); err != nil {
@@ -745,7 +765,7 @@ func (s *Syncer) Connect(addr string) error {
 		return err
 	}
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
-	sess, err := gateway.DialSession(conn, s.header)
+	sess, err := gateway.DialSession(conn, s.genesisID, s.uniqueID)
 	if err != nil {
 		conn.Close()
 		s.pm.NoteFailedConnection(addr)
@@ -754,33 +774,39 @@ func (s *Syncer) Connect(addr string) error {
 	conn.SetDeadline(time.Time{})
 
 	s.mu.Lock()
-	s.peers[addr] = sess
+	if _, ok := s.peers[sess.RemoteID]; ok {
+		s.mu.Unlock()
+		conn.Close()
+		return errors.New("already connected to that peer")
+	}
+	s.peers[sess.RemoteID] = sess
 	s.mu.Unlock()
-	s.handleNewPeer(addr)
+	s.handleNewPeer(sess)
 	go s.handleStreams(sess)
 	return nil
 }
 
 // Disconnect disconnects from a peer.
-func (s *Syncer) Disconnect(peer string) error {
+func (s *Syncer) Disconnect(addr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sess, ok := s.peers[peer]
-	if !ok {
-		return errors.New("unknown peer")
+	for id, sess := range s.peers {
+		if sess.RemoteAddr == addr {
+			delete(s.peers, id)
+			s.cond.Broadcast() // wake maintainHealthyPeerSet
+			return sess.Close()
+		}
 	}
-	delete(s.peers, peer)
-	s.cond.Broadcast() // wake maintainHealthyPeerSet
-	return sess.Close()
+	return errors.New("unknown peer")
 }
 
-// Peers returns the set of peers currently connected to the node.
+// Peers returns the addresses of all currently-connected peers.
 func (s *Syncer) Peers() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	peers := make([]string, 0, len(s.peers))
-	for peer := range s.peers {
-		peers = append(peers, peer)
+	for _, peer := range s.peers {
+		peers = append(peers, peer.RemoteAddr)
 	}
 	return peers
 }
@@ -800,17 +826,14 @@ func NewSyncer(addr string, genesisID types.BlockID, cm *chain.Manager, tp *txpo
 		return nil, err
 	}
 	s := &Syncer{
-		l:  l,
-		cm: cm,
-		tp: tp,
-		pm: NewPeerManager(store),
-		header: gateway.Header{
-			GenesisID:  genesisID,
-			NetAddress: l.Addr().String(),
-		},
-		peers: make(map[string]*gateway.Session),
+		l:         l,
+		cm:        cm,
+		tp:        tp,
+		pm:        NewPeerManager(store),
+		genesisID: genesisID,
+		uniqueID:  gateway.GenerateUniqueID(),
+		peers:     make(map[gateway.UniqueID]*gateway.Session),
 	}
-	frand.Read(s.header.UniqueID[:])
 	s.cond.L = &s.mu
 	return s, nil
 }
