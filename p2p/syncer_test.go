@@ -38,10 +38,9 @@ func (tn *testNode) run() {
 
 func (tn *testNode) Close() error {
 	// signal miner to stop, and wait for it to exit
-	if atomic.CompareAndSwapInt32(&tn.mining, 1, 2) {
-		for atomic.LoadInt32(&tn.mining) != 3 {
-			time.Sleep(100 * time.Millisecond)
-		}
+	atomic.StoreInt32(&tn.mining, 2)
+	for atomic.LoadInt32(&tn.mining) != 3 {
+		time.Sleep(100 * time.Millisecond)
 	}
 	return tn.s.Close()
 }
@@ -175,7 +174,7 @@ func TestNetwork(t *testing.T) {
 	// since we are mining with low difficulty, the chains may have an identical
 	// amount of work; if so, mine a little more on one chain
 	vc1, _ := n1.c.TipContext()
-	vc2, _ := n1.c.TipContext()
+	vc2, _ := n2.c.TipContext()
 	if vc1.TotalWork.Cmp(vc2.TotalWork) == 0 {
 		n1.startMining()
 		for n1.c.Tip() == vc1.Index {
