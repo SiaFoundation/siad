@@ -44,10 +44,9 @@ type (
 	subscriptionInfoID types.Specifier
 )
 
-var (
-	// ErrSubscriptionRequestLimitReached is returned if too many subscribe or
-	// unsubscribe requests are sent at once.
-	ErrSubscriptionRequestLimitReached = errors.New("number of requests exceeds limit")
+const (
+	// subscribeRequestMaxLength is the maximum length for decoding subscription requests from the wire.
+	subscribeRequestMaxLength = 1 << 24 // 16 MiB
 )
 
 // newRegistrySubscriptions creates a new registrySubscriptions instance.
@@ -122,7 +121,7 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 
 	// Read the requests.
 	var rsrs []modules.RPCRegistrySubscriptionRequest
-	err := modules.RPCRead(stream, &rsrs)
+	err := modules.RPCReadMaxLen(stream, &rsrs, subscribeRequestMaxLength)
 	if err != nil {
 		return errors.AddContext(err, "failed to read subscription request")
 	}
@@ -174,7 +173,7 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 
 	// Read the requests.
 	var rsrs []modules.RPCRegistrySubscriptionRequest
-	err := modules.RPCRead(stream, &rsrs)
+	err := modules.RPCReadMaxLen(stream, &rsrs, subscribeRequestMaxLength)
 	if err != nil {
 		return errors.AddContext(err, "failed to read subscription requests")
 	}
