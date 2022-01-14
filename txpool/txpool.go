@@ -30,6 +30,30 @@ func updateTxnProofs(txn *types.Transaction, u updater) {
 	}
 }
 
+func txnContainsRevertedElements(txn types.Transaction, cru *chain.RevertUpdate) bool {
+	for i := range txn.SiacoinInputs {
+		if cru.SiacoinElementWasRemoved(txn.SiacoinInputs[i].Parent) {
+			return true
+		}
+	}
+	for i := range txn.SiafundInputs {
+		if cru.SiafundElementWasRemoved(txn.SiafundInputs[i].Parent) {
+			return true
+		}
+	}
+	for i := range txn.FileContractRevisions {
+		if cru.FileContractElementWasRemoved(txn.FileContractRevisions[i].Parent) {
+			return true
+		}
+	}
+	for i := range txn.FileContractResolutions {
+		if cru.FileContractElementWasRemoved(txn.FileContractResolutions[i].Parent) {
+			return true
+		}
+	}
+	return false
+}
+
 // A Pool holds transactions that may be included in future blocks.
 type Pool struct {
 	txns       map[types.TransactionID]types.Transaction
@@ -155,13 +179,13 @@ func (p *Pool) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// put reverted txns back in the pool
-	for _, txn := range cru.Block.Transactions {
-		p.txns[txn.ID()] = txn.DeepCopy()
-	}
-
 	// update unconfirmed txns
 	for id, txn := range p.txns {
+		if txnContainsRevertedElements(txn, cru) {
+			delete(p.txns, id)
+			continue
+		}
+
 		updateTxnProofs(&txn, &cru.RevertUpdate)
 		p.txns[id] = txn
 
@@ -170,6 +194,11 @@ func (p *Pool) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 			delete(p.txns, id)
 			continue
 		}
+	}
+
+	// put reverted txns back in the pool
+	for _, txn := range cru.Block.Transactions {
+		p.txns[txn.ID()] = txn.DeepCopy()
 	}
 
 	// update validation context
