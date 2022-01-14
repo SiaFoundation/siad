@@ -30,6 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: test
-        uses: n8maninger/action-golang-test@503bdd1b410aa26740cad03f1214abc8beef5496
+        uses: n8maninger/action-golang-test@v1
         with:
           args: "-race;-failfast;-tags=testing debug netgo"
