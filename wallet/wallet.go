@@ -94,6 +94,17 @@ func (w *HotWallet) Balance() types.Currency {
 	return sum
 }
 
+// Address returns the last address added to the wallet.
+func (w *HotWallet) Address() types.Address {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	index := w.store.SeedIndex()
+	if index > 0 {
+		index--
+	}
+	return types.StandardAddress(w.seed.PublicKey(index))
+}
+
 // NextAddress returns an address controlled by the wallet.
 func (w *HotWallet) NextAddress() types.Address {
 	w.mu.Lock()
