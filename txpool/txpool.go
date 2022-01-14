@@ -2,6 +2,7 @@ package txpool
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"go.sia.tech/core/chain"
@@ -79,13 +80,7 @@ func (p *Pool) validateTransaction(txn types.Transaction) error {
 	return nil
 }
 
-// AddTransaction validates a transaction and adds it to the pool. If the
-// transaction references ephemeral parent outputs, those outputs must be
-// created by other transactions already in the pool. The transaction's proofs
-// must be up-to-date.
-func (p *Pool) AddTransaction(txn types.Transaction) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (p *Pool) addTransaction(txn types.Transaction) error {
 	txid := txn.ID()
 	if _, ok := p.txns[txid]; ok {
 		return nil // already in pool
@@ -96,6 +91,36 @@ func (p *Pool) AddTransaction(txn types.Transaction) error {
 	}
 	p.txns[txid] = txn
 	return nil
+}
+
+// AddTransactionSet validates a transaction set and adds it to the pool. If any
+// transaction references ephemeral parent outputs those parent outputs must be
+// created by transactions in the transaction set or already in the pool. All
+// proofs in the transaction set must be up-to-date.
+func (p *Pool) AddTransactionSet(txns []types.Transaction) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if err := p.vc.ValidateTransactionSet(txns); err != nil {
+		return fmt.Errorf("failed to validate transaction set: %w", err)
+	}
+
+	for i, txn := range txns {
+		if err := p.addTransaction(txn); err != nil {
+			return fmt.Errorf("failed to add transaction %v: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// AddTransaction validates a transaction and adds it to the pool. If the
+// transaction references ephemeral parent outputs, those outputs must be
+// created by other transactions already in the pool. The transaction's proofs
+// must be up-to-date.
+func (p *Pool) AddTransaction(txn types.Transaction) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.addTransaction(txn)
 }
 
 // Transaction returns the transaction with the specified ID, if it is currently
