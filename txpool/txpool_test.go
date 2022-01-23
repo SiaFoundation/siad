@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go.sia.tech/core/chain"
+	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 
 	"go.sia.tech/siad/v2/internal/chainutil"
@@ -45,5 +46,113 @@ func TestPoolFlexibility(t *testing.T) {
 		t.Fatal(err)
 	} else if err := tp.AddTransaction(txns[2]); err == nil {
 		t.Fatal("pool did not reject very outdated transaction")
+	}
+}
+
+func TestEphemeralOutput(t *testing.T) {
+	sim := chainutil.NewChainSim()
+
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.Context)
+	tp := txpool.New(sim.Genesis.Context)
+	cm.AddSubscriber(tp, cm.Tip())
+
+	// create parent, child, and grandchild transactions
+	privkey := types.GeneratePrivateKey()
+	parent := sim.TxnWithSiacoinOutputs(types.SiacoinOutput{
+		Value:   types.Siacoins(10),
+		Address: types.StandardAddress(privkey.PublicKey()),
+	})
+	child := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			Parent:      parent.EphemeralSiacoinElement(0),
+			SpendPolicy: types.PolicyPublicKey(privkey.PublicKey()),
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:   types.Siacoins(9),
+			Address: types.StandardAddress(privkey.PublicKey()),
+		}},
+		MinerFee: types.Siacoins(1),
+	}
+	child.SiacoinInputs[0].Signatures = []types.InputSignature{types.InputSignature(privkey.SignHash(sim.Context.SigHash(child)))}
+
+	grandchild := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			Parent:      child.EphemeralSiacoinElement(0),
+			SpendPolicy: types.PolicyPublicKey(privkey.PublicKey()),
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:   types.Siacoins(7),
+			Address: types.VoidAddress,
+		}},
+		MinerFee: types.Siacoins(2),
+	}
+	grandchild.SiacoinInputs[0].Signatures = []types.InputSignature{types.InputSignature(privkey.SignHash(sim.Context.SigHash(grandchild)))}
+
+	// add all three transactions to the pool
+	if err := tp.AddTransaction(parent); err != nil {
+		t.Fatal(err)
+	} else if err := tp.AddTransaction(child); err != nil {
+		t.Fatal(err)
+	} else if err := tp.AddTransaction(grandchild); err != nil {
+		t.Fatal(err)
+	} else if len(tp.Transactions()) != 3 {
+		t.Fatal("wrong number of transactions in pool:", len(tp.Transactions()))
+	}
+
+	// mine a block containing parent and child
+	pcvc := sim.Context
+	pcb := sim.MineBlockWithTxns(parent, child)
+	if err := cm.AddTipBlock(pcb); err != nil {
+		t.Fatal(err)
+	}
+
+	// pool should now contain just grandchild
+	if txns := tp.Transactions(); len(txns) != 1 {
+		t.Fatal("wrong number of transactions in pool:", len(tp.Transactions()))
+	}
+	grandchild = tp.Transactions()[0]
+	if grandchild.SiacoinInputs[0].Parent.LeafIndex == types.EphemeralLeafIndex {
+		t.Fatal("grandchild's input should no longer be ephemeral")
+	}
+	// mine a block containing grandchild
+	gvc := sim.Context
+	gb := sim.MineBlockWithTxns(grandchild)
+	if err := cm.AddTipBlock(gb); err != nil {
+		t.Fatal(err)
+	}
+
+	// revert the grandchild block
+	tp.ProcessChainRevertUpdate(&chain.RevertUpdate{
+		RevertUpdate: consensus.RevertBlock(gvc, gb),
+		Block:        gb,
+	})
+
+	// pool should contain the grandchild transaction again
+	if len(tp.Transactions()) != 1 {
+		t.Fatal("wrong number of transactions in pool:", len(tp.Transactions()))
+	}
+	grandchild = tp.Transactions()[0]
+	if grandchild.SiacoinInputs[0].Parent.LeafIndex == types.EphemeralLeafIndex {
+		t.Fatal("grandchild's input should not be ephemeral")
+	}
+
+	// revert the parent+child block
+	tp.ProcessChainRevertUpdate(&chain.RevertUpdate{
+		RevertUpdate: consensus.RevertBlock(pcvc, pcb),
+		Block:        pcb,
+	})
+
+	// pool should contain all three transactions again
+	if len(tp.Transactions()) != 3 {
+		t.Fatal("wrong number of transactions in pool:", len(tp.Transactions()))
+	}
+	// grandchild's input should be ephemeral again
+	for _, txn := range tp.Transactions() {
+		if txn.SiacoinOutputs[0].Address == types.VoidAddress {
+			if txn.SiacoinInputs[0].Parent.LeafIndex != types.EphemeralLeafIndex {
+				t.Fatal("grandchild's input should be ephemeral again")
+			}
+			break
+		}
 	}
 }

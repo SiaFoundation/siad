@@ -17,10 +17,14 @@ type updater interface {
 
 func updateTxnProofs(txn *types.Transaction, u updater) {
 	for i := range txn.SiacoinInputs {
-		u.UpdateElementProof(&txn.SiacoinInputs[i].Parent.StateElement)
+		if txn.SiacoinInputs[i].Parent.LeafIndex != types.EphemeralLeafIndex {
+			u.UpdateElementProof(&txn.SiacoinInputs[i].Parent.StateElement)
+		}
 	}
 	for i := range txn.SiafundInputs {
-		u.UpdateElementProof(&txn.SiafundInputs[i].Parent.StateElement)
+		if txn.SiafundInputs[i].Parent.LeafIndex != types.EphemeralLeafIndex {
+			u.UpdateElementProof(&txn.SiafundInputs[i].Parent.StateElement)
+		}
 	}
 	for i := range txn.FileContractRevisions {
 		u.UpdateElementProof(&txn.FileContractRevisions[i].Parent.StateElement)
@@ -28,6 +32,41 @@ func updateTxnProofs(txn *types.Transaction, u updater) {
 	for i := range txn.FileContractResolutions {
 		u.UpdateElementProof(&txn.FileContractResolutions[i].Parent.StateElement)
 		u.UpdateWindowProof(&txn.FileContractResolutions[i].StorageProof)
+	}
+}
+
+func updateEphemeralInputs(txn *types.Transaction, u updater) {
+	switch u := u.(type) {
+	case *consensus.ApplyUpdate:
+		// if txn spends an ephemeral output that has since been mined, replace
+		// the ephemeral output with the actual element
+		for i := range txn.SiacoinInputs {
+			in := &txn.SiacoinInputs[i]
+			if in.Parent.LeafIndex == types.EphemeralLeafIndex {
+				for _, sce := range u.NewSiacoinElements {
+					if sce.ID == in.Parent.ID {
+						in.Parent = sce
+						in.Parent.MerkleProof = append([]types.Hash256(nil), in.Parent.MerkleProof...)
+						break
+					}
+				}
+			}
+		}
+	case *consensus.RevertUpdate:
+		// if txn spends an output belonging to a transaction that has been
+		// returned to the pool, mark the element as ephemeral
+		for i := range txn.SiacoinInputs {
+			in := &txn.SiacoinInputs[i]
+			for _, sce := range u.NewSiacoinElements {
+				if sce.ID == in.Parent.ID {
+					in.Parent.LeafIndex = types.EphemeralLeafIndex
+					in.Parent.MerkleProof = nil
+					break
+				}
+			}
+		}
+	default:
+		panic(fmt.Sprintf("invalid updater type: %T", u))
 	}
 }
 
@@ -180,7 +219,7 @@ func (p *Pool) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 	// update unconfirmed txns
 	for id, txn := range p.txns {
 		updateTxnProofs(&txn, &cau.ApplyUpdate)
-		p.txns[id] = txn
+		updateEphemeralInputs(&txn, &cau.ApplyUpdate)
 
 		// verify that the transaction is still valid
 		//
@@ -191,6 +230,8 @@ func (p *Pool) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 			delete(p.txns, id)
 			continue
 		}
+
+		p.txns[id] = txn
 	}
 
 	// update the current and previous validation contexts
@@ -206,11 +247,11 @@ func (p *Pool) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 
 	// update unconfirmed txns
 	for id, txn := range p.txns {
+		updateEphemeralInputs(&txn, &cru.RevertUpdate)
 		if txnContainsRevertedElements(txn, cru) {
 			delete(p.txns, id)
 			continue
 		}
-
 		updateTxnProofs(&txn, &cru.RevertUpdate)
 		p.txns[id] = txn
 
