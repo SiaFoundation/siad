@@ -51,10 +51,10 @@ func DownloadCheckpoint(ctx context.Context, addr string, genesisID types.BlockI
 		return consensus.Checkpoint{}, fmt.Errorf("couldn't establish stream with peer: %w", err)
 	}
 	defer stream.Close()
-	if err := rpc.WriteRequest(stream, rpcGetCheckpoint, &msgGetCheckpoint{Index: index}); err != nil {
+	if err := rpc.WriteRequest(stream, gateway.RPCCheckpointID, &gateway.RPCCheckpointRequest{Index: index}); err != nil {
 		return consensus.Checkpoint{}, fmt.Errorf("couldn't write RPC request: %w", err)
 	}
-	var resp msgCheckpoint
+	var resp gateway.RPCCheckpointResponse
 	if err := rpc.ReadResponse(stream, &resp); err != nil {
 		return consensus.Checkpoint{}, fmt.Errorf("couldn't read RPC response: %w", err)
 	}
