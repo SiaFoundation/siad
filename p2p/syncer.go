@@ -10,7 +10,6 @@ import (
 
 	"go.sia.tech/core/chain"
 	"go.sia.tech/core/consensus"
-	"go.sia.tech/core/merkle"
 	"go.sia.tech/core/net/gateway"
 	"go.sia.tech/core/net/mux"
 	"go.sia.tech/core/net/rpc"
@@ -28,287 +27,20 @@ var (
 	errBlacklistedPeer = errors.New("refusing to connect to blacklisted peer")
 )
 
-var (
-	rpcGetHeaders    = rpc.NewSpecifier("GetHeaders")
-	rpcGetPeers      = rpc.NewSpecifier("GetPeers")
-	rpcGetBlocks     = rpc.NewSpecifier("GetBlocks")
-	rpcGetCheckpoint = rpc.NewSpecifier("GetCheckpoint")
-	rpcRelayBlock    = rpc.NewSpecifier("RelayBlock")
-	rpcRelayTxn      = rpc.NewSpecifier("RelayTxn")
-)
-
-// Maximum number of peers a getPeers request can return.
-const maxGetPeers = 100
-
-type msgGetHeaders struct {
-	History []types.ChainIndex
-}
-
-// EncodeTo encodes the chain indices to an encoder. Implements types.EncoderTo.
-func (m *msgGetHeaders) EncodeTo(e *types.Encoder) {
-	e.WritePrefix(len(m.History))
-	for i := range m.History {
-		m.History[i].EncodeTo(e)
-	}
-}
-
-// DecodeFrom decodes the chain indices from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgGetHeaders) DecodeFrom(d *types.Decoder) {
-	m.History = make([]types.ChainIndex, d.ReadPrefix())
-	for i := range m.History {
-		m.History[i].DecodeFrom(d)
-	}
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgGetHeaders) MaxLen() int {
-	return 10e6 // arbitrary
-}
-
-type msgHeaders struct {
-	Headers []types.BlockHeader
-}
-
-// EncodeTo encodes the block headers to an encoder. Implements types.EncoderTo.
-func (m *msgHeaders) EncodeTo(e *types.Encoder) {
-	e.WritePrefix(len(m.Headers))
-	for i := range m.Headers {
-		m.Headers[i].EncodeTo(e)
-	}
-}
-
-// DecodeFrom decodes the block headers from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgHeaders) DecodeFrom(d *types.Decoder) {
-	m.Headers = make([]types.BlockHeader, d.ReadPrefix())
-	for i := range m.Headers {
-		m.Headers[i].DecodeFrom(d)
-	}
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgHeaders) MaxLen() int {
-	return 10e6 // arbitrary
-}
-
-type msgGetPeers struct{}
-
-// EncodeTo encodes a msgGetPeers to an encoder. Implements types.EncoderTo.
-func (m *msgGetPeers) EncodeTo(e *types.Encoder) {}
-
-// DecodeFrom decodes a msgGetCheckpoint from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgGetPeers) DecodeFrom(d *types.Decoder) {}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgGetPeers) MaxLen() int { return 0 }
-
-type msgPeers []string
-
-func (m *msgPeers) EncodeTo(e *types.Encoder) {
-	e.WritePrefix(len(*m))
-	for i := range *m {
-		e.WriteString((*m)[i])
-	}
-}
-
-func (m *msgPeers) DecodeFrom(d *types.Decoder) {
-	*m = make([]string, d.ReadPrefix())
-	for i := range *m {
-		(*m)[i] = d.ReadString()
-	}
-}
-
-func (m *msgPeers) MaxLen() int {
-	const maxDomainLen = 256 // See https://www.freesoft.org/CIE/RFC/1035/9.htm
-	return 8 + maxGetPeers*maxDomainLen
-}
-
-type msgGetBlocks struct {
-	Blocks []types.ChainIndex
-}
-
-// EncodeTo encodes the msgGetBlocks to an encoder. Implements types.EncoderTo.
-func (m *msgGetBlocks) EncodeTo(e *types.Encoder) {
-	e.WritePrefix(len(m.Blocks))
-	for i := range m.Blocks {
-		m.Blocks[i].EncodeTo(e)
-	}
-}
-
-// DecodeFrom decodes the msgGetBlocks from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgGetBlocks) DecodeFrom(d *types.Decoder) {
-	m.Blocks = make([]types.ChainIndex, d.ReadPrefix())
-	for i := range m.Blocks {
-		m.Blocks[i].DecodeFrom(d)
-	}
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgGetBlocks) MaxLen() int {
-	return 10e6 // arbitrary
-}
-
-type msgBlocks struct {
-	Blocks []types.Block
-}
-
-// EncodeTo encodes the msgBlocks to an encoder. Implements types.EncoderTo.
-func (m *msgBlocks) EncodeTo(e *types.Encoder) {
-	e.WritePrefix(len(m.Blocks))
-	for i := range m.Blocks {
-		merkle.CompressedBlock(m.Blocks[i]).EncodeTo(e)
-	}
-}
-
-// DecoderFrom decodes the msgBlocks from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgBlocks) DecodeFrom(d *types.Decoder) {
-	m.Blocks = make([]types.Block, d.ReadPrefix())
-	for i := range m.Blocks {
-		(*merkle.CompressedBlock)(&m.Blocks[i]).DecodeFrom(d)
-	}
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgBlocks) MaxLen() int {
-	return 100e6 // arbitrary
-}
-
-type msgGetCheckpoint struct {
-	Index types.ChainIndex
-}
-
-// EncodeTo encodes the msgCheckpoint to an encoder. Implements types.EncoderTo.
-func (m *msgGetCheckpoint) EncodeTo(e *types.Encoder) {
-	m.Index.EncodeTo(e)
-}
-
-// DecoderFrom decodes the msgCheckpoint from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgGetCheckpoint) DecodeFrom(d *types.Decoder) {
-	m.Index.DecodeFrom(d)
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgGetCheckpoint) MaxLen() int {
-	return 40
-}
-
-type msgCheckpoint struct {
-	// NOTE: we don't use a consensus.Checkpoint, because a Checkpoint.Context
-	// is the *child* context for the block, not its parent context.
-	Block         types.Block
-	ParentContext consensus.ValidationContext
-}
-
-// EncodeTo encodes the msgCheckpoint to an encoder. Implements types.EncoderTo.
-func (m *msgCheckpoint) EncodeTo(e *types.Encoder) {
-	merkle.CompressedBlock(m.Block).EncodeTo(e)
-	m.ParentContext.EncodeTo(e)
-}
-
-// DecoderFrom decodes the msgCheckpoint from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgCheckpoint) DecodeFrom(d *types.Decoder) {
-	(*merkle.CompressedBlock)(&m.Block).DecodeFrom(d)
-	m.ParentContext.DecodeFrom(d)
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgCheckpoint) MaxLen() int {
-	return 10e6 // arbitrary
-}
-
-type msgRelayBlock struct {
-	Block types.Block
-}
-
-// EncodeTo encodes the msgRelayBlock to an encoder. Implements types.EncoderTo.
-func (m *msgRelayBlock) EncodeTo(e *types.Encoder) {
-	merkle.CompressedBlock(m.Block).EncodeTo(e)
-}
-
-// DecoderFrom decodes the msgRelayBlock from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgRelayBlock) DecodeFrom(d *types.Decoder) {
-	(*merkle.CompressedBlock)(&m.Block).DecodeFrom(d)
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgRelayBlock) MaxLen() int {
-	return 10e6 // arbitrary
-}
-
-type msgRelayTxn struct {
-	Transaction types.Transaction
-	DependsOn   []types.Transaction
-}
-
-// EncodeTo encodes the msgRelayTxn to an encoder. Implements types.EncoderTo.
-func (m *msgRelayTxn) EncodeTo(e *types.Encoder) {
-	m.Transaction.EncodeTo(e)
-	e.WritePrefix(len(m.DependsOn))
-	for i := range m.DependsOn {
-		m.DependsOn[i].EncodeTo(e)
-	}
-}
-
-// DecoderFrom decodes the msgRelayTxn from a decoder. Implements
-// types.DecoderFrom.
-func (m *msgRelayTxn) DecodeFrom(d *types.Decoder) {
-	m.Transaction.DecodeFrom(d)
-	m.DependsOn = make([]types.Transaction, d.ReadPrefix())
-	for i := range m.DependsOn {
-		m.DependsOn[i].DecodeFrom(d)
-	}
-}
-
-// MaxLen returns the maximum length of the encoded message. Implements
-// rpc.Object.
-func (m *msgRelayTxn) MaxLen() int {
-	return 10e6 // arbitrary
-}
-
-func isRelay(msg rpc.Object) bool {
-	switch msg.(type) {
-	case *msgGetHeaders,
-		*msgGetPeers,
-		*msgGetBlocks,
-		*msgGetCheckpoint:
-		return false
-	case *msgRelayBlock,
-		*msgRelayTxn:
-		return true
-	default:
-		panic(fmt.Sprintf("unhandled type %T", msg))
-	}
-}
-
 func rpcDeadline(id rpc.Specifier) time.Duration {
 	// TODO: pick reasonable values for these
 	switch id {
-	case rpcGetHeaders:
+	case gateway.RPCHeadersID:
 		return time.Minute
-	case rpcGetPeers:
+	case gateway.RPCPeersID:
 		return time.Minute
-	case rpcGetBlocks:
+	case gateway.RPCBlocksID:
 		return 10 * time.Minute
-	case rpcGetCheckpoint:
+	case gateway.RPCCheckpointID:
 		return time.Minute
-	case rpcRelayBlock:
+	case gateway.RPCRelayBlockID:
 		return time.Minute
-	case rpcRelayTxn:
+	case gateway.RPCRelayTxnID:
 		return time.Minute
 	default:
 		panic(fmt.Sprintf("unhandled ID %v", id))
@@ -382,40 +114,50 @@ func (s *Syncer) broadcast(id rpc.Specifier, msg rpc.Object) {
 }
 
 func (s *Syncer) relayBlock(block types.Block, sourcePeer gateway.UniqueID) {
-	s.relay(rpcRelayBlock, &msgRelayBlock{block}, sourcePeer)
+	s.relay(gateway.RPCRelayBlockID, &gateway.RPCRelayBlockRequest{
+		Block: block,
+	}, sourcePeer)
 }
 
 func (s *Syncer) relayTransaction(txn types.Transaction, dependsOn []types.Transaction, sourcePeer gateway.UniqueID) {
-	s.relay(rpcRelayTxn, &msgRelayTxn{txn, dependsOn}, sourcePeer)
+	s.relay(gateway.RPCRelayTxnID, &gateway.RPCRelayTxnRequest{
+		Transaction: txn,
+		DependsOn:   dependsOn,
+	}, sourcePeer)
 }
 
 // BroadcastBlock broadcasts a block to all connected peers.
 func (s *Syncer) BroadcastBlock(block types.Block) {
-	s.broadcast(rpcRelayBlock, &msgRelayBlock{block})
+	s.broadcast(gateway.RPCRelayBlockID, &gateway.RPCRelayBlockRequest{
+		Block: block,
+	})
 }
 
 // BroadcastTransaction broadcasts a transaction to all connected peers.
 func (s *Syncer) BroadcastTransaction(txn types.Transaction, dependsOn []types.Transaction) {
-	s.broadcast(rpcRelayTxn, &msgRelayTxn{txn, dependsOn})
+	s.broadcast(gateway.RPCRelayTxnID, &gateway.RPCRelayTxnRequest{
+		Transaction: txn,
+		DependsOn:   dependsOn,
+	})
 }
 
-func (s *Syncer) getHeaders(peer *gateway.Session, req *msgGetHeaders) (resp msgHeaders, err error) {
-	err = s.rpc(peer, rpcGetHeaders, req, &resp)
+func (s *Syncer) getHeaders(peer *gateway.Session, req *gateway.RPCHeadersRequest) (resp gateway.RPCHeadersResponse, err error) {
+	err = s.rpc(peer, gateway.RPCHeadersID, req, &resp)
 	return
 }
 
-func (s *Syncer) getPeers(peer *gateway.Session) (resp msgPeers, err error) {
-	err = s.rpc(peer, rpcGetPeers, &msgGetPeers{}, &resp)
+func (s *Syncer) getPeers(peer *gateway.Session) (resp gateway.RPCPeersResponse, err error) {
+	err = s.rpc(peer, gateway.RPCPeersID, &gateway.RPCPeersRequest{}, &resp)
 	return
 }
 
-func (s *Syncer) getBlocks(peer *gateway.Session, req *msgGetBlocks) (resp msgBlocks, err error) {
-	err = s.rpc(peer, rpcGetBlocks, req, &resp)
+func (s *Syncer) getBlocks(peer *gateway.Session, req *gateway.RPCBlocksRequest) (resp gateway.RPCBlocksResponse, err error) {
+	err = s.rpc(peer, gateway.RPCBlocksID, req, &resp)
 	return
 }
 
-func (s *Syncer) getCheckpoint(peer *gateway.Session, req *msgGetCheckpoint) (resp msgCheckpoint, err error) {
-	err = s.rpc(peer, rpcGetCheckpoint, req, &resp)
+func (s *Syncer) getCheckpoint(peer *gateway.Session, req *gateway.RPCCheckpointRequest) (resp gateway.RPCCheckpointResponse, err error) {
+	err = s.rpc(peer, gateway.RPCCheckpointID, req, &resp)
 	return
 }
 
@@ -428,19 +170,19 @@ func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 			return err
 		}
 		msg := map[rpc.Specifier]rpc.Object{
-			rpcGetPeers:      new(msgGetPeers),
-			rpcGetHeaders:    new(msgGetHeaders),
-			rpcGetBlocks:     new(msgGetBlocks),
-			rpcGetCheckpoint: new(msgGetCheckpoint),
-			rpcRelayBlock:    new(msgRelayBlock),
-			rpcRelayTxn:      new(msgRelayTxn),
+			gateway.RPCPeersID:      new(gateway.RPCPeersRequest),
+			gateway.RPCHeadersID:    new(gateway.RPCHeadersRequest),
+			gateway.RPCBlocksID:     new(gateway.RPCBlocksRequest),
+			gateway.RPCCheckpointID: new(gateway.RPCCheckpointRequest),
+			gateway.RPCRelayBlockID: new(gateway.RPCRelayBlockRequest),
+			gateway.RPCRelayTxnID:   new(gateway.RPCRelayTxnRequest),
 		}[id]
 		if msg == nil {
 			return fmt.Errorf("unrecognized RPC %q", id)
 		} else if err := rpc.ReadObject(stream, msg); err != nil {
 			return err
 		}
-		if isRelay(msg) {
+		if gateway.IsRelayRPC(msg) {
 			s.handleRelay(peer, msg)
 		} else {
 			resp, err := s.handleRPC(peer, msg)
@@ -516,14 +258,14 @@ func (s *Syncer) handleNewPeer(peer *gateway.Session) {
 
 func (s *Syncer) handleRelay(peer *gateway.Session, msg rpc.Object) {
 	switch msg := msg.(type) {
-	case *msgRelayBlock:
+	case *gateway.RPCRelayBlockRequest:
 		err := s.cm.AddTipBlock(msg.Block)
 		if err == nil {
 			go s.relayBlock(msg.Block, peer.RemoteID)
 		} else if errors.Is(err, chain.ErrUnknownIndex) {
 			go s.syncToPeer(peer)
 		}
-	case *msgRelayTxn:
+	case *gateway.RPCRelayTxnRequest:
 		err := s.tp.AddTransaction(msg.Transaction)
 		if err == nil {
 			go s.relayTransaction(msg.Transaction, msg.DependsOn, peer.RemoteID)
@@ -535,7 +277,7 @@ func (s *Syncer) handleRelay(peer *gateway.Session, msg rpc.Object) {
 
 func (s *Syncer) handleRPC(peer *gateway.Session, msg rpc.Object) (resp rpc.Object, err error) {
 	switch msg := msg.(type) {
-	case *msgGetHeaders:
+	case *gateway.RPCHeadersRequest:
 		sort.Slice(msg.History, func(i, j int) bool {
 			return msg.History[i].Height > msg.History[j].Height
 		})
@@ -544,13 +286,13 @@ func (s *Syncer) handleRPC(peer *gateway.Session, msg rpc.Object) (resp rpc.Obje
 			s.setErr(fmt.Errorf("%T: couldn't load headers: %w", msg, err))
 			return nil, errInternalError
 		}
-		return &msgHeaders{Headers: headers}, nil
+		return &gateway.RPCHeadersResponse{Headers: headers}, nil
 
-	case *msgGetPeers:
-		peers := append(s.pm.RandomGoodPeers(maxGetPeers-1), s.Addr()) // include our own address
-		return (*msgPeers)(&peers), nil
+	case *gateway.RPCPeersRequest:
+		peers := append(s.pm.RandomGoodPeers(gateway.MaxRPCPeersLen-1), s.Addr()) // include our own address
+		return (*gateway.RPCPeersResponse)(&peers), nil
 
-	case *msgGetBlocks:
+	case *gateway.RPCBlocksRequest:
 
 		// if len(msg.Blocks) == 0 {
 		// 	p.ban(fmt.Errorf("empty %T", msg))
@@ -571,9 +313,9 @@ func (s *Syncer) handleRPC(peer *gateway.Session, msg rpc.Object) (resp rpc.Obje
 			}
 			blocks = append(blocks, b)
 		}
-		return &msgBlocks{Blocks: blocks}, nil
+		return &gateway.RPCBlocksResponse{Blocks: blocks}, nil
 
-	case *msgGetCheckpoint:
+	case *gateway.RPCCheckpointRequest:
 		b, err := s.cm.Block(msg.Index)
 		if errors.Is(err, chain.ErrPruned) {
 			return nil, err // nothing we can do
@@ -591,7 +333,7 @@ func (s *Syncer) handleRPC(peer *gateway.Session, msg rpc.Object) (resp rpc.Obje
 			s.setErr(fmt.Errorf("%T: couldn't load validation context: %w", msg, err))
 			return nil, errInternalError
 		}
-		return &msgCheckpoint{Block: b, ParentContext: vc}, nil
+		return &gateway.RPCCheckpointResponse{Block: b, ParentContext: vc}, nil
 
 	default:
 		panic(fmt.Sprintf("unhandled type %T", msg))
@@ -607,7 +349,7 @@ func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer *g
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.getHeaders(syncPeer, &msgGetHeaders{History: history})
+	resp, err := s.getHeaders(syncPeer, &gateway.RPCHeadersRequest{History: history})
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +358,7 @@ func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer *g
 	//
 	// TODO: this is a DoS vector (host can send us infinite headers)
 	for len(resp.Headers) == 2000 {
-		resp, err = s.getHeaders(syncPeer, &msgGetHeaders{History: []types.ChainIndex{headers[len(headers)-1].Index()}})
+		resp, err = s.getHeaders(syncPeer, &gateway.RPCHeadersRequest{History: []types.ChainIndex{headers[len(headers)-1].Index()}})
 		if err != nil {
 			return nil, err
 		}
@@ -626,7 +368,7 @@ func (s *Syncer) downloadHeaders(checkpoints []consensus.Checkpoint, syncPeer *g
 }
 
 func (s *Syncer) downloadBlocks(blocks []types.ChainIndex, syncPeer *gateway.Session) ([]types.Block, error) {
-	resp, err := s.getBlocks(syncPeer, &msgGetBlocks{Blocks: blocks})
+	resp, err := s.getBlocks(syncPeer, &gateway.RPCBlocksRequest{Blocks: blocks})
 	return resp.Blocks, err
 }
 
