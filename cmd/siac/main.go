@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"go.sia.tech/core/types"
-	"go.sia.tech/siad/v2/api"
+	"go.sia.tech/siad/v2/api/siad"
 
 	"lukechampine.com/flagg"
 )
@@ -127,11 +127,11 @@ func check(ctx string, err error) {
 
 var siadAddr string
 
-func getClient() *api.Client {
+func getClient() *siad.Client {
 	if !strings.HasPrefix(siadAddr, "https://") && !strings.HasPrefix(siadAddr, "http://") {
 		siadAddr = "http://" + siadAddr
 	}
-	c := api.NewClient(siadAddr)
+	c := siad.NewClient(siadAddr, "testing")
 	_, err := c.WalletBalance()
 	check("Couldn't connect to siad:", err)
 	return c
