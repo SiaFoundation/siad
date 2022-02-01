@@ -118,25 +118,67 @@ func (p *Pool) validateTransaction(txn types.Transaction) error {
 
 	// validate ephemeral outputs
 	//
-	// TODO: expand to cover siafunds and file contracts
+	// TODO: fix ordering when creating and spending ephemeral outputs
 	// TODO: keep this map around instead of rebuilding it every time
-	available := make(map[types.ElementID]struct{})
+	availableSC := make(map[types.ElementID]struct{})
+	availableSF := make(map[types.ElementID]struct{})
 	for txid, txn := range p.txns {
 		for i := range txn.SiacoinOutputs {
 			oid := types.ElementID{
 				Source: types.Hash256(txid),
 				Index:  uint64(i),
 			}
-			available[oid] = struct{}{}
+			availableSC[oid] = struct{}{}
+		}
+
+		// set the initial index to account for the siacoin outputs and siafund
+		// claim outputs.
+		index := uint64(len(txn.SiacoinOutputs) + len(txn.SiafundInputs))
+		for range txn.SiafundOutputs {
+			oid := types.ElementID{
+				Source: types.Hash256(txid),
+				Index:  index,
+			}
+			availableSF[oid] = struct{}{}
+			index++
+		}
+
+		// set the initial index to account for the siacoin outputs, siafund
+		// claim outputs, and new file contracts.
+		index = uint64(len(txn.SiacoinOutputs) + len(txn.SiafundInputs) + len(txn.SiafundOutputs) + len(txn.FileContracts))
+		for _, fcr := range txn.FileContractRevisions {
+			if fc := fcr.Revision; fc.CanResolveEarly() {
+				renterID := types.ElementID{
+					Source: types.Hash256(txid),
+					Index:  index,
+				}
+				index++
+				hostID := types.ElementID{
+					Source: types.Hash256(txid),
+					Index:  index,
+				}
+				index++
+				availableSC[renterID] = struct{}{}
+				availableSC[hostID] = struct{}{}
+			}
 		}
 	}
 	for _, in := range txn.SiacoinInputs {
 		if in.Parent.LeafIndex == types.EphemeralLeafIndex {
 			oid := in.Parent.ID
-			if _, ok := available[oid]; !ok {
-				return errors.New("transaction references an unknown ephemeral output")
+			if _, ok := availableSC[oid]; !ok {
+				return errors.New("transaction references an unknown ephemeral siacoin output")
 			}
-			delete(available, oid)
+			delete(availableSC, oid)
+		}
+	}
+	for _, in := range txn.SiafundInputs {
+		if in.Parent.LeafIndex == types.EphemeralLeafIndex {
+			oid := in.Parent.ID
+			if _, ok := availableSC[oid]; !ok {
+				return errors.New("transaction references an unknown ephemeral siafund output")
+			}
+			delete(availableSF, oid)
 		}
 	}
 
@@ -174,6 +216,12 @@ func (p *Pool) AddTransactionSet(txns []types.Transaction) error {
 		}
 	}
 	return nil
+}
+
+// FeeEstimate returns a minimum and maximum estimate of the fee for
+// broadcasting a transaction
+func (p *Pool) FeeEstimate() (min, max types.Currency, _ error) {
+	return
 }
 
 // AddTransaction validates a transaction and adds it to the pool. If the
