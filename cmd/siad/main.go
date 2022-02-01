@@ -123,7 +123,7 @@ func main() {
 	}
 	log.Println("api: Listening on", l.Addr())
 	go func() {
-		if err := http.Serve(l, siad.NewHandler(n.c, n.s, n.w, n.tp)); err != nil {
+		if err := http.Serve(l, siad.NewServer("testing", n.c, n.s, n.w, n.tp)); err != nil {
 			log.Println(err)
 		}
 	}()

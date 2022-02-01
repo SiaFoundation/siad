@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/net/rpc"
@@ -27,10 +28,11 @@ func (s *Session) AccountBalance(accountID types.PublicKey, payment PaymentMetho
 		return types.ZeroCurrency, fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Second * 30))
 
 	id, settings, err := s.currentSettings()
 	if err != nil {
-		return types.ZeroCurrency, errors.New("price table invalid or expired")
+		return types.ZeroCurrency, fmt.Errorf("failed to load host settings: %w", err)
 	}
 
 	err = rpc.WriteRequest(stream, rhp.RPCAccountBalanceID, &id)
@@ -71,10 +73,11 @@ func (s *Session) FundAccount(accountID types.PublicKey, amount types.Currency, 
 		return types.ZeroCurrency, fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Second * 30))
 
 	id, settings, err := s.currentSettings()
 	if err != nil {
-		return types.ZeroCurrency, errors.New("price table invalid or expired")
+		return types.ZeroCurrency, fmt.Errorf("failed to load host settings: %w", err)
 	}
 
 	err = rpc.WriteRequest(stream, rhp.RPCFundAccountID, &id)
@@ -112,10 +115,11 @@ func (s *Session) LatestRevision(contractID types.ElementID, payment PaymentMeth
 		return rhp.Contract{}, fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Second * 30))
 
 	id, settings, err := s.currentSettings()
 	if err != nil {
-		return rhp.Contract{}, fmt.Errorf("failed to load price table: %w", err)
+		return rhp.Contract{}, fmt.Errorf("failed to load host settings: %w", err)
 	}
 
 	if err := rpc.WriteRequest(stream, rhp.RPCLatestRevisionID, &id); err != nil {
@@ -152,6 +156,7 @@ func (s *Session) RegisterSettings(payment PaymentMethod) (settings rhp.HostSett
 		return rhp.HostSettings{}, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Second * 30))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCSettingsID, nil); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to write settings request: %w", err)
@@ -187,6 +192,7 @@ func (s *Session) ScanSettings() (settings rhp.HostSettings, _ error) {
 		return rhp.HostSettings{}, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Second * 30))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCSettingsID, nil); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to write settings request: %w", err)

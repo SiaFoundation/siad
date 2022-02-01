@@ -35,7 +35,7 @@ func createUIHandler() http.Handler {
 }
 
 func startWeb(l net.Listener, node *node) error {
-	api := renterd.NewHandler(node.c, node.s, node.w, node.tp)
+	api := renterd.NewServer("testing", node.c, node.s, node.w, node.tp)
 	web := createUIHandler()
 	return http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {

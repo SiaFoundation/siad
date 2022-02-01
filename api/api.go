@@ -8,14 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/julienschmidt/httprouter"
 )
-
-// An ErrorResponse is a JSON-encoded error message.
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
 
 // A Client communicates with a Sia API server.
 type Client struct {
@@ -71,16 +64,13 @@ func WriteJSON(w http.ResponseWriter, v interface{}) {
 }
 
 // AuthMiddleware wraps an http handler with required authentication.
-func AuthMiddleware(handler httprouter.Handle, requiredPass string) httprouter.Handle {
-	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func AuthMiddleware(handler http.Handler, requiredPass string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		_, password, hasAuth := req.BasicAuth()
 		if hasAuth && password == requiredPass {
-			handler(w, req, ps)
+			handler.ServeHTTP(w, req)
 			return
 		}
-		w.WriteHeader(http.StatusUnauthorized)
-		WriteJSON(w, ErrorResponse{
-			Error: "authentication failed",
-		})
-	}
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	})
 }

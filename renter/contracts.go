@@ -3,6 +3,7 @@ package renter
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/net/rpc"
@@ -93,6 +94,7 @@ func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFund
 		return rhp.Contract{}, nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Minute * 2))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCFormContractID, req); err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to write form contract request: %w", err)
@@ -144,8 +146,8 @@ func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFund
 	}, append(resp.Parents, txn), nil
 }
 
-// RenewContract clears an existing contract with the host and using the
-// specified funds and duration.
+// RenewContract clears and renews an existing contract with the host adding
+// additional funds and duration.
 func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileContractRevision, additionalCollateral, additionalRenterFunds types.Currency, endHeight uint64) (rhp.Contract, []types.Transaction, error) {
 	settingsID, settings, err := s.currentSettings()
 	if err != nil {
@@ -273,7 +275,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 
 	// if necessary add additional funds to the renewal transaction.
 	toSign := []types.ElementID{renewalTxn.SiacoinInputs[0].Parent.ID}
-	if additionalFunding != types.ZeroCurrency {
+	if !additionalFunding.IsZero() {
 		renewalTxn.SiacoinInputs = append(renewalTxn.SiacoinInputs, types.SiacoinInput{
 			Parent: types.SiacoinElement{
 				StateElement: types.StateElement{
@@ -298,6 +300,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		return rhp.Contract{}, nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(time.Minute * 2))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCRenewContractID, &settingsID); err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to write RPC id: %w", err)

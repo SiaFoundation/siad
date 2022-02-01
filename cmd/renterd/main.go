@@ -53,7 +53,7 @@ func main() {
 	bootstrap := flag.String("bootstrap", "", "peer address or explorer URL to bootstrap from")
 	flag.Parse()
 
-	log.Println("siad v2.0.0")
+	log.Println("renterd v0.0.1")
 	if flag.Arg(0) == "version" {
 		return
 	}

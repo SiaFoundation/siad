@@ -14,7 +14,7 @@ import (
 type (
 	// A PaymentMethod pays for RPC usage during a renter-host session.
 	PaymentMethod interface {
-		IsPayment() bool
+		isPayment()
 	}
 
 	payByEphemeralAccount struct {
@@ -31,11 +31,9 @@ type (
 	}
 )
 
-// IsPayment implements the PaymentMethod interface.
-func (p *payByEphemeralAccount) IsPayment() bool { return true }
-
-// IsPayment implements the PaymentMethod interface.
-func (p *payByContract) IsPayment() bool { return true }
+// implements the PaymentMethod interface.
+func (p *payByEphemeralAccount) isPayment() {}
+func (p *payByContract) isPayment()         {}
 
 func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amount types.Currency) error {
 	// verify the contract has enough funds to pay the amount.

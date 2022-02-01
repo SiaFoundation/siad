@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/net/rpc"
@@ -24,13 +25,17 @@ type (
 		RenterKey            types.PrivateKey
 	}
 
-	// ExecuteFunc is called for each executed instruction. The passed reader is
+	// OnOutputFunc is called for each executed instruction. The passed reader is
 	// only valid until the next call to ExecuteFunc. Returning an error
 	// terminates remote program execution. The program must be fully executed
 	// for any changes to be committed. If an instruction fails, the entire
 	// program is rolled back.
-	ExecuteFunc func(rhp.RPCExecuteInstrResponse, io.Reader) error
+	OnOutputFunc func(rhp.RPCExecuteInstrResponse, io.Reader) error
 )
+
+// NoopOnOutput should be used as the output func when executing a Program where
+// the output is not necessary.
+var NoopOnOutput = func(rhp.RPCExecuteInstrResponse, io.Reader) error { return nil }
 
 // ExecuteProgram executes the program on the renter. execute is called for each
 // successfully executed instruction; the reader passed to execute is only valid
@@ -38,12 +43,15 @@ type (
 // The program must be fully executed for any changes to be committed. If an
 // instruction fails, the program is rolled back.
 //
-// ContractRevision and RenterKey may be nil if the program is not read-write.
-func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentMethod, execute ExecuteFunc) error {
+// ContractRevision and RenterKey may be nil if the program does not require a
+// contract or finalization.
+func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentMethod, onOutput OnOutputFunc) error {
 	if (program.RequiresContract || program.RequiresFinalization) && program.Contract == nil {
 		return errors.New("contract required for read-write programs")
 	} else if (program.RequiresContract || program.RequiresFinalization) && len(program.RenterKey) != 64 {
 		return errors.New("contract key is required for read-write programs")
+	} else if onOutput == nil {
+		onOutput = NoopOnOutput
 	}
 
 	stream, err := s.session.DialStream()
@@ -51,6 +59,8 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		return fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
+	// set the initial deadline
+	stream.SetDeadline(time.Now().Add(time.Minute))
 
 	id, _, err := s.currentSettings()
 	if err != nil {
@@ -59,9 +69,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 
 	if err := rpc.WriteRequest(stream, rhp.RPCExecuteProgramID, &id); err != nil {
 		return fmt.Errorf("failed to write request: %w", err)
-	}
-
-	if err := s.pay(stream, payment, program.Budget); err != nil {
+	} else if err := s.pay(stream, payment, program.Budget); err != nil {
 		return fmt.Errorf("failed to pay for program execution: %w", err)
 	}
 
@@ -77,29 +85,25 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	})
 	if err != nil {
 		return fmt.Errorf("failed to write request: %w", err)
-	}
-
-	if _, err = stream.Write(input); err != nil {
+	} else if _, err = stream.Write(input); err != nil {
 		return fmt.Errorf("failed to write program data: %w", err)
 	}
 
 	var response rhp.RPCExecuteInstrResponse
 	for i := range program.Instructions {
+		// reset the deadline for each executed instruction.
+		stream.SetDeadline(time.Now().Add(time.Minute * 5))
 		if err = rpc.ReadResponse(stream, &response); err != nil {
 			return fmt.Errorf("failed to read execute program response %v: %w", i, err)
-		}
-
-		if response.Error != nil {
+		} else if response.Error != nil {
 			return fmt.Errorf("program execution failed at instruction %v: %w", i, response.Error)
 		}
 
 		// limit the execute function to the size of the response
 		// TODO: set a max output length per instruction?
 		lr := io.LimitReader(stream, int64(response.OutputLength))
-		if execute != nil {
-			if err := execute(response, lr); err != nil {
-				return fmt.Errorf("failed to execute instruction %v: %w", i, err)
-			}
+		if err := onOutput(response, lr); err != nil {
+			return fmt.Errorf("failed to execute instruction %v: %w", i, err)
 		}
 
 		// discard the remaining output in case the execute function didn't
@@ -110,6 +114,9 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	if !program.RequiresFinalization {
 		return nil
 	}
+
+	// reset the deadline for contract finalization.
+	stream.SetDeadline(time.Now().Add(time.Minute * 2))
 
 	// finalize the program by updating the contract revision with additional
 	// collateral.

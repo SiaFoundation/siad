@@ -183,10 +183,8 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 	}
 }
 
-// NewHandler returns a new http handler for the renter API endpoints.
-func NewHandler(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Handler {
-	const password = "testing"
-
+// NewServer returns a new http handler for the renterd API endpoints.
+func NewServer(authPassword string, cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Handler {
 	srv := server{
 		cm: cm,
 		s:  s,
@@ -195,17 +193,17 @@ func NewHandler(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Ha
 	}
 	mux := httprouter.New()
 
-	mux.GET("/api/wallet/balance", api.AuthMiddleware(srv.walletBalanceHandler, password))
-	mux.GET("/api/wallet/address", api.AuthMiddleware(srv.walletAddressHandler, password))
-	mux.GET("/api/wallet/addresses", api.AuthMiddleware(srv.walletAddressesHandler, password))
-	mux.GET("/api/wallet/transactions", api.AuthMiddleware(srv.walletTransactionsHandler, password))
-	mux.POST("/api/wallet/sign", api.AuthMiddleware(srv.walletSignHandler, password))
+	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
+	mux.GET("/api/wallet/address", srv.walletAddressHandler)
+	mux.GET("/api/wallet/addresses", srv.walletAddressesHandler)
+	mux.GET("/api/wallet/transactions", srv.walletTransactionsHandler)
+	mux.POST("/api/wallet/sign", srv.walletSignHandler)
 
-	mux.GET("/api/txpool/transactions", api.AuthMiddleware(srv.txpoolTransactionsHandler, password))
-	mux.POST("/api/txpool/broadcast", api.AuthMiddleware(srv.txpoolBroadcastHandler, password))
+	mux.GET("/api/txpool/transactions", srv.txpoolTransactionsHandler)
+	mux.POST("/api/txpool/broadcast", srv.txpoolBroadcastHandler)
 
-	mux.GET("/api/syncer/peers", api.AuthMiddleware(srv.syncerPeersHandler, password))
-	mux.POST("/api/syncer/connect", api.AuthMiddleware(srv.syncerConnectHandler, password))
+	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
+	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
 
-	return mux
+	return api.AuthMiddleware(mux, authPassword)
 }
