@@ -36,12 +36,9 @@ func (p *payByEphemeralAccount) isPayment() {}
 func (p *payByContract) isPayment()         {}
 
 func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amount types.Currency) error {
-	// verify the contract has enough funds to pay the amount.
-	switch {
-	case payment.contract.Revision.ValidRenterOutput.Value.Cmp(amount) < 0:
-		return errors.New("insufficient renter funds")
-	case payment.contract.Revision.MissedRenterOutput.Value.Cmp(amount) < 0:
-		return errors.New("insufficient renter funds")
+	revision, err := rhp.PaymentRevision(payment.contract.Revision, amount)
+	if err != nil {
+		return fmt.Errorf("failed to revise contract: %w", err)
 	}
 
 	vc, err := s.cm.TipContext()
@@ -49,15 +46,8 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 		return fmt.Errorf("failed to get current validation context: %w", err)
 	}
 
-	// update the revision to pay for the usage.
-	revision := payment.contract.Revision
-	revision.RevisionNumber++
-	revision.ValidRenterOutput.Value = revision.ValidRenterOutput.Value.Sub(amount)
-	revision.MissedRenterOutput.Value = revision.MissedRenterOutput.Value.Sub(amount)
-	revision.ValidHostOutput.Value = revision.ValidHostOutput.Value.Add(amount)
-	revision.MissedHostOutput.Value = revision.MissedHostOutput.Value.Add(amount)
+	// sign the revision and send it to the host.
 	revisionHash := vc.ContractSigHash(revision)
-
 	req := &rhp.PayByContractRequest{
 		RefundAccount: payment.refundAccountID,
 

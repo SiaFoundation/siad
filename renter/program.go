@@ -118,18 +118,18 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	// reset the deadline for contract finalization.
 	stream.SetDeadline(time.Now().Add(time.Minute * 2))
 
-	// finalize the program by updating the contract revision with additional
-	// collateral.
+	// Finalize the program by updating the contract revision with additional
+	// collateral. The additional collateral and storage revenue must be
+	// subtracted from the host's missed output to penalize the host on failure.
 	transfer := response.AdditionalCollateral.Add(response.AdditionalStorage)
-	rev := program.Contract.Revision
-	if rev.MissedHostOutput.Value.Cmp(transfer) < 0 {
-		return errors.New("not enough collateral to finalize program")
+	rev, err := rhp.FinalizeProgramRevision(program.Contract.Revision, transfer)
+	if err != nil {
+		return fmt.Errorf("failed to revise contract: %w", err)
 	}
 
-	rev.RevisionNumber++
+	// set the new data merkle root and size
 	rev.FileMerkleRoot = response.NewMerkleRoot
 	rev.Filesize = response.NewDataSize
-	rev.MissedHostOutput.Value = rev.MissedHostOutput.Value.Sub(transfer)
 
 	vc, err := s.cm.TipContext()
 	if err != nil {

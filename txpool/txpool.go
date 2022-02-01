@@ -206,6 +206,12 @@ func (p *Pool) Transactions() []types.Transaction {
 	return txns
 }
 
+// FeeEstimate returns the minimum and maximum fee estimate required to
+// broadcast a transaction.
+func (p *Pool) FeeEstimate() (min, max types.Currency, _ error) {
+	return
+}
+
 // ProcessChainApplyUpdate implements chain.Subscriber.
 func (p *Pool) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 	p.mu.Lock()

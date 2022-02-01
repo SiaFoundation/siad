@@ -153,7 +153,6 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to use settings: %w", err)
 	}
-
 	vc, err := s.cm.TipContext()
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to get validation context: %w", err)
@@ -162,21 +161,44 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	if endHeight < startHeight {
 		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
 	}
-
 	outputAddr := s.wallet.Address()
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to generate address: %w", err)
 	}
+	current := contract.Revision
 
+	// calculate the "base" storage cost to the renter and risked collateral for
+	// the host for the data already in the contract. If the contract height did
+	// not increase, base costs are zero.
+	var baseStorageCost, baseCollateral types.Currency
+	if contractEnd := endHeight + settings.WindowSize; contractEnd > contract.Revision.WindowEnd {
+		extension := contractEnd - contract.Revision.WindowEnd
+		baseStorageCost = settings.StoragePrice.Mul64(current.Filesize).Mul64(extension)
+		baseCollateral = settings.Collateral.Mul64(current.Filesize).Mul64(extension)
+	}
+
+	// calculate the total collateral the host is expected to add to the
+	// contract.
+	totalCollateral := baseCollateral.Add(additionalCollateral)
+	if totalCollateral.Cmp(settings.MaxCollateral) > 0 {
+		return rhp.Contract{}, nil, errors.New("collateral too large")
+	}
+
+	// create the renewed contract
+	//
+	// The host valid output includes the contract fee, base storage revenue,
+	// base collateral, and additional collateral. In the event of failure
+	// the base collateral and base storage cost should be burned.
 	renewal := types.FileContract{
 		Filesize:        contract.Revision.Filesize,
 		FileMerkleRoot:  contract.Revision.FileMerkleRoot,
-		WindowStart:     startHeight,
+		WindowStart:     endHeight,
 		WindowEnd:       endHeight + settings.WindowSize,
 		RenterPublicKey: contract.Revision.RenterPublicKey,
 		HostPublicKey:   contract.Revision.HostPublicKey,
 		ValidHostOutput: types.SiacoinOutput{
 			Address: settings.Address,
+			Value:   settings.ContractFee.Add(baseStorageCost).Add(totalCollateral),
 		},
 		MissedHostOutput: types.SiacoinOutput{
 			Address: settings.Address,
@@ -192,107 +214,29 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		},
 	}
 
-	// calculate the "base" storage cost to the renter and risked collateral for
-	// the host for the data already in the contract. If the contract height did
-	// not increase, base costs are zero.
-	var baseStorageCost, baseCollateral types.Currency
-	if renewal.WindowEnd > contract.Revision.WindowEnd {
-		extension := renewal.WindowEnd - contract.Revision.WindowEnd
-		baseStorageCost = settings.StoragePrice.Mul64(renewal.Filesize).Mul64(extension)
-		baseCollateral = settings.Collateral.Mul64(renewal.Filesize).Mul64(extension)
-	}
-
-	// calculate the total collateral the host is expected to add to the
-	// contract.
-	totalCollateral := baseCollateral.Add(additionalCollateral)
-	if totalCollateral.Cmp(settings.MaxCollateral) > 0 {
-		return rhp.Contract{}, nil, errors.New("collateral too large")
-	}
-
-	// create the renewal transaction.
-	// TODO: better fee calculation
+	// create the clear and renew transaction. No signatures should be present
+	// yet.
 	renewalTxn := types.Transaction{
-		FileContracts: []types.FileContract{renewal},
-	}
-	renewalTxn.MinerFee = settings.TxnFeeMaxRecommended.Mul64(vc.TransactionWeight(renewalTxn))
-	// The renter is responsible for the renter funds, contract fee, base
-	// storage cost, siafund tax, and miner fee.
-	renterFundAmount := additionalRenterFunds.Add(settings.ContractFee).Add(baseStorageCost).Add(vc.FileContractTax(renewal)).Add(renewalTxn.MinerFee)
-	// add the contract fee, base storage revenue, and total collateral to the
-	// host's valid output. In the event of failure the base collateral and
-	// base storage cost will be burned.
-	renewal.ValidHostOutput.Value = settings.ContractFee.Add(baseStorageCost).Add(totalCollateral)
-
-	// clear the existing contract.
-	clearedContract := rhp.Contract{
-		ID:       contract.Parent.ID,
-		Revision: contract.Revision,
-	}
-	clearedContract.Revision = clearedContract.ClearingRevision()
-	clearedRevSigHash := vc.ContractSigHash(clearedContract.Revision)
-	clearedContract.RenterSignature = renterKey.SignHash(clearedRevSigHash)
-
-	// create the transaction with the clearing revision and renter funding.
-	clearingTxn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{{
 			Parent:   contract.Parent,
-			Revision: clearedContract.Revision,
+			Revision: rhp.ClearingRevision(contract.Revision),
 		}},
+		FileContracts: []types.FileContract{renewal},
 	}
-
-	// calculate the additional funding required to pay for the contract renewal
-	// transaction subtracting the renter's early-termination payout.
-	var additionalFunding types.Currency
-	if renterFundAmount.Cmp(clearedContract.Revision.ValidRenterOutput.Value) > 0 {
-		additionalFunding = additionalFunding.Add(renterFundAmount).Sub(clearedContract.Revision.ValidRenterOutput.Value)
-		clearingTxn.SiacoinOutputs = append(clearingTxn.SiacoinOutputs, types.SiacoinOutput{
-			Address: outputAddr,
-			Value:   additionalFunding,
-		})
-	}
-
-	clearingTxn.MinerFee = settings.TxnFeeMaxRecommended.Mul64(vc.TransactionWeight(clearingTxn))
-
-	// fund the clearing transaction with the total amount needed for both the
-	// clearing and renewal transactions. The renewal transaction will use the
-	// remaining funds as an ephemeral output.
-	clearingToSign, clearingCleanup, err := s.wallet.FundTransaction(&clearingTxn, additionalFunding.Add(clearingTxn.MinerFee), nil)
+	// TODO: better fee calculation
+	renewalTxn.MinerFee = settings.TxnFeeMaxRecommended.Mul64(vc.TransactionWeight(renewalTxn))
+	// Fund the renew and clear transaction. The renter is responsible for the
+	// renter funds, contract fee, base storage cost, siafund tax, and miner
+	// fee.
+	renterFundAmount := additionalRenterFunds.Add(settings.ContractFee).Add(baseStorageCost).Add(vc.FileContractTax(renewal)).Add(renewalTxn.MinerFee)
+	toSign, cleanup, err := s.wallet.FundTransaction(&renewalTxn, renterFundAmount, nil)
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to fund clearing transaction: %w", err)
 	}
-	defer clearingCleanup()
-
-	// create an ephemeral input for the renter payout created by clearing the
-	// existing contract.
-	policy, ok := s.wallet.SpendPolicy(clearedContract.Revision.ValidRenterOutput.Address)
-	if !ok {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to get spend policy for renter output %v", clearedContract.Revision.ValidRenterOutput.Address)
-	}
-	renewalTxn.SiacoinInputs = []types.SiacoinInput{{
-		Parent:      clearingTxn.EphemeralSiacoinElement(0),
-		SpendPolicy: policy,
-	}}
-
-	// if necessary add additional funds to the renewal transaction.
-	toSign := []types.ElementID{renewalTxn.SiacoinInputs[0].Parent.ID}
-	if !additionalFunding.IsZero() {
-		renewalTxn.SiacoinInputs = append(renewalTxn.SiacoinInputs, types.SiacoinInput{
-			Parent: types.SiacoinElement{
-				StateElement: types.StateElement{
-					ID:        clearingTxn.SiacoinOutputID(0),
-					LeafIndex: types.EphemeralLeafIndex,
-				},
-				SiacoinOutput: clearingTxn.SiacoinOutputs[0],
-			},
-		})
-		toSign = append(toSign, renewalTxn.SiacoinInputs[1].Parent.ID)
-	}
+	defer cleanup()
 
 	req := &rhp.RPCContractRequest{
-		Transactions: []types.Transaction{
-			clearingTxn,
-			renewalTxn,
-		},
+		Transactions: []types.Transaction{renewalTxn},
 	}
 
 	stream, err := s.session.DialStream()
@@ -313,21 +257,21 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		return rhp.Contract{}, nil, fmt.Errorf("failed to read host additions: %w", err)
 	}
 
-	// add the host's inputs and outputs to the renewal transaction.
+	// add the host's inputs and outputs to the renewal transaction and sign the
+	// transaction.
 	renewalTxn.SiacoinInputs = append(renewalTxn.SiacoinInputs, resp.Inputs...)
 	renewalTxn.SiacoinOutputs = append(renewalTxn.SiacoinOutputs, resp.Outputs...)
-
-	if err := s.wallet.SignTransaction(vc, &clearingTxn, clearingToSign); err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to sign clearing transaction: %w", err)
-	} else if err := s.wallet.SignTransaction(vc, &renewalTxn, toSign); err != nil {
+	if err := s.wallet.SignTransaction(vc, &renewalTxn, toSign); err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to sign renewal transaction: %w", err)
 	}
 
-	// sign the renewal and send the signatures to the host
-	renewalHash := vc.ContractSigHash(renewal)
+	// sign the new renewal and clearing revision.
+	clearingHash := vc.ContractSigHash(renewalTxn.FileContractRevisions[0].Revision)
+	renewalHash := vc.ContractSigHash(renewalTxn.FileContracts[0])
 	renterSigs := rhp.RPCRenewContractSignatures{
-		ClearingSignature: clearedContract.RenterSignature,
-		RenewalSignature:  renterKey.SignHash(renewalHash),
+		ClearingSignature:      renterKey.SignHash(clearingHash),
+		RenewalSignature:       renterKey.SignHash(renewalHash),
+		SiacoinInputSignatures: make([][]types.InputSignature, len(renewalTxn.SiacoinInputs)),
 	}
 	for i := range renewalTxn.SiacoinInputs {
 		renterSigs.SiacoinInputSignatures[i] = append(renterSigs.SiacoinInputSignatures[i], renewalTxn.SiacoinInputs[i].Signatures...)
@@ -342,24 +286,24 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		return rhp.Contract{}, nil, fmt.Errorf("failed to read host signatures: %w", err)
 	}
 
+	// verify the clearing and renewal signatures
+	if !renewal.HostPublicKey.VerifyHash(clearingHash, hostSigs.ClearingSignature) {
+		return rhp.Contract{}, nil, errors.New("failed to validate host clearing signature")
+	} else if !renewal.HostPublicKey.VerifyHash(renewalHash, hostSigs.RenewalSignature) {
+		return rhp.Contract{}, nil, errors.New("failed to validate host renewal signature")
+	}
+
+	// add the clearing revision signatures to the renewal transaction.
+	renewalTxn.FileContractRevisions[0].HostSignature = hostSigs.ClearingSignature
+	renewalTxn.FileContractRevisions[0].RenterSignature = renterSigs.ClearingSignature
 	for i := range hostSigs.SiacoinInputSignatures {
 		renewalTxn.SiacoinInputs[i].Signatures = append(renewalTxn.SiacoinInputs[i].Signatures, hostSigs.SiacoinInputSignatures[i]...)
 	}
 
-	clearedContract.HostSignature = hostSigs.ClearingSignature
-	renewedContract := rhp.Contract{
+	return rhp.Contract{
 		ID:              renewalTxn.FileContractID(0),
 		Revision:        renewal,
 		HostSignature:   hostSigs.RenewalSignature,
 		RenterSignature: renterSigs.RenewalSignature,
-	}
-
-	// verify the clearing and renewal signatures
-	if err := clearedContract.ValidateSignatures(vc); err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to validate cleared contract signatures: %w", err)
-	} else if err := renewedContract.ValidateSignatures(vc); err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to validate renewed contract signatures: %w", err)
-	}
-
-	return renewedContract, append(resp.Parents, clearingTxn, renewalTxn), nil
+	}, append(resp.Parents, renewalTxn), nil
 }
