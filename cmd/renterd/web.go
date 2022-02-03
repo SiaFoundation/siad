@@ -34,11 +34,11 @@ func createUIHandler() http.Handler {
 	return http.FileServer(http.FS(&clientRouterFS{fs: assets}))
 }
 
-func startWeb(l net.Listener, node *node) error {
-	api := renterd.NewServer("testing", node.c, node.s, node.w, node.tp)
+func startWeb(l net.Listener, node *node, password string) error {
+	api := renterd.NewServer(password, node.c, node.s, node.w, node.tp)
 	web := createUIHandler()
 	return http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		if strings.HasPrefix(r.URL.Path, "/api") {
 			api.ServeHTTP(w, r)
 			return
 		}

@@ -35,40 +35,59 @@
 		h4 {
 			margin: 0;
 		}
+
+		.hidden {
+			display: none;
+		}
 	</style>
 </head>
 
 <body>
-	<h4>Wallet Balance</h4>
-	<h1 id="balance"></h1>
+	<form id="password-form">
+		<p class="error hidden" id="errorMsg"></p>
+		<label>API Password:</label>
+		<input type="password" id="apiPassword" />
+		<button>Set</button>
+	</form>
+	<h1 id="balance" class="hidden">Balance: 0 SC</h1>
+	<p id="updating-in"></p>
 	<script type="text/javascript">
-		async function queryBalance() {
-			try {
-				const resp = await fetch('/api/wallet/balance', {
-						method: 'GET',
-						headers: {
-							'Content-Type': 'application/json',
-							'Authorization': `Basic ${btoa(':testing')}`
-						}
-					}),
-					body = await resp.json();
-
-					if (resp.status !== 200)
-						throw new Error(body.error);
-
-					
-				const fmt = new Intl.NumberFormat([], {
+		async function getWalletBalance(password) {
+			const resp = await fetch('/api/wallet/balance', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Basic ' + btoa(`:${password}`)
+					}
+				});
+			
+			if (resp.status !== 200)
+				throw new Error(await resp.text());
+			
+			const body = await resp.json(),
+				fmt = new Intl.NumberFormat([], {
 					type: 'decimal',
 					minimumFractionDigits: 4
 				});
-
-			document.getElementById('balance').innerHTML = `${fmt.format(body.siacoins / 1e24)} SC`;
-			} catch (ex) {
-				console.error(ex);
-			}
+			document.getElementById('balance').innerHTML = `Balance: ${fmt.format(body.siacoins / 1e24)} SC`;
 		}
-		queryBalance();
-		setInterval(queryBalance, 1000);
+
+		document.querySelector('form').addEventListener('submit', async function(e) {
+			e.preventDefault();
+			try {
+				const password = document.getElementById("apiPassword").value;
+				await getWalletBalance(password);
+				document.getElementById('password-form').classList.add('hidden');
+				document.getElementById('balance').classList.remove('hidden');
+
+				setInterval(() => getWalletBalance(password), 1000);
+			} catch (ex) {
+				const errMsg = document.getElementById('errorMsg');
+				errMsg.classList.remove('hidden');
+				errMsg.innerText = ex.message;
+			}
+			return false;
+		});
 	</script>
 </body>
 
