@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go.sia.tech/siad/v2/api"
 	"go.sia.tech/siad/v2/api/renterd"
 )
 
@@ -35,7 +36,7 @@ func createUIHandler() http.Handler {
 }
 
 func startWeb(l net.Listener, node *node, password string) error {
-	api := renterd.NewServer(password, node.c, node.s, node.w, node.tp)
+	api := api.AuthMiddleware(renterd.NewServer(node.c, node.s, node.w, node.tp), password)
 	web := createUIHandler()
 	return http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api") {

@@ -166,23 +166,21 @@ func writeTxn(filename string, txn types.Transaction) {
 	check("Could not write transaction to disk", err)
 }
 
-var getAPIPassword = func() func() string {
-	return func() string {
-		apiPassword := os.Getenv("SIAD_API_PASSWORD")
-		if len(apiPassword) == 0 {
-			fmt.Print("Enter API password: ")
-			pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
-			fmt.Println()
-			if err != nil {
-				log.Fatal(err)
-			}
-			apiPassword = string(pw)
-		} else {
-			fmt.Println("Using SIAD_API_PASSWORD environment variable.")
+func getAPIPassword() string {
+	apiPassword := os.Getenv("SIAD_API_PASSWORD")
+	if len(apiPassword) == 0 {
+		fmt.Print("Enter API password: ")
+		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			log.Fatal(err)
 		}
-		return apiPassword
+		apiPassword = string(pw)
+	} else {
+		fmt.Println("Using SIAD_API_PASSWORD environment variable.")
 	}
-}()
+	return apiPassword
+}
 
 func main() {
 	log.SetFlags(0)

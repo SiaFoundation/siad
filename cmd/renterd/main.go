@@ -44,6 +44,22 @@ func die(context string, err error) {
 	}
 }
 
+func getAPIPassword() string {
+	apiPassword := os.Getenv("RENTERD_API_PASSWORD")
+	if len(apiPassword) == 0 {
+		fmt.Print("Enter API password: ")
+		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			log.Fatal(err)
+		}
+		apiPassword = string(pw)
+	} else {
+		fmt.Println("Using RENTERD_API_PASSWORD environment variable.")
+	}
+	return apiPassword
+}
+
 func main() {
 	log.SetFlags(0)
 	gatewayAddr := flag.String("addr", ":0", "address to listen on")
@@ -54,21 +70,12 @@ func main() {
 	bootstrap := flag.String("bootstrap", "", "peer address or explorer URL to bootstrap from")
 	flag.Parse()
 
-	log.Println("renterd v0.0.1")
+	log.Println("renterd v0.1.0")
 	if flag.Arg(0) == "version" {
 		return
 	}
 
-	apiPassword := os.Getenv("RENTERD_API_PASSWORD")
-	if len(apiPassword) == 0 {
-		fmt.Print("Enter API password: ")
-		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			log.Fatal(err)
-		}
-		apiPassword = string(pw)
-	}
+	apiPassword := getAPIPassword()
 
 	initCheckpoint := genesis
 	if *checkpoint != "" {

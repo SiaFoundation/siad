@@ -17,6 +17,7 @@ import (
 
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
+	"go.sia.tech/siad/v2/api"
 	"go.sia.tech/siad/v2/api/siad"
 	"go.sia.tech/siad/v2/p2p"
 	"golang.org/x/crypto/ssh/terminal"
@@ -46,6 +47,22 @@ func die(context string, err error) {
 	}
 }
 
+func getAPIPassword() string {
+	apiPassword := os.Getenv("SIAD_API_PASSWORD")
+	if len(apiPassword) == 0 {
+		fmt.Print("Enter API password: ")
+		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			log.Fatal(err)
+		}
+		apiPassword = string(pw)
+	} else {
+		fmt.Println("Using SIAD_API_PASSWORD environment variable.")
+	}
+	return apiPassword
+}
+
 func main() {
 	log.SetFlags(0)
 	gatewayAddr := flag.String("addr", ":0", "address to listen on")
@@ -61,16 +78,7 @@ func main() {
 		return
 	}
 
-	apiPassword := os.Getenv("SIAD_API_PASSWORD")
-	if len(apiPassword) == 0 {
-		fmt.Print("Enter API password: ")
-		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			log.Fatal(err)
-		}
-		apiPassword = string(pw)
-	}
+	apiPassword := getAPIPassword()
 
 	initCheckpoint := genesis
 	if *checkpoint != "" {
@@ -135,7 +143,8 @@ func main() {
 	}
 	log.Println("api: Listening on", l.Addr())
 	go func() {
-		if err := http.Serve(l, siad.NewServer(apiPassword, n.c, n.s, n.w, n.tp)); err != nil {
+		api := api.AuthMiddleware(siad.NewServer(n.c, n.s, n.w, n.tp), apiPassword)
+		if err := http.Serve(l, api); err != nil {
 			log.Println(err)
 		}
 	}()

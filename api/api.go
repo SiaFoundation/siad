@@ -63,14 +63,13 @@ func WriteJSON(w http.ResponseWriter, v interface{}) {
 	enc.Encode(v)
 }
 
-// AuthMiddleware wraps an http handler with required authentication.
+// AuthMiddleware enforces HTTP Basic Authentication on the provided handler.
 func AuthMiddleware(handler http.Handler, requiredPass string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		_, password, hasAuth := req.BasicAuth()
-		if hasAuth && password == requiredPass {
-			handler.ServeHTTP(w, req)
+		if _, password, ok := req.BasicAuth(); !ok || password != requiredPass {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		handler.ServeHTTP(w, req)
 	})
 }

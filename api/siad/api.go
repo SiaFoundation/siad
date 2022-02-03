@@ -44,7 +44,6 @@ type (
 	}
 )
 
-// A server serves the renter API.
 type server struct {
 	w  Wallet
 	s  Syncer
@@ -118,8 +117,14 @@ func (s *server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ h
 	txn, toSign := wsr.Transaction, wsr.ToSign
 	if len(toSign) == 0 {
 		// lazy mode: add standard sigs for every input we own
-		for _, input := range txn.SiacoinInputs {
-			toSign = append(toSign, input.Parent.ID)
+		addrs := make(map[types.Address]bool)
+		for _, addr := range s.w.Addresses() {
+			addrs[addr] = true
+		}
+		for _, sci := range txn.SiacoinInputs {
+			if addrs[types.PolicyAddress(sci.SpendPolicy)] {
+				toSign = append(toSign, sci.Parent.ID)
+			}
 		}
 	}
 
@@ -183,8 +188,8 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 	}
 }
 
-// NewServer returns a new http handler for the siad API endpoints.
-func NewServer(authPassword string, cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Handler {
+// NewServer returns an HTTP handler that serves the siad API.
+func NewServer(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Handler {
 	srv := server{
 		cm: cm,
 		s:  s,
@@ -205,5 +210,5 @@ func NewServer(authPassword string, cm ChainManager, s Syncer, w Wallet, tp Tran
 	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
 	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
 
-	return api.AuthMiddleware(mux, authPassword)
+	return mux
 }

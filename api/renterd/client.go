@@ -67,8 +67,8 @@ func (c *Client) SyncerConnect(addr string) (err error) {
 	return
 }
 
-// NewClient returns a client that communicates with a renterd server listening on
-// the specified address.
+// NewClient returns a client that communicates with a renterd server listening
+// on the specified address.
 func NewClient(addr, password string) *Client {
 	return &Client{
 		c: api.Client{
