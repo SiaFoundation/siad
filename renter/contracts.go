@@ -22,7 +22,7 @@ func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFund
 		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
 	}
 
-	outputAddr := s.wallet.Address()
+	renterAddr := s.wallet.Address()
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to generate address: %w", err)
 	}
@@ -35,6 +35,7 @@ func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFund
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to get settings: %w", err)
 	}
+	hostAddr := settings.Address
 
 	// if the host's collateral is more than their max collateral, the contract
 	// will be rejected.
@@ -48,33 +49,21 @@ func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFund
 
 	// build the contract.
 	fc := types.FileContract{
-		ValidRenterOutput: types.SiacoinOutput{
-			Value:   renterFunds,
-			Address: outputAddr,
-		},
-		MissedRenterOutput: types.SiacoinOutput{
-			Value:   renterFunds,
-			Address: outputAddr,
-		},
-		ValidHostOutput: types.SiacoinOutput{
-			Value:   hostPayout,
-			Address: settings.Address,
-		},
-		MissedHostOutput: types.SiacoinOutput{
-			Value:   hostPayout,
-			Address: settings.Address,
-		},
-		WindowStart:     endHeight,
-		WindowEnd:       endHeight + settings.WindowSize,
-		RenterPublicKey: renterPub,
-		HostPublicKey:   s.hostKey,
+		Filesize:           0,
+		WindowStart:        endHeight,
+		WindowEnd:          endHeight + settings.WindowSize,
+		ValidRenterOutput:  types.SiacoinOutput{Value: renterFunds, Address: renterAddr},
+		ValidHostOutput:    types.SiacoinOutput{Value: hostPayout, Address: hostAddr},
+		MissedRenterOutput: types.SiacoinOutput{Value: renterFunds, Address: renterAddr},
+		MissedHostOutput:   types.SiacoinOutput{Value: hostPayout, Address: hostAddr},
+		RenterPublicKey:    renterPub,
+		HostPublicKey:      s.hostKey,
 	}
 
 	txn := types.Transaction{
 		FileContracts: []types.FileContract{fc},
 	}
-	// TODO: better fee calculation.
-	txn.MinerFee = settings.TxnFeeMaxRecommended.Mul64(vc.TransactionWeight(txn))
+	txn.MinerFee = s.tpool.RecommendedFee().Mul64(vc.TransactionWeight(txn))
 	// fund the formation transaction with the renter funds + contract fee +
 	// siafund tax + miner fee.
 	renterFundAmount := renterFunds.Add(settings.ContractFee).Add(vc.FileContractTax(fc)).Add(txn.MinerFee)
@@ -94,7 +83,7 @@ func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFund
 		return rhp.Contract{}, nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Minute * 2))
+	stream.SetDeadline(time.Now().Add(2 * time.Minute))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCFormContractID, req); err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to write form contract request: %w", err)
@@ -153,6 +142,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to use settings: %w", err)
 	}
+	hostAddr := settings.Address
 	vc, err := s.cm.TipContext()
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to get validation context: %w", err)
@@ -161,7 +151,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	if endHeight < startHeight {
 		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
 	}
-	outputAddr := s.wallet.Address()
+	renterAddr := s.wallet.Address()
 	if err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to generate address: %w", err)
 	}
@@ -189,29 +179,19 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	// The host valid output includes the contract fee, base storage revenue,
 	// base collateral, and additional collateral. In the event of failure
 	// the base collateral and base storage cost should be burned.
+	validHostPayout := settings.ContractFee.Add(baseStorageCost).Add(totalCollateral)
+	missedHostPayout := settings.ContractFee.Add(additionalCollateral)
 	renewal := types.FileContract{
-		Filesize:        contract.Revision.Filesize,
-		FileMerkleRoot:  contract.Revision.FileMerkleRoot,
-		WindowStart:     endHeight,
-		WindowEnd:       endHeight + settings.WindowSize,
-		RenterPublicKey: contract.Revision.RenterPublicKey,
-		HostPublicKey:   contract.Revision.HostPublicKey,
-		ValidHostOutput: types.SiacoinOutput{
-			Address: settings.Address,
-			Value:   settings.ContractFee.Add(baseStorageCost).Add(totalCollateral),
-		},
-		MissedHostOutput: types.SiacoinOutput{
-			Address: settings.Address,
-			Value:   settings.ContractFee.Add(additionalCollateral),
-		},
-		ValidRenterOutput: types.SiacoinOutput{
-			Address: outputAddr,
-			Value:   additionalRenterFunds,
-		},
-		MissedRenterOutput: types.SiacoinOutput{
-			Address: outputAddr,
-			Value:   additionalRenterFunds,
-		},
+		Filesize:           contract.Revision.Filesize,
+		FileMerkleRoot:     contract.Revision.FileMerkleRoot,
+		WindowStart:        endHeight,
+		WindowEnd:          endHeight + settings.WindowSize,
+		ValidRenterOutput:  types.SiacoinOutput{Address: renterAddr, Value: additionalRenterFunds},
+		ValidHostOutput:    types.SiacoinOutput{Address: hostAddr, Value: validHostPayout},
+		MissedRenterOutput: types.SiacoinOutput{Address: renterAddr, Value: additionalRenterFunds},
+		MissedHostOutput:   types.SiacoinOutput{Address: hostAddr, Value: missedHostPayout},
+		RenterPublicKey:    contract.Revision.RenterPublicKey,
+		HostPublicKey:      contract.Revision.HostPublicKey,
 	}
 
 	// create the clear and renew transaction. No signatures should be present
@@ -224,7 +204,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		FileContracts: []types.FileContract{renewal},
 	}
 	// TODO: better fee calculation
-	renewalTxn.MinerFee = settings.TxnFeeMaxRecommended.Mul64(vc.TransactionWeight(renewalTxn))
+	renewalTxn.MinerFee = s.tpool.RecommendedFee().Mul64(vc.TransactionWeight(renewalTxn))
 	// Fund the renew and clear transaction. The renter is responsible for the
 	// renter funds, contract fee, base storage cost, siafund tax, and miner
 	// fee.
@@ -244,7 +224,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		return rhp.Contract{}, nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Minute * 2))
+	stream.SetDeadline(time.Now().Add(2 * time.Minute))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCRenewContractID, &settingsID); err != nil {
 		return rhp.Contract{}, nil, fmt.Errorf("failed to write RPC id: %w", err)

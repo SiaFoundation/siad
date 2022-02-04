@@ -28,7 +28,7 @@ func (s *Session) AccountBalance(accountID types.PublicKey, payment PaymentMetho
 		return types.ZeroCurrency, fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Second * 30))
+	stream.SetDeadline(time.Now().Add(30 * time.Second))
 
 	id, settings, err := s.currentSettings()
 	if err != nil {
@@ -73,7 +73,7 @@ func (s *Session) FundAccount(accountID types.PublicKey, amount types.Currency, 
 		return types.ZeroCurrency, fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Second * 30))
+	stream.SetDeadline(time.Now().Add(30 * time.Second))
 
 	id, settings, err := s.currentSettings()
 	if err != nil {
@@ -89,10 +89,10 @@ func (s *Session) FundAccount(accountID types.PublicKey, amount types.Currency, 
 		return types.ZeroCurrency, fmt.Errorf("failed to pay for account balance: %w", err)
 	}
 
-	err = rpc.WriteResponse(stream, &rhp.RPCFundAccountRequest{
+	req := &rhp.RPCFundAccountRequest{
 		AccountID: accountID,
-	})
-	if err != nil {
+	}
+	if err := rpc.WriteResponse(stream, req); err != nil {
 		return types.ZeroCurrency, fmt.Errorf("failed to write account balance request: %w", err)
 	}
 
@@ -115,7 +115,7 @@ func (s *Session) LatestRevision(contractID types.ElementID, payment PaymentMeth
 		return rhp.Contract{}, fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Second * 30))
+	stream.SetDeadline(time.Now().Add(30 * time.Second))
 
 	id, settings, err := s.currentSettings()
 	if err != nil {
@@ -156,7 +156,7 @@ func (s *Session) RegisterSettings(payment PaymentMethod) (settings rhp.HostSett
 		return rhp.HostSettings{}, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Second * 30))
+	stream.SetDeadline(time.Now().Add(30 * time.Second))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCSettingsID, nil); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to write settings request: %w", err)
@@ -165,16 +165,13 @@ func (s *Session) RegisterSettings(payment PaymentMethod) (settings rhp.HostSett
 	var resp rhp.RPCSettingsResponse
 	if err := rpc.ReadResponse(stream, &resp); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to read settings response: %w", err)
-	}
-
-	if err := json.Unmarshal(resp.Settings, &settings); err != nil {
+	} else if err := json.Unmarshal(resp.Settings, &settings); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to decode settings: %w", err)
 	}
 
 	if err := s.pay(stream, payment, settings.RPCHostSettingsCost); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to pay for settings: %w", err)
 	}
-
 	var registerResp rhp.RPCSettingsRegisteredResponse
 	if err = rpc.ReadResponse(stream, &registerResp); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to read tracking response: %w", err)
@@ -186,13 +183,13 @@ func (s *Session) RegisterSettings(payment PaymentMethod) (settings rhp.HostSett
 }
 
 // ScanSettings returns the current settings for the host.
-func (s *Session) ScanSettings() (settings rhp.HostSettings, _ error) {
+func (s *Session) ScanSettings() (rhp.HostSettings, error) {
 	stream, err := s.session.DialStream()
 	if err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to open stream: %w", err)
 	}
 	defer stream.Close()
-	stream.SetDeadline(time.Now().Add(time.Second * 30))
+	stream.SetDeadline(time.Now().Add(30 * time.Second))
 
 	if err := rpc.WriteRequest(stream, rhp.RPCSettingsID, nil); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to write settings request: %w", err)
@@ -203,8 +200,9 @@ func (s *Session) ScanSettings() (settings rhp.HostSettings, _ error) {
 		return rhp.HostSettings{}, fmt.Errorf("failed to read settings response: %w", err)
 	}
 
+	var settings rhp.HostSettings
 	if err := json.Unmarshal(resp.Settings, &settings); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to decode settings: %w", err)
 	}
-	return
+	return settings, nil
 }

@@ -16,7 +16,7 @@ type (
 	// an upcoming block.
 	TransactionPool interface {
 		AddTransactionSet(txns []types.Transaction) error
-		FeeEstimate() (min, max types.Currency, err error)
+		RecommendedFee() types.Currency
 	}
 
 	// A Wallet provides addresses and funds and signs transactions.
@@ -28,7 +28,7 @@ type (
 	}
 )
 
-// A Session is an implementation of the renter side of the renter-host protocol.
+// A Session implements of the renter side of the renter-host protocol.
 type Session struct {
 	hostKey types.PublicKey
 
@@ -48,25 +48,24 @@ func (s *Session) currentSettings() (rhp.SettingsID, rhp.HostSettings, error) {
 	return s.settingsID, s.settings, nil
 }
 
-// NewSession initiates a new RHP session with the host.
-func NewSession(netaddress string, hostKey types.PublicKey, w Wallet, tp TransactionPool, cm *chain.Manager) (*Session, error) {
-	conn, err := net.Dial("tcp", netaddress)
+// NewSession initiates an RHP session with the specified host.
+func NewSession(hostIP string, hostKey types.PublicKey, w Wallet, tp TransactionPool, cm *chain.Manager) (*Session, error) {
+	conn, err := net.Dial("tcp", hostIP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open connection: %w", err)
 	}
-
-	s := &Session{
-		hostKey: hostKey,
-
-		cm:     cm,
-		wallet: w,
-		tpool:  tp,
-	}
-
-	s.session, err = rhp.DialSession(conn, hostKey)
+	conn.SetDeadline(time.Now().Add(30 * time.Second))
+	sess, err := rhp.DialSession(conn, hostKey)
 	if err != nil {
+		conn.Close()
 		return nil, fmt.Errorf("failed to start session: %w", err)
 	}
+	return &Session{
+		hostKey: hostKey,
 
-	return s, nil
+		wallet:  w,
+		tpool:   tp,
+		cm:      cm,
+		session: sess,
+	}, nil
 }

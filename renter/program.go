@@ -33,9 +33,8 @@ type (
 	OnOutputFunc func(rhp.RPCExecuteInstrResponse, io.Reader) error
 )
 
-// NoopOnOutput should be used as the output func when executing a Program where
-// the output is not necessary.
-var NoopOnOutput = func(rhp.RPCExecuteInstrResponse, io.Reader) error { return nil }
+// NoopOnOutput is an OnOutputFunc that ignores the output of a Program.
+func NoopOnOutput(rhp.RPCExecuteInstrResponse, io.Reader) error { return nil }
 
 // ExecuteProgram executes the program on the renter. execute is called for each
 // successfully executed instruction; the reader passed to execute is only valid
@@ -43,15 +42,13 @@ var NoopOnOutput = func(rhp.RPCExecuteInstrResponse, io.Reader) error { return n
 // The program must be fully executed for any changes to be committed. If an
 // instruction fails, the program is rolled back.
 //
-// ContractRevision and RenterKey may be nil if the program does not require a
-// contract or finalization.
+// The Session's ContractRevision and RenterKey may be nil if the program does
+// not require a contract or finalization.
 func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentMethod, onOutput OnOutputFunc) error {
 	if (program.RequiresContract || program.RequiresFinalization) && program.Contract == nil {
 		return errors.New("contract required for read-write programs")
 	} else if (program.RequiresContract || program.RequiresFinalization) && len(program.RenterKey) != 64 {
 		return errors.New("contract key is required for read-write programs")
-	} else if onOutput == nil {
-		onOutput = NoopOnOutput
 	}
 
 	stream, err := s.session.DialStream()
@@ -59,7 +56,6 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		return fmt.Errorf("failed to open new stream: %w", err)
 	}
 	defer stream.Close()
-	// set the initial deadline
 	stream.SetDeadline(time.Now().Add(time.Minute))
 
 	id, _, err := s.currentSettings()
@@ -92,7 +88,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	var response rhp.RPCExecuteInstrResponse
 	for i := range program.Instructions {
 		// reset the deadline for each executed instruction.
-		stream.SetDeadline(time.Now().Add(time.Minute * 5))
+		stream.SetDeadline(time.Now().Add(5 * time.Minute))
 		if err = rpc.ReadResponse(stream, &response); err != nil {
 			return fmt.Errorf("failed to read execute program response %v: %w", i, err)
 		} else if response.Error != nil {
@@ -116,7 +112,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	}
 
 	// reset the deadline for contract finalization.
-	stream.SetDeadline(time.Now().Add(time.Minute * 2))
+	stream.SetDeadline(time.Now().Add(2 * time.Minute))
 
 	// Finalize the program by updating the contract revision with additional
 	// collateral. The additional collateral and storage revenue must be
@@ -127,9 +123,9 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		return fmt.Errorf("failed to revise contract: %w", err)
 	}
 
-	// set the new data merkle root and size
-	rev.FileMerkleRoot = response.NewMerkleRoot
+	// update the filesize and Merkle root
 	rev.Filesize = response.NewDataSize
+	rev.FileMerkleRoot = response.NewMerkleRoot
 
 	vc, err := s.cm.TipContext()
 	if err != nil {

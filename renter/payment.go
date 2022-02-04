@@ -31,7 +31,6 @@ type (
 	}
 )
 
-// implements the PaymentMethod interface.
 func (p *payByEphemeralAccount) isPayment() {}
 func (p *payByContract) isPayment()         {}
 
@@ -113,11 +112,11 @@ func (s *Session) pay(stream *mux.Stream, payment PaymentMethod, amount types.Cu
 	case *payByContract:
 		return s.payByContract(stream, p, amount)
 	default:
-		return fmt.Errorf("unrecognized payment method: %T", payment)
+		panic(fmt.Errorf("unhandled payment method: %T", payment))
 	}
 }
 
-// PayByContract creates a new contract payment method.
+// PayByContract returns a PaymentMethod that revises the provided contract.
 func (s *Session) PayByContract(contract *rhp.Contract, priv types.PrivateKey, refundAccountID types.PublicKey) PaymentMethod {
 	return &payByContract{
 		contract:        contract,
@@ -127,7 +126,8 @@ func (s *Session) PayByContract(contract *rhp.Contract, priv types.PrivateKey, r
 	}
 }
 
-// PayByEphemeralAccount creates a new ephemeral account payment method.
+// PayByEphemeralAccount returns a PaymentMethod that withdraws funds from the
+// specified ephemeral account.
 func (s *Session) PayByEphemeralAccount(accountID types.PublicKey, priv types.PrivateKey, expiry uint64) PaymentMethod {
 	return &payByEphemeralAccount{
 		accountID: accountID,
