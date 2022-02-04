@@ -206,10 +206,11 @@ func (p *Pool) Transactions() []types.Transaction {
 	return txns
 }
 
-// FeeEstimate returns the minimum and maximum fee estimate required to
-// broadcast a transaction.
-func (p *Pool) FeeEstimate() (min, max types.Currency, _ error) {
-	return
+// RecommendedFee returns the recommended fee (per weight unit) to ensure a high
+// probability of inclusion in the next block.
+func (p *Pool) RecommendedFee() types.Currency {
+	// TODO: calculate based on current pool, prior blocks, and absolute min/max
+	return types.Siacoins(1).Div64(1000)
 }
 
 // ProcessChainApplyUpdate implements chain.Subscriber.
