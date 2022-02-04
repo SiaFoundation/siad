@@ -206,6 +206,13 @@ func (p *Pool) Transactions() []types.Transaction {
 	return txns
 }
 
+// RecommendedFee returns the recommended fee (per weight unit) to ensure a high
+// probability of inclusion in the next block.
+func (p *Pool) RecommendedFee() types.Currency {
+	// TODO: calculate based on current pool, prior blocks, and absolute min/max
+	return types.Siacoins(1).Div64(1000)
+}
+
 // ProcessChainApplyUpdate implements chain.Subscriber.
 func (p *Pool) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 	p.mu.Lock()

@@ -105,6 +105,17 @@ func (w *HotWallet) Address() types.Address {
 	return types.StandardAddress(w.seed.PublicKey(index))
 }
 
+// SpendPolicy returns the spend policy of the address, if known to the wallet.
+func (w *HotWallet) SpendPolicy(addr types.Address) (types.SpendPolicy, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	i, ok := w.store.AddressIndex(addr)
+	if !ok {
+		return nil, false
+	}
+	return types.PolicyPublicKey(w.seed.PublicKey(i)), true
+}
+
 // NextAddress returns an address controlled by the wallet.
 func (w *HotWallet) NextAddress() types.Address {
 	w.mu.Lock()

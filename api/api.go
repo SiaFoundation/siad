@@ -1,48 +1,75 @@
 package api
 
 import (
-	"go.sia.tech/core/types"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
 )
 
-// WalletBalance is the response to /wallet/balance. It contains the confirmed
-// Siacoin and Siafund balance of the wallet.
-type WalletBalance struct {
-	Siacoins types.Currency `json:"siacoins"`
+// A Client communicates with a Sia API server.
+type Client struct {
+	BaseURL      string
+	AuthPassword string
 }
 
-// WalletAddress is the response to /wallet/address.
-type WalletAddress struct {
-	Address types.Address `json:"address"`
+func (c *Client) req(method string, route string, data, resp interface{}) error {
+	var body io.Reader
+	if data != nil {
+		js, _ := json.Marshal(data)
+		body = bytes.NewReader(js)
+	}
+	req, err := http.NewRequest(method, fmt.Sprintf("%v%v", c.BaseURL, route), body)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth("", c.AuthPassword)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer io.Copy(ioutil.Discard, r.Body)
+	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		err, _ := ioutil.ReadAll(r.Body)
+		return errors.New(string(err))
+	}
+	if resp == nil {
+		return nil
+	}
+	return json.NewDecoder(r.Body).Decode(resp)
 }
 
-// WalletAddresses is a list of addresses owned by the wallet.
-type WalletAddresses []types.Address
+// Get performs a GET request to the API endpoint.
+func (c *Client) Get(route string, r interface{}) error { return c.req("GET", route, nil, r) }
 
-// A WalletSignRequest is sent to the /wallet/sign endpoint to sign a transaction.
-type WalletSignRequest struct {
-	ToSign      []types.ElementID `json:"toSign"`
-	Transaction types.Transaction `json:"transaction"`
+// Post performs a POST request to the API endpoint.
+func (c *Client) Post(route string, d, r interface{}) error { return c.req("POST", route, d, r) }
+
+// Put performs a PUT request to the API endpoint.
+func (c *Client) Put(route string, d interface{}) error { return c.req("PUT", route, d, nil) }
+
+// Delete performs a DELETE request to the API endpoint.
+func (c *Client) Delete(route string) error { return c.req("DELETE", route, nil, nil) }
+
+// WriteJSON writes the JSON encoded object to the http response.
+func WriteJSON(w http.ResponseWriter, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.Encode(v)
 }
 
-// A WalletTransaction is a transaction in the wallet.
-type WalletTransaction struct {
-	Transaction types.Transaction `json:"transaction"`
-}
-
-// TxpoolBroadcastRequest is the request for the /txpool/broadcast endpoint.
-// It contains the transaction to broadcast and the transactions that it
-// depends on.
-type TxpoolBroadcastRequest struct {
-	DependsOn   []types.Transaction `json:"dependsOn"`
-	Transaction types.Transaction   `json:"transaction"`
-}
-
-// A SyncerPeer is a unique peer that is being used by the syncer.
-type SyncerPeer struct {
-	NetAddress string `json:"netAddress"`
-}
-
-// A SyncerConnectRequest requests that the syncer connect to a peer.
-type SyncerConnectRequest struct {
-	NetAddress string `json:"netAddress"`
+// AuthMiddleware enforces HTTP Basic Authentication on the provided handler.
+func AuthMiddleware(handler http.Handler, requiredPass string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if _, password, ok := req.BasicAuth(); !ok || password != requiredPass {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+		handler.ServeHTTP(w, req)
+	})
 }

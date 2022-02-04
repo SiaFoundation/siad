@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"go.sia.tech/core/types"
-	"go.sia.tech/siad/v2/api"
+	"go.sia.tech/siad/v2/api/siad"
+	"golang.org/x/crypto/ssh/terminal"
 
 	"lukechampine.com/flagg"
 )
@@ -127,11 +128,12 @@ func check(ctx string, err error) {
 
 var siadAddr string
 
-func getClient() *api.Client {
+func getClient() *siad.Client {
+	password := getAPIPassword()
 	if !strings.HasPrefix(siadAddr, "https://") && !strings.HasPrefix(siadAddr, "http://") {
 		siadAddr = "http://" + siadAddr
 	}
-	c := api.NewClient(siadAddr)
+	c := siad.NewClient(siadAddr, password)
 	_, err := c.WalletBalance()
 	check("Couldn't connect to siad:", err)
 	return c
@@ -162,6 +164,22 @@ func writeTxn(filename string, txn types.Transaction) {
 	js = append(js, '\n')
 	err := os.WriteFile(filename, js, 0666)
 	check("Could not write transaction to disk", err)
+}
+
+func getAPIPassword() string {
+	apiPassword := os.Getenv("SIAD_API_PASSWORD")
+	if len(apiPassword) == 0 {
+		fmt.Print("Enter API password: ")
+		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			log.Fatal(err)
+		}
+		apiPassword = string(pw)
+	} else {
+		fmt.Println("Using SIAD_API_PASSWORD environment variable.")
+	}
+	return apiPassword
 }
 
 func main() {

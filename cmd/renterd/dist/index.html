@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sia Web</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		html,
+		body {
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+		}
+
+		body {
+			display: flex;
+			font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+			font-size: 14px;
+			line-height: 1.42857143;
+			color: #333;
+			background-color: rgb(238, 238, 238);
+			align-items: center;
+			justify-content: center;
+			flex-direction: column;
+		}
+
+		h1,
+		h4 {
+			margin: 0;
+		}
+
+		.hidden {
+			display: none;
+		}
+	</style>
+</head>
+
+<body>
+	<form id="password-form">
+		<p class="error hidden" id="errorMsg"></p>
+		<label>API Password:</label>
+		<input type="password" id="apiPassword" />
+		<button>Set</button>
+	</form>
+	<h1 id="balance" class="hidden">Balance: 0 SC</h1>
+	<p id="updating-in"></p>
+	<script type="text/javascript">
+		async function getWalletBalance(password) {
+			const resp = await fetch('/api/wallet/balance', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Basic ' + btoa(`:${password}`)
+					}
+				});
+			
+			if (resp.status !== 200)
+				throw new Error(await resp.text());
+			
+			const body = await resp.json(),
+				fmt = new Intl.NumberFormat([], {
+					type: 'decimal',
+					minimumFractionDigits: 4
+				});
+			document.getElementById('balance').innerHTML = `Balance: ${fmt.format(body.siacoins / 1e24)} SC`;
+		}
+
+		document.querySelector('form').addEventListener('submit', async function(e) {
+			e.preventDefault();
+			try {
+				const password = document.getElementById("apiPassword").value;
+				await getWalletBalance(password);
+				document.getElementById('password-form').classList.add('hidden');
+				document.getElementById('balance').classList.remove('hidden');
+
+				setInterval(() => getWalletBalance(password), 1000);
+			} catch (ex) {
+				const errMsg = document.getElementById('errorMsg');
+				errMsg.classList.remove('hidden');
+				errMsg.innerText = ex.message;
+			}
+			return false;
+		});
+	</script>
+</body>
+
+</html>
