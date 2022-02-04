@@ -13,20 +13,13 @@ import (
 // FormContract negotiates a new contract with the host using the specified
 // funds and duration.
 func (s *Session) FormContract(renterKey types.PrivateKey, hostFunds, renterFunds types.Currency, endHeight uint64) (rhp.Contract, []types.Transaction, error) {
-	vc, err := s.cm.TipContext()
-	if err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to get validation context: %w", err)
-	}
+	vc := s.cm.TipContext()
 	startHeight := vc.Index.Height
 	if endHeight < startHeight {
 		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
 	}
 
 	renterAddr := s.wallet.Address()
-	if err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to generate address: %w", err)
-	}
-
 	renterPub := renterKey.PublicKey()
 
 	// retrieve the host's current settings. The host is not expecting
@@ -143,18 +136,12 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		return rhp.Contract{}, nil, fmt.Errorf("failed to use settings: %w", err)
 	}
 	hostAddr := settings.Address
-	vc, err := s.cm.TipContext()
-	if err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to get validation context: %w", err)
-	}
+	vc := s.cm.TipContext()
 	startHeight := vc.Index.Height
 	if endHeight < startHeight {
 		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
 	}
 	renterAddr := s.wallet.Address()
-	if err != nil {
-		return rhp.Contract{}, nil, fmt.Errorf("failed to generate address: %w", err)
-	}
 	current := contract.Revision
 
 	// calculate the "base" storage cost to the renter and risked collateral for

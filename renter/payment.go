@@ -40,12 +40,8 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 		return fmt.Errorf("failed to revise contract: %w", err)
 	}
 
-	vc, err := s.cm.TipContext()
-	if err != nil {
-		return fmt.Errorf("failed to get current validation context: %w", err)
-	}
-
 	// sign the revision and send it to the host.
+	vc := s.cm.TipContext()
 	revisionHash := vc.ContractSigHash(revision)
 	req := &rhp.PayByContractRequest{
 		RefundAccount: payment.refundAccountID,

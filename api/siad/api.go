@@ -40,7 +40,7 @@ type (
 
 	// A ChainManager manages blockchain state.
 	ChainManager interface {
-		TipContext() (consensus.ValidationContext, error)
+		TipContext() consensus.ValidationContext
 	}
 )
 
@@ -128,13 +128,7 @@ func (s *server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ h
 		}
 	}
 
-	vc, err := s.cm.TipContext()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := s.w.SignTransaction(vc, &txn, nil); err != nil {
+	if err := s.w.SignTransaction(s.cm.TipContext(), &txn, nil); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

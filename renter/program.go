@@ -127,11 +127,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	rev.Filesize = response.NewDataSize
 	rev.FileMerkleRoot = response.NewMerkleRoot
 
-	vc, err := s.cm.TipContext()
-	if err != nil {
-		return fmt.Errorf("failed to get current validation context: %w", err)
-	}
-
+	vc := s.cm.TipContext()
 	contractHash := vc.ContractSigHash(rev)
 	req := rhp.RPCFinalizeProgramRequest{
 		Signature:         program.RenterKey.SignHash(contractHash),
