@@ -48,6 +48,11 @@ func (s *Session) currentSettings() (rhp.SettingsID, rhp.HostSettings, error) {
 	return s.settingsID, s.settings, nil
 }
 
+// Close ends the RHP session and closes the underlying connection.
+func (s *Session) Close() error {
+	return s.session.Close()
+}
+
 // NewSession initiates an RHP session with the specified host.
 func NewSession(hostIP string, hostKey types.PublicKey, w Wallet, tp TransactionPool, cm *chain.Manager) (*Session, error) {
 	conn, err := net.Dial("tcp", hostIP)
