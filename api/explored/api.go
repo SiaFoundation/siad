@@ -84,21 +84,21 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 	}
 }
 
-func (s *server) consensusHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	ctx := s.cm.TipContext()
+func (s *server) consensusTipHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	vc := s.cm.TipContext()
 	api.WriteJSON(w, Consensus{
-		ctx.Index,
-		ctx.TotalWork,
-		ctx.Difficulty,
-		ctx.OakWork,
-		ctx.OakTime,
-		ctx.GenesisTimestamp,
-		ctx.SiafundPool,
-		ctx.FoundationAddress,
+		vc.Index,
+		vc.TotalWork,
+		vc.Difficulty,
+		vc.OakWork,
+		vc.OakTime,
+		vc.GenesisTimestamp,
+		vc.SiafundPool,
+		vc.FoundationAddress,
 	})
 }
 
-// NewServer returns an HTTP handler that serves the siad API.
+// NewServer returns an HTTP handler that serves the explored API.
 func NewServer(cm ChainManager, s Syncer, tp TransactionPool) http.Handler {
 	srv := server{
 		cm: cm,
@@ -113,7 +113,7 @@ func NewServer(cm ChainManager, s Syncer, tp TransactionPool) http.Handler {
 	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
 	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
 
-	mux.GET("/api/consensus", srv.consensusHandler)
+	mux.GET("/api/consensus/tip", srv.consensusTipHandler)
 
 	return mux
 }

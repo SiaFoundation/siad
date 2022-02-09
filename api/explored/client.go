@@ -5,7 +5,7 @@ import (
 	"go.sia.tech/siad/v2/api"
 )
 
-// A Client provides methods for interacting with a siad API server.
+// A Client provides methods for interacting with a explored API server.
 type Client struct {
 	c api.Client
 }
@@ -40,7 +40,7 @@ func (c *Client) Consensus() (resp Consensus, err error) {
 	return
 }
 
-// NewClient returns a client that communicates with a siad server listening on
+// NewClient returns a client that communicates with a explored server listening on
 // the specified address.
 func NewClient(addr, password string) *Client {
 	return &Client{

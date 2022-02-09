@@ -1,16 +1,13 @@
 package main
 
 import (
-	"context"
 	"encoding/hex"
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +15,6 @@ import (
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api/explored"
-	"go.sia.tech/siad/v2/p2p"
 )
 
 var (
@@ -50,7 +46,6 @@ func main() {
 	gatewayAddr := flag.String("addr", ":0", "address to listen on")
 	apiAddr := flag.String("http", "localhost:9980", "address to serve API on")
 	dir := flag.String("dir", ".", "directory to store node state in")
-	checkpoint := flag.String("checkpoint", "", "checkpoint to bootstrap from")
 	bootstrap := flag.String("bootstrap", "", "peer address or explorer URL to bootstrap from")
 	flag.Parse()
 
@@ -59,35 +54,7 @@ func main() {
 		return
 	}
 
-	initCheckpoint := genesis
-	if *checkpoint != "" {
-		index, ok := parseIndex(*checkpoint)
-		if !ok {
-			log.Fatal("Invalid checkpoint")
-		}
-		if *bootstrap == "" {
-			log.Fatal("Must specify -bootstrap to download checkpoint from")
-		}
-		fmt.Printf("Downloading checkpoint %v from %v...", index, *bootstrap)
-		c, err := p2p.DownloadCheckpoint(context.Background(), *bootstrap, genesisBlock.ID(), index)
-		if err != nil {
-			fmt.Println()
-			log.Fatal(err)
-		}
-		fmt.Println("Success!")
-		initCheckpoint = c
-
-		// overwrite existing stores
-		// TODO: if existing stores are present, require -force flag
-		if err := os.RemoveAll(filepath.Join(*dir, "chain")); err != nil {
-			log.Fatal(err)
-		}
-		if err := os.RemoveAll(filepath.Join(*dir, "wallet")); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	n, err := newNode(*gatewayAddr, *dir, initCheckpoint)
+	n, err := newNode(*gatewayAddr, *dir, genesis)
 	if err != nil {
 		log.Fatal(err)
 	}
