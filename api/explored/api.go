@@ -24,15 +24,14 @@ type SyncerConnectRequest struct {
 	NetAddress string `json:"netAddress"`
 }
 
-// A Consensus contains information about the current block.
-type Consensus struct {
+// ConsensusTipResponse contains information about the current consensus state.
+type ConsensusTipResponse struct {
 	Index types.ChainIndex
 
-	TotalWork        types.Work
-	Difficulty       types.Work
-	OakWork          types.Work
-	OakTime          time.Duration
-	GenesisTimestamp time.Time
+	TotalWork  types.Work
+	Difficulty types.Work
+	OakWork    types.Work
+	OakTime    time.Duration
 
 	SiafundPool       types.Currency
 	FoundationAddress types.Address

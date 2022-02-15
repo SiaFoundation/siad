@@ -34,9 +34,9 @@ func (c *Client) SyncerConnect(addr string) (err error) {
 	return
 }
 
-// Consensus reports information about the current block.
-func (c *Client) Consensus() (resp Consensus, err error) {
-	err = c.c.Get("/api/consensus", &resp)
+// ConsensusTip reports information about the current consensus state.
+func (c *Client) ConsensusTip() (resp ConsensusTipResponse, err error) {
+	err = c.c.Get("/api/consensus/tip", &resp)
 	return
 }
 

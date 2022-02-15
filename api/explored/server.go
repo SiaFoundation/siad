@@ -86,15 +86,14 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 
 func (s *server) consensusTipHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	vc := s.cm.TipContext()
-	api.WriteJSON(w, Consensus{
-		vc.Index,
-		vc.TotalWork,
-		vc.Difficulty,
-		vc.OakWork,
-		vc.OakTime,
-		vc.GenesisTimestamp,
-		vc.SiafundPool,
-		vc.FoundationAddress,
+	api.WriteJSON(w, ConsensusTipResponse{
+		Index:             vc.Index,
+		TotalWork:         vc.TotalWork,
+		Difficulty:        vc.Difficulty,
+		OakWork:           vc.OakWork,
+		OakTime:           vc.OakTime,
+		SiafundPool:       vc.SiafundPool,
+		FoundationAddress: vc.FoundationAddress,
 	})
 }
 
