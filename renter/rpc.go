@@ -206,3 +206,252 @@ func (s *Session) ScanSettings() (rhp.HostSettings, error) {
 	}
 	return settings, nil
 }
+
+// FormContract negotiates a new contract with the host using the specified
+// funds and duration.
+func (s *Session) FormContract(renterKey types.PrivateKey, hostCollateral, renterAllowance types.Currency, settings rhp.HostSettings, endHeight uint64) (rhp.Contract, []types.Transaction, error) {
+	renterAddr := s.wallet.Address()
+	renterPub := renterKey.PublicKey()
+	hostAddr := settings.Address
+
+	vc := s.cm.TipContext()
+	startHeight := vc.Index.Height
+	if endHeight < startHeight {
+		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
+	}
+
+	hostPayout := hostCollateral.Add(settings.ContractFee)
+	fc := types.FileContract{
+		Filesize:           0,
+		WindowStart:        endHeight,
+		WindowEnd:          endHeight + settings.WindowSize,
+		ValidRenterOutput:  types.SiacoinOutput{Value: renterAllowance, Address: renterAddr},
+		ValidHostOutput:    types.SiacoinOutput{Value: hostPayout, Address: hostAddr},
+		MissedRenterOutput: types.SiacoinOutput{Value: renterAllowance, Address: renterAddr},
+		MissedHostOutput:   types.SiacoinOutput{Value: hostPayout, Address: hostAddr},
+		RenterPublicKey:    renterPub,
+		HostPublicKey:      s.hostKey,
+	}
+
+	if err := rhp.ValidateContractFormation(fc, startHeight, settings); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("contract formation invalid: %w", err)
+	}
+
+	sigHash := vc.ContractSigHash(fc)
+	fc.RenterSignature = renterKey.SignHash(sigHash)
+
+	txn := types.Transaction{
+		FileContracts: []types.FileContract{fc},
+	}
+	txn.MinerFee = s.tpool.RecommendedFee().Mul64(vc.TransactionWeight(txn))
+	// fund the formation transaction with the renter allowance, contract fee,
+	// siafund tax, and miner fee.
+	renterFundAmount := renterAllowance.Add(settings.ContractFee).Add(vc.FileContractTax(fc)).Add(txn.MinerFee)
+	toSign, cleanup, err := s.wallet.FundTransaction(&txn, renterFundAmount, nil)
+	if err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to fund transaction: %w", err)
+	}
+	defer cleanup()
+
+	stream, err := s.session.DialStream()
+	if err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to open stream: %w", err)
+	}
+	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(2 * time.Minute))
+
+	req := &rhp.RPCContractRequest{
+		Transactions: []types.Transaction{txn},
+	}
+	if err := rpc.WriteRequest(stream, rhp.RPCFormContractID, req); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to write form contract request: %w", err)
+	}
+
+	var resp rhp.RPCFormContractHostAdditions
+	if err := rpc.ReadResponse(stream, &resp); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to read host additions: %w", err)
+	} else if !s.hostKey.VerifyHash(sigHash, resp.ContractSignature) {
+		return rhp.Contract{}, nil, errors.New("host signature is invalid")
+	}
+
+	// add the host's additions to the transaction.
+	txn.SiacoinInputs = append(txn.SiacoinInputs, resp.Inputs...)
+	txn.SiacoinOutputs = append(txn.SiacoinOutputs, resp.Outputs...)
+	fc.HostSignature = resp.ContractSignature
+	txn.FileContracts[0] = fc
+
+	// sign the transaction and send the signatures to the host.
+	if err := s.wallet.SignTransaction(vc, &txn, toSign); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to sign transaction: %w", err)
+	}
+	renterSigs := rhp.RPCContractSignatures{
+		SiacoinInputSignatures: make([][]types.InputSignature, len(txn.SiacoinInputs)),
+	}
+	for i := range txn.SiacoinInputs {
+		renterSigs.SiacoinInputSignatures[i] = append(renterSigs.SiacoinInputSignatures[i], txn.SiacoinInputs[i].Signatures...)
+	}
+
+	if err := rpc.WriteResponse(stream, &renterSigs); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to write renter signatures: %w", err)
+	}
+
+	// read the host's signatures and add them to the transaction.
+	var hostSigs rhp.RPCContractSignatures
+	if err := rpc.ReadResponse(stream, &hostSigs); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to read host signatures: %w", err)
+	}
+	for i := range hostSigs.SiacoinInputSignatures {
+		txn.SiacoinInputs[i].Signatures = append(txn.SiacoinInputs[i].Signatures, hostSigs.SiacoinInputSignatures[i]...)
+	}
+
+	return rhp.Contract{
+		ID:       txn.FileContractID(0),
+		Revision: fc,
+	}, append(resp.Parents, txn), nil
+}
+
+// RenewContract finalizes and renews an existing contract with the host adding
+// additional funds and duration.
+func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileContractRevision, additionalCollateral, additionalRenterFunds types.Currency, endHeight uint64) (rhp.Contract, []types.Transaction, error) {
+	// contract renewal should use the registered settings ID.
+	settingsID, settings, err := s.currentSettings()
+	if err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to use settings: %w", err)
+	}
+	hostAddr := settings.Address
+	vc := s.cm.TipContext()
+	startHeight := vc.Index.Height
+	if endHeight < startHeight {
+		return rhp.Contract{}, nil, errors.New("end height must be greater than start height")
+	}
+	renterAddr := s.wallet.Address()
+
+	// calculate the "base" storage cost to the renter and risked collateral for
+	// the host for the data already in the contract. If the contract height did
+	// not increase, base costs are zero.
+	var baseStorageCost, baseCollateral types.Currency
+	if contractEnd := endHeight + settings.WindowSize; contractEnd > contract.Revision.WindowEnd {
+		extension := contractEnd - contract.Revision.WindowEnd
+		baseStorageCost = settings.StoragePrice.Mul64(contract.Revision.Filesize).Mul64(extension)
+		baseCollateral = settings.Collateral.Mul64(contract.Revision.Filesize).Mul64(extension)
+	}
+
+	// calculate the total collateral the host is expected to add to the
+	// contract.
+	totalCollateral := baseCollateral.Add(additionalCollateral)
+	if totalCollateral.Cmp(settings.MaxCollateral) > 0 {
+		return rhp.Contract{}, nil, errors.New("collateral too large")
+	}
+
+	// create the renewed contract
+	//
+	// The host valid output includes the contract fee, base storage revenue,
+	// base collateral, and additional collateral. In the event of failure
+	// the base collateral and base storage cost should be burned.
+	validHostPayout := settings.ContractFee.Add(baseStorageCost).Add(totalCollateral)
+	missedHostPayout := settings.ContractFee.Add(additionalCollateral)
+	renewal := types.FileContract{
+		Filesize:           contract.Revision.Filesize,
+		FileMerkleRoot:     contract.Revision.FileMerkleRoot,
+		WindowStart:        endHeight,
+		WindowEnd:          endHeight + settings.WindowSize,
+		ValidRenterOutput:  types.SiacoinOutput{Address: renterAddr, Value: additionalRenterFunds},
+		ValidHostOutput:    types.SiacoinOutput{Address: hostAddr, Value: validHostPayout},
+		MissedRenterOutput: types.SiacoinOutput{Address: renterAddr, Value: additionalRenterFunds},
+		MissedHostOutput:   types.SiacoinOutput{Address: hostAddr, Value: missedHostPayout},
+		RenterPublicKey:    contract.Revision.RenterPublicKey,
+		HostPublicKey:      contract.Revision.HostPublicKey,
+	}
+	renewalSigHash := vc.ContractSigHash(renewal)
+	renewal.RenterSignature = renterKey.SignHash(renewalSigHash)
+	// create a finalization revision that locks the contract to future
+	// revisions.
+	finalization := contract.Revision
+	finalization.RevisionNumber = types.MaxRevisionNumber
+	finalizationSigHash := vc.ContractSigHash(finalization)
+	finalization.RenterSignature = renterKey.SignHash(finalizationSigHash)
+
+	// create the renewal transaction. The transaction must include a resolution
+	// with a finalization revision and a new contract with a matching file size
+	// and merkle root. Both contracts must be signed by the renter, but input
+	// signatures should not be included yet.
+	renewalTxn := types.Transaction{
+		FileContractResolutions: []types.FileContractResolution{{
+			Parent:       contract.Parent,
+			Finalization: finalization,
+		}},
+		FileContracts: []types.FileContract{renewal},
+	}
+	// TODO: better fee calculation
+	renewalTxn.MinerFee = s.tpool.RecommendedFee().Mul64(vc.TransactionWeight(renewalTxn))
+	// Fund the renewal transaction. The renter is responsible for the renter
+	// funds, contract fee, base storage cost, siafund tax, and miner fee.
+	renterFundAmount := additionalRenterFunds.Add(settings.ContractFee).Add(baseStorageCost).Add(vc.FileContractTax(renewal)).Add(renewalTxn.MinerFee)
+	toSign, cleanup, err := s.wallet.FundTransaction(&renewalTxn, renterFundAmount, nil)
+	if err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to fund renewal transaction: %w", err)
+	}
+	defer cleanup()
+
+	stream, err := s.session.DialStream()
+	if err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to open stream: %w", err)
+	}
+	defer stream.Close()
+	stream.SetDeadline(time.Now().Add(2 * time.Minute))
+
+	req := &rhp.RPCContractRequest{
+		Transactions: []types.Transaction{renewalTxn},
+	}
+	if err := rpc.WriteRequest(stream, rhp.RPCRenewContractID, &settingsID); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to write RPC id: %w", err)
+	} else if err := rpc.WriteObject(stream, req); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to write request: %w", err)
+	}
+
+	var resp rhp.RPCRenewContractHostAdditions
+	if err := rpc.ReadResponse(stream, &resp); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to read host additions: %w", err)
+	} else if !s.hostKey.VerifyHash(finalizationSigHash, resp.FinalizationSignature) {
+		return rhp.Contract{}, nil, errors.New("host finalization signature is invalid")
+	} else if !s.hostKey.VerifyHash(renewalSigHash, resp.RenewalSignature) {
+		return rhp.Contract{}, nil, errors.New("host renewal signature is invalid")
+	}
+
+	// add the host's contract signatures to the transaction.
+	renewal.HostSignature = resp.RenewalSignature
+	finalization.HostSignature = resp.FinalizationSignature
+	renewalTxn.FileContracts[0] = renewal
+	renewalTxn.FileContractResolutions[0].Finalization = finalization
+	// add the host's inputs to the transaction.
+	renewalTxn.SiacoinInputs = append(renewalTxn.SiacoinInputs, resp.Inputs...)
+	renewalTxn.SiacoinOutputs = append(renewalTxn.SiacoinOutputs, resp.Outputs...)
+
+	// sign the transaction and send the signatures to the host.
+	if err := s.wallet.SignTransaction(vc, &renewalTxn, toSign); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to sign renewal transaction: %w", err)
+	}
+	renterSigs := rhp.RPCContractSignatures{
+		SiacoinInputSignatures: make([][]types.InputSignature, len(renewalTxn.SiacoinInputs)),
+	}
+	for i := range renewalTxn.SiacoinInputs {
+		renterSigs.SiacoinInputSignatures[i] = append(renterSigs.SiacoinInputSignatures[i], renewalTxn.SiacoinInputs[i].Signatures...)
+	}
+	if err := rpc.WriteResponse(stream, &renterSigs); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to write renter signatures: %w", err)
+	}
+
+	// add the host signatures to the transaction.
+	var hostSigs rhp.RPCContractSignatures
+	if err := rpc.ReadResponse(stream, &hostSigs); err != nil {
+		return rhp.Contract{}, nil, fmt.Errorf("failed to read host signatures: %w", err)
+	}
+	for i := range hostSigs.SiacoinInputSignatures {
+		renewalTxn.SiacoinInputs[i].Signatures = append(renewalTxn.SiacoinInputs[i].Signatures, hostSigs.SiacoinInputSignatures[i]...)
+	}
+
+	return rhp.Contract{
+		ID:       renewalTxn.FileContractID(0),
+		Revision: renewal,
+	}, append(resp.Parents, renewalTxn), nil
+}

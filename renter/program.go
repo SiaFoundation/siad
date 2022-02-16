@@ -155,8 +155,8 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	}
 
 	program.Contract.Revision = rev
-	program.Contract.HostSignature = resp.Signature
-	program.Contract.RenterSignature = req.Signature
+	program.Contract.Revision.HostSignature = resp.Signature
+	program.Contract.Revision.RenterSignature = req.Signature
 
 	return nil
 }
