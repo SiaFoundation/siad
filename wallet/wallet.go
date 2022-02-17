@@ -227,7 +227,7 @@ func (w *HotWallet) SignTransaction(vc consensus.ValidationContext, txn *types.T
 		}
 		return nil
 	}
-	sigHash := vc.SigHash(*txn)
+	sigHash := vc.InputSigHash(*txn)
 	for _, id := range toSign {
 		in := inputWithID(id)
 		if in == nil {
@@ -237,7 +237,7 @@ func (w *HotWallet) SignTransaction(vc consensus.ValidationContext, txn *types.T
 		if !ok {
 			return errors.New("no key for specified input")
 		}
-		in.Signatures = append(in.Signatures, types.InputSignature(w.seed.PrivateKey(index).SignHash(sigHash)))
+		in.Signatures = append(in.Signatures, w.seed.PrivateKey(index).SignHash(sigHash))
 	}
 	return nil
 }

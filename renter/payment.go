@@ -75,8 +75,8 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 
 	// update the contract to reflect the payment and new signatures
 	payment.contract.Revision = revision
-	payment.contract.RenterSignature = req.Signature
-	payment.contract.HostSignature = resp.Signature
+	payment.contract.Revision.RenterSignature = req.Signature
+	payment.contract.Revision.HostSignature = resp.Signature
 	return nil
 }
 

@@ -73,7 +73,7 @@ func TestEphemeralOutput(t *testing.T) {
 		}},
 		MinerFee: types.Siacoins(1),
 	}
-	child.SiacoinInputs[0].Signatures = []types.InputSignature{types.InputSignature(privkey.SignHash(sim.Context.SigHash(child)))}
+	child.SiacoinInputs[0].Signatures = []types.Signature{privkey.SignHash(sim.Context.InputSigHash(child))}
 
 	grandchild := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
@@ -86,7 +86,7 @@ func TestEphemeralOutput(t *testing.T) {
 		}},
 		MinerFee: types.Siacoins(2),
 	}
-	grandchild.SiacoinInputs[0].Signatures = []types.InputSignature{types.InputSignature(privkey.SignHash(sim.Context.SigHash(grandchild)))}
+	grandchild.SiacoinInputs[0].Signatures = []types.Signature{privkey.SignHash(sim.Context.InputSigHash(grandchild))}
 
 	// add all three transactions to the pool
 	if err := tp.AddTransaction(parent); err != nil {
