@@ -133,7 +133,7 @@ func TestNetwork(t *testing.T) {
 	}
 
 	// continue mining until both nodes have a balance
-	for n1.w.Balance().IsZero() || n2.w.Balance().IsZero() {
+	for n1.w.BalanceSiacoin().IsZero() || n2.w.BalanceSiacoin().IsZero() {
 		mineOnRandomNode()
 	}
 

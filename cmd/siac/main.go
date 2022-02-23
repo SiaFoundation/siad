@@ -288,6 +288,7 @@ func main() {
 		} else {
 			fmt.Printf("%s SC\n", balance.Siacoins)
 		}
+		fmt.Printf("%d SF\n", balance.Siafunds)
 
 	case walletTransactionsCmd:
 		if len(args) != 0 {

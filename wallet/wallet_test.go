@@ -32,7 +32,7 @@ func TestWallet(t *testing.T) {
 		t.Fatal("expected a single transaction, got", store.Transactions(time.Time{}, -1))
 	} else if len(store.SpendableSiacoinElements()) != 1 {
 		t.Fatal("expected a single spendable element, got", store.SpendableSiacoinElements())
-	} else if w.Balance().IsZero() {
+	} else if w.BalanceSiacoin().IsZero() {
 		t.Fatal("expected non-zero balance after mining")
 	}
 
@@ -51,13 +51,13 @@ func TestWallet(t *testing.T) {
 		} else if err := w.SignTransaction(sim.Context, &txn, toSign); err != nil {
 			t.Fatal(err)
 		}
-		prevBalance := w.Balance()
+		prevBalance := w.BalanceSiacoin()
 
 		if err := cm.AddTipBlock(sim.MineBlockWithTxns(txn)); err != nil {
 			t.Fatal(err)
 		}
 
-		if !prevBalance.Sub(w.Balance()).Equals(sendAmount) {
+		if !prevBalance.Sub(w.BalanceSiacoin()).Equals(sendAmount) {
 			t.Fatal("after send, balance should have decreased accordingly")
 		}
 	}

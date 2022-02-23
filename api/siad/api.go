@@ -6,6 +6,7 @@ import "go.sia.tech/core/types"
 // Siacoin and Siafund balance of the wallet.
 type WalletBalanceResponse struct {
 	Siacoins types.Currency `json:"siacoins"`
+	Siafunds uint64         `json:"siafunds"`
 }
 
 // WalletAddressResponse is the response to /wallet/address.

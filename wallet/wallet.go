@@ -72,6 +72,7 @@ type Store interface {
 	AddAddress(addr types.Address, index uint64) error
 	AddressIndex(addr types.Address) (uint64, bool)
 	SpendableSiacoinElements() []types.SiacoinElement
+	SpendableSiafundElements() []types.SiafundElement
 	Transactions(since time.Time, max int) []Transaction
 }
 
@@ -84,12 +85,22 @@ type HotWallet struct {
 	used  map[types.ElementID]bool
 }
 
-// Balance returns the total amount of spendable currency controlled by the
-// wallet.
-func (w *HotWallet) Balance() types.Currency {
+// BalanceSiacoin returns the total amount of spendable Siacoins controlled by
+// the wallet.
+func (w *HotWallet) BalanceSiacoin() types.Currency {
 	var sum types.Currency
 	for _, o := range w.store.SpendableSiacoinElements() {
 		sum = sum.Add(o.Value)
+	}
+	return sum
+}
+
+// BalanceSiafund returns the total amount of spendable Siafunds controlled by
+// the wallet.
+func (w *HotWallet) BalanceSiafund() uint64 {
+	var sum uint64
+	for _, o := range w.store.SpendableSiafundElements() {
+		sum += o.Value
 	}
 	return sum
 }

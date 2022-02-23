@@ -18,7 +18,8 @@ import (
 type EphemeralStore struct {
 	mu        sync.Mutex
 	addrs     map[types.Address]uint64
-	elems     []types.SiacoinElement
+	scElems   []types.SiacoinElement
+	sfElems   []types.SiafundElement
 	txns      []wallet.Transaction
 	tip       types.ChainIndex
 	seedIndex uint64
@@ -55,11 +56,23 @@ func (s *EphemeralStore) SpendableSiacoinElements() []types.SiacoinElement {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var elems []types.SiacoinElement
-	for _, sce := range s.elems {
+	for _, sce := range s.scElems {
 		if sce.Timelock <= s.tip.Height {
 			sce.MerkleProof = append([]types.Hash256(nil), sce.MerkleProof...)
 			elems = append(elems, sce)
 		}
+	}
+	return elems
+}
+
+// SpendableSiafundElements implements wallet.Store.
+func (s *EphemeralStore) SpendableSiafundElements() []types.SiafundElement {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var elems []types.SiafundElement
+	for _, sfe := range s.sfElems {
+		sfe.MerkleProof = append([]types.Hash256(nil), sfe.MerkleProof...)
+		elems = append(elems, sfe)
 	}
 	return elems
 }
@@ -85,23 +98,44 @@ func (s *EphemeralStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool)
 	defer s.mu.Unlock()
 
 	// delete spent elements
-	rem := s.elems[:0]
-	for _, sce := range s.elems {
+	rem := s.scElems[:0]
+	for _, sce := range s.scElems {
 		if !cau.SiacoinElementWasSpent(sce) {
 			rem = append(rem, sce)
 		}
 	}
-	s.elems = rem
+	s.scElems = rem
 
 	// update proofs for our elements
-	for i := range s.elems {
-		cau.UpdateElementProof(&s.elems[i].StateElement)
+	for i := range s.scElems {
+		cau.UpdateElementProof(&s.scElems[i].StateElement)
 	}
 
 	// add new elements
 	for _, o := range cau.NewSiacoinElements {
 		if _, ok := s.addrs[o.Address]; ok {
-			s.elems = append(s.elems, o)
+			s.scElems = append(s.scElems, o)
+		}
+	}
+
+	// delete spent elements
+	sfRem := s.sfElems[:0]
+	for _, sfe := range s.sfElems {
+		if !cau.SiafundElementWasSpent(sfe) {
+			sfRem = append(sfRem, sfe)
+		}
+	}
+	s.sfElems = sfRem
+
+	// update proofs for our elements
+	for i := range s.sfElems {
+		cau.UpdateElementProof(&s.sfElems[i].StateElement)
+	}
+
+	// add new elements
+	for _, o := range cau.NewSiafundElements {
+		if _, ok := s.addrs[o.Address]; ok {
+			s.sfElems = append(s.sfElems, o)
 		}
 	}
 
@@ -142,25 +176,47 @@ func (s *EphemeralStore) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error
 	defer s.mu.Unlock()
 
 	// delete removed elements
-	rem := s.elems[:0]
-	for _, o := range s.elems {
+	scRem := s.scElems[:0]
+	for _, o := range s.scElems {
 		if !cru.SiacoinElementWasRemoved(o) {
-			rem = append(rem, o)
+			scRem = append(scRem, o)
 		}
 	}
-	s.elems = rem
+	s.scElems = scRem
 
 	// re-add elements that were spent in the reverted block
 	for _, o := range cru.SpentSiacoins {
 		if _, ok := s.addrs[o.Address]; ok {
 			o.MerkleProof = append([]types.Hash256(nil), o.MerkleProof...)
-			s.elems = append(s.elems, o)
+			s.scElems = append(s.scElems, o)
 		}
 	}
 
 	// update proofs for our elements
-	for i := range s.elems {
-		cru.UpdateElementProof(&s.elems[i].StateElement)
+	for i := range s.scElems {
+		cru.UpdateElementProof(&s.scElems[i].StateElement)
+	}
+
+	// delete removed elements
+	sfRem := s.sfElems[:0]
+	for _, o := range s.sfElems {
+		if !cru.SiafundElementWasRemoved(o) {
+			sfRem = append(sfRem, o)
+		}
+	}
+	s.sfElems = sfRem
+
+	// re-add elements that were spent in the reverted block
+	for _, o := range cru.SpentSiafunds {
+		if _, ok := s.addrs[o.Address]; ok {
+			o.MerkleProof = append([]types.Hash256(nil), o.MerkleProof...)
+			s.sfElems = append(s.sfElems, o)
+		}
+	}
+
+	// update proofs for our elements
+	for i := range s.sfElems {
+		cru.UpdateElementProof(&s.sfElems[i].StateElement)
 	}
 
 	// delete transactions originating in this block
@@ -190,11 +246,12 @@ type JSONStore struct {
 }
 
 type persistData struct {
-	Tip          types.ChainIndex
-	SeedIndex    uint64
-	Addrs        map[string]uint64
-	Elements     []types.SiacoinElement
-	Transactions []wallet.Transaction
+	Tip             types.ChainIndex
+	SeedIndex       uint64
+	Addrs           map[string]uint64
+	SiacoinElements []types.SiacoinElement
+	SiafundElements []types.SiafundElement
+	Transactions    []wallet.Transaction
 }
 
 func (s *JSONStore) save() error {
@@ -205,11 +262,12 @@ func (s *JSONStore) save() error {
 		addrs[hex.EncodeToString(k[:])] = v
 	}
 	js, _ := json.MarshalIndent(persistData{
-		Tip:          s.tip,
-		SeedIndex:    s.seedIndex,
-		Addrs:        addrs,
-		Elements:     s.elems,
-		Transactions: s.txns,
+		Tip:             s.tip,
+		SeedIndex:       s.seedIndex,
+		Addrs:           addrs,
+		SiacoinElements: s.scElems,
+		SiafundElements: s.sfElems,
+		Transactions:    s.txns,
 	}, "", "  ")
 
 	// atomic save
@@ -249,7 +307,8 @@ func (s *JSONStore) load(tip types.ChainIndex) (types.ChainIndex, error) {
 		hex.Decode(addr[:], []byte(k))
 		s.addrs[addr] = v
 	}
-	s.elems = p.Elements
+	s.scElems = p.SiacoinElements
+	s.sfElems = p.SiafundElements
 	s.txns = p.Transactions
 	s.tip = tip
 	s.seedIndex = p.SeedIndex

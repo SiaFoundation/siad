@@ -16,7 +16,8 @@ import (
 type (
 	// A Wallet can spend and receive siacoins.
 	Wallet interface {
-		Balance() types.Currency
+		BalanceSiacoin() types.Currency
+		BalanceSiafund() uint64
 		NextAddress() types.Address
 		Addresses() []types.Address
 		Transactions(since time.Time, max int) []wallet.Transaction
@@ -53,7 +54,8 @@ type server struct {
 
 func (s *server) walletBalanceHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	api.WriteJSON(w, WalletBalanceResponse{
-		Siacoins: s.w.Balance(),
+		Siacoins: s.w.BalanceSiacoin(),
+		Siafunds: s.w.BalanceSiafund(),
 	})
 }
 
