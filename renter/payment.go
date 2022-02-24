@@ -40,7 +40,7 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 		return fmt.Errorf("failed to revise contract: %w", err)
 	}
 
-	// sign the revision and send it to the host.
+	// sign the revision and send it to the host
 	vc := s.cm.TipContext()
 	revisionHash := vc.ContractSigHash(revision)
 	req := &rhp.PayByContractRequest{
@@ -49,26 +49,25 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 		ContractID:        payment.contract.ID,
 		NewRevisionNumber: revision.RevisionNumber,
 		NewOutputs: rhp.ContractOutputs{
-			MissedHostValue:   revision.MissedHostOutput.Value,
-			MissedRenterValue: revision.MissedRenterOutput.Value,
-			ValidHostValue:    revision.ValidHostOutput.Value,
-			ValidRenterValue:  revision.ValidRenterOutput.Value,
+			HostValue:       revision.HostOutput.Value,
+			RenterValue:     revision.RenterOutput.Value,
+			MissedHostValue: revision.MissedHostValue,
 		},
 		Signature: payment.privkey.SignHash(revisionHash),
 	}
 
-	// write the payment request.
+	// write the payment request
 	if err := rpc.WriteRequest(stream, rhp.PayByContract, req); err != nil {
 		return fmt.Errorf("failed to write contract payment request specifier: %w", err)
 	}
 
-	// read the payment response.
+	// read the payment response
 	var resp rhp.RPCRevisionSigningResponse
 	if err := rpc.ReadResponse(stream, &resp); err != nil {
 		return fmt.Errorf("failed to read contract payment response: %w", err)
 	}
 
-	// verify the host's signature.
+	// verify the host's signature
 	if !payment.hostKey.VerifyHash(revisionHash, resp.Signature) {
 		return errors.New("could not verify host signature")
 	}
