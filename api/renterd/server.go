@@ -120,20 +120,7 @@ func (s *server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ h
 	}
 
 	txn, toSign := wsr.Transaction, wsr.ToSign
-	if len(toSign) == 0 {
-		// lazy mode: add standard sigs for every input we own
-		addrs := make(map[types.Address]bool)
-		for _, addr := range s.w.Addresses() {
-			addrs[addr] = true
-		}
-		for _, sci := range txn.SiacoinInputs {
-			if addrs[types.PolicyAddress(sci.SpendPolicy)] {
-				toSign = append(toSign, sci.Parent.ID)
-			}
-		}
-	}
-
-	if err := s.w.SignTransaction(s.cm.TipContext(), &txn, nil); err != nil {
+	if err := s.w.SignTransaction(s.cm.TipContext(), &txn, toSign); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
