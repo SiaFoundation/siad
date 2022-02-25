@@ -87,7 +87,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 
 	var response rhp.RPCExecuteInstrResponse
 	for i := range program.Instructions {
-		// reset the deadline for each executed instruction.
+		// reset the deadline for each executed instruction
 		stream.SetDeadline(time.Now().Add(5 * time.Minute))
 		if err = rpc.ReadResponse(stream, &response); err != nil {
 			return fmt.Errorf("failed to read execute program response %v: %w", i, err)
@@ -103,7 +103,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		}
 
 		// discard the remaining output in case the execute function didn't
-		// consume it.
+		// consume it
 		io.Copy(io.Discard, lr)
 	}
 
@@ -111,7 +111,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		return nil
 	}
 
-	// reset the deadline for contract finalization.
+	// reset the deadline for contract finalization
 	stream.SetDeadline(time.Now().Add(2 * time.Minute))
 
 	// Finalize the program by updating the contract revision with additional
@@ -133,10 +133,9 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		Signature:         program.RenterKey.SignHash(contractHash),
 		NewRevisionNumber: rev.RevisionNumber,
 		NewOutputs: rhp.ContractOutputs{
-			MissedHostValue:   rev.MissedHostOutput.Value,
-			MissedRenterValue: rev.MissedRenterOutput.Value,
-			ValidHostValue:    rev.ValidHostOutput.Value,
-			ValidRenterValue:  rev.ValidRenterOutput.Value,
+			RenterValue:     rev.RenterOutput.Value,
+			HostValue:       rev.HostOutput.Value,
+			MissedHostValue: rev.MissedHostValue,
 		},
 	}
 
