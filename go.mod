@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/julienschmidt/httprouter v1.3.0
-	go.sia.tech/core v0.0.0-20220224172916-b39a733abe19
+	go.sia.tech/core v0.0.0-20220225220926-7706db51964f
 	golang.org/x/crypto v0.0.0-20211209193657-4570a0811e8b
 	lukechampine.com/flagg v1.1.1
 	lukechampine.com/frand v1.4.2

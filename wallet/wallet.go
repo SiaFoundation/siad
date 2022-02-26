@@ -215,10 +215,22 @@ func (w *HotWallet) SignableInputs(txn types.Transaction) []types.ElementID {
 	return ids
 }
 
-// SignTransaction adds signatures to each of the specified inputs.
+// SignTransaction adds a signature to each of the specified inputs. If
+// len(toSign) == 0, a signature is added for every input controlled by the
+// wallet.
 func (w *HotWallet) SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	sigHash := vc.InputSigHash(*txn)
+	if len(toSign) == 0 {
+		for _, in := range txn.SiacoinInputs {
+			if index, ok := w.store.AddressIndex(in.Parent.Address); ok {
+				in.Signatures = []types.Signature{w.seed.PrivateKey(index).SignHash(sigHash)}
+			}
+		}
+		return nil
+	}
+
 	inputWithID := func(id types.ElementID) *types.SiacoinInput {
 		for i := range txn.SiacoinInputs {
 			if in := &txn.SiacoinInputs[i]; in.Parent.ID == id {
@@ -227,7 +239,6 @@ func (w *HotWallet) SignTransaction(vc consensus.ValidationContext, txn *types.T
 		}
 		return nil
 	}
-	sigHash := vc.InputSigHash(*txn)
 	for _, id := range toSign {
 		in := inputWithID(id)
 		if in == nil {

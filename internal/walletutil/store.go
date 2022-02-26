@@ -56,7 +56,7 @@ func (s *EphemeralStore) SpendableSiacoinElements() []types.SiacoinElement {
 	defer s.mu.Unlock()
 	var elems []types.SiacoinElement
 	for _, sce := range s.elems {
-		if sce.Timelock <= s.tip.Height {
+		if s.tip.Height >= sce.MaturityHeight {
 			sce.MerkleProof = append([]types.Hash256(nil), sce.MerkleProof...)
 			elems = append(elems, sce)
 		}

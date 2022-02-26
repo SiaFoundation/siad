@@ -5,7 +5,6 @@ import (
 	"net"
 	"time"
 
-	"go.sia.tech/core/chain"
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/types"
@@ -26,6 +25,11 @@ type (
 		FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error)
 		SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
 	}
+
+	// A ChainManager manages blockchain state.
+	ChainManager interface {
+		TipContext() consensus.ValidationContext
+	}
 )
 
 // A Session implements of the renter side of the renter-host protocol.
@@ -34,7 +38,7 @@ type Session struct {
 
 	wallet  Wallet
 	tpool   TransactionPool
-	cm      *chain.Manager
+	cm      ChainManager
 	session *rhp.Session
 
 	settings   rhp.HostSettings
@@ -54,7 +58,7 @@ func (s *Session) Close() error {
 }
 
 // NewSession initiates an RHP session with the specified host.
-func NewSession(hostIP string, hostKey types.PublicKey, w Wallet, tp TransactionPool, cm *chain.Manager) (*Session, error) {
+func NewSession(hostIP string, hostKey types.PublicKey, w Wallet, tp TransactionPool, cm ChainManager) (*Session, error) {
 	conn, err := net.Dial("tcp", hostIP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open connection: %w", err)
