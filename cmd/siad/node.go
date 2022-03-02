@@ -9,20 +9,20 @@ import (
 
 	"go.sia.tech/core/chain"
 	"go.sia.tech/core/consensus"
+	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/internal/chainutil"
 	"go.sia.tech/siad/v2/internal/cpuminer"
 	"go.sia.tech/siad/v2/internal/p2putil"
 	"go.sia.tech/siad/v2/internal/walletutil"
 	"go.sia.tech/siad/v2/p2p"
 	"go.sia.tech/siad/v2/txpool"
-	"go.sia.tech/siad/v2/wallet"
 )
 
 type node struct {
 	c  *chain.Manager
 	tp *txpool.Pool
 	s  *p2p.Syncer
-	w  *wallet.HotWallet
+	w  *walletutil.JSONStore
 	m  *cpuminer.CPUMiner
 }
 
@@ -79,7 +79,6 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
-	seed := wallet.NewSeed()
 
 	cm := chain.NewManager(chainStore, tip.Context)
 	tp := txpool.New(tip.Context)
@@ -87,9 +86,8 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	if err := cm.AddSubscriber(walletStore, walletTip); err != nil {
 		return nil, fmt.Errorf("couldn't resubscribe wallet at index %v: %w", walletTip, err)
 	}
-	w := wallet.NewHotWallet(walletStore, seed)
 
-	m := cpuminer.New(tip.Context, w.NextAddress(), tp)
+	m := cpuminer.New(tip.Context, types.VoidAddress, tp)
 	cm.AddSubscriber(m, cm.Tip())
 
 	p2pDir := filepath.Join(dir, "p2p")
@@ -109,7 +107,7 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 		c:  cm,
 		tp: tp,
 		s:  s,
-		w:  w,
+		w:  walletStore,
 		m:  m,
 	}, nil
 }

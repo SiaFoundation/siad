@@ -15,7 +15,6 @@ import (
 	"go.sia.tech/siad/v2/internal/walletutil"
 	"go.sia.tech/siad/v2/p2p"
 	"go.sia.tech/siad/v2/txpool"
-	"go.sia.tech/siad/v2/wallet"
 	"lukechampine.com/frand"
 )
 
@@ -24,7 +23,7 @@ type testNode struct {
 	cs chain.ManagerStore
 	tp *txpool.Pool
 	s  *p2p.Syncer
-	w  *wallet.HotWallet
+	w  *walletutil.TestingWallet
 	m  *cpuminer.CPUMiner
 }
 
@@ -42,12 +41,7 @@ func (tn *testNode) send(amount types.Currency, dest types.Address) error {
 	txn := types.Transaction{
 		SiacoinOutputs: []types.SiacoinOutput{{Value: amount, Address: dest}},
 	}
-	toSign, discard, err := tn.w.FundTransaction(&txn, amount, tn.tp.Transactions())
-	if err != nil {
-		return err
-	}
-	defer discard()
-	if err := tn.w.SignTransaction(consensus.ValidationContext{}, &txn, toSign); err != nil {
+	if err := tn.w.FundAndSign(&txn); err != nil {
 		return err
 	}
 	// give message to ourselves and to peers
@@ -77,10 +71,9 @@ func newTestNode(tb testing.TB, genesisID types.BlockID, c consensus.Checkpoint)
 	cm := chain.NewManager(cs, c.Context)
 	tp := txpool.New(c.Context)
 	cm.AddSubscriber(tp, cm.Tip())
-	ws := walletutil.NewEphemeralStore()
-	w := wallet.NewHotWallet(ws, wallet.NewSeed())
-	cm.AddSubscriber(ws, cm.Tip())
-	m := cpuminer.New(c.Context, w.NextAddress(), tp)
+	w := walletutil.NewTestingWallet(cm.TipContext())
+	cm.AddSubscriber(w, cm.Tip())
+	m := cpuminer.New(c.Context, w.NewAddress(), tp)
 	cm.AddSubscriber(m, cm.Tip())
 	s, err := p2p.NewSyncer(":0", genesisID, cm, tp, p2putil.NewEphemeralStore())
 	if err != nil {
@@ -139,8 +132,8 @@ func TestNetwork(t *testing.T) {
 
 	// simulate some chain activity by mining and broadcasting simple txns,
 	// stopping after both nodes have sent 10 txns
-	n1addr := n1.w.NextAddress()
-	n2addr := n2.w.NextAddress()
+	n1addr := n1.w.NewAddress()
+	n2addr := n2.w.NewAddress()
 	for s1, s2 := 0, 0; s1 < 10 || s2 < 10; {
 		if frand.Intn(2) == 0 {
 			if n1.send(types.Siacoins(7), n2addr) == nil {

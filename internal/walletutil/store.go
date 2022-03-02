@@ -1,7 +1,6 @@
 package walletutil
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"go.sia.tech/core/chain"
+	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 
 	"go.sia.tech/siad/v2/wallet"
@@ -17,11 +17,12 @@ import (
 // EphemeralStore implements wallet.Store in memory.
 type EphemeralStore struct {
 	mu        sync.Mutex
-	addrs     map[types.Address]uint64
-	elems     []types.SiacoinElement
-	txns      []wallet.Transaction
 	tip       types.ChainIndex
 	seedIndex uint64
+	addrs     map[types.Address]wallet.AddressInfo
+	scElems   []types.SiacoinElement
+	sfElems   []types.SiafundElement
+	txns      []wallet.Transaction
 }
 
 // SeedIndex implements wallet.Store.
@@ -31,77 +32,130 @@ func (s *EphemeralStore) SeedIndex() uint64 {
 	return s.seedIndex
 }
 
-// AddAddress implements wallet.Store.
-func (s *EphemeralStore) AddAddress(addr types.Address, index uint64) error {
+// Balance implements wallet.Store.
+func (s *EphemeralStore) Balance() (sc types.Currency, sf uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.addrs[addr] = index
-	if index >= s.seedIndex {
-		s.seedIndex = index + 1
+	for _, sce := range s.scElems {
+		sc = sc.Add(sce.Value)
 	}
-	return nil
-}
-
-// AddressIndex implements wallet.Store.
-func (s *EphemeralStore) AddressIndex(addr types.Address) (uint64, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	index, ok := s.addrs[addr]
-	return index, ok
-}
-
-// SpendableSiacoinElements implements wallet.Store.
-func (s *EphemeralStore) SpendableSiacoinElements() []types.SiacoinElement {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var elems []types.SiacoinElement
-	for _, sce := range s.elems {
-		if s.tip.Height >= sce.MaturityHeight {
-			sce.MerkleProof = append([]types.Hash256(nil), sce.MerkleProof...)
-			elems = append(elems, sce)
-		}
-	}
-	return elems
-}
-
-// Transactions returns all transactions relevant to the wallet, ordered
-// oldest-to-newest.
-func (s *EphemeralStore) Transactions(since time.Time, max int) (txns []wallet.Transaction) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, txn := range s.txns {
-		if len(txns) == max {
-			return
-		} else if txn.Timestamp.After(since) {
-			txns = append(txns, txn)
-		}
+	for _, sfe := range s.sfElems {
+		sf += sfe.Value
 	}
 	return
 }
 
+// AddAddress implements wallet.Store.
+func (s *EphemeralStore) AddAddress(addr types.Address, info wallet.AddressInfo) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addrs[addr] = info
+	if info.Index >= s.seedIndex {
+		s.seedIndex = info.Index + 1
+	}
+	return nil
+}
+
+// AddressInfo implements wallet.Store.
+func (s *EphemeralStore) AddressInfo(addr types.Address) (wallet.AddressInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	info, ok := s.addrs[addr]
+	if !ok {
+		return wallet.AddressInfo{}, wallet.ErrUnknownAddress
+	}
+	return info, nil
+}
+
+// Addresses implements wallet.Store.
+func (s *EphemeralStore) Addresses() ([]types.Address, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	addrs := make([]types.Address, 0, len(s.addrs))
+	for addr := range s.addrs {
+		addrs = append(addrs, addr)
+	}
+	return addrs, nil
+}
+
+// UnspentSiacoinElements implements wallet.Store.
+func (s *EphemeralStore) UnspentSiacoinElements() ([]types.SiacoinElement, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var elems []types.SiacoinElement
+	for _, sce := range s.scElems {
+		sce.MerkleProof = append([]types.Hash256(nil), sce.MerkleProof...)
+		elems = append(elems, sce)
+	}
+	return elems, nil
+}
+
+// UnspentSiafundElements implements wallet.Store.
+func (s *EphemeralStore) UnspentSiafundElements() ([]types.SiafundElement, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var elems []types.SiafundElement
+	for _, sce := range s.sfElems {
+		sce.MerkleProof = append([]types.Hash256(nil), sce.MerkleProof...)
+		elems = append(elems, sce)
+	}
+	return elems, nil
+}
+
+// Transactions returns all transactions relevant to the wallet, ordered
+// oldest-to-newest.
+func (s *EphemeralStore) Transactions(since time.Time, max int) ([]wallet.Transaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var txns []wallet.Transaction
+	for _, txn := range s.txns {
+		if len(txns) == max {
+			break
+		} else if txn.Timestamp.After(since) {
+			txns = append(txns, txn)
+		}
+	}
+	return txns, nil
+}
+
 // ProcessChainApplyUpdate implements chain.Subscriber.
-func (s *EphemeralStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
+func (s *EphemeralStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// delete spent elements
-	rem := s.elems[:0]
-	for _, sce := range s.elems {
+	remSC := s.scElems[:0]
+	for _, sce := range s.scElems {
 		if !cau.SiacoinElementWasSpent(sce) {
-			rem = append(rem, sce)
+			remSC = append(remSC, sce)
 		}
 	}
-	s.elems = rem
+	s.scElems = remSC
+	remSF := s.sfElems[:0]
+	for _, sfe := range s.sfElems {
+		if !cau.SiafundElementWasSpent(sfe) {
+			remSF = append(remSF, sfe)
+		}
+	}
+	s.sfElems = remSF
 
 	// update proofs for our elements
-	for i := range s.elems {
-		cau.UpdateElementProof(&s.elems[i].StateElement)
+	for i := range s.scElems {
+		cau.UpdateElementProof(&s.scElems[i].StateElement)
+	}
+	for i := range s.sfElems {
+		cau.UpdateElementProof(&s.sfElems[i].StateElement)
 	}
 
 	// add new elements
 	for _, o := range cau.NewSiacoinElements {
 		if _, ok := s.addrs[o.Address]; ok {
-			s.elems = append(s.elems, o)
+			s.scElems = append(s.scElems, o)
+		}
+	}
+	for _, o := range cau.NewSiafundElements {
+		if _, ok := s.addrs[o.Address]; ok {
+			s.sfElems = append(s.sfElems, o)
 		}
 	}
 
@@ -142,25 +196,41 @@ func (s *EphemeralStore) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error
 	defer s.mu.Unlock()
 
 	// delete removed elements
-	rem := s.elems[:0]
-	for _, o := range s.elems {
+	remSC := s.scElems[:0]
+	for _, o := range s.scElems {
 		if !cru.SiacoinElementWasRemoved(o) {
-			rem = append(rem, o)
+			remSC = append(remSC, o)
 		}
 	}
-	s.elems = rem
+	s.scElems = remSC
+	remSF := s.sfElems[:0]
+	for _, o := range s.sfElems {
+		if !cru.SiafundElementWasRemoved(o) {
+			remSF = append(remSF, o)
+		}
+	}
+	s.sfElems = remSF
 
 	// re-add elements that were spent in the reverted block
 	for _, o := range cru.SpentSiacoins {
 		if _, ok := s.addrs[o.Address]; ok {
 			o.MerkleProof = append([]types.Hash256(nil), o.MerkleProof...)
-			s.elems = append(s.elems, o)
+			s.scElems = append(s.scElems, o)
+		}
+	}
+	for _, o := range cru.SpentSiafunds {
+		if _, ok := s.addrs[o.Address]; ok {
+			o.MerkleProof = append([]types.Hash256(nil), o.MerkleProof...)
+			s.sfElems = append(s.sfElems, o)
 		}
 	}
 
 	// update proofs for our elements
-	for i := range s.elems {
-		cru.UpdateElementProof(&s.elems[i].StateElement)
+	for i := range s.scElems {
+		cru.UpdateElementProof(&s.scElems[i].StateElement)
+	}
+	for i := range s.sfElems {
+		cru.UpdateElementProof(&s.sfElems[i].StateElement)
 	}
 
 	// delete transactions originating in this block
@@ -177,9 +247,10 @@ func (s *EphemeralStore) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error
 }
 
 // NewEphemeralStore returns a new EphemeralStore.
-func NewEphemeralStore() *EphemeralStore {
+func NewEphemeralStore(tip types.ChainIndex) *EphemeralStore {
 	return &EphemeralStore{
-		addrs: make(map[types.Address]uint64),
+		tip:   tip,
+		addrs: make(map[types.Address]wallet.AddressInfo),
 	}
 }
 
@@ -189,27 +260,25 @@ type JSONStore struct {
 	dir string
 }
 
-type persistData struct {
-	Tip          types.ChainIndex
-	SeedIndex    uint64
-	Addrs        map[string]uint64
-	Elements     []types.SiacoinElement
-	Transactions []wallet.Transaction
+type jsonPersistData struct {
+	Tip             types.ChainIndex
+	SeedIndex       uint64
+	Addrs           map[types.Address]wallet.AddressInfo
+	SiacoinElements []types.SiacoinElement
+	SiafundElements []types.SiafundElement
+	Transactions    []wallet.Transaction
 }
 
 func (s *JSONStore) save() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	addrs := make(map[string]uint64, len(s.addrs))
-	for k, v := range s.addrs {
-		addrs[hex.EncodeToString(k[:])] = v
-	}
-	js, _ := json.MarshalIndent(persistData{
-		Tip:          s.tip,
-		SeedIndex:    s.seedIndex,
-		Addrs:        addrs,
-		Elements:     s.elems,
-		Transactions: s.txns,
+	js, _ := json.MarshalIndent(jsonPersistData{
+		Tip:             s.tip,
+		SeedIndex:       s.seedIndex,
+		Addrs:           s.addrs,
+		SiacoinElements: s.scElems,
+		SiafundElements: s.sfElems,
+		Transactions:    s.txns,
 	}, "", "  ")
 
 	// atomic save
@@ -232,33 +301,29 @@ func (s *JSONStore) save() error {
 }
 
 func (s *JSONStore) load(tip types.ChainIndex) (types.ChainIndex, error) {
-	var p persistData
+	var p jsonPersistData
 	if js, err := os.ReadFile(filepath.Join(s.dir, "wallet.json")); os.IsNotExist(err) {
 		// set defaults
-		s.addrs = make(map[types.Address]uint64)
 		s.tip = tip
+		s.addrs = make(map[types.Address]wallet.AddressInfo)
 		return tip, nil
 	} else if err != nil {
 		return types.ChainIndex{}, err
 	} else if err := json.Unmarshal(js, &p); err != nil {
 		return types.ChainIndex{}, err
 	}
-	s.addrs = make(map[types.Address]uint64, len(p.Addrs))
-	for k, v := range p.Addrs {
-		var addr types.Address
-		hex.Decode(addr[:], []byte(k))
-		s.addrs[addr] = v
-	}
-	s.elems = p.Elements
-	s.txns = p.Transactions
 	s.tip = tip
 	s.seedIndex = p.SeedIndex
+	s.addrs = p.Addrs
+	s.scElems = p.SiacoinElements
+	s.sfElems = p.SiafundElements
+	s.txns = p.Transactions
 	return p.Tip, nil
 }
 
 // AddAddress implements wallet.Store.
-func (s *JSONStore) AddAddress(addr types.Address, index uint64) error {
-	s.EphemeralStore.AddAddress(addr, index)
+func (s *JSONStore) AddAddress(addr types.Address, info wallet.AddressInfo) error {
+	s.EphemeralStore.AddAddress(addr, info)
 	return s.save()
 }
 
@@ -271,15 +336,10 @@ func (s *JSONStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit bo
 	return nil
 }
 
-// ProcessChainRevertUpdate implements chain.Subscriber.
-func (s *JSONStore) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
-	return s.EphemeralStore.ProcessChainRevertUpdate(cru)
-}
-
 // NewJSONStore returns a new JSONStore.
 func NewJSONStore(dir string, tip types.ChainIndex) (*JSONStore, types.ChainIndex, error) {
 	s := &JSONStore{
-		EphemeralStore: NewEphemeralStore(),
+		EphemeralStore: NewEphemeralStore(tip),
 		dir:            dir,
 	}
 	tip, err := s.load(tip)
@@ -287,4 +347,107 @@ func NewJSONStore(dir string, tip types.ChainIndex) (*JSONStore, types.ChainInde
 		return nil, types.ChainIndex{}, err
 	}
 	return s, tip, nil
+}
+
+// A TestingWallet is a simple hot wallet, useful for sending and receiving
+// transactions in a testing environment.
+type TestingWallet struct {
+	mu sync.Mutex
+	*EphemeralStore
+	Seed wallet.Seed
+	tb   *wallet.TransactionBuilder
+	vc   consensus.ValidationContext
+}
+
+// Balance returns the wallet's siacoin balance.
+func (w *TestingWallet) Balance() types.Currency {
+	sc, _ := w.EphemeralStore.Balance()
+	return sc
+}
+
+// Address returns an address controlled by the wallet.
+func (w *TestingWallet) Address() types.Address {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return types.StandardAddress(w.Seed.PublicKey(w.SeedIndex()))
+}
+
+// NewAddress derives a new address and adds it to the wallet.
+func (w *TestingWallet) NewAddress() types.Address {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	info := wallet.AddressInfo{
+		Index: w.SeedIndex(),
+	}
+	addr := types.StandardAddress(w.Seed.PublicKey(info.Index))
+	w.AddAddress(addr, info)
+	return addr
+}
+
+// FundTransaction funds the provided transaction, adding a change output if
+// necessary.
+func (w *TestingWallet) FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	toSign, err := w.tb.FundSiacoins(w.vc, txn, amount, w.Seed, pool)
+	return toSign, func() { w.tb.ReleaseInputs(*txn) }, err
+}
+
+// SignTransaction funds the provided transaction, adding a change output if
+// necessary.
+func (w *TestingWallet) SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.tb.SignTransaction(vc, txn, toSign, w.Seed)
+}
+
+// FundAndSign funds and signs the provided transaction, adding a change output
+// if necessary.
+func (w *TestingWallet) FundAndSign(txn *types.Transaction) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var amount types.Currency
+	for _, sco := range txn.SiacoinOutputs {
+		amount = amount.Add(sco.Value)
+	}
+	amount = amount.Add(txn.MinerFee)
+	for _, sci := range txn.SiacoinInputs {
+		amount = amount.Sub(sci.Parent.Value)
+	}
+
+	toSign, err := w.tb.FundSiacoins(w.vc, txn, amount, w.Seed, nil)
+	if err != nil {
+		return err
+	}
+	return w.tb.SignTransaction(w.vc, txn, toSign, w.Seed)
+}
+
+// ProcessChainApplyUpdate implements chain.Subscriber.
+func (w *TestingWallet) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit bool) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.EphemeralStore.ProcessChainApplyUpdate(cau, mayCommit)
+	w.vc = cau.Context
+	return nil
+}
+
+// ProcessChainRevertUpdate implements chain.Subscriber.
+func (w *TestingWallet) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.EphemeralStore.ProcessChainRevertUpdate(cru)
+	w.vc = cru.Context
+	return nil
+}
+
+// NewTestingWallet creates a TestingWallet with the provided validation context
+// and an ephemeral store.
+func NewTestingWallet(vc consensus.ValidationContext) *TestingWallet {
+	store := NewEphemeralStore(vc.Index)
+	return &TestingWallet{
+		EphemeralStore: store,
+		Seed:           wallet.NewSeed(),
+		tb:             wallet.NewTransactionBuilder(store),
+		vc:             vc,
+	}
 }

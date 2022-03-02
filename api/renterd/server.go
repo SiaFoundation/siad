@@ -10,6 +10,7 @@ import (
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
+	"go.sia.tech/siad/v2/internal/walletutil"
 	"go.sia.tech/siad/v2/renter"
 	"go.sia.tech/siad/v2/wallet"
 )
@@ -19,10 +20,9 @@ type (
 	Wallet interface {
 		Balance() types.Currency
 		Address() types.Address
-		NextAddress() types.Address
-		Addresses() []types.Address
-		SpendPolicy(types.Address) (types.SpendPolicy, bool)
-		Transactions(since time.Time, max int) []wallet.Transaction
+		NewAddress() types.Address
+		Addresses() ([]types.Address, error)
+		Transactions(since time.Time, max int) ([]wallet.Transaction, error)
 		FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error)
 		SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
 	}
@@ -63,31 +63,7 @@ func (s *server) walletBalanceHandler(w http.ResponseWriter, req *http.Request, 
 }
 
 func (s *server) walletAddressHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	api.WriteJSON(w, WalletAddressResponse{s.w.NextAddress()})
-}
-
-func (s *server) walletAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	addresses := s.w.Addresses()
-	start, end := 0, len(addresses)
-	if v := req.FormValue("start"); v != "" {
-		i, err := strconv.Atoi(v)
-		if err != nil || i < 0 || i > len(addresses) {
-			http.Error(w, "invalid start value", http.StatusBadRequest)
-			return
-		}
-		start = i
-	}
-	if v := req.FormValue("end"); v != "" {
-		i, err := strconv.Atoi(v)
-		if err != nil || i < 0 || i < start {
-			http.Error(w, "invalid end value", http.StatusBadRequest)
-			return
-		} else if i > len(addresses) {
-			i = len(addresses)
-		}
-		end = i
-	}
-	api.WriteJSON(w, WalletAddressesResponse(addresses[start:end]))
+	api.WriteJSON(w, s.w.NewAddress())
 }
 
 func (s *server) walletTransactionsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -109,45 +85,12 @@ func (s *server) walletTransactionsHandler(w http.ResponseWriter, req *http.Requ
 		}
 		max = t
 	}
-	api.WriteJSON(w, s.w.Transactions(since, max))
-}
-
-func (s *server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var wsr WalletSignRequest
-	if err := json.NewDecoder(req.Body).Decode(&wsr); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	txns, err := s.w.Transactions(since, max)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	txn, toSign := wsr.Transaction, wsr.ToSign
-	if err := s.w.SignTransaction(s.cm.TipContext(), &txn, toSign); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	api.WriteJSON(w, WalletTransactionResponse{txn})
-}
-
-func (s *server) txpoolBroadcastHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var tbr TxpoolBroadcastRequest
-	if err := json.NewDecoder(req.Body).Decode(&tbr); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	for _, txn := range tbr.DependsOn {
-		if err := s.tp.AddTransaction(txn); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-	if err := s.tp.AddTransaction(tbr.Transaction); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	s.s.BroadcastTransaction(tbr.Transaction, tbr.DependsOn)
-}
-
-func (s *server) txpoolTransactionsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	api.WriteJSON(w, s.tp.Transactions())
+	api.WriteJSON(w, txns)
 }
 
 func (s *server) syncerPeersHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -243,7 +186,7 @@ func (s *server) contractsRenewHandler(w http.ResponseWriter, req *http.Request,
 }
 
 // NewServer returns an HTTP handler that serves the renterd API.
-func NewServer(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Handler {
+func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp TransactionPool) http.Handler {
 	srv := server{
 		cm: cm,
 		s:  s,
@@ -254,12 +197,7 @@ func NewServer(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Han
 
 	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/api/wallet/address", srv.walletAddressHandler)
-	mux.GET("/api/wallet/addresses", srv.walletAddressesHandler)
 	mux.GET("/api/wallet/transactions", srv.walletTransactionsHandler)
-	mux.POST("/api/wallet/sign", srv.walletSignHandler)
-
-	mux.GET("/api/txpool/transactions", srv.txpoolTransactionsHandler)
-	mux.POST("/api/txpool/broadcast", srv.txpoolBroadcastHandler)
 
 	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
 	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)

@@ -1,30 +1,23 @@
 package siad
 
-import "go.sia.tech/core/types"
+import (
+	"go.sia.tech/core/types"
+)
 
-// WalletBalanceResponse is the response to /wallet/balance. It contains the confirmed
-// Siacoin and Siafund balance of the wallet.
+// WalletBalanceResponse is the response to /wallet/balance. It contains the
+// confirmed Siacoin and Siafund balance of the wallet.
 type WalletBalanceResponse struct {
 	Siacoins types.Currency `json:"siacoins"`
+	Siafunds uint64         `json:"siafunds"`
 }
 
-// WalletAddressResponse is the response to /wallet/address.
-type WalletAddressResponse struct {
-	Address types.Address `json:"address"`
-}
-
-// WalletAddressesResponse is a list of addresses owned by the wallet.
+// WalletAddressesResponse is the response to /wallet/addresses.
 type WalletAddressesResponse []types.Address
 
-// A WalletSignRequest is sent to the /wallet/sign endpoint to sign a transaction.
-type WalletSignRequest struct {
-	ToSign      []types.ElementID `json:"toSign"`
-	Transaction types.Transaction `json:"transaction"`
-}
-
-// A WalletTransactionResponse is a transaction in the wallet.
-type WalletTransactionResponse struct {
-	Transaction types.Transaction `json:"transaction"`
+// WalletUTXOsResponse is the set of unspent outputs owned by the wallet.
+type WalletUTXOsResponse struct {
+	Siacoins []types.SiacoinElement `json:"siacoins"`
+	Siafunds []types.SiafundElement `json:"siafunds"`
 }
 
 // TxpoolBroadcastRequest is the request for the /txpool/broadcast endpoint.

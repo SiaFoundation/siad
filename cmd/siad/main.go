@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ import (
 	"go.sia.tech/siad/v2/api"
 	"go.sia.tech/siad/v2/api/siad"
 	"go.sia.tech/siad/v2/p2p"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 var (
@@ -51,7 +52,7 @@ func getAPIPassword() string {
 	apiPassword := os.Getenv("SIAD_API_PASSWORD")
 	if len(apiPassword) == 0 {
 		fmt.Print("Enter API password: ")
-		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		if err != nil {
 			log.Fatal(err)
@@ -73,7 +74,8 @@ func main() {
 	bootstrap := flag.String("bootstrap", "", "peer address or explorer URL to bootstrap from")
 	flag.Parse()
 
-	log.Println("siad v2.0.0")
+	log.Printf("siad v2.0.0\nCommit:     %s\nGo version: %s %s/%s\nBuild Date: %s\n",
+		githash, runtime.Version(), runtime.GOOS, runtime.GOARCH, builddate)
 	if flag.Arg(0) == "version" {
 		return
 	}

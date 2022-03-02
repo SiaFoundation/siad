@@ -14,14 +14,17 @@ import (
 )
 
 type (
-	// A Wallet can spend and receive siacoins.
-	Wallet interface {
-		Balance() types.Currency
-		NextAddress() types.Address
-		Addresses() []types.Address
-		Transactions(since time.Time, max int) []wallet.Transaction
-		FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error)
-		SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
+	// A WalletStore tracks transactions and outputs associated with a set of
+	// addresses.
+	WalletStore interface {
+		SeedIndex() uint64
+		Balance() (types.Currency, uint64)
+		AddAddress(addr types.Address, info wallet.AddressInfo) error
+		AddressInfo(addr types.Address) (wallet.AddressInfo, error)
+		Addresses() ([]types.Address, error)
+		UnspentSiacoinElements() ([]types.SiacoinElement, error)
+		UnspentSiafundElements() ([]types.SiafundElement, error)
+		Transactions(since time.Time, max int) ([]wallet.Transaction, error)
 	}
 
 	// A Syncer can connect to other peers and synchronize the blockchain.
@@ -45,24 +48,61 @@ type (
 )
 
 type server struct {
-	w  Wallet
+	w  WalletStore
 	s  Syncer
 	cm ChainManager
 	tp TransactionPool
 }
 
 func (s *server) walletBalanceHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	sc, sf := s.w.Balance()
 	api.WriteJSON(w, WalletBalanceResponse{
-		Siacoins: s.w.Balance(),
+		Siacoins: sc,
+		Siafunds: sf,
 	})
 }
 
-func (s *server) walletAddressHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	api.WriteJSON(w, WalletAddressResponse{s.w.NextAddress()})
+func (s *server) walletSeedIndexHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	api.WriteJSON(w, s.w.SeedIndex())
+}
+
+func (s *server) walletAddressHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	addr, err := types.ParseAddress(ps.ByName("addr"))
+	if err != nil {
+		http.Error(w, "invalid address: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var info wallet.AddressInfo
+	if err := json.NewDecoder(req.Body).Decode(&info); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.w.AddAddress(addr, info); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *server) walletAddressHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	addr, err := types.ParseAddress(ps.ByName("addr"))
+	if err != nil {
+		http.Error(w, "invalid address: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	info, err := s.w.AddressInfo(addr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	api.WriteJSON(w, info)
 }
 
 func (s *server) walletAddressesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	addresses := s.w.Addresses()
+	addresses, err := s.w.Addresses()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	start, end := 0, len(addresses)
 	if v := req.FormValue("start"); v != "" {
 		i, err := strconv.Atoi(v)
@@ -104,35 +144,29 @@ func (s *server) walletTransactionsHandler(w http.ResponseWriter, req *http.Requ
 		}
 		max = t
 	}
-	api.WriteJSON(w, s.w.Transactions(since, max))
+	txns, err := s.w.Transactions(since, max)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	api.WriteJSON(w, txns)
 }
 
-func (s *server) walletSignHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var wsr WalletSignRequest
-	if err := json.NewDecoder(req.Body).Decode(&wsr); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+func (s *server) walletUTXOsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	scos, err := s.w.UnspentSiacoinElements()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	txn, toSign := wsr.Transaction, wsr.ToSign
-	if len(toSign) == 0 {
-		// lazy mode: add standard sigs for every input we own
-		addrs := make(map[types.Address]bool)
-		for _, addr := range s.w.Addresses() {
-			addrs[addr] = true
-		}
-		for _, sci := range txn.SiacoinInputs {
-			if addrs[types.PolicyAddress(sci.SpendPolicy)] {
-				toSign = append(toSign, sci.Parent.ID)
-			}
-		}
-	}
-
-	if err := s.w.SignTransaction(s.cm.TipContext(), &txn, nil); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	sfos, err := s.w.UnspentSiafundElements()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	api.WriteJSON(w, WalletTransactionResponse{txn})
+	api.WriteJSON(w, WalletUTXOsResponse{
+		Siacoins: scos,
+		Siafunds: sfos,
+	})
 }
 
 func (s *server) txpoolBroadcastHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -183,7 +217,7 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 }
 
 // NewServer returns an HTTP handler that serves the siad API.
-func NewServer(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Handler {
+func NewServer(cm ChainManager, s Syncer, w WalletStore, tp TransactionPool) http.Handler {
 	srv := server{
 		cm: cm,
 		s:  s,
@@ -193,10 +227,12 @@ func NewServer(cm ChainManager, s Syncer, w Wallet, tp TransactionPool) http.Han
 	mux := httprouter.New()
 
 	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
-	mux.GET("/api/wallet/address", srv.walletAddressHandler)
+	mux.GET("/api/wallet/seedindex", srv.walletSeedIndexHandler)
+	mux.POST("/api/wallet/address/:addr", srv.walletAddressHandlerPOST)
+	mux.GET("/api/wallet/address/:addr", srv.walletAddressHandlerGET)
 	mux.GET("/api/wallet/addresses", srv.walletAddressesHandler)
 	mux.GET("/api/wallet/transactions", srv.walletTransactionsHandler)
-	mux.POST("/api/wallet/sign", srv.walletSignHandler)
+	mux.GET("/api/wallet/utxos", srv.walletUTXOsHandler)
 
 	mux.GET("/api/txpool/transactions", srv.txpoolTransactionsHandler)
 	mux.POST("/api/txpool/broadcast", srv.txpoolBroadcastHandler)
