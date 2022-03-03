@@ -14,7 +14,8 @@ import (
 
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api/siad"
-	"golang.org/x/crypto/ssh/terminal"
+	"go.sia.tech/siad/v2/wallet"
+	"golang.org/x/term"
 
 	"lukechampine.com/flagg"
 )
@@ -166,11 +167,29 @@ func writeTxn(filename string, txn types.Transaction) {
 	check("Could not write transaction to disk", err)
 }
 
+func signTxn(txn *types.Transaction) error {
+	c := getClient()
+
+	vc, err := c.ConsensusTipContext()
+	if err != nil {
+		return err
+	}
+	sigHash := vc.InputSigHash(*txn)
+
+	seed := getSeed()
+	for _, in := range txn.SiacoinInputs {
+		if info, err := c.WalletAddressInfo(in.Parent.Address); err == nil {
+			in.Signatures = append(in.Signatures, seed.PrivateKey(info.Index).SignHash(sigHash))
+		}
+	}
+	return nil
+}
+
 func getAPIPassword() string {
 	apiPassword := os.Getenv("SIAD_API_PASSWORD")
 	if len(apiPassword) == 0 {
 		fmt.Print("Enter API password: ")
-		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		if err != nil {
 			log.Fatal(err)
@@ -182,9 +201,24 @@ func getAPIPassword() string {
 	return apiPassword
 }
 
+func getSeed() wallet.Seed {
+	fmt.Print("Seed: ")
+	pw, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+	if err != nil {
+		log.Fatal(err)
+	}
+	seed, err := wallet.SeedFromString(string(pw))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return seed
+}
+
 func main() {
 	log.SetFlags(0)
 	var verbose, exactCurrency, broadcast bool
+	var desc string
 
 	rootCmd := flagg.Root
 	rootCmd.Usage = flagg.SimpleUsage(rootCmd, rootUsage)
@@ -197,6 +231,7 @@ func main() {
 	walletBalanceCmd := flagg.New("balance", walletBalanceUsage)
 	walletBalanceCmd.BoolVar(&exactCurrency, "exact", false, "print balance in Hastings")
 	walletAddressCmd := flagg.New("address", walletAddressUsage)
+	walletAddressCmd.StringVar(&desc, "desc", "", "description for the new address")
 	walletAddressesCmd := flagg.New("addresses", walletAddressesUsage)
 	walletTransactionsCmd := flagg.New("transactions", walletTransactionsUsage)
 	walletSignCmd := flagg.New("sign", walletSignUsage)
@@ -257,13 +292,21 @@ func main() {
 		cmd.Usage()
 
 	case walletAddressCmd:
-		if len(args) != 0 {
+		if len(args) > 1 {
 			cmd.Usage()
 			return
 		}
-		address, err := getClient().WalletAddress()
-		check("Couldn't get address:", err)
-		fmt.Println(address.Address)
+		c := getClient()
+		index, err := c.WalletSeedIndex()
+		check("Couldn't get seed index:", err)
+		seed := getSeed()
+		addr := types.StandardAddress(seed.PublicKey(index))
+		err = c.WalletAddAddress(addr, wallet.AddressInfo{
+			Index:       index,
+			Description: desc,
+		})
+		check("Couldn't add address:", err)
+		fmt.Println(addr)
 
 	case walletAddressesCmd:
 		if len(args) != 0 {
@@ -283,26 +326,26 @@ func main() {
 		}
 		balance, err := getClient().WalletBalance()
 		check("Couldn't get balance:", err)
-		if *&exactCurrency {
+		if exactCurrency {
 			fmt.Printf("%d H\n", balance.Siacoins)
 		} else {
 			fmt.Printf("%s SC\n", balance.Siacoins)
 		}
+		fmt.Printf("%d SF\n", balance.Siafunds)
 
 	case walletTransactionsCmd:
 		if len(args) != 0 {
 			cmd.Usage()
 			return
 		}
-		transactions, err := getClient().WalletTransactions(time.Time{}, 0)
+		txns, err := getClient().WalletTransactions(time.Time{}, 0)
 		check("Couldn't get transactions:", err)
 
 		w := makeTabWriter()
 		defer w.Flush()
 		fmt.Fprintf(w, "%v\n", "ID")
-		for _, wt := range transactions {
-			txn := wt.Transaction
-			fmt.Fprintf(w, "%v\n", txn.ID())
+		for _, txn := range txns {
+			fmt.Fprintf(w, "%v\n", txn.ID)
 		}
 
 	case walletSignCmd:
@@ -312,7 +355,7 @@ func main() {
 		}
 
 		txn := readTxn(args[0])
-		err := getClient().WalletSign(&txn, nil)
+		err := signTxn(&txn)
 		check("failed to sign transaction:", err)
 		if broadcast {
 			err = getClient().TxpoolBroadcast(txn, nil)

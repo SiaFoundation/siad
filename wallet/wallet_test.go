@@ -9,29 +9,27 @@ import (
 
 	"go.sia.tech/siad/v2/internal/chainutil"
 	"go.sia.tech/siad/v2/internal/walletutil"
-	"go.sia.tech/siad/v2/wallet"
 )
 
 func TestWallet(t *testing.T) {
 	sim := chainutil.NewChainSim()
 
 	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.Context)
-	store := walletutil.NewEphemeralStore()
-	cm.AddSubscriber(store, cm.Tip())
-	w := wallet.NewHotWallet(store, wallet.NewSeed())
+	w := walletutil.NewTestingWallet(cm.TipContext())
+	cm.AddSubscriber(w, cm.Tip())
 
 	// fund the wallet with 100 coins
-	ourAddr := w.NextAddress()
+	ourAddr := w.NewAddress()
 	fund := types.SiacoinOutput{Value: types.Siacoins(100), Address: ourAddr}
 	if err := cm.AddTipBlock(sim.MineBlockWithSiacoinOutputs(fund)); err != nil {
 		t.Fatal(err)
 	}
 
 	// wallet should now have a transaction, one element, and a non-zero balance
-	if len(store.Transactions(time.Time{}, -1)) != 1 {
-		t.Fatal("expected a single transaction, got", store.Transactions(time.Time{}, -1))
-	} else if len(store.SpendableSiacoinElements()) != 1 {
-		t.Fatal("expected a single spendable element, got", store.SpendableSiacoinElements())
+	if txns, _ := w.Transactions(time.Time{}, -1); len(txns) != 1 {
+		t.Fatal("expected a single transaction, got", txns)
+	} else if utxos, _ := w.UnspentSiacoinElements(); len(utxos) != 1 {
+		t.Fatal("expected a single unspent element, got", utxos)
 	} else if w.Balance().IsZero() {
 		t.Fatal("expected non-zero balance after mining")
 	}
@@ -46,9 +44,7 @@ func TestWallet(t *testing.T) {
 				Value:   sendAmount,
 			}},
 		}
-		if toSign, _, err := w.FundTransaction(&txn, sendAmount, nil); err != nil {
-			t.Fatal(err)
-		} else if err := w.SignTransaction(sim.Context, &txn, toSign); err != nil {
+		if err := w.FundAndSign(&txn); err != nil {
 			t.Fatal(err)
 		}
 		prevBalance := w.Balance()

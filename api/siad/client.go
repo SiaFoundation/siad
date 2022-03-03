@@ -4,13 +4,21 @@ import (
 	"fmt"
 	"time"
 
+	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
+	"go.sia.tech/siad/v2/wallet"
 )
 
 // A Client provides methods for interacting with a siad API server.
 type Client struct {
 	c api.Client
+}
+
+// ConsensusTipContext returns the validation context for the current tip.
+func (c *Client) ConsensusTipContext() (resp consensus.ValidationContext, err error) {
+	err = c.c.Get("/api/consensus/tipcontext", &resp)
+	return
 }
 
 // WalletBalance returns the current wallet balance.
@@ -19,9 +27,21 @@ func (c *Client) WalletBalance() (resp WalletBalanceResponse, err error) {
 	return
 }
 
-// WalletAddress returns an address controlled by the wallet.
-func (c *Client) WalletAddress() (resp WalletAddressResponse, err error) {
-	err = c.c.Get("/api/wallet/address", &resp)
+// WalletSeedIndex returns the current wallet seed index.
+func (c *Client) WalletSeedIndex() (index uint64, err error) {
+	err = c.c.Get("/api/wallet/seedindex", &index)
+	return
+}
+
+// WalletAddAddress adds an address to the wallet.
+func (c *Client) WalletAddAddress(addr types.Address, info wallet.AddressInfo) (err error) {
+	err = c.c.Post("/api/wallet/address/"+addr.String(), info, nil)
+	return
+}
+
+// WalletAddressInfo returns information about an address controlled by the wallet.
+func (c *Client) WalletAddressInfo(addr types.Address) (resp wallet.AddressInfo, err error) {
+	err = c.c.Get("/api/wallet/address/"+addr.String(), &resp)
 	return
 }
 
@@ -32,14 +52,14 @@ func (c *Client) WalletAddresses(start, end int) (resp WalletAddressesResponse, 
 }
 
 // WalletTransactions returns all transactions relevant to the wallet.
-func (c *Client) WalletTransactions(since time.Time, max int) (resp []WalletTransactionResponse, err error) {
+func (c *Client) WalletTransactions(since time.Time, max int) (resp []wallet.Transaction, err error) {
 	err = c.c.Get(fmt.Sprintf("/api/wallet/transactions?since=%s&max=%d", since.Format(time.RFC3339), max), &resp)
 	return
 }
 
-// WalletSign signs a transaction.
-func (c *Client) WalletSign(txn *types.Transaction, toSign []types.ElementID) (err error) {
-	err = c.c.Post("/api/wallet/sign", WalletSignRequest{toSign, *txn}, txn)
+// WalletUTXOs returns all unspent outputs controlled by the wallet.
+func (c *Client) WalletUTXOs() (resp WalletUTXOsResponse, err error) {
+	err = c.c.Get("/api/wallet/utxos", &resp)
 	return
 }
 
