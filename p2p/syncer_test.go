@@ -3,6 +3,7 @@ package p2p_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,7 +123,11 @@ func TestNetwork(t *testing.T) {
 		mineOnRandomNode()
 	}
 	if err := n1.s.Connect(n2.s.Addr()); err != nil {
-		t.Fatal(err)
+		if strings.Contains(err.Error(), "already connected") {
+			t.Log(err) // shouldn't happen, but also shouldn't affect test
+		} else {
+			t.Fatal(err)
+		}
 	}
 
 	// continue mining until both nodes have a balance
