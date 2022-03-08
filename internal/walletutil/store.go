@@ -37,7 +37,9 @@ func (s *EphemeralStore) Balance() (sc types.Currency, sf uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sce := range s.scElems {
-		sc = sc.Add(sce.Value)
+		if sce.MaturityHeight < s.tip.Height {
+			sc = sc.Add(sce.Value)
+		}
 	}
 	for _, sfe := range s.sfElems {
 		sf += sfe.Value
