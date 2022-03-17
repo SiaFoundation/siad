@@ -2,12 +2,15 @@ package renterd
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"go.sia.tech/core/consensus"
+	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
 	"go.sia.tech/siad/v2/internal/walletutil"
@@ -117,21 +120,21 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 	}
 }
 
-func (s *server) contractsScanHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var cbr ContractsScanRequest
-	if err := json.NewDecoder(req.Body).Decode(&cbr); err != nil {
+func (s *server) rhpScanHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var rsr RHPScanRequest
+	if err := json.NewDecoder(req.Body).Decode(&rsr); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	session, err := renter.NewSession(cbr.NetAddress, cbr.HostKey, s.w, s.tp, s.cm)
+	session, err := renter.NewSession(rsr.NetAddress, rsr.HostKey, s.cm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer session.Close()
 
-	settings, err := session.ScanSettings()
+	settings, err := session.ScanSettings(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -139,50 +142,141 @@ func (s *server) contractsScanHandler(w http.ResponseWriter, req *http.Request, 
 	api.WriteJSON(w, settings)
 }
 
-func (s *server) contractsFormHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var cfr ContractsFormRequest
-	if err := json.NewDecoder(req.Body).Decode(&cfr); err != nil {
+func (s *server) rhpFormHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var rfr RHPFormRequest
+	if err := json.NewDecoder(req.Body).Decode(&rfr); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	session, err := renter.NewSession(cfr.NetAddress, cfr.HostKey, s.w, s.tp, s.cm)
+	session, err := renter.NewSession(rfr.NetAddress, rfr.HostKey, s.cm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer session.Close()
 
-	contract, parent, err := session.FormContract(cfr.RenterKey, cfr.HostFunds, cfr.RenterFunds, cfr.EndHeight, cfr.HostSettings)
+	contract, parent, err := session.FormContract(rfr.RenterKey, rfr.HostFunds, rfr.RenterFunds, rfr.EndHeight, rfr.HostSettings, s.w, s.tp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	api.WriteJSON(w, ContractsFormResponse{contract, parent})
+	api.WriteJSON(w, RHPFormResponse{contract, parent})
 }
 
-func (s *server) contractsRenewHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var crr ContractsRenewRequest
-	if err := json.NewDecoder(req.Body).Decode(&crr); err != nil {
+func (s *server) rhpRenewHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var rrr RHPRenewRequest
+	if err := json.NewDecoder(req.Body).Decode(&rrr); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	session, err := renter.NewSession(crr.NetAddress, crr.HostKey, s.w, s.tp, s.cm)
+	session, err := renter.NewSession(rrr.NetAddress, rrr.HostKey, s.cm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer session.Close()
 
-	// TODO: compare request settings to current host settings
-
-	contract, parent, err := session.RenewContract(crr.RenterKey, crr.Contract, crr.RenterFunds, crr.HostCollateral, crr.Extension)
+	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(rrr.RenterKey.PublicKey()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	api.WriteJSON(w, ContractsRenewResponse{contract, parent})
+	if settings.StoragePrice.Cmp(rrr.HostSettings.StoragePrice) > 0 ||
+		settings.Collateral.Cmp(rrr.HostSettings.Collateral) < 0 ||
+		settings.ContractFee.Cmp(rrr.HostSettings.ContractFee) < 0 {
+		http.Error(w, "current host settings are unacceptable", http.StatusBadRequest)
+		return
+	}
+
+	contract, parent, err := session.RenewContract(rrr.RenterKey, rrr.Contract, rrr.RenterFunds, rrr.HostCollateral, rrr.Extension, s.w, s.tp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	api.WriteJSON(w, RHPRenewResponse{contract, parent})
+}
+
+func (s *server) rhpReadHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var rrr RHPReadRequest
+	if err := json.NewDecoder(req.Body).Decode(&rrr); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	session, err := renter.NewSession(rrr.NetAddress, rrr.HostKey, s.cm)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer session.Close()
+	if err := session.Lock(req.Context(), rrr.ContractID, rrr.RenterKey); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(rrr.RenterKey.PublicKey()))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	price := rhp.RPCReadRenterCost(settings, rrr.Sections)
+	if price.Cmp(rrr.MaxPrice) > 0 {
+		http.Error(w, fmt.Sprintf("host price (%v) is unacceptable", price), http.StatusBadRequest)
+		return
+	}
+	if err := session.Read(req.Context(), w, rrr.Sections); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *server) rhpAppendHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var rar RHPAppendRequest
+	if err := json.Unmarshal([]byte(req.PostFormValue("meta")), &rar); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	sectorFile, hdr, err := req.FormFile("sector")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	} else if hdr.Size != rhp.SectorSize {
+		http.Error(w, fmt.Sprintf("wrong sector size (%v)", hdr.Size), http.StatusBadRequest)
+		return
+	}
+	var sector [rhp.SectorSize]byte
+	if _, err := io.ReadFull(sectorFile, sector[:]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	session, err := renter.NewSession(rar.NetAddress, rar.HostKey, s.cm)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer session.Close()
+	if err := session.Lock(req.Context(), rar.ContractID, rar.RenterKey); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(rar.RenterKey.PublicKey()))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	price := rhp.RPCWriteRenterCost(settings, session.LockedContract().Revision, []rhp.RPCWriteAction{{Type: rhp.RPCWriteActionAppend, Data: sector[:]}})
+	if price.Cmp(rar.MaxPrice) > 0 {
+		http.Error(w, fmt.Sprintf("host price (%v) is unacceptable", price), http.StatusBadRequest)
+		return
+	}
+	root, err := session.Append(req.Context(), &sector)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	api.WriteJSON(w, RHPAppendResponse{root})
 }
 
 // NewServer returns an HTTP handler that serves the renterd API.
@@ -202,9 +296,11 @@ func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp Transa
 	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
 	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
 
-	mux.POST("/api/contracts/scan", srv.contractsScanHandler)
-	mux.POST("/api/contracts/form", srv.contractsFormHandler)
-	mux.POST("/api/contracts/renew", srv.contractsRenewHandler)
+	mux.POST("/api/rhp/scan", srv.rhpScanHandler)
+	mux.POST("/api/rhp/form", srv.rhpFormHandler)
+	mux.POST("/api/rhp/renew", srv.rhpRenewHandler)
+	mux.POST("/api/rhp/read", srv.rhpReadHandler)
+	mux.POST("/api/rhp/append", srv.rhpAppendHandler)
 
 	return mux
 }

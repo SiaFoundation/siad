@@ -1,9 +1,17 @@
 package renterd
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"mime/multipart"
+	"net/http"
 	"time"
 
+	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
 	"go.sia.tech/siad/v2/wallet"
@@ -41,6 +49,76 @@ func (c *Client) SyncerPeers() (resp []SyncerPeerResponse, err error) {
 // SyncerConnect adds the address as a peer of the syncer.
 func (c *Client) SyncerConnect(addr string) (err error) {
 	err = c.c.Post("/api/syncer/connect", addr, nil)
+	return
+}
+
+// RHPScan scans a host, returning its current settings.
+func (c *Client) RHPScan(netAddress string, hostKey types.PublicKey) (resp rhp.HostSettings, err error) {
+	err = c.c.Post("/api/rhp/scan", RHPScanRequest{netAddress, hostKey}, &resp)
+	return
+}
+
+// RHPForm forms a contract with a host.
+func (c *Client) RHPForm(req RHPFormRequest) (resp RHPFormResponse, err error) {
+	err = c.c.Post("/api/rhp/form", req, &resp)
+	return
+}
+
+// RHPRenew renews an existing contract with a host.
+func (c *Client) RHPRenew(req RHPRenewRequest) (resp RHPRenewResponse, err error) {
+	err = c.c.Post("/api/rhp/renew", req, &resp)
+	return
+}
+
+// RHPRead invokes the Read RPC on a host, writing the response to w.
+func (c *Client) RHPRead(w io.Writer, rrr RHPReadRequest) (err error) {
+	js, _ := json.Marshal(rrr)
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%v%v", c.c.BaseURL, "/api/rhp/read"), bytes.NewReader(js))
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth("", c.c.AuthPassword)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		err, _ := ioutil.ReadAll(r.Body)
+		return errors.New(string(err))
+	}
+	_, err = io.Copy(w, r.Body)
+	return
+}
+
+// RHPAppend invokes the Write RPC on a host.
+func (c *Client) RHPAppend(rar RHPAppendRequest, sector *[rhp.SectorSize]byte) (resp RHPAppendResponse, err error) {
+	// build multipart form
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	f, _ := w.CreateFormField("meta")
+	json.NewEncoder(f).Encode(rar)
+	f, _ = w.CreateFormFile("sector", "sector")
+	f.Write(sector[:])
+	w.Close()
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%v%v", c.c.BaseURL, "/api/rhp/append"), &buf)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.SetBasicAuth("", c.c.AuthPassword)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return RHPAppendResponse{}, err
+	}
+	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		err, _ := ioutil.ReadAll(r.Body)
+		return RHPAppendResponse{}, errors.New(string(err))
+	}
+	err = json.NewDecoder(r.Body).Decode(&resp)
 	return
 }
 

@@ -33,15 +33,27 @@ type (
 
 // A Session implements of the renter side of the renter-host protocol.
 type Session struct {
-	hostKey types.PublicKey
+	hostKey   types.PublicKey
+	renterKey types.PrivateKey
 
-	wallet  Wallet
-	tpool   TransactionPool
 	cm      ChainManager
 	session *rhp.Session
 
 	settings   rhp.HostSettings
 	settingsID rhp.SettingsID
+	contract   rhp.Contract
+}
+
+func (s *Session) contractLocked() bool {
+	return s.contract.ID != types.ElementID{}
+}
+
+func (s *Session) canRevise() bool {
+	return s.contract.Revision.RevisionNumber != types.MaxRevisionNumber
+}
+
+func (s *Session) sufficientFunds(cost types.Currency) bool {
+	return s.contract.Revision.RenterOutput.Value.Cmp(cost) >= 0
 }
 
 func (s *Session) currentSettings() (rhp.SettingsID, rhp.HostSettings, error) {
@@ -51,13 +63,19 @@ func (s *Session) currentSettings() (rhp.SettingsID, rhp.HostSettings, error) {
 	return s.settingsID, s.settings, nil
 }
 
+// HostKey returns the public key of the host.
+func (s *Session) HostKey() types.PublicKey { return s.hostKey }
+
+// LockedContract returns the currently locked contract.
+func (s *Session) LockedContract() rhp.Contract { return s.contract }
+
 // Close ends the RHP session and closes the underlying connection.
 func (s *Session) Close() error {
 	return s.session.Close()
 }
 
 // NewSession initiates an RHP session with the specified host.
-func NewSession(hostIP string, hostKey types.PublicKey, w Wallet, tp TransactionPool, cm ChainManager) (*Session, error) {
+func NewSession(hostIP string, hostKey types.PublicKey, cm ChainManager) (*Session, error) {
 	conn, err := net.Dial("tcp", hostIP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open connection: %w", err)
@@ -70,9 +88,6 @@ func NewSession(hostIP string, hostKey types.PublicKey, w Wallet, tp Transaction
 	}
 	return &Session{
 		hostKey: hostKey,
-
-		wallet:  w,
-		tpool:   tp,
 		cm:      cm,
 		session: sess,
 	}, nil

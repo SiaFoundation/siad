@@ -41,8 +41,7 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 	}
 
 	// sign the revision and send it to the host
-	vc := s.cm.TipContext()
-	revisionHash := vc.ContractSigHash(revision)
+	revisionHash := s.cm.TipContext().ContractSigHash(revision)
 	req := &rhp.PayByContractRequest{
 		RefundAccount: payment.refundAccountID,
 
@@ -111,11 +110,12 @@ func (s *Session) pay(stream *mux.Stream, payment PaymentMethod, amount types.Cu
 	}
 }
 
-// PayByContract returns a PaymentMethod that revises the provided contract.
-func (s *Session) PayByContract(contract *rhp.Contract, priv types.PrivateKey, refundAccountID types.PublicKey) PaymentMethod {
+// PayByContract returns a PaymentMethod that revises the currently-locked
+// contract.
+func (s *Session) PayByContract(refundAccountID types.PublicKey) PaymentMethod {
 	return &payByContract{
-		contract:        contract,
-		privkey:         priv,
+		contract:        &s.contract,
+		privkey:         s.renterKey,
 		hostKey:         s.hostKey,
 		refundAccountID: refundAccountID,
 	}
