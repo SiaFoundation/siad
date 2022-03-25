@@ -178,7 +178,8 @@ func (s *server) rhpRenewHandler(w http.ResponseWriter, req *http.Request, _ htt
 	}
 	defer session.Close()
 
-	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(rrr.RenterKey.PublicKey()))
+	// note: no contract was locked for PayByContract, will cause a panic
+	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(nil, rrr.RenterKey, rrr.RenterKey.PublicKey()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -215,7 +216,9 @@ func (s *server) rhpReadHandler(w http.ResponseWriter, req *http.Request, _ http
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(rrr.RenterKey.PublicKey()))
+	// note: read doesn't use registered settings, just scanning the latest is
+	// acceptable.
+	settings, err := session.ScanSettings(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -261,14 +264,16 @@ func (s *server) rhpAppendHandler(w http.ResponseWriter, req *http.Request, _ ht
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	settings, err := session.RegisterSettings(req.Context(), session.PayByContract(rar.RenterKey.PublicKey()))
+	// note: append doesn't use registered settings, just scanning the latest is
+	// acceptable.
+	settings, err := session.ScanSettings(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	price := rhp.RPCWriteRenterCost(settings, session.LockedContract().Revision, []rhp.RPCWriteAction{{Type: rhp.RPCWriteActionAppend, Data: sector[:]}})
-	if price.Cmp(rar.MaxPrice) > 0 {
-		http.Error(w, fmt.Sprintf("host price (%v) is unacceptable", price), http.StatusBadRequest)
+	storage, usage := rhp.RPCWriteRenterCost(settings, session.LockedContract().Revision, []rhp.RPCWriteAction{{Type: rhp.RPCWriteActionAppend, Data: sector[:]}})
+	if storage.Add(usage).Cmp(rar.MaxPrice) > 0 {
+		http.Error(w, fmt.Sprintf("host price (%v) is unacceptable", storage.Add(usage)), http.StatusBadRequest)
 		return
 	}
 	root, err := session.Append(req.Context(), &sector)

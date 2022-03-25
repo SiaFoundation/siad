@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sia Web</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		html,
+		body {
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+		}
+
+		body {
+			display: flex;
+			font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+			font-size: 14px;
+			line-height: 1.42857143;
+			color: #333;
+			background-color: rgb(238, 238, 238);
+			align-items: center;
+			justify-content: center;
+			flex-direction: column;
+		}
+
+		h1,
+		h4 {
+			margin: 0;
+		}
+
+		.hidden {
+			display: none;
+		}
+	</style>
+</head>
+
+<body>
+	<form id="password-form">
+		<p class="error hidden" id="errorMsg"></p>
+		<label>API Password:</label>
+		<input type="password" id="apiPassword" />
+		<button>Set</button>
+	</form>
+	<div class="hidden" id="host-dashboard">
+		<h1 id="block-height">Block Height: 0</h1>
+		<h1 id="balance">Balance: 0 SC</h1>
+		<div class="button-set">
+			<button id="start-mining">Start Mining</button>
+			<button id="stop-mining" disabled>Stop Mining</button>
+		</div>
+		<div id="event-stream">
+
+		</div>
+		<p id="updating-in"></p>
+	</div>
+	<script type="text/javascript">
+		let password;
+
+		async function getWalletBalance() {
+			const resp = await fetch('/api/wallet/balance', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Basic ' + btoa(`:${password}`)
+					}
+				});
+			
+			if (resp.status !== 200)
+				throw new Error(await resp.text());
+			
+			const body = await resp.json(),
+				fmt = new Intl.NumberFormat([], {
+					type: 'decimal',
+					minimumFractionDigits: 4
+				});
+			document.getElementById('balance').innerHTML = `Balance: ${fmt.format(body.siacoins / 1e24)} SC`;
+		}
+
+		async function getBlockHeight() {
+			const resp = await fetch('/api/consensus/tip', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Basic ' + btoa(`:${password}`)
+					}
+				});
+			
+			if (resp.status !== 200)
+				throw new Error(await resp.text());
+			
+			const body = await resp.json(),
+				fmt = new Intl.NumberFormat([], {
+					type: 'decimal',
+					maximumFractionDigits: 0
+				});
+			document.getElementById('block-height').innerHTML = `Block Height: ${fmt.format(body?.height || 0)}`;
+		}
+
+		async function startMining() {
+			const resp = await fetch('/api/miner/start', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Basic ' + btoa(`:${password}`)
+					}
+				});
+			
+			document.getElementById('start-mining').disabled = true;
+			document.getElementById('stop-mining').disabled = false;
+		}
+
+		function setupWebsocket() {
+			const socket = new WebSocket(`ws://${window.location.host}/api/ws`);
+			socket.addEventListener('open', () => {
+				console.log('Connected to websocket');
+			});
+			socket.addEventListener('close', () => {
+				console.log('Disconnected from websocket');
+			});
+			socket.addEventListener('message', (ev) => {
+				try {
+					const data = JSON.parse(ev.data);
+					
+					const ele = document.createElement('div');
+					ele.classList.add('host-event');
+					ele.innerText = JSON.stringify(data);
+					document.getElementById('event-stream').appendChild(ele);
+				} catch (ex) {
+					console.error(ex);
+				}
+			});
+		}
+
+		async function stopMining() {
+			const resp = await fetch('/api/miner/stop', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': 'Basic ' + btoa(`:${password}`)
+					}
+				});
+			
+			document.getElementById('start-mining').disabled = false;
+			document.getElementById('stop-mining').disabled = true;
+		}
+
+		document.getElementById('start-mining').addEventListener('click', startMining);
+		document.getElementById('stop-mining').addEventListener('click', stopMining);
+
+		document.querySelector('form').addEventListener('submit', async function(e) {
+			e.preventDefault();
+			try {
+				password = document.getElementById("apiPassword").value;
+				await Promise.allSettled([
+					getBlockHeight(password),
+					getWalletBalance(password)
+				]);
+				setupWebsocket();
+				document.getElementById('password-form').classList.add('hidden');
+				document.getElementById('host-dashboard').classList.remove('hidden');
+
+				setInterval(() => {
+					getWalletBalance(password);
+					getBlockHeight(password);
+				}, 1000);
+			} catch (ex) {
+				const errMsg = document.getElementById('errorMsg');
+				errMsg.classList.remove('hidden');
+				errMsg.innerText = ex.message;
+			}
+			return false;
+		});
+	</script>
+</body>
+
+</html>
