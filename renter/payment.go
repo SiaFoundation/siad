@@ -112,10 +112,10 @@ func (s *Session) pay(stream *mux.Stream, payment PaymentMethod, amount types.Cu
 
 // PayByContract returns a PaymentMethod that revises the currently-locked
 // contract.
-func (s *Session) PayByContract(refundAccountID types.PublicKey) PaymentMethod {
+func (s *Session) PayByContract(contract *rhp.Contract, renterKey types.PrivateKey, refundAccountID types.PublicKey) PaymentMethod {
 	return &payByContract{
-		contract:        &s.contract,
-		privkey:         s.renterKey,
+		contract:        contract,
+		privkey:         renterKey,
 		hostKey:         s.hostKey,
 		refundAccountID: refundAccountID,
 	}

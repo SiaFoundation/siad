@@ -296,7 +296,7 @@ func (s *Session) Read(ctx context.Context, w io.Writer, sections []rhp.RPCReadR
 	revision.RenterOutput.Value = revision.RenterOutput.Value.Sub(price)
 	revision.HostOutput.Value = revision.HostOutput.Value.Add(price)
 	revision.MissedHostValue = revision.MissedHostValue.Add(price)
-	contractHash := s.cm.TipContext().ContractSigHash(s.contract.Revision)
+	contractHash := s.cm.TipContext().ContractSigHash(revision)
 	revision.RenterSignature = s.renterKey.SignHash(contractHash)
 
 	// initiate RPC
@@ -323,7 +323,7 @@ func (s *Session) Read(ctx context.Context, w io.Writer, sections []rhp.RPCReadR
 	var resp rhp.RPCReadResponse
 	if err := rpc.ReadResponse(stream, &resp); err != nil {
 		return fmt.Errorf("couldn't read signature: %w", err)
-	} else if s.hostKey.VerifyHash(contractHash, resp.Signature) {
+	} else if !s.hostKey.VerifyHash(contractHash, resp.Signature) {
 		return errors.New("host's signature is invalid")
 	}
 	// update contract
@@ -371,8 +371,8 @@ func (s *Session) Append(ctx context.Context, sector *[rhp.SectorSize]byte) (_ t
 		Type: rhp.RPCWriteActionAppend,
 		Data: sector[:],
 	}}
-	price := rhp.RPCWriteRenterCost(s.settings, s.contract.Revision, actions)
-	if !s.sufficientFunds(price) {
+	storage, usage := rhp.RPCWriteRenterCost(s.settings, s.contract.Revision, actions)
+	if !s.sufficientFunds(storage.Add(usage)) {
 		return types.Hash256{}, ErrInsufficientFunds
 	}
 	collateral := rhp.RPCWriteHostCollateral(s.settings, s.contract.Revision, actions)
@@ -384,10 +384,9 @@ func (s *Session) Append(ctx context.Context, sector *[rhp.SectorSize]byte) (_ t
 	revision := s.contract.Revision
 	revision.RevisionNumber++
 	revision.Filesize += rhp.SectorSize
-	revision.RenterOutput.Value = revision.RenterOutput.Value.Sub(price)
-	revision.HostOutput.Value = revision.HostOutput.Value.Add(price)
-	revision.MissedHostValue = revision.MissedHostValue.Add(price)
-	revision.MissedHostValue = revision.MissedHostValue.Sub(collateral)
+	revision.RenterOutput.Value = revision.RenterOutput.Value.Sub(storage).Sub(usage)
+	revision.HostOutput.Value = revision.HostOutput.Value.Add(storage).Add(usage)
+	revision.MissedHostValue = revision.MissedHostValue.Add(usage).Sub(collateral)
 
 	// compute appended roots in parallel with I/O
 	rootChan := make(chan types.Hash256)
@@ -427,7 +426,7 @@ func (s *Session) Append(ctx context.Context, sector *[rhp.SectorSize]byte) (_ t
 	treeHashes := merkleResp.OldSubtreeHashes
 	oldRoot, newRoot := revision.FileMerkleRoot, merkleResp.NewMerkleRoot
 	sectorRoot := <-rootChan
-	if !rhp.VerifyAppendProof(revision.Filesize/rhp.SectorSize, treeHashes, sectorRoot, oldRoot, newRoot) {
+	if !rhp.VerifyAppendProof((revision.Filesize/rhp.SectorSize)-1, treeHashes, sectorRoot, oldRoot, newRoot) {
 		err := ErrInvalidMerkleProof
 		rpc.WriteResponseErr(stream, err)
 		return types.Hash256{}, err
@@ -435,7 +434,7 @@ func (s *Session) Append(ctx context.Context, sector *[rhp.SectorSize]byte) (_ t
 
 	// set new Merkle root and exchange signatures
 	revision.FileMerkleRoot = newRoot
-	contractHash := s.cm.TipContext().ContractSigHash(s.contract.Revision)
+	contractHash := s.cm.TipContext().ContractSigHash(revision)
 	revision.RenterSignature = s.renterKey.SignHash(contractHash)
 	renterSig := &rhp.RPCWriteResponse{
 		Signature: s.renterKey.SignHash(contractHash),

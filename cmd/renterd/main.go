@@ -17,7 +17,7 @@ import (
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/p2p"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 var (
@@ -48,7 +48,7 @@ func getAPIPassword() string {
 	apiPassword := os.Getenv("RENTERD_API_PASSWORD")
 	if len(apiPassword) == 0 {
 		fmt.Print("Enter API password: ")
-		pw, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		pw, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		if err != nil {
 			log.Fatal(err)

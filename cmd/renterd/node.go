@@ -39,7 +39,6 @@ func (n *node) mine() {
 			}
 			continue
 		}
-		log.Println("mined block", b.Index())
 
 		// broadcast it
 		n.s.BroadcastBlock(b)
