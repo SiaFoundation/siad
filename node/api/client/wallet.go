@@ -205,7 +205,7 @@ func (c *Client) WalletTransactionsGet(startHeight types.BlockHeight, endHeight 
 // WalletTransactionGet requests the /wallet/transaction/:id api resource for a
 // certain TransactionID.
 func (c *Client) WalletTransactionGet(id types.TransactionID) (wtg api.WalletTransactionGETid, err error) {
-	err = c.get("/wallet/transaction/"+id.String(), wtg)
+	err = c.get("/wallet/transaction/"+id.String(), &wtg)
 	return
 }
 
