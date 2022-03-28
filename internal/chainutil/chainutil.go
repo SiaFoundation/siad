@@ -281,7 +281,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 		} else {
 			// revise
 			rev := fc.FileContract
-			rev.Filesize += 1
+			rev.Filesize += 5
 			txn := types.Transaction{
 				FileContractRevisions: []types.FileContractRevision{{
 					Parent:   fc,
