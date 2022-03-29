@@ -43,15 +43,15 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	tb := newTestProgramBuilder(pt, duration)
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
-	tb.AddAppendInstruction(sectorData1, false)
+	tb.AddAppendInstruction(sectorData1, false, duration)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
-	tb.AddAppendInstruction(sectorData2, false)
+	tb.AddAppendInstruction(sectorData2, false, duration)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
-	tb.AddAppendInstruction(sectorData3, false)
+	tb.AddAppendInstruction(sectorData3, false, duration)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.

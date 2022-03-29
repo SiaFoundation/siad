@@ -102,7 +102,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	duration := types.BlockHeight(fastrand.Uint64n(5))
 	pt := newTestPriceTable()
 	pb := newTestProgramBuilder(pt, duration)
-	pb.AddAppendInstruction(sectorData, false)
+	pb.AddAppendInstruction(sectorData, false, duration)
 	program, data := pb.Program()
 	budget := pb.Cost().Budget(true)
 	// Execute the program with no collateral budget.
