@@ -66,11 +66,13 @@ type ChainSim struct {
 	nonce uint64 // for distinguishing forks
 
 	// for simulating transactions
-	pubkey    types.PublicKey
-	privkey   types.PrivateKey
-	scOutputs []types.SiacoinElement
-	sfOutputs []types.SiafundElement
-	contracts []types.FileContractElement
+	pubkey      types.PublicKey
+	privkey     types.PrivateKey
+	hostPubkey  types.PublicKey
+	hostPrivkey types.PrivateKey
+	scOutputs   []types.SiacoinElement
+	sfOutputs   []types.SiafundElement
+	contracts   []types.FileContractElement
 }
 
 // Fork forks the current chain.
@@ -267,21 +269,38 @@ func (cs *ChainSim) MineBlock() types.Block {
 	}
 	cs.sfOutputs = cs.sfOutputs[:0]
 	for i, fc := range cs.contracts {
-		if (i % 2) == 0 {
-			// resolve
-			rev := fc.FileContract
-			rev.RevisionNumber = types.MaxRevisionNumber
+		if cs.Context.Index.Height > fc.WindowEnd {
+			// resolve through "missed" resolution
 			txn := types.Transaction{
-				FileContractResolutions: []types.FileContractResolution{{
-					Parent:       fc,
-					Finalization: rev,
+				FileContractRevisions: []types.FileContractRevision{{
+					Parent: fc,
+				}},
+			}
+			txns = append(txns, txn)
+		} else if i%2 == 0 {
+			// revise
+			rev := fc.FileContract
+			rev.Filesize += 5
+			rev.RevisionNumber++
+			contractHash := cs.Context.ContractSigHash(rev)
+			rev.RenterSignature = cs.privkey.SignHash(contractHash)
+			rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
+
+			txn := types.Transaction{
+				FileContractRevisions: []types.FileContractRevision{{
+					Parent:   fc,
+					Revision: rev,
 				}},
 			}
 			txns = append(txns, txn)
 		} else {
-			// revise
+			// resolve through revision
 			rev := fc.FileContract
-			rev.Filesize += 5
+			rev.RevisionNumber = types.MaxRevisionNumber
+			contractHash := cs.Context.ContractSigHash(rev)
+			rev.RenterSignature = cs.privkey.SignHash(contractHash)
+			rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
+
 			txn := types.Transaction{
 				FileContractRevisions: []types.FileContractRevision{{
 					Parent:   fc,
@@ -379,10 +398,13 @@ func NewChainSim() *ChainSim {
 			Block:   genesis,
 			Context: sau.Context,
 		},
-		Context:   sau.Context,
-		privkey:   privkey,
-		pubkey:    pubkey,
-		scOutputs: scOutputs,
-		sfOutputs: sfOutputs,
+		Context:     sau.Context,
+		privkey:     privkey,
+		pubkey:      pubkey,
+		hostPrivkey: hostPrivkey,
+		hostPubkey:  hostPubkey,
+		scOutputs:   scOutputs,
+		sfOutputs:   sfOutputs,
+		contracts:   contracts,
 	}
 }
