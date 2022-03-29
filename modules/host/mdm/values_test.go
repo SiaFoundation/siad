@@ -52,7 +52,7 @@ func NewTestValues(pt *modules.RPCPriceTable, duration types.BlockHeight) TestVa
 // AddAppendInstruction adds the cost of an append instruction to the object.
 func (v *TestValues) AddAppendInstruction(data []byte) {
 	memory := modules.MDMAppendMemory()
-	collateral := modules.MDMAppendCollateral(v.staticPT)
+	collateral := modules.MDMAppendCollateral(v.staticPT, v.staticDuration)
 	cost, refund := modules.MDMAppendCost(v.staticPT, v.staticDuration)
 	time := uint64(modules.MDMTimeAppend)
 	newData := len(data)

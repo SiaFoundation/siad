@@ -43,7 +43,7 @@ func NewProgramBuilder(pt *RPCPriceTable, duration types.BlockHeight) *ProgramBu
 }
 
 // AddAppendInstruction adds an Append instruction to the program.
-func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) error {
+func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool, duration types.BlockHeight) error {
 	if uint64(len(data)) != SectorSize {
 		return fmt.Errorf("expected appended data to have size %v but was %v", SectorSize, len(data))
 	}
@@ -56,7 +56,7 @@ func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) er
 	// Append instruction
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
-	collateral := MDMAppendCollateral(pb.staticPT)
+	collateral := MDMAppendCollateral(pb.staticPT, duration)
 	cost, refund := MDMAppendCost(pb.staticPT, pb.staticDuration)
 	memory := MDMAppendMemory()
 	time := uint64(MDMTimeAppend)

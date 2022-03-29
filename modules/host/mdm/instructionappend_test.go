@@ -22,7 +22,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	pt := newTestPriceTable()
 	duration := types.BlockHeight(fastrand.Uint64n(5))
 	tb := newTestProgramBuilder(pt, duration)
-	tb.AddAppendInstruction(appendData1, true)
+	tb.AddAppendInstruction(appendData1, true, duration)
 
 	// Execute it.
 	so := host.newTestStorageObligation(true)
@@ -71,7 +71,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
 	duration = types.BlockHeight(1)
 	tb = newTestProgramBuilder(pt, duration)
-	tb.AddAppendInstruction(appendData2, true)
+	tb.AddAppendInstruction(appendData2, true, duration)
 	ics := so.ContractSize()
 
 	// Expected outputs

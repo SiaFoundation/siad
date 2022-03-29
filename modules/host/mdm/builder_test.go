@@ -61,8 +61,8 @@ func (tb *testProgramBuilder) Cost() TestValues {
 
 // AddAppendInstruction adds an append instruction to the builder, keeping
 // track of running values.
-func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
-	err := tb.staticPB.AddAppendInstruction(data, merkleProof)
+func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool, duration types.BlockHeight) {
+	err := tb.staticPB.AddAppendInstruction(data, merkleProof, duration)
 	if err != nil {
 		panic(err)
 	}

@@ -473,8 +473,8 @@ func MDMDropSectorsTime(numSectorsDropped uint64) uint64 {
 
 // MDMAppendCollateral returns the additional collateral a 'Append' instruction
 // requires the host to put up.
-func MDMAppendCollateral(pt *RPCPriceTable) types.Currency {
-	return pt.CollateralCost.Mul64(SectorSize)
+func MDMAppendCollateral(pt *RPCPriceTable, duration types.BlockHeight) types.Currency {
+	return pt.CollateralCost.Mul64(SectorSize).Mul64(uint64(duration))
 }
 
 // MDMDropSectorsCollateral returns the additional collateral a 'DropSectors'

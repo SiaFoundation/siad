@@ -84,7 +84,8 @@ func (i *instructionAppend) Execute(prevOutput output) (output, types.Currency) 
 
 // Collateral returns the collateral cost of adding one full sector.
 func (i *instructionAppend) Collateral() types.Currency {
-	return modules.MDMAppendCollateral(i.staticState.priceTable)
+	duration := i.staticState.staticRemainingDuration
+	return modules.MDMAppendCollateral(i.staticState.priceTable, duration)
 }
 
 // Cost returns the Cost of this `Append` instruction.
