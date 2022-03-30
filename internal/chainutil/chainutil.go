@@ -5,6 +5,7 @@ import (
 
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
+	"lukechampine.com/frand"
 )
 
 // FindBlockNonce finds a block nonce meeting the target.
@@ -80,6 +81,8 @@ func (cs *ChainSim) Fork() *ChainSim {
 	cs2 := *cs
 	cs2.Chain = append([]types.Block(nil), cs2.Chain...)
 	cs2.scOutputs = append([]types.SiacoinElement(nil), cs2.scOutputs...)
+	cs2.sfOutputs = append([]types.SiafundElement(nil), cs2.sfOutputs...)
+	cs2.contracts = append([]types.FileContractElement(nil), cs2.contracts...)
 	cs.nonce += 1 << 48
 	return &cs2
 }
@@ -241,8 +244,10 @@ func (cs *ChainSim) MineBlock() types.Block {
 				{Address: types.StandardAddress(cs.pubkey), Value: out.Value.Sub(types.NewCurrency64(cs.Context.Index.Height + 1))},
 				{Address: types.Address{byte(cs.nonce >> 48), byte(cs.nonce >> 56), 1, 2, 3}, Value: types.NewCurrency64(1)},
 			},
-			MinerFee: types.NewCurrency64(cs.Context.Index.Height),
+			ArbitraryData: frand.Bytes(32),
+			MinerFee:      types.NewCurrency64(cs.Context.Index.Height),
 		}
+
 		sigHash := cs.Context.InputSigHash(txn)
 		for i := range txn.SiacoinInputs {
 			txn.SiacoinInputs[i].Signatures = []types.Signature{cs.privkey.SignHash(sigHash)}
@@ -260,6 +265,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 				{Address: types.StandardAddress(cs.pubkey), Value: out.Value - 1},
 				{Address: types.Address{byte(cs.nonce >> 48), byte(cs.nonce >> 56), 1, 2, 3}, Value: 1},
 			},
+			ArbitraryData: frand.Bytes(32),
 		}
 		sigHash := cs.Context.InputSigHash(txn)
 		for i := range txn.SiafundInputs {
@@ -311,6 +317,18 @@ func (cs *ChainSim) MineBlock() types.Block {
 		}
 	}
 	cs.contracts = cs.contracts[:0]
+	for i := 0; i < 5; i++ {
+		privkey := types.GeneratePrivateKey()
+		txn := types.Transaction{
+			Attestations: []types.Attestation{{
+				PublicKey: privkey.PublicKey(),
+				Key:       string(frand.Bytes(32)),
+				Value:     frand.Bytes(64),
+			}},
+		}
+		txn.Attestations[0].Signature = privkey.SignHash(cs.Context.AttestationSigHash(txn.Attestations[0]))
+		txns = append(txns, txn)
+	}
 
 	return cs.MineBlockWithTxns(txns...)
 }
@@ -327,10 +345,10 @@ func (cs *ChainSim) MineBlocks(n int) []types.Block {
 // NewChainSim returns a new ChainSim useful for simulating forks.
 func NewChainSim() *ChainSim {
 	// gift ourselves some coins in the genesis block
-	privkey := types.NewPrivateKeyFromSeed([32]byte{})
+	privkey := types.GeneratePrivateKey()
 	pubkey := privkey.PublicKey()
 
-	hostPrivkey := types.NewPrivateKeyFromSeed([32]byte{})
+	hostPrivkey := types.GeneratePrivateKey()
 	hostPubkey := hostPrivkey.PublicKey()
 
 	ourAddr := types.StandardAddress(pubkey)
