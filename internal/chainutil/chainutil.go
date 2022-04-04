@@ -262,10 +262,15 @@ func (cs *ChainSim) MineBlock() types.Block {
 				SpendPolicy: types.PolicyPublicKey(cs.pubkey),
 			}},
 			SiafundOutputs: []types.SiafundOutput{
-				{Address: types.StandardAddress(cs.pubkey), Value: out.Value - 1},
 				{Address: types.Address{byte(cs.nonce >> 48), byte(cs.nonce >> 56), 1, 2, 3}, Value: 1},
 			},
 			ArbitraryData: frand.Bytes(32),
+		}
+		if out.Value != 1 {
+			txn.SiafundOutputs = append(txn.SiafundOutputs, types.SiafundOutput{
+				Address: types.StandardAddress(cs.pubkey),
+				Value:   out.Value - 1,
+			})
 		}
 		sigHash := cs.Context.InputSigHash(txn)
 		for i := range txn.SiafundInputs {
@@ -274,46 +279,52 @@ func (cs *ChainSim) MineBlock() types.Block {
 		txns = append(txns, txn)
 	}
 	cs.sfOutputs = cs.sfOutputs[:0]
-	for i, fc := range cs.contracts {
-		if cs.Context.Index.Height > fc.WindowEnd {
-			// resolve through "missed" resolution
-			txn := types.Transaction{
-				FileContractRevisions: []types.FileContractRevision{{
-					Parent: fc,
-				}},
-			}
-			txns = append(txns, txn)
-		} else if i%2 == 0 {
+	for _, fc := range cs.contracts {
+		if height := cs.Context.Index.Height; height < fc.WindowStart {
 			// revise
-			rev := fc.FileContract
-			rev.Filesize += 5
-			rev.RevisionNumber++
-			contractHash := cs.Context.ContractSigHash(rev)
-			rev.RenterSignature = cs.privkey.SignHash(contractHash)
-			rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
+			if rand := frand.Float64(); rand < 0.3 {
+				rev := fc.FileContract
+				rev.Filesize += 5
+				rev.RevisionNumber++
+				contractHash := cs.Context.ContractSigHash(rev)
+				rev.RenterSignature = cs.privkey.SignHash(contractHash)
+				rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
 
-			txn := types.Transaction{
-				FileContractRevisions: []types.FileContractRevision{{
-					Parent:   fc,
-					Revision: rev,
-				}},
+				txn := types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						Parent:   fc,
+						Revision: rev,
+					}},
+				}
+				txns = append(txns, txn)
 			}
-			txns = append(txns, txn)
+		} else if height < fc.WindowEnd {
+			// resolve
+			if rand := frand.Float64(); rand < 0.3 {
+				rev := fc.FileContract
+				rev.RevisionNumber = types.MaxRevisionNumber
+				contractHash := cs.Context.ContractSigHash(rev)
+				rev.RenterSignature = cs.privkey.SignHash(contractHash)
+				rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
+
+				txn := types.Transaction{
+					FileContractResolutions: []types.FileContractResolution{{
+						Parent:       fc,
+						Finalization: rev,
+					}},
+				}
+				txns = append(txns, txn)
+			}
 		} else {
-			// resolve through revision
-			rev := fc.FileContract
-			rev.RevisionNumber = types.MaxRevisionNumber
-			contractHash := cs.Context.ContractSigHash(rev)
-			rev.RenterSignature = cs.privkey.SignHash(contractHash)
-			rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
-
-			txn := types.Transaction{
-				FileContractRevisions: []types.FileContractRevision{{
-					Parent:   fc,
-					Revision: rev,
-				}},
+			// resolve through "missed" resolution
+			if rand := frand.Float64(); rand < 0.3 {
+				txn := types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						Parent: fc,
+					}},
+				}
+				txns = append(txns, txn)
 			}
-			txns = append(txns, txn)
 		}
 	}
 	cs.contracts = cs.contracts[:0]
