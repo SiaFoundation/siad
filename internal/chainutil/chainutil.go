@@ -66,6 +66,8 @@ type ChainSim struct {
 
 	nonce uint64 // for distinguishing forks
 
+	rng *frand.RNG
+
 	// for simulating transactions
 	pubkey      types.PublicKey
 	privkey     types.PrivateKey
@@ -81,8 +83,17 @@ func (cs *ChainSim) Fork() *ChainSim {
 	cs2 := *cs
 	cs2.Chain = append([]types.Block(nil), cs2.Chain...)
 	cs2.scOutputs = append([]types.SiacoinElement(nil), cs2.scOutputs...)
+	for i := range cs2.scOutputs {
+		cs2.scOutputs[i].MerkleProof = append([]types.Hash256(nil), cs2.scOutputs[i].MerkleProof...)
+	}
 	cs2.sfOutputs = append([]types.SiafundElement(nil), cs2.sfOutputs...)
+	for i := range cs2.sfOutputs {
+		cs2.sfOutputs[i].MerkleProof = append([]types.Hash256(nil), cs2.sfOutputs[i].MerkleProof...)
+	}
 	cs2.contracts = append([]types.FileContractElement(nil), cs2.contracts...)
+	for i := range cs2.contracts {
+		cs2.contracts[i].MerkleProof = append([]types.Hash256(nil), cs2.contracts[i].MerkleProof...)
+	}
 	cs.nonce += 1 << 48
 	return &cs2
 }
@@ -244,7 +255,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 				{Address: types.StandardAddress(cs.pubkey), Value: out.Value.Sub(types.NewCurrency64(cs.Context.Index.Height + 1))},
 				{Address: types.Address{byte(cs.nonce >> 48), byte(cs.nonce >> 56), 1, 2, 3}, Value: types.NewCurrency64(1)},
 			},
-			ArbitraryData: frand.Bytes(32),
+			ArbitraryData: cs.rng.Bytes(32),
 			MinerFee:      types.NewCurrency64(cs.Context.Index.Height),
 		}
 
@@ -264,7 +275,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 			SiafundOutputs: []types.SiafundOutput{
 				{Address: types.Address{byte(cs.nonce >> 48), byte(cs.nonce >> 56), 1, 2, 3}, Value: 1},
 			},
-			ArbitraryData: frand.Bytes(32),
+			ArbitraryData: cs.rng.Bytes(32),
 		}
 		if out.Value != 1 {
 			txn.SiafundOutputs = append(txn.SiafundOutputs, types.SiafundOutput{
@@ -282,7 +293,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 	for _, fc := range cs.contracts {
 		if height := cs.Context.Index.Height; height < fc.WindowStart {
 			// revise
-			if rand := frand.Float64(); rand < 0.3 {
+			if cs.rng.Float64() < 0.3 {
 				rev := fc.FileContract
 				rev.Filesize += 5
 				rev.RevisionNumber++
@@ -300,7 +311,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 			}
 		} else if height < fc.WindowEnd {
 			// resolve
-			if rand := frand.Float64(); rand < 0.3 {
+			if cs.rng.Float64() < 0.3 {
 				rev := fc.FileContract
 				rev.RevisionNumber = types.MaxRevisionNumber
 				contractHash := cs.Context.ContractSigHash(rev)
@@ -317,7 +328,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 			}
 		} else {
 			// resolve through "missed" resolution
-			if rand := frand.Float64(); rand < 0.3 {
+			if cs.rng.Float64() < 0.3 {
 				txn := types.Transaction{
 					FileContractRevisions: []types.FileContractRevision{{
 						Parent: fc,
@@ -333,8 +344,8 @@ func (cs *ChainSim) MineBlock() types.Block {
 		txn := types.Transaction{
 			Attestations: []types.Attestation{{
 				PublicKey: privkey.PublicKey(),
-				Key:       string(frand.Bytes(32)),
-				Value:     frand.Bytes(64),
+				Key:       string(cs.rng.Bytes(32)),
+				Value:     cs.rng.Bytes(64),
 			}},
 		}
 		txn.Attestations[0].Signature = privkey.SignHash(cs.Context.AttestationSigHash(txn.Attestations[0]))
@@ -374,7 +385,7 @@ func NewChainSim() *ChainSim {
 	for i := range sfGift {
 		sfGift[i] = types.SiafundOutput{
 			Address: ourAddr,
-			Value:   uint64(10 * uint32(i+1)),
+			Value:   uint64(10 * (i + 1)),
 		}
 	}
 	contractGift := make([]types.FileContract, 10)
@@ -422,12 +433,15 @@ func NewChainSim() *ChainSim {
 			contracts = append(contracts, fc)
 		}
 	}
+
+	var seed [32]byte
 	return &ChainSim{
 		Genesis: consensus.Checkpoint{
 			Block:   genesis,
 			Context: sau.Context,
 		},
 		Context:     sau.Context,
+		rng:         frand.NewCustom(seed[:], 1024, 12),
 		privkey:     privkey,
 		pubkey:      pubkey,
 		hostPrivkey: hostPrivkey,
