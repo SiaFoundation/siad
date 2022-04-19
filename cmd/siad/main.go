@@ -70,6 +70,7 @@ func main() {
 	apiAddr := flag.String("http", "localhost:9980", "address to serve API on")
 	dir := flag.String("dir", ".", "directory to store node state in")
 	mine := flag.Bool("mine", false, "run CPU miner")
+	minerAddr := flag.String("miner-addr", types.VoidAddress.String(), "address to send block rewards to")
 	checkpoint := flag.String("checkpoint", "", "checkpoint to bootstrap from")
 	bootstrap := flag.String("bootstrap", "", "peer address or explorer URL to bootstrap from")
 	flag.Parse()
@@ -110,7 +111,7 @@ func main() {
 		}
 	}
 
-	n, err := newNode(*gatewayAddr, *dir, initCheckpoint)
+	n, err := newNode(*gatewayAddr, *dir, *minerAddr, initCheckpoint)
 	if err != nil {
 		log.Fatal(err)
 	}

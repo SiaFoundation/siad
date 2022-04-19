@@ -61,7 +61,7 @@ func (n *node) Close() error {
 	return nil
 }
 
-func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
+func newNode(addr, dir, minerAddr string, c consensus.Checkpoint) (*node, error) {
 	chainDir := filepath.Join(dir, "chain")
 	if err := os.MkdirAll(chainDir, 0700); err != nil {
 		return nil, err
@@ -87,7 +87,11 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 		return nil, fmt.Errorf("couldn't resubscribe wallet at index %v: %w", walletTip, err)
 	}
 
-	m := cpuminer.New(tip.Context, types.VoidAddress, tp)
+	minerAddrParsed, err := types.ParseAddress(minerAddr)
+	if err != nil {
+		return nil, err
+	}
+	m := cpuminer.New(tip.Context, minerAddrParsed, tp)
 	cm.AddSubscriber(m, cm.Tip())
 
 	p2pDir := filepath.Join(dir, "p2p")
