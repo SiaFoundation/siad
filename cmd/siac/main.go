@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -40,19 +39,6 @@ Subcommands:
     syncer
 `
 	versionUsage = rootUsage
-
-	addressUsage = `Usage:
-    siac [flags] address [flags] [action]
-
-Actions:
-    generate         generate an address from a seed
-`
-
-	addressGenerateUsage = `Usage:
-    siac [flags] address [flags] generate [index]
-
-Generate an address based on the seed entered via stdin and the provided index.
-`
 
 	walletUsage = `Usage:
     siac [flags] wallet [flags] [action]
@@ -241,9 +227,6 @@ func main() {
 
 	versionCmd := flagg.New("version", versionUsage)
 
-	addressCmd := flagg.New("address", addressUsage)
-	addressGenerateCmd := flagg.New("generate", addressGenerateUsage)
-
 	walletCmd := flagg.New("wallet", walletUsage)
 	walletBalanceCmd := flagg.New("balance", walletBalanceUsage)
 	walletBalanceCmd.BoolVar(&exactCurrency, "exact", false, "print balance in Hastings")
@@ -266,12 +249,6 @@ func main() {
 		Cmd: rootCmd,
 		Sub: []flagg.Tree{
 			{Cmd: versionCmd},
-			{
-				Cmd: addressCmd,
-				Sub: []flagg.Tree{
-					{Cmd: addressGenerateCmd},
-				},
-			},
 			{
 				Cmd: walletCmd,
 				Sub: []flagg.Tree{
@@ -310,19 +287,6 @@ func main() {
 	case versionCmd:
 		log.Printf("siac v2.0.0\nCommit:     %s\nGo version: %s %s/%s\nBuild Date: %s\n",
 			githash, runtime.Version(), runtime.GOOS, runtime.GOARCH, builddate)
-
-	case addressCmd:
-		cmd.Usage()
-	case addressGenerateCmd:
-		if len(args) != 1 {
-			cmd.Usage()
-			return
-		}
-
-		seed := getSeed()
-		index, err := strconv.ParseUint(args[0], 10, 64)
-		check("Couldn't parse index:", err)
-		fmt.Println(seed.PublicKey(index))
 
 	case walletCmd:
 		cmd.Usage()
