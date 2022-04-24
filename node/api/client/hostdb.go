@@ -33,11 +33,12 @@ func (c *Client) HostDbFilterModeGet() (hdfmg api.HostdbFilterModeGET, err error
 }
 
 // HostDbFilterModePost requests the /hostdb/filtermode POST endpoint
-func (c *Client) HostDbFilterModePost(fm modules.FilterMode, hosts []types.SiaPublicKey) (err error) {
+func (c *Client) HostDbFilterModePost(fm modules.FilterMode, hosts []types.SiaPublicKey, netAddresses []string) (err error) {
 	filterMode := fm.String()
 	hdblp := api.HostdbFilterModePOST{
-		FilterMode: filterMode,
-		Hosts:      hosts,
+		FilterMode:   filterMode,
+		Hosts:        hosts,
+		NetAddresses: netAddresses,
 	}
 
 	data, err := json.Marshal(hdblp)

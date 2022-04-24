@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -37,11 +38,13 @@ var (
 	}
 
 	hostdbSetFiltermodeCmd = &cobra.Command{
-		Use:   "setfiltermode [filtermode] [host] [host] [host]...",
+		Use:   "setfiltermode [filtermode] [host,...] [netaddress,...]",
 		Short: "Set the filtermode.",
-		Long: `Set the hostdb filtermode and specify hosts.
+		Long: `Set the hostdb filtermode and specify comma separated hosts and net addresses.
         [filtermode] can be whitelist, blacklist, or disable.
-        [host] is the host public key.`,
+        [host] is the host public key.
+        [netaddress] is the host domain, IP address, or IP address range.
+        `,
 		Run: hostdbsetfiltermodecmd,
 	}
 
@@ -327,6 +330,10 @@ func hostdbfiltermodecmd() {
 	for _, host := range hdfmg.Hosts {
 		fmt.Println("    ", host)
 	}
+	fmt.Println("  Net Addresses:")
+	for _, netAddress := range hdfmg.NetAddresses {
+		fmt.Println("    ", netAddress)
+	}
 	fmt.Println()
 }
 
@@ -337,6 +344,7 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 	var filterModeStr string
 	var host types.SiaPublicKey
 	var hosts []types.SiaPublicKey
+	var netAddresses []string
 	switch len(args) {
 	case 0:
 		_ = cmd.UsageFunc()(cmd)
@@ -348,9 +356,15 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 		}
 	default:
 		filterModeStr = args[0]
-		for i := 1; i < len(args); i++ {
-			host.LoadString(args[i])
+
+		hostStrs := strings.Split(args[1], ",")
+		for _, hostStr := range hostStrs {
+			host.LoadString(hostStr)
 			hosts = append(hosts, host)
+		}
+
+		if len(args) > 2 {
+			netAddresses = strings.Split(args[2], ",")
 		}
 	}
 	err := fm.FromString(filterModeStr)
@@ -359,7 +373,7 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 		die()
 	}
 
-	err = httpClient.HostDbFilterModePost(fm, hosts)
+	err = httpClient.HostDbFilterModePost(fm, hosts, netAddresses)
 	if err != nil {
 		fmt.Println("Could not set hostdb filtermode: ", err)
 		die()

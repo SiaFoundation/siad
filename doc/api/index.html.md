@@ -2544,7 +2544,13 @@ Returns the current filter mode of the hostDB and any filtered hosts.
   "hosts":
     [
       "ed25519:122218260fb74b20a8be3000ad56a931f7461ea990a6dc5676c31bdf65fc668f"  // string
-    ]
+    ],
+    "netaddresses":
+    [
+        "1.1.1.1",  // string
+        "1.0.0.0/8",  // string
+        "mooo.com",  // string
+    ],
 }
 
 ```
@@ -2553,6 +2559,9 @@ Can be either whitelist, blacklist, or disable.
 
 **hosts** | array of strings  
 Comma separated pubkeys.  
+
+**netaddresses** | array of strings  
+Comma separated list of IP addresses or domains to block.  
 
 ## /hostdb/filtermode [POST]
 > curl example  

@@ -709,17 +709,25 @@ func TestFilterMode(t *testing.T) {
 	}
 	renter := nodes[0]
 
-	if err := testFilterMode(tg, renter, modules.HostDBActivateBlacklist); err != nil {
+	if err := testFilterModePublicKeys(tg, renter, modules.HostDBActivateBlacklist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
-	if err := testFilterMode(tg, renter, modules.HostDBActiveWhitelist); err != nil {
+	if err := testFilterModePublicKeys(tg, renter, modules.HostDBActiveWhitelist); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+	if err := testFilterModeNetAddresses(tg, renter, modules.HostDBActivateBlacklist); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+	if err := testFilterModeNetAddresses(tg, renter, modules.HostDBActiveWhitelist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
 
-func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
+func testFilterModePublicKeys(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
 	// Grab all host pks
 	var hosts []types.SiaPublicKey
 	for _, h := range tg.Hosts() {
@@ -761,6 +769,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		if err != nil {
 			return err
 		}
+
 		if len(hdbActive.Hosts) != len(tg.Hosts()) {
 			return fmt.Errorf("expected %v active hosts but got %v", len(tg.Hosts()), len(hdbActive.Hosts))
 		}
@@ -806,7 +815,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 
 	// enable list mode
-	if err = renter.HostDbFilterModePost(fm, filteredHosts); err != nil {
+	if err = renter.HostDbFilterModePost(fm, filteredHosts, nil); err != nil {
 		return err
 	}
 
@@ -918,7 +927,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 
 	// Disable FilterMode and confirm all hosts are active again
 	var nullList []types.SiaPublicKey
-	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nullList); err != nil {
+	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nullList, nil); err != nil {
 		return err
 	}
 	hdbActive, err = renter.HostDbActiveGet()
@@ -954,6 +963,248 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		}
 		for _, c := range rc.ActiveContracts {
 			_, exists := filteredHostsMap[c.HostPublicKey.String()]
+			if isWhitelist != exists {
+				return nil
+			}
+			if err = renter.RenterContractCancelPost(c.ID); err != nil {
+				return err
+			}
+		}
+		return errors.New("no contracts reformed with blacklist hosts")
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func testFilterModeNetAddresses(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
+	// Get Renter Settings
+	rg, err := renter.RenterGet()
+	if err != nil {
+		return err
+	}
+	allowHosts := int(rg.Settings.Allowance.Hosts)
+
+	// Confirm we are starting with expected number of contracts and active
+	// hosts.
+	loop := 0
+	m := tg.Miners()[0]
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance is being triggered
+		if loop%10 == 0 {
+			if err = m.MineBlock(); err != nil {
+				return err
+			}
+		}
+		loop++
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) < allowHosts {
+			return fmt.Errorf("Contracts did not form as expected, have %v expected at least %v", len(rc.ActiveContracts), allowHosts)
+		}
+		hdbActive, err := renter.HostDbActiveGet()
+		if err != nil {
+			return err
+		}
+
+		if len(hdbActive.Hosts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active hosts but got %v", len(tg.Hosts()), len(hdbActive.Hosts))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Get listedHosts. If testing blacklist mode we want to grab hosts we
+	// currently have contracts with. if we are in whitelist mode we want to
+	// grab hosts that we don't have contracts with to ensure that contract
+	// formation and replacement is properly tested
+	rc, err := renter.RenterInactiveContractsGet()
+	if err != nil {
+		return err
+	}
+	contractHosts := make(map[string]struct{})
+	for _, c := range rc.ActiveContracts {
+		if _, ok := contractHosts[string(c.NetAddress)]; ok {
+			continue
+		}
+		contractHosts[string(c.NetAddress)] = struct{}{}
+	}
+	for _, c := range rc.InactiveContracts {
+		if _, ok := contractHosts[string(c.NetAddress)]; ok {
+			continue
+		}
+		contractHosts[string(c.NetAddress)] = struct{}{}
+	}
+	var filteredHosts []string
+	numHosts := 0
+	isWhitelist := fm == modules.HostDBActiveWhitelist
+	for _, host := range tg.Hosts() {
+		_, ok := contractHosts[host.Client.Address]
+		if isWhitelist != ok {
+			filteredHosts = append(filteredHosts, host.Client.Address)
+			numHosts++
+			if numHosts == allowHosts {
+				break
+			}
+		}
+	}
+
+	// enable list mode
+	if err = renter.HostDbFilterModePost(fm, nil, filteredHosts); err != nil {
+		return err
+	}
+
+	// Confirm filter mode is set as expected
+	hdfmg, err := renter.HostDbFilterModeGet()
+	if err != nil {
+		return err
+	}
+	if hdfmg.FilterMode != fm.String() {
+		return fmt.Errorf("filter mode not set as expected, got %v expected %v", hdfmg.FilterMode, fm.String())
+	}
+	if len(hdfmg.Hosts) != len(filteredHosts) {
+		return fmt.Errorf("Number of filtered hosts incorrect, got %v expected %v", len(hdfmg.Hosts), len(filteredHosts))
+	}
+	// Create map for comparison
+	filteredHostsMap := make(map[string]struct{})
+	for _, host := range filteredHosts {
+		filteredHostsMap[host] = struct{}{}
+	}
+	for _, host := range hdfmg.Hosts {
+		if _, ok := filteredHostsMap[host]; !ok {
+			return errors.New("host returned not found in filtered hosts")
+		}
+	}
+
+	// Confirm hosts are marked as filtered in original hosttree by querying AllHost
+	hbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
+	for _, host := range hbag.Hosts {
+		if _, ok := filteredHostsMap[string(host.NetAddress)]; !ok {
+			continue
+		}
+		if !host.Filtered {
+			return errors.New("Host not marked as filtered")
+		}
+	}
+
+	// confirm contracts are dropped and replaced appropriately for the FilterMode
+	loop = 0
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance is being triggered
+		if loop%10 == 0 {
+			if err = m.MineBlock(); err != nil {
+				return err
+			}
+		}
+		loop++
+		rc, err := renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		// Check for correct number of contracts
+		if len(rc.ActiveContracts) != allowHosts {
+			return fmt.Errorf("Contracts did not form as expected, have %v expected %v", len(rc.ActiveContracts), allowHosts)
+		}
+		// Check that ActiveContracts are with correct hosts
+		for _, c := range rc.ActiveContracts {
+			_, exists := filteredHostsMap[string(c.NetAddress)]
+			if isWhitelist != exists {
+				return errors.New("non listed host found in active contracts")
+			}
+		}
+		// Check that Inactive contracts are with hosts that weren't listed
+		check := 0
+		for _, c := range rc.InactiveContracts {
+			if _, ok := contractHosts[string(c.NetAddress)]; ok {
+				check++
+			}
+		}
+		if check != len(contractHosts) {
+			return fmt.Errorf("did not find all previous hosts in inactive contracts, found %v expected %v", check, len(contractHosts))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Confirm HostDbActiveGet is filtered appropriately
+	hdbActive, err := renter.HostDbActiveGet()
+	if err != nil {
+		return err
+	}
+	numExpectedHosts := len(tg.Hosts()) - len(filteredHosts)
+	if isWhitelist {
+		numExpectedHosts = len(filteredHosts)
+	}
+	if len(hdbActive.Hosts) != numExpectedHosts {
+		return fmt.Errorf("Number of active hosts doesn't equal number of non list hosts: got %v expected %v", len(hdbActive.Hosts), numExpectedHosts)
+	}
+	for _, h := range hdbActive.Hosts {
+		_, ok := filteredHostsMap[string(h.NetAddress)]
+		if isWhitelist != ok {
+			return errors.New("Blacklisted host returned as active host")
+		}
+	}
+
+	// Confirm that HostDbAllGet is not filtered
+	hdbAll, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
+	if len(hdbAll.Hosts) != len(tg.Hosts()) {
+		return fmt.Errorf("Number of all hosts doesn't equal number of test group hosts: got %v expected %v", len(hdbAll.Hosts), len(tg.Hosts()))
+	}
+
+	// Disable FilterMode and confirm all hosts are active again
+	var nullList []string
+	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nil, nullList); err != nil {
+		return err
+	}
+	hdbActive, err = renter.HostDbActiveGet()
+	if err != nil {
+		return err
+	}
+	hdbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
+	if len(hdbActive.Hosts) != len(tg.Hosts()) {
+		return fmt.Errorf("Unexpected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
+	}
+
+	// Confirm that contracts will form with non listed hosts again by
+	// canceling contracts until a contract is formed with a nonlisted host.
+	loop = 0
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		// Mine a block every 10 iterations to make sure
+		// threadedContractMaintenance is being triggered
+		if loop%10 == 0 {
+			if err = m.MineBlock(); err != nil {
+				return err
+			}
+		}
+		loop++
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("no contracts")
+		}
+		for _, c := range rc.ActiveContracts {
+			_, exists := filteredHostsMap[string(c.NetAddress)]
 			if isWhitelist != exists {
 				return nil
 			}

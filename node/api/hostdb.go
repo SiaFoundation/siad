@@ -45,15 +45,17 @@ type (
 	// HostdbFilterModeGET contains the information about the HostDB's
 	// filtermode
 	HostdbFilterModeGET struct {
-		FilterMode string   `json:"filtermode"`
-		Hosts      []string `json:"hosts"`
+		FilterMode   string   `json:"filtermode"`
+		Hosts        []string `json:"hosts"`
+		NetAddresses []string `json:"netaddresses"`
 	}
 
 	// HostdbFilterModePOST contains the information needed to set the the
 	// FilterMode of the hostDB
 	HostdbFilterModePOST struct {
-		FilterMode string               `json:"filtermode"`
-		Hosts      []types.SiaPublicKey `json:"hosts"`
+		FilterMode   string               `json:"filtermode"`
+		Hosts        []types.SiaPublicKey `json:"hosts"`
+		NetAddresses []string             `json:"netaddresses"`
 	}
 )
 
@@ -168,7 +170,7 @@ func (api *API) hostdbHostsHandler(w http.ResponseWriter, _ *http.Request, ps ht
 // mode
 func (api *API) hostdbFilterModeHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get FilterMode
-	fm, hostMap, err := api.renter.Filter()
+	fm, hostMap, netAddresses, err := api.renter.Filter()
 	if err != nil {
 		WriteError(w, Error{"unable to get filter mode: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -179,8 +181,9 @@ func (api *API) hostdbFilterModeHandlerGET(w http.ResponseWriter, _ *http.Reques
 		hosts = append(hosts, key)
 	}
 	WriteJSON(w, HostdbFilterModeGET{
-		FilterMode: fm.String(),
-		Hosts:      hosts,
+		FilterMode:   fm.String(),
+		Hosts:        hosts,
+		NetAddresses: netAddresses,
 	})
 }
 
@@ -202,7 +205,7 @@ func (api *API) hostdbFilterModeHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Set list mode
-	if err := api.renter.SetFilterMode(fm, params.Hosts); err != nil {
+	if err := api.renter.SetFilterMode(fm, params.Hosts, params.NetAddresses); err != nil {
 		WriteError(w, Error{"failed to set the list mode: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
