@@ -5,6 +5,7 @@
 package hostdb
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -42,8 +43,9 @@ var (
 
 // blockedDomains manages a list of blocked domains
 type blockedDomains struct {
-	domains map[string]struct{}
-	mu      sync.Mutex
+	domains  map[string]struct{}
+	resolver net.Resolver
+	mu       sync.Mutex
 }
 
 // newBlockedDomains initializes a new blockedDomains
@@ -63,6 +65,14 @@ func (bd *blockedDomains) managedAddDomains(domains []string) {
 	defer bd.mu.Unlock()
 	for _, domain := range domains {
 		bd.domains[domain] = struct{}{}
+
+		addrs, err := bd.resolver.LookupHost(context.Background(), domain)
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			bd.domains[addr] = struct{}{}
+		}
 	}
 }
 
