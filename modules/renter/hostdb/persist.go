@@ -26,7 +26,7 @@ var (
 // hdbPersist defines what HostDB data persists across sessions.
 type hdbPersist struct {
 	AllHosts                 []modules.HostDBEntry
-	BlockedDomains           []string
+	FilteredDomains          []string
 	BlockHeight              types.BlockHeight
 	DisableIPViolationsCheck bool
 	KnownContracts           map[string]contractInfo
@@ -38,7 +38,7 @@ type hdbPersist struct {
 // persistData returns the data in the hostdb that will be saved to disk.
 func (hdb *HostDB) persistData() (data hdbPersist) {
 	data.AllHosts = hdb.staticHostTree.All()
-	data.BlockedDomains = hdb.blockedDomains.managedBlockedDomains()
+	data.FilteredDomains = hdb.filteredDomains.managedFilteredDomains()
 	data.BlockHeight = hdb.blockHeight
 	data.DisableIPViolationsCheck = hdb.disableIPViolationCheck
 	data.KnownContracts = hdb.knownContracts
@@ -71,9 +71,9 @@ func (hdb *HostDB) load() error {
 	hdb.filteredHosts = data.FilteredHosts
 	hdb.filterMode = data.FilterMode
 
-	// Overwrite the initialized staticBlockedDomains with the data loaded
+	// Overwrite the initialized filteredDomains with the data loaded
 	// from disk
-	hdb.blockedDomains = newBlockedDomains(data.BlockedDomains)
+	hdb.filteredDomains = newFilteredDomains(data.FilteredDomains)
 
 	if len(hdb.filteredHosts) > 0 {
 		hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())

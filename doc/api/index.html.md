@@ -2561,7 +2561,7 @@ Can be either whitelist, blacklist, or disable.
 Comma separated pubkeys.  
 
 **netaddresses** | array of strings  
-Comma separated list of IP addresses or domains to block.  
+Comma separated list of IP addresses or domains.  
 
 ## /hostdb/filtermode [POST]
 > curl example  

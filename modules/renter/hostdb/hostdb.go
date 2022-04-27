@@ -5,7 +5,6 @@
 package hostdb
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -41,32 +40,31 @@ var (
 	errHostNotFoundInTree = errors.New("host not found in hosttree")
 )
 
-// blockedDomains manages a list of blocked domains
-type blockedDomains struct {
-	domains  map[string]struct{}
-	resolver net.Resolver
-	mu       sync.Mutex
+// filteredDomains manages a list of blocked domains
+type filteredDomains struct {
+	domains map[string]struct{}
+	mu      sync.Mutex
 }
 
-// newBlockedDomains initializes a new blockedDomains
-func newBlockedDomains(domains []string) *blockedDomains {
+// newFilteredDomains initializes a new filteredDomains
+func newFilteredDomains(domains []string) *filteredDomains {
 	domainMap := make(map[string]struct{})
 	for _, domain := range domains {
 		domainMap[domain] = struct{}{}
 	}
-	return &blockedDomains{
+	return &filteredDomains{
 		domains: domainMap,
 	}
 }
 
 // managedAddDomains adds domains to the map of blocked domains
-func (bd *blockedDomains) managedAddDomains(domains []string) {
+func (bd *filteredDomains) managedAddDomains(domains []string) {
 	bd.mu.Lock()
 	defer bd.mu.Unlock()
 	for _, domain := range domains {
 		bd.domains[domain] = struct{}{}
 
-		addrs, err := bd.resolver.LookupHost(context.Background(), domain)
+		addrs, err := net.LookupHost(domain)
 		if err != nil {
 			continue
 		}
@@ -76,8 +74,8 @@ func (bd *blockedDomains) managedAddDomains(domains []string) {
 	}
 }
 
-// managedBlockedDomains returns a list of the blocked domains
-func (bd *blockedDomains) managedBlockedDomains() []string {
+// managedFilteredDomains returns a list of the blocked domains
+func (bd *filteredDomains) managedFilteredDomains() []string {
 	bd.mu.Lock()
 	defer bd.mu.Unlock()
 	var domains []string
@@ -89,7 +87,7 @@ func (bd *blockedDomains) managedBlockedDomains() []string {
 }
 
 // managedRemoveDomains removes domains from the map of blocked domains
-func (bd *blockedDomains) managedRemoveDomains(domains []string) {
+func (bd *filteredDomains) managedRemoveDomains(domains []string) {
 	bd.mu.Lock()
 	defer bd.mu.Unlock()
 	for _, domain := range domains {
@@ -98,7 +96,7 @@ func (bd *blockedDomains) managedRemoveDomains(domains []string) {
 }
 
 // managedIsBlocked checks to see if the domain is blocked
-func (bd *blockedDomains) managedIsBlocked(addr modules.NetAddress) bool {
+func (bd *filteredDomains) managedIsBlocked(addr modules.NetAddress) bool {
 	// Grab the hostname
 	hostname := addr.Host()
 
@@ -218,8 +216,8 @@ type HostDB struct {
 	filteredHosts map[string]types.SiaPublicKey
 	filterMode    modules.FilterMode
 
-	// blockedDomains tracks blocked domains for the hostdb.
-	blockedDomains *blockedDomains
+	// filteredDomains tracks blocked domains for the hostdb.
+	filteredDomains *filteredDomains
 
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
@@ -347,11 +345,11 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticMux:   siamux,
 		staticTpool: tpool,
 
-		blockedDomains: newBlockedDomains(nil),
-		filteredHosts:  make(map[string]types.SiaPublicKey),
-		knownContracts: make(map[string]contractInfo),
-		scanMap:        make(map[string]struct{}),
-		staticAlerter:  modules.NewAlerter("hostdb"),
+		filteredDomains: newFilteredDomains(nil),
+		filteredHosts:   make(map[string]types.SiaPublicKey),
+		knownContracts:  make(map[string]contractInfo),
+		scanMap:         make(map[string]struct{}),
+		staticAlerter:   modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -670,7 +668,7 @@ func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, 
 	for k, v := range hdb.filteredHosts {
 		filteredHosts[k] = v
 	}
-	return hdb.filterMode, filteredHosts, hdb.blockedDomains.managedBlockedDomains(), nil
+	return hdb.filterMode, filteredHosts, hdb.filteredDomains.managedFilteredDomains(), nil
 }
 
 // SetFilterMode sets the hostdb filter mode
@@ -698,7 +696,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 		// Reset filtered fields
 		hdb.filteredTree = hdb.staticHostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
-		hdb.blockedDomains = newBlockedDomains(nil)
+		hdb.filteredDomains = newFilteredDomains(nil)
 		hdb.filterMode = fm
 		return nil
 	}
@@ -727,12 +725,12 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 			hdb.staticLog.Println("Unable to mark entry as filtered:", err)
 		}
 	}
-	hdb.blockedDomains.managedAddDomains(netAddresses)
+	hdb.filteredDomains.managedAddDomains(netAddresses)
 
 	var allErrs error
 	allHosts := hdb.staticHostTree.All()
 	for _, host := range allHosts {
-		if !hdb.blockedDomains.managedIsBlocked(host.NetAddress) {
+		if !hdb.filteredDomains.managedIsBlocked(host.NetAddress) {
 			continue
 		}
 		filteredHosts[host.PublicKey.String()] = host.PublicKey

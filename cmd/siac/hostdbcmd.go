@@ -38,12 +38,11 @@ var (
 	}
 
 	hostdbSetFiltermodeCmd = &cobra.Command{
-		Use:   "setfiltermode [filtermode] [host,...] [netaddress,...]",
+		Use:   "setfiltermode [filtermode] [host] [host] [host]...",
 		Short: "Set the filtermode.",
 		Long: `Set the hostdb filtermode and specify comma separated hosts and net addresses.
         [filtermode] can be whitelist, blacklist, or disable.
-        [host] is the host public key.
-        [netaddress] is the host domain, IP address, or IP address range.
+        [host] is either the host public key or a domain, IP address, or IP address range.
         `,
 		Run: hostdbsetfiltermodecmd,
 	}
@@ -357,14 +356,14 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 	default:
 		filterModeStr = args[0]
 
-		hostStrs := strings.Split(args[1], ",")
-		for _, hostStr := range hostStrs {
-			host.LoadString(hostStr)
-			hosts = append(hosts, host)
-		}
+		for _, arg := range args[1:] {
+			if strings.HasPrefix(arg, "ed25519") {
+				host.LoadString(arg)
+				hosts = append(hosts, host)
+			} else {
+				netAddresses = append(netAddresses, arg)
+			}
 
-		if len(args) > 2 {
-			netAddresses = strings.Split(args[2], ",")
 		}
 	}
 	err := fm.FromString(filterModeStr)
