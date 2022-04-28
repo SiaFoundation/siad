@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,8 +17,6 @@ import (
 
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
-	"go.sia.tech/siad/v2/api"
-	"go.sia.tech/siad/v2/api/siad"
 	"go.sia.tech/siad/v2/p2p"
 	"golang.org/x/term"
 )
@@ -145,12 +142,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("api: Listening on", l.Addr())
-	go func() {
-		api := api.AuthMiddleware(siad.NewServer(n.c, n.s, n.w, n.tp), apiPassword)
-		if err := http.Serve(l, api); err != nil {
-			log.Println(err)
-		}
-	}()
+	go startWeb(l, n, apiPassword)
 
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt)
