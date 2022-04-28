@@ -16,18 +16,11 @@ type TransactionPool interface {
 	Transactions() []types.Transaction
 }
 
-// A CPUMiner mines blocks.
-type CPUMiner struct {
-	addr types.Address
-	tp   TransactionPool
-
-	mu sync.Mutex
-	cs consensus.State
-}
-
-func (m *CPUMiner) txnsForBlock() (blockTxns []types.Transaction) {
+// TransactionsForBlock returns a subset of the provided txpool that together
+// comprise a valid block.
+func TransactionsForBlock(cs consensus.State, pool []types.Transaction) (blockTxns []types.Transaction) {
 	poolTxns := make(map[types.TransactionID]types.Transaction)
-	for _, txn := range m.tp.Transactions() {
+	for _, txn := range pool {
 		poolTxns[txn.ID()] = txn
 	}
 
@@ -52,13 +45,13 @@ func (m *CPUMiner) txnsForBlock() (blockTxns []types.Transaction) {
 		return
 	}
 
-	capacity := m.cs.MaxBlockWeight()
+	capacity := cs.MaxBlockWeight()
 	for _, txn := range poolTxns {
 		// prepend the txn with its dependencies
 		group := append(calcDeps(txn), txn)
 		// if the weight of the group exceeds the remaining capacity of the
 		// block, skip it
-		groupWeight := m.cs.BlockWeight(group)
+		groupWeight := cs.BlockWeight(group)
 		if groupWeight > capacity {
 			continue
 		}
@@ -73,6 +66,15 @@ func (m *CPUMiner) txnsForBlock() (blockTxns []types.Transaction) {
 	return
 }
 
+// A CPUMiner mines blocks.
+type CPUMiner struct {
+	addr types.Address
+	tp   TransactionPool
+
+	mu sync.Mutex
+	cs consensus.State
+}
+
 // MineBlock mines a valid block, using transactions drawn from the txpool.
 func (m *CPUMiner) MineBlock() types.Block {
 again:
@@ -81,7 +83,7 @@ again:
 	m.mu.Lock()
 	cs := m.cs
 	addr := m.addr
-	txns := m.txnsForBlock()
+	txns := TransactionsForBlock(m.cs, m.tp.Transactions())
 	m.mu.Unlock()
 
 	parent := cs.Index
