@@ -2301,3 +2301,35 @@ func (api *API) renterWorkersHandler(w http.ResponseWriter, _ *http.Request, _ h
 
 	WriteJSON(w, workerPoolStatus)
 }
+
+func (api *API) renterFileHostsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Determine the siapath that the user wants to get the file from.
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	hosts, err := api.renter.FileHosts(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteJSON(w, hosts)
+}

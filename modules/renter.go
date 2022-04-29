@@ -1132,6 +1132,9 @@ type Renter interface {
 	// should be returned or not.
 	FileList(siaPath SiaPath, recursive, cached bool, flf FileListFunc) error
 
+	// FileHosts returns a list of hosts that are storing the file data.
+	FileHosts(SiaPath) ([]HostDBEntry, error)
+
 	// Filter returns the renter's hostdb's filterMode and filteredHosts
 	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
 
