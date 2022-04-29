@@ -776,3 +776,9 @@ func (c *Client) RenterBubblePost(siaPath modules.SiaPath, force, recursive bool
 	err = c.post("/renter/bubble", values.Encode(), nil)
 	return
 }
+
+func (c *Client) RenterFileHosts(siaPath modules.SiaPath) (hosts []modules.HostDBEntry, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get("/renter/hosts/"+sp, &hosts)
+	return
+}

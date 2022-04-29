@@ -5724,3 +5724,48 @@ func TestRenterBubble(t *testing.T) {
 		}
 	}
 }
+
+func TestRenterFileHosts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a group for the subtests
+	params := siatest.GroupParams{
+		Hosts:   10,
+		Renters: 1,
+		Miners:  1,
+	}
+	dir := renterTestDir(t.Name())
+
+	tg, err := siatest.NewGroupFromTemplate(dir, params)
+	if err != nil {
+		t.Fatal("failed to create group:", err)
+	}
+	t.Cleanup(func() { tg.Close() })
+
+	// grab the renter
+	renter := tg.Renters()[0]
+
+	_, rf, err := renter.UploadNewFile(int(10*modules.SectorSize), 2, 3, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = build.Retry(100, time.Millisecond*10, func() error {
+		hosts, err := renter.Client.RenterFileHosts(rf.SiaPath())
+		if err != nil {
+			return err
+		} else if len(hosts) != 5 {
+			return fmt.Errorf("expected 5 hosts, got %v", len(hosts))
+		}
+		for _, h := range hosts {
+			t.Log(h.PublicKey, h.NetAddress)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

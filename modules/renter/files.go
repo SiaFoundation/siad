@@ -1,6 +1,9 @@
 package renter
 
 import (
+	"fmt"
+
+	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -138,4 +141,42 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) (err error) {
 	}()
 	// Update the file.
 	return entry.SetAllStuck(stuck)
+}
+
+func (r *Renter) FileHosts(sp modules.SiaPath) (hosts []modules.HostDBEntry, _ error) {
+	// open the file
+	entry, err := r.staticFileSystem.OpenSiaFile(sp)
+	if err != nil {
+		return nil, build.ExtendErr(fmt.Sprintf("failed to open file %s", sp), err)
+	}
+	// take a snapshot of the file
+	snap, err := entry.Snapshot(sp)
+	if err != nil {
+		return nil, build.ExtendErr("failed to get snapshot", err)
+	}
+	// map each host public key to prevent duplicates
+	hostMap := make(map[string]bool)
+	for i := uint64(0); i < snap.NumChunks(); i++ {
+		pieces := snap.Pieces(i)
+		if err != nil {
+			return nil, build.ExtendErr(fmt.Sprintf("failed to get chunk %v pieces", i), err)
+		}
+		// iterate over each chunk
+		for _, pieceSet := range pieces {
+			for _, piece := range pieceSet {
+				if hostMap[piece.HostPubKey.String()] {
+					continue
+				}
+
+				entry, exists, err := r.hostDB.Host(piece.HostPubKey)
+				// ignore errors from the hostdb for missing hosts
+				if err != nil || !exists {
+					continue
+				}
+				hostMap[piece.HostPubKey.String()] = true
+				hosts = append(hosts, entry)
+			}
+		}
+	}
+	return
 }
