@@ -1,3 +1,4 @@
+//go:build !vlong
 // +build !vlong
 
 package build

@@ -53,8 +53,23 @@ linters-settings:
     check-shadowing: false
     disable-all: false
 
-  golint:
+  revive:
     min-confidence: 1.0
+    rules:
+      - name: var-declaration
+        disabled: true
+      - name: var-naming
+        disabled: true
+      - name: error-naming
+        disabled: true
+      - name: error-strings
+        disabled: true
+      - name: exported
+        disabled: true
+      - name: unexported-return
+        disabled: true
+      - name: errorf
+        disabled: true
 
   gocritic:
     # Which checks should be enabled; can't be combined with 'disabled-checks';
@@ -65,7 +80,6 @@ linters-settings:
       - argOrder # Diagnostic options
       - badCond
       - caseOrder
-      - dupArg
       - dupBranchBody
       - dupCase
       - dupSubExpr
@@ -86,7 +100,7 @@ linters:
   enable:
     - gocritic
     - gofmt
-    - golint
+    - revive
     - gosec
     - govet
     - misspell

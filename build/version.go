@@ -17,11 +17,11 @@ const (
 var (
 	// BinaryName is the name of the node binary. It is supplied at compile time
 	// via ldflags.
-	BinaryName string = "unknown"
+	BinaryName = "unknown"
 
 	// NodeVersion is the current version of the node software. It is supplied
 	// at compile time via ldflags.
-	NodeVersion string = "?.?.?"
+	NodeVersion = "?.?.?"
 )
 
 // IsVersion returns whether str is a valid release version with no -rc component.
