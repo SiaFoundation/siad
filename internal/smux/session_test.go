@@ -106,8 +106,7 @@ func TestSpeed(t *testing.T) {
 		for {
 			n, err := stream.Read(buf)
 			if err != nil {
-				t.Fatal(err)
-				break
+				panic(err)
 			} else {
 				nrecv += n
 				if nrecv == 4096*4096 {
@@ -297,17 +296,17 @@ func TestServerEcho(t *testing.T) {
 					msg := fmt.Sprintf("hello%v", i)
 					stream.Write([]byte(msg))
 					if n, err := stream.Read(buf); err != nil {
-						t.Fatal(err)
+						panic(err)
 					} else if string(buf[:n]) != msg {
-						t.Fatal(err)
+						panic(err)
 					}
 				}
 				stream.Close()
 			} else {
-				t.Fatal(err)
+				panic(err)
 			}
 		} else {
-			t.Fatal(err)
+			panic(err)
 		}
 	}()
 
@@ -567,17 +566,17 @@ func TestKeepAlive(t *testing.T) {
 	go func() {
 		conn, err := srvListener.Accept()
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		srv, err := Server(conn, config)
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		defer srv.Close()
 		for i := 0; i < 2; i++ {
 			stream, err := srv.AcceptStream()
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 			defer stream.Close()
 			// echo until Read fails
@@ -697,7 +696,7 @@ func TestKeepAliveSlowServer(t *testing.T) {
 	go func() {
 		conn, err := srvListener.Accept()
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		slowConn := slowWriterConn{
 			Conn:      conn,
@@ -705,7 +704,7 @@ func TestKeepAliveSlowServer(t *testing.T) {
 		}
 		srv, err := Server(slowConn, config)
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		defer srv.Close()
 		for {
@@ -758,11 +757,11 @@ func TestStreamDeadlineSlowServer(t *testing.T) {
 	go func() {
 		conn, err := srvListener.Accept()
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		srv, err := Server(conn, config)
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		defer srv.Close()
 		for {

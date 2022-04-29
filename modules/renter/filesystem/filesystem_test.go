@@ -891,7 +891,7 @@ func TestSiaDirRename(t *testing.T) {
 		defer wg.Done()
 		defer func() {
 			if err := entry.Close(); err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 		}()
 		for {
@@ -1512,7 +1512,7 @@ func TestSiaDirDelete(t *testing.T) {
 		defer wg.Done()
 		defer func() {
 			if err := entry.Close(); err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 		}()
 		for {
@@ -1654,7 +1654,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		defer wg.Done()
 		defer func() {
 			if err := entry.Close(); err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 		}()
 		for {
@@ -1665,7 +1665,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 			}
 			err := entry.SaveHeader()
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
