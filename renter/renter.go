@@ -22,12 +22,12 @@ type (
 	Wallet interface {
 		Address() types.Address
 		FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error)
-		SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
+		SignTransaction(cs consensus.State, txn *types.Transaction, toSign []types.ElementID) error
 	}
 
 	// A ChainManager manages blockchain state.
 	ChainManager interface {
-		TipContext() consensus.ValidationContext
+		TipState() consensus.State
 	}
 )
 

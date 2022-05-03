@@ -69,12 +69,12 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 		return nil, err
 	}
 
-	cm := chain.NewManager(chainStore, tip.Context)
-	w := walletutil.NewTestingWallet(tip.Context)
+	cm := chain.NewManager(chainStore, tip.State)
+	w := walletutil.NewTestingWallet(tip.State)
 	cm.AddSubscriber(w, cm.Tip())
-	tp := txpool.New(tip.Context)
+	tp := txpool.New(tip.State)
 	cm.AddSubscriber(tp, cm.Tip())
-	m := cpuminer.New(tip.Context, w.NewAddress(), tp)
+	m := cpuminer.New(tip.State, w.NewAddress(), tp)
 	cm.AddSubscriber(m, cm.Tip())
 
 	p2pDir := filepath.Join(dir, "p2p")

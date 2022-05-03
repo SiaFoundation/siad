@@ -51,10 +51,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 		return errors.New("contract key is required for read-write programs")
 	}
 
-	stream, err := s.session.DialStream()
-	if err != nil {
-		return fmt.Errorf("failed to open new stream: %w", err)
-	}
+	stream := s.session.DialStream()
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(time.Minute))
 
@@ -127,8 +124,7 @@ func (s *Session) ExecuteProgram(program Program, input []byte, payment PaymentM
 	rev.Filesize = response.NewDataSize
 	rev.FileMerkleRoot = response.NewMerkleRoot
 
-	vc := s.cm.TipContext()
-	contractHash := vc.ContractSigHash(rev)
+	contractHash := s.cm.TipState().ContractSigHash(rev)
 	req := rhp.RPCFinalizeProgramRequest{
 		Signature:         program.RenterKey.SignHash(contractHash),
 		NewRevisionNumber: rev.RevisionNumber,

@@ -14,8 +14,8 @@ import (
 func TestPoolFlexibility(t *testing.T) {
 	sim := chainutil.NewChainSim()
 
-	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.Context)
-	tp := txpool.New(sim.Genesis.Context)
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+	tp := txpool.New(sim.Genesis.State)
 	cm.AddSubscriber(tp, cm.Tip())
 
 	// Create three transactions that are valid as of the current block.
@@ -52,8 +52,8 @@ func TestPoolFlexibility(t *testing.T) {
 func TestEphemeralOutput(t *testing.T) {
 	sim := chainutil.NewChainSim()
 
-	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.Context)
-	tp := txpool.New(sim.Genesis.Context)
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+	tp := txpool.New(sim.Genesis.State)
 	cm.AddSubscriber(tp, cm.Tip())
 
 	// create parent, child, and grandchild transactions
@@ -73,7 +73,7 @@ func TestEphemeralOutput(t *testing.T) {
 		}},
 		MinerFee: types.Siacoins(1),
 	}
-	child.SiacoinInputs[0].Signatures = []types.Signature{privkey.SignHash(sim.Context.InputSigHash(child))}
+	child.SiacoinInputs[0].Signatures = []types.Signature{privkey.SignHash(sim.State.InputSigHash(child))}
 
 	grandchild := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
@@ -86,7 +86,7 @@ func TestEphemeralOutput(t *testing.T) {
 		}},
 		MinerFee: types.Siacoins(2),
 	}
-	grandchild.SiacoinInputs[0].Signatures = []types.Signature{privkey.SignHash(sim.Context.InputSigHash(grandchild))}
+	grandchild.SiacoinInputs[0].Signatures = []types.Signature{privkey.SignHash(sim.State.InputSigHash(grandchild))}
 
 	// add all three transactions to the pool
 	if err := tp.AddTransaction(parent); err != nil {
@@ -100,9 +100,9 @@ func TestEphemeralOutput(t *testing.T) {
 	}
 
 	// mine a block containing parent and child
-	pcvc := sim.Context
-	pcb := sim.MineBlockWithTxns(parent, child)
-	if err := cm.AddTipBlock(pcb); err != nil {
+	pcState := sim.State
+	pcBlock := sim.MineBlockWithTxns(parent, child)
+	if err := cm.AddTipBlock(pcBlock); err != nil {
 		t.Fatal(err)
 	}
 
@@ -115,16 +115,16 @@ func TestEphemeralOutput(t *testing.T) {
 		t.Fatal("grandchild's input should no longer be ephemeral")
 	}
 	// mine a block containing grandchild
-	gvc := sim.Context
-	gb := sim.MineBlockWithTxns(grandchild)
-	if err := cm.AddTipBlock(gb); err != nil {
+	gState := sim.State
+	gBlock := sim.MineBlockWithTxns(grandchild)
+	if err := cm.AddTipBlock(gBlock); err != nil {
 		t.Fatal(err)
 	}
 
 	// revert the grandchild block
 	tp.ProcessChainRevertUpdate(&chain.RevertUpdate{
-		RevertUpdate: consensus.RevertBlock(gvc, gb),
-		Block:        gb,
+		RevertUpdate: consensus.RevertBlock(gState, gBlock),
+		Block:        gBlock,
 	})
 
 	// pool should contain the grandchild transaction again
@@ -138,8 +138,8 @@ func TestEphemeralOutput(t *testing.T) {
 
 	// revert the parent+child block
 	tp.ProcessChainRevertUpdate(&chain.RevertUpdate{
-		RevertUpdate: consensus.RevertBlock(pcvc, pcb),
-		Block:        pcb,
+		RevertUpdate: consensus.RevertBlock(pcState, pcBlock),
+		Block:        pcBlock,
 	})
 
 	// pool should contain all three transactions again

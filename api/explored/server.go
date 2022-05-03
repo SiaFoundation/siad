@@ -27,7 +27,7 @@ type (
 
 	// A ChainManager manages blockchain state.
 	ChainManager interface {
-		TipContext() consensus.ValidationContext
+		TipState() consensus.State
 	}
 )
 
@@ -85,15 +85,15 @@ func (s *server) syncerConnectHandler(w http.ResponseWriter, req *http.Request, 
 }
 
 func (s *server) consensusTipHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	vc := s.cm.TipContext()
+	cs := s.cm.TipState()
 	api.WriteJSON(w, ConsensusTipResponse{
-		Index:             vc.Index,
-		TotalWork:         vc.TotalWork,
-		Difficulty:        vc.Difficulty,
-		OakWork:           vc.OakWork,
-		OakTime:           vc.OakTime,
-		SiafundPool:       vc.SiafundPool,
-		FoundationAddress: vc.FoundationAddress,
+		Index:             cs.Index,
+		TotalWork:         cs.TotalWork,
+		Difficulty:        cs.Difficulty,
+		OakWork:           cs.OakWork,
+		OakTime:           cs.OakTime,
+		SiafundPool:       cs.SiafundPool,
+		FoundationAddress: cs.FoundationAddress,
 	})
 }
 

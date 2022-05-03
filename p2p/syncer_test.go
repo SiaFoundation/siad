@@ -69,12 +69,12 @@ again:
 
 func newTestNode(tb testing.TB, genesisID types.BlockID, c consensus.Checkpoint) *testNode {
 	cs := chainutil.NewEphemeralStore(c)
-	cm := chain.NewManager(cs, c.Context)
-	tp := txpool.New(c.Context)
+	cm := chain.NewManager(cs, c.State)
+	tp := txpool.New(c.State)
 	cm.AddSubscriber(tp, cm.Tip())
-	w := walletutil.NewTestingWallet(cm.TipContext())
+	w := walletutil.NewTestingWallet(cm.TipState())
 	cm.AddSubscriber(w, cm.Tip())
-	m := cpuminer.New(c.Context, w.NewAddress(), tp)
+	m := cpuminer.New(c.State, w.NewAddress(), tp)
 	cm.AddSubscriber(m, cm.Tip())
 	s, err := p2p.NewSyncer(":0", genesisID, cm, tp, p2putil.NewEphemeralStore())
 	if err != nil {
@@ -98,8 +98,8 @@ func TestNetwork(t *testing.T) {
 	}
 	sau := consensus.GenesisUpdate(genesisBlock, types.Work{NumHashes: [32]byte{31: 1 << 1}})
 	genesis := consensus.Checkpoint{
-		Block:   genesisBlock,
-		Context: sau.Context,
+		Block: genesisBlock,
+		State: sau.State,
 	}
 
 	// create two nodes and start mining on both
@@ -155,9 +155,7 @@ func TestNetwork(t *testing.T) {
 
 	// since we are mining with low difficulty, the chains may have an identical
 	// amount of work; if so, mine a little more on one chain
-	vc1 := n1.c.TipContext()
-	vc2 := n2.c.TipContext()
-	if vc1.TotalWork.Cmp(vc2.TotalWork) == 0 {
+	if n1.c.TipState().TotalWork.Cmp(n2.c.TipState().TotalWork) == 0 {
 		n1.mineBlock()
 	}
 
@@ -180,8 +178,8 @@ func TestCheckpoint(t *testing.T) {
 	}
 	sau := consensus.GenesisUpdate(genesisBlock, types.Work{NumHashes: [32]byte{30: 1 << 2}})
 	genesis := consensus.Checkpoint{
-		Block:   genesisBlock,
-		Context: sau.Context,
+		Block: genesisBlock,
+		State: sau.State,
 	}
 
 	// create a node and mine some blocks

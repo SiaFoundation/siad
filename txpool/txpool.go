@@ -97,8 +97,8 @@ func txnContainsRevertedElements(txn types.Transaction, cru *chain.RevertUpdate)
 // A Pool holds transactions that may be included in future blocks.
 type Pool struct {
 	txns       map[types.TransactionID]types.Transaction
-	vc         consensus.ValidationContext
-	prevVC     consensus.ValidationContext
+	cs         consensus.State
+	prevCS     consensus.State
 	prevUpdate consensus.ApplyUpdate
 	mu         sync.Mutex
 }
@@ -107,10 +107,10 @@ func (p *Pool) validateTransaction(txn types.Transaction) error {
 	// Perform standard validation checks, with added flexibility: if the
 	// transaction merely has outdated proofs, update them and attempt to
 	// validate again.
-	err := p.vc.ValidateTransaction(txn)
-	if err != nil && p.prevVC.ValidateTransaction(txn) == nil {
+	err := p.cs.ValidateTransaction(txn)
+	if err != nil && p.prevCS.ValidateTransaction(txn) == nil {
 		updateTxnProofs(&txn, &p.prevUpdate)
-		err = p.vc.ValidateTransaction(txn)
+		err = p.cs.ValidateTransaction(txn)
 	}
 	if err != nil {
 		return err
@@ -164,7 +164,7 @@ func (p *Pool) AddTransactionSet(txns []types.Transaction) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if err := p.vc.ValidateTransactionSet(txns); err != nil {
+	if err := p.cs.ValidateTransactionSet(txns); err != nil {
 		return fmt.Errorf("failed to validate transaction set: %w", err)
 	}
 
@@ -233,7 +233,7 @@ func (p *Pool) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 		// NOTE: in theory we should only need to run height-dependent checks
 		// here (e.g. timelocks); but it doesn't hurt to be extra thorough. Easy
 		// to remove later if it becomes a bottleneck.
-		if err := cau.Context.ValidateTransaction(txn); err != nil {
+		if err := cau.State.ValidateTransaction(txn); err != nil {
 			delete(p.txns, id)
 			continue
 		}
@@ -241,8 +241,8 @@ func (p *Pool) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 		p.txns[id] = txn
 	}
 
-	// update the current and previous validation contexts
-	p.prevVC, p.vc = p.vc, cau.Context
+	// update the current and previous states
+	p.prevCS, p.cs = p.cs, cau.State
 	p.prevUpdate = cau.ApplyUpdate
 	return nil
 }
@@ -263,7 +263,7 @@ func (p *Pool) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 		p.txns[id] = txn
 
 		// verify that the transaction is still valid
-		if err := cru.Context.ValidateTransaction(txn); err != nil {
+		if err := cru.State.ValidateTransaction(txn); err != nil {
 			delete(p.txns, id)
 			continue
 		}
@@ -274,16 +274,16 @@ func (p *Pool) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 		p.txns[txn.ID()] = txn.DeepCopy()
 	}
 
-	// update validation context
-	p.vc = cru.Context
+	// update consensus state
+	p.cs = cru.State
 	return nil
 }
 
 // New creates a new transaction pool.
-func New(vc consensus.ValidationContext) *Pool {
+func New(cs consensus.State) *Pool {
 	return &Pool{
 		txns:   make(map[types.TransactionID]types.Transaction),
-		vc:     vc,
-		prevVC: vc,
+		cs:     cs,
+		prevCS: cs,
 	}
 }

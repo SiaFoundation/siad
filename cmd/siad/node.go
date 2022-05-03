@@ -75,13 +75,13 @@ func newNode(addr, dir, minerAddr string, c consensus.Checkpoint) (*node, error)
 	if err := os.MkdirAll(walletDir, 0700); err != nil {
 		return nil, err
 	}
-	walletStore, walletTip, err := walletutil.NewJSONStore(walletDir, tip.Context.Index)
+	walletStore, walletTip, err := walletutil.NewJSONStore(walletDir, tip.State.Index)
 	if err != nil {
 		return nil, err
 	}
 
-	cm := chain.NewManager(chainStore, tip.Context)
-	tp := txpool.New(tip.Context)
+	cm := chain.NewManager(chainStore, tip.State)
+	tp := txpool.New(tip.State)
 	cm.AddSubscriber(tp, cm.Tip())
 	if err := cm.AddSubscriber(walletStore, walletTip); err != nil {
 		return nil, fmt.Errorf("couldn't resubscribe wallet at index %v: %w", walletTip, err)
@@ -91,7 +91,7 @@ func newNode(addr, dir, minerAddr string, c consensus.Checkpoint) (*node, error)
 	if err != nil {
 		return nil, err
 	}
-	m := cpuminer.New(tip.Context, minerAddrParsed, tp)
+	m := cpuminer.New(tip.State, minerAddrParsed, tp)
 	cm.AddSubscriber(m, cm.Tip())
 
 	p2pDir := filepath.Join(dir, "p2p")

@@ -168,7 +168,7 @@ func (tb *TransactionBuilder) ReserveSiacoins(amount types.Currency, pool []type
 // provided transaction. A change output is also added if necessary. The inputs
 // will not be available to future calls to ReserveSiacoins or FundSiacoins
 // unless ReleaseInputs is called.
-func (tb *TransactionBuilder) FundSiacoins(vc consensus.ValidationContext, txn *types.Transaction, amount types.Currency, seed Seed, pool []types.Transaction) ([]types.ElementID, error) {
+func (tb *TransactionBuilder) FundSiacoins(cs consensus.State, txn *types.Transaction, amount types.Currency, seed Seed, pool []types.Transaction) ([]types.ElementID, error) {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 	if amount.IsZero() {
@@ -190,7 +190,7 @@ func (tb *TransactionBuilder) FundSiacoins(vc consensus.ValidationContext, txn *
 	var outputSum types.Currency
 	var fundingElements []types.SiacoinElement
 	for _, sce := range utxos {
-		if tb.used[sce.ID] || inPool[sce.ID] || vc.Index.Height < sce.MaturityHeight {
+		if tb.used[sce.ID] || inPool[sce.ID] || cs.Index.Height < sce.MaturityHeight {
 			continue
 		}
 		fundingElements = append(fundingElements, sce)
@@ -238,10 +238,10 @@ func (tb *TransactionBuilder) FundSiacoins(vc consensus.ValidationContext, txn *
 // SignTransaction adds a signature to each of the specified inputs using the
 // provided seed. If len(toSign) == 0, a signature is added for every input with
 // a known key.
-func (tb *TransactionBuilder) SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID, seed Seed) error {
+func (tb *TransactionBuilder) SignTransaction(cs consensus.State, txn *types.Transaction, toSign []types.ElementID, seed Seed) error {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
-	sigHash := vc.InputSigHash(*txn)
+	sigHash := cs.InputSigHash(*txn)
 
 	if len(toSign) == 0 {
 		for _, in := range txn.SiacoinInputs {

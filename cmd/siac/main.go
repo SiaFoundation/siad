@@ -170,11 +170,11 @@ func writeTxn(filename string, txn types.Transaction) {
 func signTxn(txn *types.Transaction) error {
 	c := getClient()
 
-	vc, err := c.ConsensusTipContext()
+	cs, err := c.ConsensusTipState()
 	if err != nil {
 		return err
 	}
-	sigHash := vc.InputSigHash(*txn)
+	sigHash := cs.InputSigHash(*txn)
 
 	seed := getSeed()
 	for _, in := range txn.SiacoinInputs {

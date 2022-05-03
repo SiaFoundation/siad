@@ -45,8 +45,8 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 		return nil, err
 	}
 
-	cm := chain.NewManager(chainStore, tip.Context)
-	tp := txpool.New(tip.Context)
+	cm := chain.NewManager(chainStore, tip.State)
+	tp := txpool.New(tip.State)
 	cm.AddSubscriber(tp, cm.Tip())
 
 	p2pDir := filepath.Join(dir, "p2p")

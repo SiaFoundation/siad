@@ -46,10 +46,7 @@ func DownloadCheckpoint(ctx context.Context, addr string, genesisID types.BlockI
 	}()
 
 	// request checkpoint
-	stream, err := peer.DialStream()
-	if err != nil {
-		return consensus.Checkpoint{}, fmt.Errorf("couldn't establish stream with peer: %w", err)
-	}
+	stream := peer.DialStream()
 	defer stream.Close()
 	if err := rpc.WriteRequest(stream, gateway.RPCCheckpointID, &gateway.RPCCheckpointRequest{Index: index}); err != nil {
 		return consensus.Checkpoint{}, fmt.Errorf("couldn't write RPC request: %w", err)
@@ -60,16 +57,16 @@ func DownloadCheckpoint(ctx context.Context, addr string, genesisID types.BlockI
 	}
 
 	// validate response
-	if resp.Block.Index() != index || resp.Block.Header.ParentIndex() != resp.ParentContext.Index {
+	if resp.Block.Index() != index || resp.Block.Header.ParentIndex() != resp.ParentState.Index {
 		return consensus.Checkpoint{}, errors.New("wrong checkpoint header")
 	}
-	commitment := resp.ParentContext.Commitment(resp.Block.Header.MinerAddress, resp.Block.Transactions)
+	commitment := resp.ParentState.Commitment(resp.Block.Header.MinerAddress, resp.Block.Transactions)
 	if commitment != resp.Block.Header.Commitment {
 		return consensus.Checkpoint{}, errors.New("wrong checkpoint commitment")
 	}
 
 	return consensus.Checkpoint{
-		Block:   resp.Block,
-		Context: consensus.ApplyBlock(resp.ParentContext, resp.Block).Context,
+		Block: resp.Block,
+		State: consensus.ApplyBlock(resp.ParentState, resp.Block).State,
 	}, nil
 }

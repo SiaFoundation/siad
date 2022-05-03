@@ -22,7 +22,7 @@ type EphemeralStore struct {
 
 // AddCheckpoint implements chain.ManagerStore.
 func (es *EphemeralStore) AddCheckpoint(c consensus.Checkpoint) error {
-	es.entries[c.Context.Index] = c
+	es.entries[c.State.Index] = c
 	return nil
 }
 
@@ -74,8 +74,8 @@ func (es *EphemeralStore) Close() error { return nil }
 // NewEphemeralStore returns an in-memory chain.ManagerStore.
 func NewEphemeralStore(c consensus.Checkpoint) *EphemeralStore {
 	return &EphemeralStore{
-		entries: map[types.ChainIndex]consensus.Checkpoint{c.Context.Index: c},
-		best:    []types.ChainIndex{c.Context.Index},
+		entries: map[types.ChainIndex]consensus.Checkpoint{c.State.Index: c},
+		best:    []types.ChainIndex{c.State.Index},
 	}
 }
 
@@ -106,14 +106,14 @@ func (fs *FlatStore) AddCheckpoint(c consensus.Checkpoint) error {
 	}
 	if err := writeCheckpoint(fs.entryFile, c); err != nil {
 		return fmt.Errorf("failed to write checkpoint: %w", err)
-	} else if err := writeIndex(fs.indexFile, c.Context.Index, offset); err != nil {
+	} else if err := writeIndex(fs.indexFile, c.State.Index, offset); err != nil {
 		return fmt.Errorf("failed to write index: %w", err)
 	}
 	stat, err := fs.entryFile.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
-	fs.offsets[c.Context.Index] = offset
+	fs.offsets[c.State.Index] = offset
 	fs.meta.entrySize = stat.Size()
 	fs.meta.indexSize += indexSize
 	return nil
@@ -317,7 +317,7 @@ func NewFlatStore(dir string, c consensus.Checkpoint) (*FlatStore, consensus.Che
 	meta, err := readMetaFile(metapath)
 	if errors.Is(err, os.ErrNotExist) {
 		// initial metadata
-		meta = metadata{tip: c.Context.Index}
+		meta = metadata{tip: c.State.Index}
 	} else if err != nil {
 		return nil, consensus.Checkpoint{}, fmt.Errorf("unable to read meta file %s: %w", metapath, err)
 	} else if err := indexFile.Truncate(meta.indexSize); err != nil {
@@ -346,7 +346,7 @@ func NewFlatStore(dir string, c consensus.Checkpoint) (*FlatStore, consensus.Che
 		meta:     meta,
 		metapath: metapath,
 
-		base:    c.Context.Index,
+		base:    c.State.Index,
 		offsets: offsets,
 	}
 
@@ -361,9 +361,9 @@ func NewFlatStore(dir string, c consensus.Checkpoint) (*FlatStore, consensus.Che
 	// if store is empty, write base entry
 	if len(fs.offsets) == 0 {
 		if err := fs.AddCheckpoint(c); err != nil {
-			return nil, consensus.Checkpoint{}, fmt.Errorf("unable to write checkpoint for %v: %w", c.Context.Index, err)
-		} else if err := fs.ExtendBest(c.Context.Index); err != nil {
-			return nil, consensus.Checkpoint{}, fmt.Errorf("failed to extend best for %v: %w", c.Context.Index, err)
+			return nil, consensus.Checkpoint{}, fmt.Errorf("unable to write checkpoint for %v: %w", c.State.Index, err)
+		} else if err := fs.ExtendBest(c.State.Index); err != nil {
+			return nil, consensus.Checkpoint{}, fmt.Errorf("failed to extend best for %v: %w", c.State.Index, err)
 		}
 		return fs, c, nil
 	}
@@ -445,7 +445,7 @@ func readIndex(r io.Reader) (index types.ChainIndex, offset int64, err error) {
 func writeCheckpoint(w io.Writer, c consensus.Checkpoint) error {
 	e := types.NewEncoder(w)
 	(merkle.CompressedBlock)(c.Block).EncodeTo(e)
-	c.Context.EncodeTo(e)
+	c.State.EncodeTo(e)
 	return e.Flush()
 }
 
@@ -455,6 +455,6 @@ func readCheckpoint(r io.Reader, c *consensus.Checkpoint) error {
 		N: 10e6, // a checkpoint should never be anywhere near this large
 	})
 	(*merkle.CompressedBlock)(&c.Block).DecodeFrom(d)
-	c.Context.DecodeFrom(d)
+	c.State.DecodeFrom(d)
 	return d.Err()
 }
