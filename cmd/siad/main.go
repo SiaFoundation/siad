@@ -36,7 +36,7 @@ var (
 		Transactions: genesisTxns,
 	}
 	genesisUpdate = consensus.GenesisUpdate(genesisBlock, types.Work{NumHashes: [32]byte{29: 1 << 4}})
-	genesis       = consensus.Checkpoint{Block: genesisBlock, Context: genesisUpdate.Context}
+	genesis       = consensus.Checkpoint{Block: genesisBlock, State: genesisUpdate.State}
 )
 
 func die(context string, err error) {

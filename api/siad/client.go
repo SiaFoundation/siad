@@ -15,10 +15,25 @@ type Client struct {
 	c api.Client
 }
 
-// ConsensusTipContext returns the validation context for the current tip.
-func (c *Client) ConsensusTipContext() (resp consensus.ValidationContext, err error) {
-	err = c.c.Get("/api/consensus/tipcontext", &resp)
+// ConsensusTip returns the current tip index.
+func (c *Client) ConsensusTip() (resp types.ChainIndex, err error) {
+	err = c.c.Get("/api/consensus/tip", &resp)
 	return
+}
+
+// ConsensusState returns the consensus state at the provided index.
+func (c *Client) ConsensusState(index types.ChainIndex) (resp consensus.State, err error) {
+	err = c.c.Get("/api/consensus/state/"+index.String(), &resp)
+	return
+}
+
+// ConsensusTipState returns the consensus state at the current tip.
+func (c *Client) ConsensusTipState() (resp consensus.State, err error) {
+	tip, err := c.ConsensusTip()
+	if err != nil {
+		return consensus.State{}, err
+	}
+	return c.ConsensusState(tip)
 }
 
 // WalletBalance returns the current wallet balance.

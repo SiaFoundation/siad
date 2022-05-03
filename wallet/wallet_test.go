@@ -14,8 +14,8 @@ import (
 func TestWallet(t *testing.T) {
 	sim := chainutil.NewChainSim()
 
-	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.Context)
-	w := walletutil.NewTestingWallet(cm.TipContext())
+	cm := chain.NewManager(chainutil.NewEphemeralStore(sim.Genesis), sim.State)
+	w := walletutil.NewTestingWallet(cm.TipState())
 	cm.AddSubscriber(w, cm.Tip())
 
 	// fund the wallet with 100 coins

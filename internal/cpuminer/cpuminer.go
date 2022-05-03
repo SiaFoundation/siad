@@ -18,12 +18,11 @@ type TransactionPool interface {
 
 // A CPUMiner mines blocks.
 type CPUMiner struct {
-	genesis types.Block
-	addr    types.Address
-	tp      TransactionPool
+	addr types.Address
+	tp   TransactionPool
 
 	mu sync.Mutex
-	vc consensus.ValidationContext
+	cs consensus.State
 }
 
 func (m *CPUMiner) txnsForBlock() (blockTxns []types.Transaction) {
@@ -48,19 +47,18 @@ func (m *CPUMiner) txnsForBlock() (blockTxns []types.Transaction) {
 					deps = append(deps, parent)
 				}
 			}
-			return
 		}
 		addDeps(txn)
 		return
 	}
 
-	capacity := m.vc.MaxBlockWeight()
+	capacity := m.cs.MaxBlockWeight()
 	for _, txn := range poolTxns {
 		// prepend the txn with its dependencies
 		group := append(calcDeps(txn), txn)
 		// if the weight of the group exceeds the remaining capacity of the
 		// block, skip it
-		groupWeight := m.vc.BlockWeight(group)
+		groupWeight := m.cs.BlockWeight(group)
 		if groupWeight > capacity {
 			continue
 		}
@@ -81,11 +79,11 @@ func (m *CPUMiner) MineBlock() types.Block {
 		// TODO: if the miner and txpool don't have the same tip, we'll
 		// construct an invalid block
 		m.mu.Lock()
-		parent := m.vc.Index
-		target := types.HashRequiringWork(m.vc.Difficulty)
+		parent := m.cs.Index
+		target := types.HashRequiringWork(m.cs.Difficulty)
 		addr := m.addr
 		txns := m.txnsForBlock()
-		commitment := m.vc.Commitment(addr, txns)
+		commitment := m.cs.Commitment(addr, txns)
 		m.mu.Unlock()
 		b := types.Block{
 			Header: types.BlockHeader{
@@ -105,7 +103,7 @@ func (m *CPUMiner) MineBlock() types.Block {
 		// check whether the tip has changed since we started
 		// grinding; if it has, we need to start over
 		m.mu.Lock()
-		tipChanged := m.vc.Index != parent
+		tipChanged := m.cs.Index != parent
 		m.mu.Unlock()
 		if !tipChanged {
 			return b
@@ -117,7 +115,7 @@ func (m *CPUMiner) MineBlock() types.Block {
 func (m *CPUMiner) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.vc = cau.Context
+	m.cs = cau.State
 	return nil
 }
 
@@ -125,14 +123,14 @@ func (m *CPUMiner) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, _ bool) error
 func (m *CPUMiner) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.vc = cru.Context
+	m.cs = cru.State
 	return nil
 }
 
 // New returns a CPUMiner initialized with the provided state.
-func New(vc consensus.ValidationContext, addr types.Address, tp TransactionPool) *CPUMiner {
+func New(cs consensus.State, addr types.Address, tp TransactionPool) *CPUMiner {
 	return &CPUMiner{
-		vc:   vc,
+		cs:   cs,
 		addr: addr,
 		tp:   tp,
 	}

@@ -78,10 +78,7 @@ func (s *Syncer) setErr(err error) error {
 func (s *Syncer) rpc(peer *gateway.Session, id rpc.Specifier, req rpc.Object, resp rpc.Object) error {
 	// TODO: consider rate-limiting RPCs, i.e. allowing only n inflight
 
-	stream, err := peer.DialStream()
-	if err != nil {
-		return err
-	}
+	stream := peer.DialStream()
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(rpcDeadline(id)))
 	if err := rpc.WriteRequest(stream, id, req); err != nil {
@@ -326,14 +323,14 @@ func (s *Syncer) handleRPC(peer *gateway.Session, msg rpc.Object) (resp rpc.Obje
 			s.setErr(fmt.Errorf("%T: couldn't load block: %w", msg, err))
 			return nil, errInternalError
 		}
-		vc, err := s.cm.ValidationContext(b.Header.ParentIndex())
+		cs, err := s.cm.State(b.Header.ParentIndex())
 		if errors.Is(err, chain.ErrPruned) {
 			return nil, err
 		} else if err != nil {
-			s.setErr(fmt.Errorf("%T: couldn't load validation context: %w", msg, err))
+			s.setErr(fmt.Errorf("%T: couldn't load consensus state: %w", msg, err))
 			return nil, errInternalError
 		}
-		return &gateway.RPCCheckpointResponse{Block: b, ParentContext: vc}, nil
+		return &gateway.RPCCheckpointResponse{Block: b, ParentState: cs}, nil
 
 	default:
 		panic(fmt.Sprintf("unhandled type %T", msg))

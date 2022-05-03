@@ -179,7 +179,7 @@ func (s *EphemeralStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayComm
 		if !inflow.IsZero() || !outflow.IsZero() {
 			s.txns = append(s.txns, wallet.Transaction{
 				Raw:       txn.DeepCopy(),
-				Index:     cau.Context.Index, // same as cau.Block.Index()
+				Index:     cau.State.Index, // same as cau.Block.Index()
 				ID:        txn.ID(),
 				Inflow:    inflow,
 				Outflow:   outflow,
@@ -188,7 +188,7 @@ func (s *EphemeralStore) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayComm
 		}
 	}
 
-	s.tip = cau.Context.Index
+	s.tip = cau.State.Index
 	return nil
 }
 
@@ -244,7 +244,7 @@ func (s *EphemeralStore) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error
 		}
 	}
 
-	s.tip = cru.Context.Index
+	s.tip = cru.State.Index
 	return nil
 }
 
@@ -358,7 +358,7 @@ type TestingWallet struct {
 	*EphemeralStore
 	Seed wallet.Seed
 	tb   *wallet.TransactionBuilder
-	vc   consensus.ValidationContext
+	cs   consensus.State
 }
 
 // Balance returns the wallet's siacoin balance.
@@ -391,16 +391,16 @@ func (w *TestingWallet) NewAddress() types.Address {
 func (w *TestingWallet) FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	toSign, err := w.tb.FundSiacoins(w.vc, txn, amount, w.Seed, pool)
+	toSign, err := w.tb.FundSiacoins(w.cs, txn, amount, w.Seed, pool)
 	return toSign, func() { w.tb.ReleaseInputs(*txn) }, err
 }
 
 // SignTransaction funds the provided transaction, adding a change output if
 // necessary.
-func (w *TestingWallet) SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error {
+func (w *TestingWallet) SignTransaction(cs consensus.State, txn *types.Transaction, toSign []types.ElementID) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.tb.SignTransaction(vc, txn, toSign, w.Seed)
+	return w.tb.SignTransaction(cs, txn, toSign, w.Seed)
 }
 
 // FundAndSign funds and signs the provided transaction, adding a change output
@@ -417,11 +417,11 @@ func (w *TestingWallet) FundAndSign(txn *types.Transaction) error {
 		amount = amount.Sub(sci.Parent.Value)
 	}
 
-	toSign, err := w.tb.FundSiacoins(w.vc, txn, amount, w.Seed, nil)
+	toSign, err := w.tb.FundSiacoins(w.cs, txn, amount, w.Seed, nil)
 	if err != nil {
 		return err
 	}
-	return w.tb.SignTransaction(w.vc, txn, toSign, w.Seed)
+	return w.tb.SignTransaction(w.cs, txn, toSign, w.Seed)
 }
 
 // ProcessChainApplyUpdate implements chain.Subscriber.
@@ -429,7 +429,7 @@ func (w *TestingWallet) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommi
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.EphemeralStore.ProcessChainApplyUpdate(cau, mayCommit)
-	w.vc = cau.Context
+	w.cs = cau.State
 	return nil
 }
 
@@ -438,18 +438,18 @@ func (w *TestingWallet) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error 
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.EphemeralStore.ProcessChainRevertUpdate(cru)
-	w.vc = cru.Context
+	w.cs = cru.State
 	return nil
 }
 
-// NewTestingWallet creates a TestingWallet with the provided validation context
+// NewTestingWallet creates a TestingWallet with the provided consensus state
 // and an ephemeral store.
-func NewTestingWallet(vc consensus.ValidationContext) *TestingWallet {
-	store := NewEphemeralStore(vc.Index)
+func NewTestingWallet(cs consensus.State) *TestingWallet {
+	store := NewEphemeralStore(cs.Index)
 	return &TestingWallet{
 		EphemeralStore: store,
 		Seed:           wallet.NewSeed(),
 		tb:             wallet.NewTransactionBuilder(store),
-		vc:             vc,
+		cs:             cs,
 	}
 }

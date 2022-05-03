@@ -26,12 +26,12 @@ func TestFlatStoreRecovery(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		b := sim.MineBlock()
 		err := fs.AddCheckpoint(consensus.Checkpoint{
-			Block:   b,
-			Context: sim.Context,
+			Block: b,
+			State: sim.State,
 		})
 		if err != nil {
 			t.Fatal(err)
-		} else if err := fs.ExtendBest(sim.Context.Index); err != nil {
+		} else if err := fs.ExtendBest(sim.State.Index); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,8 +40,8 @@ func TestFlatStoreRecovery(t *testing.T) {
 	}
 
 	// compare tips
-	if fs.meta.tip != sim.Context.Index {
-		t.Fatal("meta tip mismatch", fs.meta.tip, sim.Context.Index)
+	if fs.meta.tip != sim.State.Index {
+		t.Fatal("meta tip mismatch", fs.meta.tip, sim.State.Index)
 	} else if index, err := fs.BestIndex(fs.meta.tip.Height); err != nil || index != fs.meta.tip {
 		t.Fatal("tip mismatch", index, fs.meta.tip)
 	}
@@ -51,12 +51,12 @@ func TestFlatStoreRecovery(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		b := sim.MineBlock()
 		err := fs.AddCheckpoint(consensus.Checkpoint{
-			Block:   b,
-			Context: sim.Context,
+			Block: b,
+			State: sim.State,
 		})
 		if err != nil {
 			t.Fatal(err)
-		} else if err := fs.ExtendBest(sim.Context.Index); err != nil {
+		} else if err := fs.ExtendBest(sim.State.Index); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -80,8 +80,8 @@ func TestFlatStoreRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tip.Context.Index != goodTip || fs.meta.tip != goodTip {
-		t.Fatal("tip mismatch", tip.Context.Index, fs.meta.tip, goodTip)
+	if tip.State.Index != goodTip || fs.meta.tip != goodTip {
+		t.Fatal("tip mismatch", tip.State.Index, fs.meta.tip, goodTip)
 	} else if index, err := fs.BestIndex(goodTip.Height); err != nil || index != goodTip {
 		t.Fatal("tip mismatch", index, goodTip)
 	}

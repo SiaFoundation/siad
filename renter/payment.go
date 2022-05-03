@@ -41,7 +41,7 @@ func (s *Session) payByContract(stream *mux.Stream, payment *payByContract, amou
 	}
 
 	// sign the revision and send it to the host
-	revisionHash := s.cm.TipContext().ContractSigHash(revision)
+	revisionHash := s.cm.TipState().ContractSigHash(revision)
 	req := &rhp.PayByContractRequest{
 		RefundAccount: payment.refundAccountID,
 

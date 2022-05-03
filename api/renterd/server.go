@@ -27,7 +27,7 @@ type (
 		Addresses() ([]types.Address, error)
 		Transactions(since time.Time, max int) ([]wallet.Transaction, error)
 		FundTransaction(txn *types.Transaction, amount types.Currency, pool []types.Transaction) ([]types.ElementID, func(), error)
-		SignTransaction(vc consensus.ValidationContext, txn *types.Transaction, toSign []types.ElementID) error
+		SignTransaction(cs consensus.State, txn *types.Transaction, toSign []types.ElementID) error
 	}
 
 	// A Syncer can connect to other peers and synchronize the blockchain.
@@ -48,7 +48,7 @@ type (
 
 	// A ChainManager manages blockchain state.
 	ChainManager interface {
-		TipContext() consensus.ValidationContext
+		TipState() consensus.State
 	}
 )
 

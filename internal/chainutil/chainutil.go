@@ -62,7 +62,7 @@ func JustChainIndexes(blocks []types.Block) []types.ChainIndex {
 type ChainSim struct {
 	Genesis consensus.Checkpoint
 	Chain   []types.Block
-	Context consensus.ValidationContext
+	State   consensus.State
 
 	nonce uint64 // for distinguishing forks
 
@@ -114,11 +114,11 @@ func (cs *ChainSim) MineBlockWithTxns(txns ...types.Transaction) types.Block {
 		},
 		Transactions: txns,
 	}
-	b.Header.Commitment = cs.Context.Commitment(b.Header.MinerAddress, b.Transactions)
-	FindBlockNonce(&b.Header, types.HashRequiringWork(cs.Context.Difficulty))
+	b.Header.Commitment = cs.State.Commitment(b.Header.MinerAddress, b.Transactions)
+	FindBlockNonce(&b.Header, types.HashRequiringWork(cs.State.Difficulty))
 
-	sau := consensus.ApplyBlock(cs.Context, b)
-	cs.Context = sau.Context
+	sau := consensus.ApplyBlock(cs.State, b)
+	cs.State = sau.State
 	cs.Chain = append(cs.Chain, b)
 
 	// update our outputs
@@ -155,7 +155,7 @@ func (cs *ChainSim) MineBlockWithTxns(txns ...types.Transaction) types.Block {
 func (cs *ChainSim) TxnWithSiacoinOutputs(scos ...types.SiacoinOutput) types.Transaction {
 	txn := types.Transaction{
 		SiacoinOutputs: scos,
-		MinerFee:       types.NewCurrency64(cs.Context.Index.Height),
+		MinerFee:       types.NewCurrency64(cs.State.Index.Height),
 	}
 
 	totalOut := txn.MinerFee
@@ -188,7 +188,7 @@ func (cs *ChainSim) TxnWithSiacoinOutputs(scos ...types.SiacoinOutput) types.Tra
 	}
 
 	// sign
-	sigHash := cs.Context.InputSigHash(txn)
+	sigHash := cs.State.InputSigHash(txn)
 	for i := range txn.SiacoinInputs {
 		txn.SiacoinInputs[i].Signatures = []types.Signature{cs.privkey.SignHash(sigHash)}
 	}
@@ -201,7 +201,7 @@ func (cs *ChainSim) TxnWithSiacoinOutputs(scos ...types.SiacoinOutput) types.Tra
 func (cs *ChainSim) MineBlockWithSiacoinOutputs(scos ...types.SiacoinOutput) types.Block {
 	txn := types.Transaction{
 		SiacoinOutputs: scos,
-		MinerFee:       types.NewCurrency64(cs.Context.Index.Height),
+		MinerFee:       types.NewCurrency64(cs.State.Index.Height),
 	}
 
 	totalOut := txn.MinerFee
@@ -234,7 +234,7 @@ func (cs *ChainSim) MineBlockWithSiacoinOutputs(scos ...types.SiacoinOutput) typ
 	}
 
 	// sign and mine
-	sigHash := cs.Context.InputSigHash(txn)
+	sigHash := cs.State.InputSigHash(txn)
 	for i := range txn.SiacoinInputs {
 		txn.SiacoinInputs[i].Signatures = []types.Signature{cs.privkey.SignHash(sigHash)}
 	}
@@ -252,14 +252,14 @@ func (cs *ChainSim) MineBlock() types.Block {
 				SpendPolicy: types.PolicyPublicKey(cs.pubkey),
 			}},
 			SiacoinOutputs: []types.SiacoinOutput{
-				{Address: types.StandardAddress(cs.pubkey), Value: out.Value.Sub(types.NewCurrency64(cs.Context.Index.Height + 1))},
+				{Address: types.StandardAddress(cs.pubkey), Value: out.Value.Sub(types.NewCurrency64(cs.State.Index.Height + 1))},
 				{Address: types.Address{byte(cs.nonce >> 48), byte(cs.nonce >> 56), 1, 2, 3}, Value: types.NewCurrency64(1)},
 			},
 			ArbitraryData: cs.rng.Bytes(32),
-			MinerFee:      types.NewCurrency64(cs.Context.Index.Height),
+			MinerFee:      types.NewCurrency64(cs.State.Index.Height),
 		}
 
-		sigHash := cs.Context.InputSigHash(txn)
+		sigHash := cs.State.InputSigHash(txn)
 		for i := range txn.SiacoinInputs {
 			txn.SiacoinInputs[i].Signatures = []types.Signature{cs.privkey.SignHash(sigHash)}
 		}
@@ -283,7 +283,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 				Value:   out.Value - 1,
 			})
 		}
-		sigHash := cs.Context.InputSigHash(txn)
+		sigHash := cs.State.InputSigHash(txn)
 		for i := range txn.SiafundInputs {
 			txn.SiafundInputs[i].Signatures = []types.Signature{cs.privkey.SignHash(sigHash)}
 		}
@@ -291,13 +291,13 @@ func (cs *ChainSim) MineBlock() types.Block {
 	}
 	cs.sfOutputs = cs.sfOutputs[:0]
 	for _, fc := range cs.contracts {
-		if height := cs.Context.Index.Height; height < fc.WindowStart {
+		if height := cs.State.Index.Height; height < fc.WindowStart {
 			// revise
 			if cs.rng.Float64() < 0.3 {
 				rev := fc.FileContract
 				rev.Filesize += 5
 				rev.RevisionNumber++
-				contractHash := cs.Context.ContractSigHash(rev)
+				contractHash := cs.State.ContractSigHash(rev)
 				rev.RenterSignature = cs.privkey.SignHash(contractHash)
 				rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
 
@@ -314,7 +314,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 			if cs.rng.Float64() < 0.3 {
 				rev := fc.FileContract
 				rev.RevisionNumber = types.MaxRevisionNumber
-				contractHash := cs.Context.ContractSigHash(rev)
+				contractHash := cs.State.ContractSigHash(rev)
 				rev.RenterSignature = cs.privkey.SignHash(contractHash)
 				rev.HostSignature = cs.hostPrivkey.SignHash(contractHash)
 
@@ -348,7 +348,7 @@ func (cs *ChainSim) MineBlock() types.Block {
 				Value:     cs.rng.Bytes(64),
 			}},
 		}
-		txn.Attestations[0].Signature = privkey.SignHash(cs.Context.AttestationSigHash(txn.Attestations[0]))
+		txn.Attestations[0].Signature = privkey.SignHash(cs.State.AttestationSigHash(txn.Attestations[0]))
 		txns = append(txns, txn)
 	}
 
@@ -437,10 +437,10 @@ func NewChainSim() *ChainSim {
 	var seed [32]byte
 	return &ChainSim{
 		Genesis: consensus.Checkpoint{
-			Block:   genesis,
-			Context: sau.Context,
+			Block: genesis,
+			State: sau.State,
 		},
-		Context:     sau.Context,
+		State:       sau.State,
 		rng:         frand.NewCustom(seed[:], 1024, 12),
 		privkey:     privkey,
 		pubkey:      pubkey,

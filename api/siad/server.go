@@ -43,7 +43,8 @@ type (
 
 	// A ChainManager manages blockchain state.
 	ChainManager interface {
-		TipContext() consensus.ValidationContext
+		TipState() consensus.State
+		State(index types.ChainIndex) (consensus.State, error)
 	}
 )
 
@@ -52,6 +53,23 @@ type server struct {
 	s  Syncer
 	cm ChainManager
 	tp TransactionPool
+}
+
+func (s *server) consensusTipHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	api.WriteJSON(w, s.cm.TipState().Index)
+}
+
+func (s *server) consensusStateHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	index, err := types.ParseChainIndex(ps.ByName("index"))
+	if err != nil {
+		http.Error(w, "invalid index: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	cs, err := s.cm.State(index)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	api.WriteJSON(w, cs)
 }
 
 func (s *server) walletBalanceHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -225,6 +243,9 @@ func NewServer(cm ChainManager, s Syncer, w WalletStore, tp TransactionPool) htt
 		tp: tp,
 	}
 	mux := httprouter.New()
+
+	mux.GET("/api/consensus/tip", srv.consensusTipHandler)
+	mux.GET("/api/consensus/state/:index", srv.consensusStateHandler)
 
 	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/api/wallet/seedindex", srv.walletSeedIndexHandler)

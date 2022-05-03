@@ -43,10 +43,7 @@ var (
 )
 
 func (s *Session) call(ctx context.Context, rpcID rpc.Specifier, req, resp rpc.Object) error {
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to open new stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 
 	if err := rpc.WriteRequest(stream, rpcID, req); err != nil {
@@ -61,10 +58,7 @@ func (s *Session) AccountBalance(ctx context.Context, accountID types.PublicKey,
 		return types.ZeroCurrency, ErrPaymentRequired
 	}
 
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		return types.ZeroCurrency, fmt.Errorf("failed to open new stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 
 	id, settings, err := s.currentSettings()
@@ -105,10 +99,7 @@ func (s *Session) FundAccount(ctx context.Context, accountID types.PublicKey, am
 		return types.ZeroCurrency, errors.New("ephemeral accounts must be funded by a contract")
 	}
 
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		return types.ZeroCurrency, fmt.Errorf("failed to open new stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 
 	id, settings, err := s.currentSettings()
@@ -146,10 +137,7 @@ func (s *Session) LatestRevision(ctx context.Context, contractID types.ElementID
 		return rhp.Contract{}, ErrPaymentRequired
 	}
 
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		return rhp.Contract{}, fmt.Errorf("failed to open new stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 
 	id, settings, err := s.currentSettings()
@@ -186,10 +174,7 @@ func (s *Session) RegisterSettings(ctx context.Context, payment PaymentMethod) (
 		return rhp.HostSettings{}, ErrPaymentRequired
 	}
 
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		return rhp.HostSettings{}, fmt.Errorf("failed to open stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 
 	if err := rpc.WriteRequest(stream, rhp.RPCSettingsID, nil); err != nil {
@@ -207,7 +192,7 @@ func (s *Session) RegisterSettings(ctx context.Context, payment PaymentMethod) (
 		return rhp.HostSettings{}, fmt.Errorf("failed to pay for settings: %w", err)
 	}
 	var registerResp rhp.RPCSettingsRegisteredResponse
-	if err = rpc.ReadResponse(stream, &registerResp); err != nil {
+	if err := rpc.ReadResponse(stream, &registerResp); err != nil {
 		return rhp.HostSettings{}, fmt.Errorf("failed to read tracking response: %w", err)
 	}
 
@@ -253,7 +238,7 @@ func (s *Session) Lock(ctx context.Context, id types.ElementID, key types.Privat
 	s.session.SetChallenge(resp.NewChallenge)
 
 	// verify claimed revision
-	if err := rhp.ValidateContractSignatures(s.cm.TipContext(), resp.Revision); err != nil {
+	if err := rhp.ValidateContractSignatures(s.cm.TipState(), resp.Revision); err != nil {
 		return fmt.Errorf("host returned invalid revision: %w", err)
 	}
 	if !resp.Acquired {
@@ -296,14 +281,11 @@ func (s *Session) Read(ctx context.Context, w io.Writer, sections []rhp.RPCReadR
 	revision.RenterOutput.Value = revision.RenterOutput.Value.Sub(price)
 	revision.HostOutput.Value = revision.HostOutput.Value.Add(price)
 	revision.MissedHostValue = revision.MissedHostValue.Add(price)
-	contractHash := s.cm.TipContext().ContractSigHash(s.contract.Revision)
+	contractHash := s.cm.TipState().ContractSigHash(s.contract.Revision)
 	revision.RenterSignature = s.renterKey.SignHash(contractHash)
 
 	// initiate RPC
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to open stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 	req := &rhp.RPCReadRequest{
 		Sections:          sections,
@@ -333,8 +315,8 @@ func (s *Session) Read(ctx context.Context, w io.Writer, sections []rhp.RPCReadR
 	// receive sector data
 	for _, sec := range req.Sections {
 		// stream into both w and the proof verifier
-		proofStart := int(sec.Offset) / rhp.LeafSize
-		proofEnd := int(sec.Offset+sec.Length) / rhp.LeafSize
+		proofStart := sec.Offset / rhp.LeafSize
+		proofEnd := (sec.Offset + sec.Length) / rhp.LeafSize
 		rpv := rhp.NewRangeProofVerifier(proofStart, proofEnd)
 		tee := io.TeeReader(io.LimitReader(stream, int64(sec.Length)), w)
 		// the proof verifier Reads one leaf at a time, so bufio is crucial for
@@ -394,11 +376,7 @@ func (s *Session) Append(ctx context.Context, sector *[rhp.SectorSize]byte) (_ t
 	go func() { rootChan <- rhp.SectorRoot(sector) }()
 
 	// initiate RPC
-	stream, err := s.session.DialStreamContext(ctx)
-	if err != nil {
-		<-rootChan
-		return types.Hash256{}, fmt.Errorf("failed to open stream: %w", err)
-	}
+	stream := s.session.DialStreamContext(ctx)
 	defer stream.Close()
 
 	// send request
@@ -435,7 +413,7 @@ func (s *Session) Append(ctx context.Context, sector *[rhp.SectorSize]byte) (_ t
 
 	// set new Merkle root and exchange signatures
 	revision.FileMerkleRoot = newRoot
-	contractHash := s.cm.TipContext().ContractSigHash(s.contract.Revision)
+	contractHash := s.cm.TipState().ContractSigHash(s.contract.Revision)
 	revision.RenterSignature = s.renterKey.SignHash(contractHash)
 	renterSig := &rhp.RPCWriteResponse{
 		Signature: s.renterKey.SignHash(contractHash),
@@ -461,8 +439,8 @@ func (s *Session) FormContract(renterKey types.PrivateKey, renterFunds, hostColl
 	renterAddr := w.Address()
 	hostAddr := settings.Address
 
-	vc := s.cm.TipContext()
-	startHeight := vc.Index.Height
+	cs := s.cm.TipState()
+	startHeight := cs.Index.Height
 	if endHeight < startHeight {
 		return rhp.Contract{}, types.Transaction{}, errors.New("end height must be greater than start height")
 	}
@@ -484,26 +462,23 @@ func (s *Session) FormContract(renterKey types.PrivateKey, renterFunds, hostColl
 		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("contract formation invalid: %w", err)
 	}
 
-	sigHash := vc.ContractSigHash(fc)
+	sigHash := cs.ContractSigHash(fc)
 	fc.RenterSignature = renterKey.SignHash(sigHash)
 
 	txn := types.Transaction{
 		FileContracts: []types.FileContract{fc},
 	}
-	txn.MinerFee = tp.RecommendedFee().Mul64(vc.TransactionWeight(txn))
+	txn.MinerFee = tp.RecommendedFee().Mul64(cs.TransactionWeight(txn))
 	// fund the formation transaction with the renter allowance, contract fee,
 	// siafund tax, and miner fee
-	totalCost := renterFunds.Add(settings.ContractFee).Add(vc.FileContractTax(fc)).Add(txn.MinerFee)
+	totalCost := renterFunds.Add(settings.ContractFee).Add(cs.FileContractTax(fc)).Add(txn.MinerFee)
 	toSign, cleanup, err := w.FundTransaction(&txn, totalCost, nil)
 	if err != nil {
 		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("failed to fund transaction: %w", err)
 	}
 	defer cleanup()
 
-	stream, err := s.session.DialStream()
-	if err != nil {
-		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("failed to open stream: %w", err)
-	}
+	stream := s.session.DialStream()
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(2 * time.Minute))
 
@@ -532,7 +507,7 @@ func (s *Session) FormContract(renterKey types.PrivateKey, renterFunds, hostColl
 	txn.FileContracts[0].HostSignature = resp.ContractSignature
 
 	// sign the transaction and send the signatures to the host
-	if err := w.SignTransaction(vc, &txn, toSign); err != nil {
+	if err := w.SignTransaction(cs, &txn, toSign); err != nil {
 		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("failed to sign transaction: %w", err)
 	}
 	renterSigs := rhp.RPCContractSignatures{
@@ -557,7 +532,7 @@ func (s *Session) FormContract(renterKey types.PrivateKey, renterFunds, hostColl
 	}
 
 	// the transaction should now be valid
-	if err := vc.ValidateTransaction(txn); err != nil {
+	if err := cs.ValidateTransaction(txn); err != nil {
 		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("renewal transaction is invalid: %w", err)
 	}
 
@@ -578,7 +553,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	}
 	hostAddr := settings.Address
 	renterAddr := w.Address()
-	vc := s.cm.TipContext()
+	cs := s.cm.TipState()
 
 	var baseStorageCost, baseCollateral types.Currency
 	if extension > 0 {
@@ -594,7 +569,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	// old contract and the initial revision of the new contract
 	finalRevision := contract.Revision
 	finalRevision.RevisionNumber = types.MaxRevisionNumber
-	finalRevision.RenterSignature = renterKey.SignHash(vc.ContractSigHash(finalRevision))
+	finalRevision.RenterSignature = renterKey.SignHash(cs.ContractSigHash(finalRevision))
 	initialRevision := types.FileContract{
 		Filesize:        contract.Revision.Filesize,
 		FileMerkleRoot:  contract.Revision.FileMerkleRoot,
@@ -608,7 +583,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		HostPublicKey:   contract.Revision.HostPublicKey,
 		RevisionNumber:  0,
 	}
-	initialRevision.RenterSignature = renterKey.SignHash(vc.ContractSigHash(initialRevision))
+	initialRevision.RenterSignature = renterKey.SignHash(cs.ContractSigHash(initialRevision))
 	renewalTxn := types.Transaction{
 		FileContractResolutions: []types.FileContractResolution{{
 			Parent: contract.Parent,
@@ -619,11 +594,11 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		}},
 	}
 	renewal := &renewalTxn.FileContractResolutions[0].Renewal
-	renewalTxn.MinerFee = tp.RecommendedFee().Mul64(vc.TransactionWeight(renewalTxn))
+	renewalTxn.MinerFee = tp.RecommendedFee().Mul64(cs.TransactionWeight(renewalTxn))
 
 	// The renter is responsible for it's funding, the host's initial revenue,
 	// siafund tax, and miner fee.
-	renterCost := renterFunds.Add(settings.ContractFee).Add(baseStorageCost).Add(vc.FileContractTax(renewal.InitialRevision)).Add(renewalTxn.MinerFee)
+	renterCost := renterFunds.Add(settings.ContractFee).Add(baseStorageCost).Add(cs.FileContractTax(renewal.InitialRevision)).Add(renewalTxn.MinerFee)
 	renterRollover := finalRevision.RenterOutput.Value
 	var toSign []types.ElementID
 	if renterRollover.Cmp(renterCost) < 0 {
@@ -645,10 +620,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	renterInputs := renewalTxn.SiacoinInputs
 
 	// initiate the RPC
-	stream, err := s.session.DialStream()
-	if err != nil {
-		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("failed to open stream: %w", err)
-	}
+	stream := s.session.DialStream()
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(2 * time.Minute))
 
@@ -672,9 +644,9 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	}
 
 	// validate the host's contract signatures
-	if !s.hostKey.VerifyHash(vc.ContractSigHash(finalRevision), resp.FinalizationSignature) {
+	if !s.hostKey.VerifyHash(cs.ContractSigHash(finalRevision), resp.FinalizationSignature) {
 		return rhp.Contract{}, types.Transaction{}, errors.New("host final revision signature is invalid")
-	} else if !s.hostKey.VerifyHash(vc.ContractSigHash(initialRevision), resp.InitialSignature) {
+	} else if !s.hostKey.VerifyHash(cs.ContractSigHash(initialRevision), resp.InitialSignature) {
 		return rhp.Contract{}, types.Transaction{}, errors.New("host initial contract signature is invalid")
 	}
 
@@ -682,7 +654,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	renewal.FinalRevision.HostSignature = resp.FinalizationSignature
 	renewal.InitialRevision.HostSignature = resp.InitialSignature
 	// verify the host's renewal signature
-	renewalSigHash := vc.RenewalSigHash(*renewal)
+	renewalSigHash := cs.RenewalSigHash(*renewal)
 	if !s.hostKey.VerifyHash(renewalSigHash, resp.RenewalSignature) {
 		return rhp.Contract{}, types.Transaction{}, errors.New("host renewal signature is invalid")
 	}
@@ -701,7 +673,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 		RenewalSignature:       renewal.RenterSignature,
 	}
 	if len(toSign) > 0 {
-		if err := w.SignTransaction(vc, &renewalTxn, toSign); err != nil {
+		if err := w.SignTransaction(cs, &renewalTxn, toSign); err != nil {
 			return rhp.Contract{}, types.Transaction{}, fmt.Errorf("failed to sign renewal transaction: %w", err)
 		}
 		for i := range renterInputs {
@@ -724,7 +696,7 @@ func (s *Session) RenewContract(renterKey types.PrivateKey, contract types.FileC
 	}
 
 	// the transaction should now be valid
-	if err := vc.ValidateTransaction(renewalTxn); err != nil {
+	if err := cs.ValidateTransaction(renewalTxn); err != nil {
 		return rhp.Contract{}, types.Transaction{}, fmt.Errorf("renewal transaction is invalid: %w", err)
 	}
 
