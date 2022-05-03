@@ -1,15 +1,12 @@
 package main
 
 import (
-	"encoding/hex"
 	"flag"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"time"
 
 	"go.sia.tech/core/consensus"
@@ -51,6 +48,8 @@ func main() {
 
 	log.Println("explored v0.1.0")
 	if flag.Arg(0) == "version" {
+		log.Println("Commit:", githash)
+		log.Println("Build Date:", builddate)
 		return
 	}
 
@@ -97,23 +96,4 @@ func main() {
 	log.Println("Shutting down...")
 	n.Close()
 	l.Close()
-}
-
-func parseIndex(s string) (types.ChainIndex, bool) {
-	parts := strings.Split(s, "::")
-	if len(parts) != 2 {
-		return types.ChainIndex{}, false
-	}
-	height, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return types.ChainIndex{}, false
-	}
-	var id types.BlockID
-	if n, err := hex.Decode(id[:], []byte(parts[1])); n != len(id) || err != nil {
-		return types.ChainIndex{}, false
-	}
-	return types.ChainIndex{
-		Height: height,
-		ID:     id,
-	}, true
 }

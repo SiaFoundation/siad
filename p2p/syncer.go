@@ -153,11 +153,6 @@ func (s *Syncer) getBlocks(peer *gateway.Session, req *gateway.RPCBlocksRequest)
 	return
 }
 
-func (s *Syncer) getCheckpoint(peer *gateway.Session, req *gateway.RPCCheckpointRequest) (resp gateway.RPCCheckpointResponse, err error) {
-	err = s.rpc(peer, gateway.RPCCheckpointID, req, &resp)
-	return
-}
-
 func (s *Syncer) handleStream(peer *gateway.Session, stream *mux.Stream) {
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(5 * time.Minute))
