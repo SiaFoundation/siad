@@ -1,6 +1,7 @@
 package contractmanager
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,9 +15,9 @@ import (
 	"go.sia.tech/siad/modules"
 )
 
-// TestRemovalQueuePersistence tests that the removal persistence file
+// TestRemovalMapPersistence tests that the removal persistence file
 // is written and loaded correctly.
-func TestRemovalQueuePersistence(t *testing.T) {
+func TestRemovalMapPersistence(t *testing.T) {
 	cm, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +27,8 @@ func TestRemovalQueuePersistence(t *testing.T) {
 	queueFile := filepath.Join(t.TempDir(), sectorRemovalQueueFile)
 	// manually create a new removal queue and initialize the persistence file.
 	sq := &sectorRemovalMap{
-		sectors: make(map[sectorID]removalEntry),
+		entries: make(map[sectorID]removalEntry),
+		sectors: make(map[sectorID]struct{}),
 		cm:      cm,
 		wal:     &cm.wal,
 	}
@@ -52,14 +54,16 @@ func TestRemovalQueuePersistence(t *testing.T) {
 		// check that the internal fields are correct
 		if uint64(len(sq.sectors)) != sectors {
 			return fmt.Errorf("unexpected number of sectors in removal queue, expected %v got %v", sectors, len(sq.sectors))
-		} else if uint64(sq.entries) != entries {
+		} else if uint64(len(sq.entries)) != entries {
 			return fmt.Errorf("unexpected number of entries in removal queue, expected %v got %v", entries, sq.entries)
 		}
 
 		// check that the ids and counters match the expected values
 		for id, count := range sectorRemovals {
-			if sq.sectors[id].Count != count {
-				return fmt.Errorf("unexpected sector removal count for sector %v, expected %v got %v", id, count, sq.sectors[id].Count)
+			if _, ok := sq.sectors[id]; !ok {
+				return fmt.Errorf("sector %v not in removal queue", id)
+			} else if sq.entries[id].Count != count {
+				return fmt.Errorf("unexpected sector removal count for sector %s, expected %v got %v", hex.EncodeToString(id[:]), count, sq.entries[id].Count)
 			}
 		}
 		return nil
@@ -84,7 +88,8 @@ func TestRemovalQueuePersistence(t *testing.T) {
 
 	// reinitialize the queue and load the persistence file from disk
 	sq = &sectorRemovalMap{
-		sectors: make(map[sectorID]removalEntry),
+		entries: make(map[sectorID]removalEntry),
+		sectors: make(map[sectorID]struct{}),
 		cm:      cm,
 		wal:     &cm.wal,
 	}
@@ -111,6 +116,24 @@ func TestRemovalQueuePersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// add a few of the sectors back to the queue to test duplicate entries
+	// are not added to the persistence file.
+	readd := make(map[sectorID]uint64)
+	for _, id := range removed[:10] {
+		sectorRemovals[id] = fastrand.Uint64n(1e4) + 1
+		readd[id] = sectorRemovals[id]
+	}
+	if err := sq.AddSectors(readd); err != nil {
+		t.Fatal(err)
+	}
+
+	// check that the internal fields are correct. The number of sectors should
+	// change, but the entries should only change when the file is compacted on
+	// reload.
+	if err := checkInternalFields(260, 500); err != nil {
+		t.Fatal(err)
+	}
+
 	// close the removal queue to flush it to disk
 	if err := sq.Close(); err != nil {
 		t.Fatal(err)
@@ -125,9 +148,10 @@ func TestRemovalQueuePersistence(t *testing.T) {
 		t.Fatalf("unexpected file size expected %v got %v", 500*removalEntrySize, fi.Size())
 	}
 
-	// reload the persistence file and make sure it compacted the file
+	// reload the persistence file and verify the file was compacted
 	sq = &sectorRemovalMap{
-		sectors: make(map[sectorID]removalEntry),
+		entries: make(map[sectorID]removalEntry),
+		sectors: make(map[sectorID]struct{}),
 		cm:      cm,
 		wal:     &cm.wal,
 	}
@@ -135,7 +159,7 @@ func TestRemovalQueuePersistence(t *testing.T) {
 
 	// check that the internal fields are correct. The entry and sector counts
 	// should be the new values; the removed sectors should be gone.
-	if err := checkInternalFields(250, 250); err != nil {
+	if err := checkInternalFields(260, 260); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,15 +167,16 @@ func TestRemovalQueuePersistence(t *testing.T) {
 	fi, err = os.Stat(queueFile)
 	if err != nil {
 		t.Fatal(err)
-	} else if fi.Size() != 250*removalEntrySize {
-		t.Fatalf("unexpected file size expected %v got %v", 250*removalEntrySize, fi.Size())
+	} else if fi.Size() != 260*removalEntrySize {
+		t.Fatalf("unexpected file size expected %v got %v", 260*removalEntrySize, fi.Size())
 	} else if err := sq.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	// check that the compacted persistence file still loads correctly
 	sq = &sectorRemovalMap{
-		sectors: make(map[sectorID]removalEntry),
+		entries: make(map[sectorID]removalEntry),
+		sectors: make(map[sectorID]struct{}),
 		cm:      cm,
 		wal:     &cm.wal,
 	}
@@ -159,7 +184,7 @@ func TestRemovalQueuePersistence(t *testing.T) {
 	defer sq.Close()
 
 	// the internal fields should still have the same values
-	if err := checkInternalFields(250, 250); err != nil {
+	if err := checkInternalFields(260, 260); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -185,9 +210,8 @@ func TestMarkSectorsForRemoval(t *testing.T) {
 	}
 
 	// generate random physical sectors
-	sectors := 1024
+	sectors := 256
 	sectorCounts := make(map[crypto.Hash]uint64)
-	buf := make([]byte, modules.SectorSize)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -200,7 +224,9 @@ func TestMarkSectorsForRemoval(t *testing.T) {
 				wg.Done()
 				<-sema
 			}()
-			fastrand.Read(buf)
+
+			buf := make([]byte, modules.SectorSize)
+			fastrand.Read(buf[:128])
 			root := crypto.MerkleRoot(buf)
 			if err := cm.AddSector(root, buf); err != nil {
 				panic(err)
@@ -261,7 +287,7 @@ func TestMarkSectorsForRemoval(t *testing.T) {
 	}
 
 	// wait for the removal sync loop to complete
-	err = build.Retry(10, time.Millisecond*500, func() error {
+	err = build.Retry(20, time.Second, func() error {
 		// check the internal sector counts match the expected values
 		if err := verifySectorCounts(); err != nil {
 			return err
@@ -300,7 +326,7 @@ func TestMarkSectorsForRemoval(t *testing.T) {
 	}
 
 	// wait for the removal sync loop to complete
-	err = build.Retry(25, time.Millisecond*500, func() error {
+	err = build.Retry(20, time.Second, func() error {
 		// check the internal sector counts match the expected values
 		if err := verifySectorCounts(); err != nil {
 			return err

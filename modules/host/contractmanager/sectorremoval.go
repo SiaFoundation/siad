@@ -27,9 +27,11 @@ type (
 	}
 
 	sectorRemovalMap struct {
-		mu          sync.Mutex
-		sectors     map[sectorID]removalEntry
-		entries     int64
+		mu sync.Mutex
+		// sectors tracks sector IDs that need to be removed
+		sectors map[sectorID]struct{}
+		// entries tracks the current state of the persistence file
+		entries     map[sectorID]removalEntry
 		removalFile *os.File
 
 		cm  *ContractManager
@@ -37,13 +39,66 @@ type (
 	}
 )
 
-// writes the removal entry to disk
-func (srm *sectorRemovalMap) writeRemovalEntry(id sectorID, count uint64, offset int64) error {
+func writeRemovalEntry(w io.WriterAt, id sectorID, count uint64, offset int64) error {
 	buf := make([]byte, removalEntrySize)
 	copy(buf[:], id[:])
 	binary.LittleEndian.PutUint64(buf[12:], count)
-	_, err := srm.removalFile.WriteAt(buf, offset)
+	_, err := w.WriteAt(buf, offset)
 	return err
+}
+
+// compactPersistFile writes the current state of the sector removal map to a temp
+// file then atomically renames the temp file.
+func (srm *sectorRemovalMap) compactPersistFile(path string) error {
+	tmpFile := path + ".tmp"
+	rftmp, err := os.Create(tmpFile)
+	if err != nil {
+		return errors.AddContext(err, "unable to create temporary sector removal queue file")
+	}
+	defer rftmp.Close()
+	bw := bufio.NewWriter(rftmp)
+
+	// write each entry to the temp file
+	var entryCount int64
+	buf := make([]byte, removalEntrySize)
+	for id, entry := range srm.entries {
+		// update the file offset for the entry
+		entry.Offset = entryCount * removalEntrySize
+		srm.entries[id] = entry
+		// encode the entry and write to the temp file
+		copy(buf[:], id[:])
+		binary.LittleEndian.PutUint64(buf[12:], entry.Count)
+		if _, err := bw.Write(buf); err != nil {
+			return errors.AddContext(err, "error writing sector removal temp file")
+		}
+		entryCount++
+	}
+
+	// close the current file and rename the temp file
+	if err := srm.removalFile.Close(); err != nil {
+		return errors.AddContext(err, "error closing sector removal file")
+	}
+
+	// flush the writer and close the temp file
+	if err := bw.Flush(); err != nil {
+		return errors.AddContext(err, "error flushing sector removal temp file")
+	} else if err := rftmp.Sync(); err != nil {
+		return errors.AddContext(err, "error closing sector removal temp file")
+	} else if err := rftmp.Close(); err != nil {
+		return errors.AddContext(err, "error closing sector removal temp file")
+	}
+
+	// rename the temp file
+	if err := os.Rename(tmpFile, path); err != nil {
+		return errors.AddContext(err, "error renaming sector removal temp file")
+	}
+
+	// reopen the persistence file
+	srm.removalFile, err = os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "unable to open sector removal queue file")
+	}
+	return nil
 }
 
 // managedLoad loads the removal queue from disk. Entries with a count of zero
@@ -52,14 +107,16 @@ func (srm *sectorRemovalMap) managedLoad(path string) (err error) {
 	srm.mu.Lock()
 	defer srm.mu.Unlock()
 
+	// open the persistence file or create a new one
 	srm.removalFile, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open sector removal queue file")
 	}
+
+	// read all entries from disk.
 	br := bufio.NewReader(srm.removalFile)
 	buf := make([]byte, removalEntrySize)
-	// read each entry from disk. The persistence file is compacted while
-	// reading.
+	var hasUnusedEntries bool
 	for i := int64(0); ; i++ {
 		if _, err := io.ReadFull(br, buf); err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
@@ -67,33 +124,33 @@ func (srm *sectorRemovalMap) managedLoad(path string) (err error) {
 			return errors.AddContext(err, "error reading sector removal file")
 		}
 
-		entry := removalEntry{
-			Count:  binary.LittleEndian.Uint64(buf[12:]),
-			Offset: srm.entries * removalEntrySize,
+		var id sectorID
+		copy(id[:], buf)
+
+		entry, ok := srm.entries[id]
+		if !ok {
+			entry = removalEntry{
+				ID:     id,
+				Offset: i * removalEntrySize,
+			}
 		}
-		copy(entry.ID[:], buf)
+		entry.Count += binary.LittleEndian.Uint64(buf[12:])
+
 		// skip entries that are no longer needed.
 		if entry.Count == 0 {
+			hasUnusedEntries = true
 			continue
 		}
 
-		srm.sectors[entry.ID] = entry
-		// if the number of read entries is greater than the number of used
-		// entries overwrite the unused entries.
-		if srm.entries != i {
-			if err := srm.writeRemovalEntry(entry.ID, entry.Count, entry.Offset); err != nil {
-				return errors.AddContext(err, "error updating sector removal entry")
-			}
-		}
-		// increment the number of entries
-		srm.entries++
+		srm.sectors[entry.ID] = struct{}{}
+		srm.entries[id] = entry
 	}
 
-	// truncate the file to the last entry written then sync to disk.
-	if err := srm.removalFile.Truncate(int64(srm.entries * removalEntrySize)); err != nil {
-		return errors.AddContext(err, "error truncating sector removal file")
-	} else if err := srm.removalFile.Sync(); err != nil {
-		return errors.AddContext(err, "error syncing sector removal file")
+	// if there are unused entries, compact the file
+	if hasUnusedEntries {
+		if err := srm.compactPersistFile(path); err != nil {
+			return errors.AddContext(err, "error compacting sector removal file")
+		}
 	}
 	return nil
 }
@@ -111,15 +168,21 @@ func (srm *sectorRemovalMap) removeSectors(max int) ([]sectorID, error) {
 			return nil
 		}
 
-		for id, entry := range srm.sectors {
+		for id := range srm.sectors {
+			entry, ok := srm.entries[id]
+			if !ok {
+				panic("sector removal map is missing an entry for a sector")
+			}
 			toRemove[id] = entry.Count
 			removed = append(removed, id)
 
 			// update the persistence file
-			if err := srm.writeRemovalEntry(id, 0, entry.Offset); err != nil {
+			if err := writeRemovalEntry(srm.removalFile, id, 0, entry.Offset); err != nil {
 				return errors.AddContext(err, fmt.Sprintf("error updating sector removal entry %v", id))
 			}
-			// remove the entry from the map
+			// update the in memory counter and remove the sector from the map
+			entry.Count = 0
+			srm.entries[id] = entry
 			delete(srm.sectors, id)
 			if len(toRemove) >= max {
 				break
@@ -178,17 +241,17 @@ func (srm *sectorRemovalMap) AddSectors(sectors map[sectorID]uint64) error {
 	defer srm.mu.Unlock()
 
 	for id, count := range sectors {
-		entry, exists := srm.sectors[id]
+		entry, exists := srm.entries[id]
 		if !exists {
 			entry = removalEntry{
 				ID:     id,
-				Offset: srm.entries * removalEntrySize,
+				Offset: int64(len(srm.entries) * removalEntrySize),
 			}
-			srm.entries++
 		}
 		entry.Count += count
-		srm.sectors[id] = entry
-		if err := srm.writeRemovalEntry(entry.ID, entry.Count, entry.Offset); err != nil {
+		srm.entries[id] = entry
+		srm.sectors[id] = struct{}{}
+		if err := writeRemovalEntry(srm.removalFile, entry.ID, entry.Count, entry.Offset); err != nil {
 			return errors.AddContext(err, fmt.Sprintf("error updating sector %v removal entry", id))
 		}
 	}
@@ -206,7 +269,8 @@ func (srm *sectorRemovalMap) Close() error {
 // requests over time.
 func newSectorRemovalMap(path string, cm *ContractManager) (*sectorRemovalMap, error) {
 	srm := &sectorRemovalMap{
-		sectors: make(map[sectorID]removalEntry),
+		sectors: make(map[sectorID]struct{}),
+		entries: make(map[sectorID]removalEntry),
 		cm:      cm,
 		wal:     &cm.wal,
 	}
