@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -48,6 +50,7 @@ Actions:
     addresses       list wallet addresses
     balance         view current balance
     transactions    list wallet-related transactions
+    send            send siacoin
     sign            sign a transaction
 `
 
@@ -78,6 +81,16 @@ List transactions relevant to the wallet.
 
 Signs all wallet-controlled inputs of the provided JSON-encoded transaction.
 The result is written to a new file.
+`
+
+	walletSendUsage = `Usage:
+    siac [flags] wallet [flags] send [outputs]
+
+Construct, sign, and broadcast a transaction with the specified outputs,
+which are provided as a comma-separated list of address:value pairs, e.g.
+
+	export DEST_ADDR=a1b2c3...d4e5f6
+    siac wallet send $DEST_ADDR:78.9SC,$DEST_ADDR:2SF
 `
 
 	txpoolUsage = `Usage:
@@ -128,15 +141,20 @@ func check(ctx string, err error) {
 }
 
 var siadAddr string
+var siadClient *siad.Client
 
 func getClient() *siad.Client {
+	if siadClient != nil {
+		return siadClient
+	}
 	password := getAPIPassword()
 	if !strings.HasPrefix(siadAddr, "https://") && !strings.HasPrefix(siadAddr, "http://") {
 		siadAddr = "http://" + siadAddr
 	}
 	c := siad.NewClient(siadAddr, password)
-	_, err := c.WalletBalance()
+	_, err := c.ConsensusTip()
 	check("Couldn't connect to siad:", err)
+	siadClient = c
 	return c
 }
 
@@ -149,40 +167,6 @@ func makeTabWriter() *tabwriter.Writer {
 		' ', // padchar:  spaces, not tabs
 		0,   // flags:    none
 	)
-}
-
-func readTxn(filename string) types.Transaction {
-	js, err := os.ReadFile(filename)
-	check("Could not read transaction file", err)
-	var txn types.Transaction
-	err = json.Unmarshal(js, &txn)
-	check("Could not parse transaction file", err)
-	return txn
-}
-
-func writeTxn(filename string, txn types.Transaction) {
-	js, _ := json.MarshalIndent(txn, "", "  ")
-	js = append(js, '\n')
-	err := os.WriteFile(filename, js, 0666)
-	check("Could not write transaction to disk", err)
-}
-
-func signTxn(txn *types.Transaction) error {
-	c := getClient()
-
-	cs, err := c.ConsensusTipState()
-	if err != nil {
-		return err
-	}
-	sigHash := cs.InputSigHash(*txn)
-
-	seed := getSeed()
-	for _, in := range txn.SiacoinInputs {
-		if info, err := c.WalletAddressInfo(in.Parent.Address); err == nil {
-			in.Signatures = append(in.Signatures, seed.PrivateKey(info.Index).SignHash(sigHash))
-		}
-	}
-	return nil
 }
 
 func getAPIPassword() string {
@@ -236,6 +220,7 @@ func main() {
 	walletTransactionsCmd := flagg.New("transactions", walletTransactionsUsage)
 	walletSignCmd := flagg.New("sign", walletSignUsage)
 	walletSignCmd.BoolVar(&broadcast, "broadcast", false, "immediately broadcast the transaction")
+	walletSendCmd := flagg.New("send", walletSendUsage)
 
 	txpoolCmd := flagg.New("txpool", txpoolUsage)
 	txpoolBroadcastCmd := flagg.New("broadcast", txpoolBroadcastUsage)
@@ -257,6 +242,7 @@ func main() {
 					{Cmd: walletBalanceCmd},
 					{Cmd: walletTransactionsCmd},
 					{Cmd: walletSignCmd},
+					{Cmd: walletSendCmd},
 				},
 			},
 			{
@@ -296,12 +282,10 @@ func main() {
 			cmd.Usage()
 			return
 		}
-		c := getClient()
-		index, err := c.WalletSeedIndex()
-		check("Couldn't get seed index:", err)
-		seed := getSeed()
-		addr := types.StandardAddress(seed.PublicKey(index))
-		err = c.WalletAddAddress(addr, wallet.AddressInfo{
+		index, err := getClient().WalletSeedIndex()
+		check("Couldn't get current seed index:", err)
+		addr := types.StandardAddress(getSeed().PublicKey(index))
+		err = getClient().WalletAddAddress(addr, wallet.AddressInfo{
 			Index:       index,
 			Description: desc,
 		})
@@ -329,7 +313,7 @@ func main() {
 		if exactCurrency {
 			fmt.Printf("%d H\n", balance.Siacoins)
 		} else {
-			fmt.Printf("%s SC\n", balance.Siacoins)
+			fmt.Printf("%s\n", balance.Siacoins)
 		}
 		fmt.Printf("%d SF\n", balance.Siafunds)
 
@@ -338,14 +322,14 @@ func main() {
 			cmd.Usage()
 			return
 		}
-		txns, err := getClient().WalletTransactions(time.Time{}, 0)
+		txns, err := getClient().WalletTransactions(time.Time{}, -1)
 		check("Couldn't get transactions:", err)
 
 		w := makeTabWriter()
 		defer w.Flush()
-		fmt.Fprintf(w, "%v\n", "ID")
+		fmt.Fprintf(w, "%v\t%v\t%v\t%v\n", "ID", "In (SC)", "Out (SC)", "Time")
 		for _, txn := range txns {
-			fmt.Fprintf(w, "%v\n", txn.ID)
+			fmt.Fprintf(w, "%v\t%v\t%v\t%v\n", txn.ID, txn.Inflow, txn.Outflow, txn.Timestamp)
 		}
 
 	case walletSignCmd:
@@ -355,7 +339,7 @@ func main() {
 		}
 
 		txn := readTxn(args[0])
-		err := signTxn(&txn)
+		err := signTxn(&txn, getSeed())
 		check("failed to sign transaction:", err)
 		if broadcast {
 			err = getClient().TxpoolBroadcast(txn, nil)
@@ -367,6 +351,42 @@ func main() {
 			writeTxn(signedPath, txn)
 			fmt.Printf("Wrote signed transaction to %v.\n", signedPath)
 		}
+
+	case walletSendCmd:
+		if len(args) != 1 {
+			cmd.Usage()
+			return
+		}
+
+		// parse outputs
+		var txn types.Transaction
+		for _, p := range strings.Split(args[0], ",") {
+			addrAmount := strings.Split(p, ":")
+			if len(addrAmount) != 2 {
+				check("Could not parse outputs", errors.New("outputs must be specified in addr:amount pairs"))
+			}
+			addr, err := types.ParseAddress(strings.TrimSpace(addrAmount[0]))
+			check("Invalid destination address", err)
+			if strings.HasSuffix(addrAmount[1], "SF") {
+				amount, err := strconv.ParseUint(strings.TrimSuffix(addrAmount[1], "SF"), 10, 64)
+				check("Invalid currency amount", err)
+				txn.SiafundOutputs = append(txn.SiafundOutputs, types.SiafundOutput{Address: addr, Value: amount})
+			} else {
+				amount, err := types.ParseCurrency(addrAmount[1])
+				check("Invalid currency amount", err)
+				txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{Address: addr, Value: amount})
+			}
+		}
+
+		seed := getSeed()
+		err := fundTxn(&txn, seed)
+		check("Could not fund transaction", err)
+		err = signTxn(&txn, seed)
+		check("Could not sign transaction", err)
+		err = broadcastTxn(txn)
+		check("Could not broadcast transaction", err)
+		fmt.Println("Transaction broadcast successfully.")
+		fmt.Println("Transaction ID:", txn.ID())
 
 	case txpoolCmd:
 		cmd.Usage()
@@ -426,4 +446,117 @@ func main() {
 		check("Couldn't connect:", err)
 		fmt.Printf("Connected to %v.\n", addr)
 	}
+}
+
+func readTxn(filename string) types.Transaction {
+	js, err := os.ReadFile(filename)
+	check("Could not read transaction file", err)
+	var txn types.Transaction
+	err = json.Unmarshal(js, &txn)
+	check("Could not parse transaction file", err)
+	return txn
+}
+
+func writeTxn(filename string, txn types.Transaction) {
+	js, _ := json.MarshalIndent(txn, "", "  ")
+	js = append(js, '\n')
+	err := os.WriteFile(filename, js, 0666)
+	check("Could not write transaction to disk", err)
+}
+
+func fundTxn(txn *types.Transaction, seed wallet.Seed) error {
+	var amount types.Currency
+	for _, sco := range txn.SiacoinOutputs {
+		amount = amount.Add(sco.Value)
+	}
+	amount = amount.Add(txn.MinerFee)
+	for _, sci := range txn.SiacoinInputs {
+		amount = amount.Sub(sci.Parent.Value)
+	}
+
+	if amount.IsZero() {
+		return nil
+	}
+
+	tip, err := getClient().ConsensusTip()
+	if err != nil {
+		return err
+	}
+	pool, err := getClient().TxpoolTransactions()
+	if err != nil {
+		return err
+	}
+	utxos, err := getClient().WalletUTXOs()
+	if err != nil {
+		return err
+	}
+
+	// avoid reusing any inputs currently in the transaction pool
+	inPool := make(map[types.ElementID]bool)
+	for _, ptxn := range pool {
+		for _, in := range ptxn.SiacoinInputs {
+			inPool[in.Parent.ID] = true
+		}
+	}
+
+	var outputSum types.Currency
+	var fundingElements []types.SiacoinElement
+	for _, sce := range utxos.Siacoins {
+		if inPool[sce.ID] || tip.Height < sce.MaturityHeight {
+			continue
+		}
+		fundingElements = append(fundingElements, sce)
+		outputSum = outputSum.Add(sce.Value)
+		if outputSum.Cmp(amount) >= 0 {
+			break
+		}
+	}
+	if outputSum.Cmp(amount) < 0 {
+		return errors.New("insufficient balance")
+	} else if outputSum.Cmp(amount) > 0 {
+		index, err := getClient().WalletSeedIndex()
+		if err != nil {
+			return err
+		}
+		// generate a change address
+		info := wallet.AddressInfo{
+			Index:       index,
+			Description: "change addr for " + txn.ID().String(),
+		}
+		addr := types.StandardAddress(seed.PublicKey(info.Index))
+		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
+			Value:   outputSum.Sub(amount),
+			Address: addr,
+		})
+	}
+
+	for _, sce := range fundingElements {
+		info, err := getClient().WalletAddressInfo(sce.Address)
+		if err != nil {
+			return err
+		}
+		txn.SiacoinInputs = append(txn.SiacoinInputs, types.SiacoinInput{
+			Parent:      sce,
+			SpendPolicy: types.PolicyPublicKey(seed.PublicKey(info.Index)),
+		})
+	}
+	return nil
+}
+
+func signTxn(txn *types.Transaction, seed wallet.Seed) error {
+	cs, err := getClient().ConsensusTipState()
+	if err != nil {
+		return err
+	}
+	sigHash := cs.InputSigHash(*txn)
+	for i := range txn.SiacoinInputs {
+		if info, err := getClient().WalletAddressInfo(txn.SiacoinInputs[i].Parent.Address); err == nil {
+			txn.SiacoinInputs[i].Signatures = []types.Signature{seed.PrivateKey(info.Index).SignHash(sigHash)}
+		}
+	}
+	return nil
+}
+
+func broadcastTxn(txn types.Transaction) error {
+	return getClient().TxpoolBroadcast(txn, nil)
 }
