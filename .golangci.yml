@@ -93,6 +93,9 @@ linters-settings:
       - ptrToRefParam
       - underef
       - equalFold
+  gosec:
+    excludes:
+      - G307
 
 linters:
   disable-all: true
