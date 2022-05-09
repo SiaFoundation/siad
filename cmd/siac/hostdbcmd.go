@@ -363,7 +363,6 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 			} else {
 				netAddresses = append(netAddresses, arg)
 			}
-
 		}
 	}
 	err := fm.FromString(filterModeStr)
@@ -391,7 +390,6 @@ func hostdbviewcmd(pubkey string) {
 	}
 
 	fmt.Println("Host information:")
-
 	fmt.Println("  Public Key:               ", info.Entry.PublicKeyString)
 	fmt.Println("  Version:                  ", info.Entry.Version)
 	fmt.Println("  Block First Seen:         ", info.Entry.FirstSeen)
