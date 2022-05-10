@@ -763,3 +763,105 @@ func TestCheckForIPViolations(t *testing.T) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 }
+
+func TestFilteredDomains(t *testing.T) {
+	block := []string{
+		"1.1.1.0",
+		"1.1.1.1:1111",
+		"1.1.1.1",
+		"1.1.1.2:5555",
+		"1.1.1.2",
+		"1.1.0.0/24",
+		"6.0.0.0/8",
+		"localhost",
+	}
+
+	filtered := newFilteredDomains(block)
+	tests := []struct {
+		host    string
+		blocked bool
+	}{
+		{
+			"1.1.1.0:5555",
+			true,
+		},
+		{
+			"1.1.1.0:7777",
+			true,
+		},
+		{
+			"1.1.1.1:1111",
+			true,
+		},
+		{
+			"1.1.1.2:1111",
+			true,
+		},
+		{
+			"1.1.1.2:5555",
+			true,
+		},
+		{
+			"1.1.1.3:1111",
+			false,
+		},
+		{
+			"1.1.1.3:5555",
+			false,
+		},
+		{
+			"1.1.0.1:1111",
+			true,
+		},
+		{
+			"1.1.0.1:5555",
+			true,
+		},
+		{
+			"1.1.0.255:1111",
+			true,
+		},
+		{
+			"1.1.0.255:5555",
+			true,
+		},
+		{
+			"6.0.0.1:1111",
+			true,
+		},
+		{
+			"6.0.1.0:1111",
+			true,
+		},
+		{
+			"6.1.0.0:1111",
+			true,
+		},
+		{
+			"7.1.0.0:1111",
+			false,
+		},
+		{
+			"localhost:1234",
+			true,
+		},
+		{
+			"127.0.0.1:1234",
+			true,
+		},
+		{
+			"example.com:1234",
+			false,
+		},
+		{
+			"127.0.0.2:1234",
+			false,
+		},
+	}
+
+	for _, test := range tests {
+		if isFiltered := filtered.managedIsFiltered(modules.NetAddress(test.host)); isFiltered != test.blocked {
+			t.Errorf("expected %s to have blocked status %v but instead got %v", test.host, test.blocked, isFiltered)
+		}
+	}
+}

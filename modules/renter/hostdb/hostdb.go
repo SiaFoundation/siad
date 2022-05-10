@@ -48,13 +48,11 @@ type filteredDomains struct {
 
 // newFilteredDomains initializes a new filteredDomains
 func newFilteredDomains(domains []string) *filteredDomains {
-	domainMap := make(map[string]struct{})
-	for _, domain := range domains {
-		domainMap[domain] = struct{}{}
+	filtered := &filteredDomains{
+		domains: make(map[string]struct{}),
 	}
-	return &filteredDomains{
-		domains: domainMap,
-	}
+	filtered.managedAddDomains(domains)
+	return filtered
 }
 
 // managedAddDomains adds domains to the map of blocked domains
@@ -84,15 +82,6 @@ func (bd *filteredDomains) managedFilteredDomains() []string {
 	}
 
 	return domains
-}
-
-// managedRemoveDomains removes domains from the map of blocked domains
-func (bd *filteredDomains) managedRemoveDomains(domains []string) {
-	bd.mu.Lock()
-	defer bd.mu.Unlock()
-	for _, domain := range domains {
-		delete(bd.domains, domain)
-	}
 }
 
 // managedIsFiltered checks to see if the domain is blocked
