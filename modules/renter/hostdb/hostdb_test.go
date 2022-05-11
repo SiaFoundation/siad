@@ -764,7 +764,11 @@ func TestCheckForIPViolations(t *testing.T) {
 	}
 }
 
+// TestFilteredDomains tests that filteredDomains correctly filters net
+// addresses.
 func TestFilteredDomains(t *testing.T) {
+	t.Parallel()
+
 	block := []string{
 		"1.1.1.0",
 		"1.1.1.1:1111",
@@ -863,5 +867,321 @@ func TestFilteredDomains(t *testing.T) {
 		if isFiltered := filtered.managedIsFiltered(modules.NetAddress(test.host)); isFiltered != test.blocked {
 			t.Errorf("expected %s to have blocked status %v but instead got %v", test.host, test.blocked, isFiltered)
 		}
+	}
+}
+
+// TestFilterModePublicKeys tests that SetFilterMode filters the right hosts by public key.
+func TestFilterModePublicKeys(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a few hosts for the test
+	entry1 := makeHostDBEntry()
+	entry1.NetAddress = "host1:1234"
+	entry2 := makeHostDBEntry()
+	entry2.NetAddress = "host2:1234"
+	entry3 := makeHostDBEntry()
+	entry3.NetAddress = "host3:1234"
+
+	// create a HostDB tester without scanloop to be able to manually increment
+	// the interactions without interference.
+	hdbt, err := newHDBTesterDeps(t.Name(), &testCheckForIPViolationsDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Scan the entries. entry1 should be the 'oldest' and entry3 the
+	// 'youngest'. This also inserts the entries into the hosttree.
+	hdbt.hdb.managedScanHost(entry1)
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	hdbt.hdb.managedScanHost(entry2)
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	hdbt.hdb.managedScanHost(entry3)
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, []types.SiaPublicKey{entry3.PublicKey}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry1.Filtered {
+		t.Fatal("entry1 wrongly marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry2.Filtered {
+		t.Fatal("entry2 wrongly marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry3.Filtered {
+		t.Fatal("entry3 should be marked as filtered")
+	}
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, []types.SiaPublicKey{entry2.PublicKey, entry3.PublicKey}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry1.Filtered {
+		t.Fatal("entry1 wrongly marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry2.Filtered {
+		t.Fatal("entry2 should be marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry3.Filtered {
+		t.Fatal("entry3 should be marked as filtered")
+	}
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, []types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey, entry3.PublicKey}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry1.Filtered {
+		t.Fatal("entry1 should be marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry2.Filtered {
+		t.Fatal("entry2 should be marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry3.Filtered {
+		t.Fatal("entry3 should be marked as filtered")
+	}
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry1.Filtered {
+		t.Fatal("entry1 wrongly marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry2.Filtered {
+		t.Fatal("entry2 wrongly marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry3.Filtered {
+		t.Fatal("entry3 wrongly marked as filtered")
+	}
+}
+
+// TestFilterModeNetAddresses tests that SetFilterMode filters the right hosts by net address.
+func TestFilterModeNetAddresses(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a few hosts for the test
+	entry1 := makeHostDBEntry()
+	entry1.NetAddress = "host1:1234"
+	entry2 := makeHostDBEntry()
+	entry2.NetAddress = "host2:1234"
+	entry3 := makeHostDBEntry()
+	entry3.NetAddress = "host3:1234"
+
+	// create a HostDB tester without scanloop to be able to manually increment
+	// the interactions without interference.
+	hdbt, err := newHDBTesterDeps(t.Name(), &testCheckForIPViolationsDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Scan the entries. entry1 should be the 'oldest' and entry3 the
+	// 'youngest'. This also inserts the entries into the hosttree.
+	hdbt.hdb.managedScanHost(entry1)
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	hdbt.hdb.managedScanHost(entry2)
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	hdbt.hdb.managedScanHost(entry3)
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, nil, []string{string(entry3.NetAddress)}); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry1.Filtered {
+		t.Fatal("entry1 wrongly marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry2.Filtered {
+		t.Fatal("entry2 wrongly marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry3.Filtered {
+		t.Fatal("entry3 should be marked as filtered")
+	}
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, nil, []string{string(entry2.NetAddress), string(entry3.NetAddress)}); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry1.Filtered {
+		t.Fatal("entry1 wrongly marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry2.Filtered {
+		t.Fatal("entry2 should be marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry3.Filtered {
+		t.Fatal("entry3 should be marked as filtered")
+	}
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, nil, []string{string(entry1.NetAddress), string(entry2.NetAddress), string(entry3.NetAddress)}); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry1.Filtered {
+		t.Fatal("entry1 should be marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry2.Filtered {
+		t.Fatal("entry2 should be marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !entry3.Filtered {
+		t.Fatal("entry3 should be marked as filtered")
+	}
+
+	if err := hdbt.hdb.SetFilterMode(modules.HostDBActivateBlacklist, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry1.Filtered {
+		t.Fatal("entry1 wrongly marked as filtered")
+	}
+
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry2.Filtered {
+		t.Fatal("entry2 wrongly marked as filtered")
+	}
+
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry3.Filtered {
+		t.Fatal("entry3 wrongly marked as filtered")
 	}
 }
