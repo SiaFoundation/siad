@@ -979,6 +979,98 @@ func TestNetAddressFilter(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := t.TempDir()
+	t.Log(testDir)
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// add a renter to the group to use the host db
+	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
+	// no need for contracts or an allowance
+	renterTemplate.SkipSetAllowance = true
+	_, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := tg.Renters()[0]
+
+	// add all hosts to the expected filter
+	filtered := make(map[string]bool)
+	for _, h := range tg.Hosts() {
+		pk, err := h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		filtered[pk.String()] = true
+	}
+
+	// helper to check that hosts in the host db match the expected filter
+	checkFilteredHosts := func() error {
+		hdb, err := renter.HostDbAllGet()
+		if err != nil {
+			return err
+		}
+		for _, h := range hdb.Hosts {
+			if h.Filtered != filtered[h.PublicKeyString] {
+				return fmt.Errorf("host %v has unexpected filter status: got %v expected %v", h.PublicKeyString, h.Filtered, filtered[h.PublicKeyString])
+			}
+		}
+		return nil
+	}
+
+	// filter localhost
+	if err := renter.HostDbFilterModePost(modules.HostDBActivateBlacklist, nil, []string{"localhost"}); err != nil {
+		t.Fatal(err)
+	} else if err := checkFilteredHosts(); err != nil {
+		t.Fatal(err)
+	}
+
+	// add a new host to the group
+	hostTemplate := node.Host(filepath.Join(testDir, "host"))
+	newNodes, err := tg.AddNodes(hostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newHost := newNodes[0]
+	pk, err := newHost.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("added new host", pk)
+
+	// the new host should be filtered
+	filtered[pk.String()] = true
+	if err := checkFilteredHosts(); err != nil {
+		t.Fatal(err)
+	}
+
+	// clear the filter
+	filtered = make(map[string]bool)
+	if err := renter.HostDbFilterModePost(modules.HostDBDisableFilter, nil, nil); err != nil {
+		t.Fatal(err)
+	} else if err := checkFilteredHosts(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNetAddressFilterContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
 		Hosts:  6,
 		Miners: 1,
 	}
@@ -994,7 +1086,7 @@ func TestNetAddressFilter(t *testing.T) {
 	}()
 	m := tg.Miners()[0]
 
-	// reannounce the hosts with custom host names
+	// get the host's addresses
 	hosts := tg.Hosts()
 	hostAddresses := make([]modules.NetAddress, len(hosts))
 	hostMap := make(map[string]modules.NetAddress)
@@ -1015,7 +1107,7 @@ func TestNetAddressFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add a renter with a custom resolver to the group.
+	// add a renter to the group
 	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
 	renterTemplate.Allowance = siatest.DefaultAllowance
 	renterTemplate.Allowance.Hosts = 3
