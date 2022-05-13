@@ -228,18 +228,21 @@ func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 
 // modify modifies the HostDBEntry in both hosttrees
 func (hdb *HostDB) modify(host modules.HostDBEntry) error {
+	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
+
 	err := hdb.staticHostTree.Modify(host)
 	if hdb.filteredDomains.managedIsFiltered(host.NetAddress) {
 		hdb.filteredHosts[host.PublicKey.String()] = host.PublicKey
 		err = errors.Compose(err, hdb.staticHostTree.SetFiltered(host.PublicKey, true))
-		errF := hdb.filteredTree.Insert(host)
-		if errF != nil && errF != hosttree.ErrHostExists {
-			err = errors.Compose(err, errF)
+		if isWhitelist {
+			errF := hdb.filteredTree.Insert(host)
+			if errF != nil && errF != hosttree.ErrHostExists {
+				err = errors.Compose(err, errF)
+			}
 		}
 	}
 
 	_, ok := hdb.filteredHosts[host.PublicKey.String()]
-	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
 		err = errors.Compose(err, hdb.filteredTree.Modify(host))
 	}
