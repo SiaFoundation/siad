@@ -1,0 +1,42 @@
+{
+  "sourceRoot": "libs/react-siad/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nrwl/web:rollup",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/react-siad",
+        "tsConfig": "libs/react-siad/tsconfig.lib.json",
+        "project": "libs/react-siad/package.json",
+        "entryFile": "libs/react-siad/src/index.ts",
+        "external": ["react/jsx-runtime"],
+        "rollupConfig": "@nrwl/react/plugins/bundle-rollup",
+        "compiler": "babel",
+        "assets": [
+          {
+            "glob": "libs/react-siad/README.md",
+            "input": ".",
+            "output": "."
+          }
+        ]
+      }
+    },
+    "lint": {
+      "executor": "@nrwl/linter:eslint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/react-siad/**/*.{ts,tsx,js,jsx}"]
+      }
+    },
+    "test": {
+      "executor": "@nrwl/jest:jest",
+      "outputs": ["coverage/libs/react-siad"],
+      "options": {
+        "jestConfig": "libs/react-siad/jest.config.ts",
+        "passWithNoTests": true
+      }
+    }
+  }
+}
