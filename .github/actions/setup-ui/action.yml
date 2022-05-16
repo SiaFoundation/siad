@@ -1,0 +1,30 @@
+name: Setup UI
+
+description: Setup UI
+
+inputs:
+  node_version:
+    description: Node.js version
+    required: false
+    default: "16"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout all commits
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Derive appropriate SHAs for base and head for `nx affected` commands
+      uses: nrwl/nx-set-shas@v2
+      with:
+        main-branch-name: "v2-devel"
+    - name: Setup node
+      uses: actions/setup-node@v2
+      with:
+        node-version: ${{ inputs.node_version }}
+        registry-url: https://registry.npmjs.org
+    - name: Install
+      shell: bash
+      run: npm install
+      working-directory: ./ui

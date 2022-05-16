@@ -1,0 +1,20 @@
+name: Test UI
+
+description: Test UI
+
+runs:
+  using: composite
+
+  steps:
+    - name: Lint
+      run: npx nx affected --target=lint --parallel --max-parallel=3
+      shell: bash
+      working-directory: ./ui
+    - name: Build
+      run: npx nx affected --target=build --parallel --max-parallel=3
+      shell: bash
+      working-directory: ./ui
+    - name: Test
+      run: npx nx affected --target=test --parallel --max-parallel=2
+      shell: bash
+      working-directory: ./ui
