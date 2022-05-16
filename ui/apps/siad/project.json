@@ -1,0 +1,87 @@
+{
+  "sourceRoot": "apps/siad/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nrwl/web:webpack",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "compiler": "babel",
+        "outputPath": "dist/apps/siad",
+        "index": "apps/siad/src/index.html",
+        "baseHref": "/",
+        "main": "apps/siad/src/main.tsx",
+        "polyfills": "apps/siad/src/polyfills.ts",
+        "tsConfig": "apps/siad/tsconfig.app.json",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/siad/src/public/",
+            "output": "/"
+          },
+          {
+            "glob": "**/*",
+            "input": "node_modules/@siafoundation/design-system/public/",
+            "output": "/"
+          }
+        ],
+        "styles": [],
+        "scripts": [],
+        "webpackConfig": "@nrwl/react/plugins/webpack"
+      },
+      "configurations": {
+        "production": {
+          "fileReplacements": [
+            {
+              "replace": "apps/siad/src/environments/environment.ts",
+              "with": "apps/siad/src/environments/environment.prod.ts"
+            }
+          ],
+          "optimization": true,
+          "outputHashing": "all",
+          "sourceMap": false,
+          "namedChunks": false,
+          "extractLicenses": true,
+          "vendorChunk": false
+        },
+        "development": {
+        }
+      }
+    },
+    "serve": {
+      "executor": "@nrwl/web:dev-server",
+      "options": {
+        "buildTarget": "siad:build",
+        "hmr": true,
+        "proxyConfig": "apps/siad/proxy.conf.json"
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "siad:build:production",
+          "hmr": false
+        },
+        "development": {
+          "buildTarget": "siad:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "lint": {
+      "executor": "@nrwl/linter:eslint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["apps/siad/**/*.{ts,tsx,js,jsx}"]
+      }
+    },
+    "test": {
+      "executor": "@nrwl/jest:jest",
+      "outputs": ["coverage/apps/siad"],
+      "options": {
+        "jestConfig": "apps/siad/jest.config.ts",
+        "passWithNoTests": true
+      }
+    }
+  },
+  "tags": []
+}
