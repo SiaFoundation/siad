@@ -6,6 +6,7 @@ package hostdb
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -38,6 +39,99 @@ var (
 	// hosttree
 	errHostNotFoundInTree = errors.New("host not found in hosttree")
 )
+
+// filteredDomains manages a list of blocked domains
+type filteredDomains struct {
+	domains map[string]struct{}
+	mu      sync.Mutex
+}
+
+// newFilteredDomains initializes a new filteredDomains
+func newFilteredDomains(domains []string) *filteredDomains {
+	filtered := &filteredDomains{
+		domains: make(map[string]struct{}),
+	}
+	filtered.managedAddDomains(domains)
+	return filtered
+}
+
+// managedAddDomains adds domains to the map of blocked domains
+func (bd *filteredDomains) managedAddDomains(domains []string) {
+	bd.mu.Lock()
+	defer bd.mu.Unlock()
+	for _, domain := range domains {
+		bd.domains[domain] = struct{}{}
+
+		addrs, err := net.LookupHost(domain)
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			bd.domains[addr] = struct{}{}
+		}
+	}
+}
+
+// managedFilteredDomains returns a list of the blocked domains
+func (bd *filteredDomains) managedFilteredDomains() []string {
+	bd.mu.Lock()
+	defer bd.mu.Unlock()
+	var domains []string
+	for domain := range bd.domains {
+		domains = append(domains, domain)
+	}
+
+	return domains
+}
+
+// managedIsFiltered checks to see if the domain is blocked
+func (bd *filteredDomains) managedIsFiltered(addr modules.NetAddress) bool {
+	bd.mu.Lock()
+	defer bd.mu.Unlock()
+	// See if this specific host:port combination was blocked
+	if _, blocked := bd.domains[string(addr)]; blocked {
+		return true
+	}
+
+	// Now check if this host was blocked
+	hostname := addr.Host()
+	_, blocked := bd.domains[hostname]
+	if blocked {
+		return true
+	}
+
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		for domain := range bd.domains {
+			_, ipnet, _ := net.ParseCIDR(domain)
+			if ipnet != nil && ipnet.Contains(ip) {
+				return true
+			}
+		}
+	}
+
+	// Check for subdomains being blocked by a root domain
+	//
+	// Split the hostname into elements
+	elements := strings.Split(hostname, ".")
+	if len(elements) <= 1 {
+		return blocked
+	}
+
+	// Check domains
+	//
+	// We want to stop at the second to last element so that the last domain
+	// we check is of the format domain.com. This is to protect the user
+	// from accidentally submitted `com`, or some other TLD, and blocking
+	// every host in the hostdb.
+	for i := 0; i < len(elements)-1; i++ {
+		domainToCheck := strings.Join(elements[i:], ".")
+		if _, blocked := bd.domains[domainToCheck]; blocked {
+			return true
+		}
+	}
+	return false
+}
 
 // contractInfo contains information about a contract relevant to the HostDB.
 type contractInfo struct {
@@ -103,6 +197,9 @@ type HostDB struct {
 	filteredHosts map[string]types.SiaPublicKey
 	filterMode    modules.FilterMode
 
+	// filteredDomains tracks blocked domains for the hostdb.
+	filteredDomains *filteredDomains
+
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
 }
@@ -113,6 +210,11 @@ var _ modules.HostDB = (*HostDB)(nil)
 // insert inserts the HostDBEntry into both hosttrees
 func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 	err := hdb.staticHostTree.Insert(host)
+	if hdb.filteredDomains.managedIsFiltered(host.NetAddress) {
+		hdb.filteredHosts[host.PublicKey.String()] = host.PublicKey
+		err = errors.Compose(err, hdb.staticHostTree.SetFiltered(host.PublicKey, true))
+	}
+
 	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
@@ -126,9 +228,21 @@ func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 
 // modify modifies the HostDBEntry in both hosttrees
 func (hdb *HostDB) modify(host modules.HostDBEntry) error {
-	err := hdb.staticHostTree.Modify(host)
-	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
+
+	err := hdb.staticHostTree.Modify(host)
+	if hdb.filteredDomains.managedIsFiltered(host.NetAddress) {
+		hdb.filteredHosts[host.PublicKey.String()] = host.PublicKey
+		err = errors.Compose(err, hdb.staticHostTree.SetFiltered(host.PublicKey, true))
+		if isWhitelist {
+			errF := hdb.filteredTree.Insert(host)
+			if errF != nil && errF != hosttree.ErrHostExists {
+				err = errors.Compose(err, errF)
+			}
+		}
+	}
+
+	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	if isWhitelist == ok {
 		err = errors.Compose(err, hdb.filteredTree.Modify(host))
 	}
@@ -229,10 +343,11 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticMux:   siamux,
 		staticTpool: tpool,
 
-		filteredHosts:  make(map[string]types.SiaPublicKey),
-		knownContracts: make(map[string]contractInfo),
-		scanMap:        make(map[string]struct{}),
-		staticAlerter:  modules.NewAlerter("hostdb"),
+		filteredDomains: newFilteredDomains(nil),
+		filteredHosts:   make(map[string]types.SiaPublicKey),
+		knownContracts:  make(map[string]contractInfo),
+		scanMap:         make(map[string]struct{}),
+		staticAlerter:   modules.NewAlerter("hostdb"),
 	}
 
 	// Set the allowance, txnFees and hostweight function.
@@ -539,9 +654,9 @@ func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool, erro
 }
 
 // Filter returns the hostdb's filterMode and filteredHosts
-func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, []string, error) {
 	if err := hdb.tg.Add(); err != nil {
-		return modules.HostDBFilterError, nil, errors.AddContext(err, "error adding hostdb threadgroup:")
+		return modules.HostDBFilterError, nil, nil, errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 
@@ -551,11 +666,11 @@ func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, 
 	for k, v := range hdb.filteredHosts {
 		filteredHosts[k] = v
 	}
-	return hdb.filterMode, filteredHosts, nil
+	return hdb.filterMode, filteredHosts, hdb.filteredDomains.managedFilteredDomains(), nil
 }
 
 // SetFilterMode sets the hostdb filter mode
-func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error {
+func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey, netAddresses []string) error {
 	if err := hdb.tg.Add(); err != nil {
 		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
@@ -579,18 +694,20 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 		// Reset filtered fields
 		hdb.filteredTree = hdb.staticHostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
+		hdb.filteredDomains = newFilteredDomains(nil)
 		hdb.filterMode = fm
 		return nil
 	}
 
 	// Check for no hosts submitted with whitelist enabled
 	isWhitelist := fm == modules.HostDBActiveWhitelist
-	if len(hosts) == 0 && isWhitelist {
+	if (len(hosts) == 0 && len(netAddresses) == 0) && isWhitelist {
 		return errors.New("cannot enable whitelist without hosts")
 	}
 
 	// Create filtered HostTree
 	hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
+	filteredDomains := newFilteredDomains(netAddresses)
 
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
@@ -607,8 +724,21 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 			hdb.staticLog.Println("Unable to mark entry as filtered:", err)
 		}
 	}
+
 	var allErrs error
 	allHosts := hdb.staticHostTree.All()
+	for _, host := range allHosts {
+		if !filteredDomains.managedIsFiltered(host.NetAddress) {
+			continue
+		}
+		filteredHosts[host.PublicKey.String()] = host.PublicKey
+
+		// Update host in unfiltered hosttree
+		err := hdb.staticHostTree.SetFiltered(host.PublicKey, true)
+		if err != nil {
+			hdb.staticLog.Println("Unable to mark entry as filtered:", err)
+		}
+	}
 	for _, host := range allHosts {
 		// Add hosts to filtered tree
 		_, ok := filteredHosts[host.PublicKey.String()]
@@ -622,6 +752,8 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 	hdb.filteredHosts = filteredHosts
 	hdb.filterMode = fm
+	hdb.filteredDomains = filteredDomains
+
 	return errors.Compose(allErrs, hdb.saveSync())
 }
 

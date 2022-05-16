@@ -1136,10 +1136,10 @@ type Renter interface {
 	FileHosts(SiaPath) ([]HostDBEntry, error)
 
 	// Filter returns the renter's hostdb's filterMode and filteredHosts
-	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
+	Filter() (FilterMode, map[string]types.SiaPublicKey, []string, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
-	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey) error
+	SetFilterMode(fm FilterMode, hosts []types.SiaPublicKey, netAddresses []string) error
 
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
@@ -1315,10 +1315,10 @@ type HostDB interface {
 	EstimateHostScore(HostDBEntry, Allowance) (HostScoreBreakdown, error)
 
 	// Filter returns the hostdb's filterMode and filteredHosts
-	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
+	Filter() (FilterMode, map[string]types.SiaPublicKey, []string, error)
 
 	// SetFilterMode sets the renter's hostdb filter mode
-	SetFilterMode(lm FilterMode, hosts []types.SiaPublicKey) error
+	SetFilterMode(lm FilterMode, hosts []types.SiaPublicKey, netAddresses []string) error
 
 	// Host returns the HostDBEntry for a given host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)

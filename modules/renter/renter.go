@@ -677,22 +677,22 @@ func (r *Renter) ActiveHosts() ([]modules.HostDBEntry, error) { return r.hostDB.
 func (r *Renter) AllHosts() ([]modules.HostDBEntry, error) { return r.hostDB.AllHosts() }
 
 // Filter returns the renter's hostdb's filterMode and filteredHosts
-func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+func (r *Renter) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, []string, error) {
 	var fm modules.FilterMode
 	hosts := make(map[string]types.SiaPublicKey)
 	if err := r.tg.Add(); err != nil {
-		return fm, hosts, err
+		return fm, hosts, nil, err
 	}
 	defer r.tg.Done()
-	fm, hosts, err := r.hostDB.Filter()
+	fm, hosts, netAddresses, err := r.hostDB.Filter()
 	if err != nil {
-		return fm, hosts, errors.AddContext(err, "error getting hostdb filter:")
+		return fm, hosts, netAddresses, errors.AddContext(err, "error getting hostdb filter:")
 	}
-	return fm, hosts, nil
+	return fm, hosts, netAddresses, nil
 }
 
 // SetFilterMode sets the renter's hostdb filter mode
-func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey) error {
+func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey, netAddresses []string) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -708,7 +708,7 @@ func (r *Renter) SetFilterMode(lm modules.FilterMode, hosts []types.SiaPublicKey
 	}
 
 	// Set list mode filter for the hostdb
-	if err := r.hostDB.SetFilterMode(lm, hosts); err != nil {
+	if err := r.hostDB.SetFilterMode(lm, hosts, netAddresses); err != nil {
 		return err
 	}
 
