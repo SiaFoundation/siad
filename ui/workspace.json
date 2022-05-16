@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "projects": {
+    "@siafoundation/react-core": "libs/react-core",
+    "@siafoundation/react-renterd": "libs/react-renterd",
+    "@siafoundation/react-siad": "libs/react-siad",
+    "siad": "apps/siad"
+  }
+}
