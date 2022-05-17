@@ -10,6 +10,18 @@ Version History
 
 Latest:
 
+## May 17, 2022:
+### v1.5.8
+**Key Updates**
+- Add netaddress and IP blocking to renter
+- Add progress alerts for folder add, resize, and remove
+
+**Bugs Fixed**
+- Fix contract sector removal lock contention
+
+**Other**
+- Add --upnp flag to disable UPnP port forwarding 
+
 ## Aug 27, 2021:
 ### v1.5.7
 **Key Updates**
