@@ -9,13 +9,13 @@ import (
 )
 
 // FindBlockNonce finds a block nonce meeting the target.
-func FindBlockNonce(h *types.BlockHeader, target types.BlockID) {
+func FindBlockNonce(cs consensus.State, h *types.BlockHeader, target types.BlockID) {
 	// ensure nonce meets factor requirement
-	for h.Nonce%consensus.NonceFactor != 0 {
+	for h.Nonce%cs.NonceFactor() != 0 {
 		h.Nonce++
 	}
 	for !h.ID().MeetsTarget(target) {
-		h.Nonce += consensus.NonceFactor
+		h.Nonce += cs.NonceFactor()
 	}
 }
 
@@ -115,7 +115,7 @@ func (cs *ChainSim) MineBlockWithTxns(txns ...types.Transaction) types.Block {
 		Transactions: txns,
 	}
 	b.Header.Commitment = cs.State.Commitment(b.Header.MinerAddress, b.Transactions)
-	FindBlockNonce(&b.Header, types.HashRequiringWork(cs.State.Difficulty))
+	FindBlockNonce(cs.State, &b.Header, types.HashRequiringWork(cs.State.Difficulty))
 
 	sau := consensus.ApplyBlock(cs.State, b)
 	cs.State = sau.State
