@@ -581,7 +581,7 @@ func StringToSeed(str string, did mnemonics.DictionaryID) (Seed, error) {
 		}
 
 		// Check for other formatting errors (English only)
-		IsFormat := regexp.MustCompile(`^([a-z]{4,12}){1}( {1}[a-z]{4,12}){27,28}$`).MatchString
+		IsFormat := regexp.MustCompile(`^([a-z]{3,12}){1}( {1}[a-z]{3,12}){27,28}$`).MatchString
 		if !IsFormat(str) {
 			return Seed{}, errors.New("seed is not valid: invalid formatting")
 		}
