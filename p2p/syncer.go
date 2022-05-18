@@ -11,9 +11,9 @@ import (
 	"go.sia.tech/core/chain"
 	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/net/gateway"
-	"go.sia.tech/core/net/mux"
 	"go.sia.tech/core/net/rpc"
 	"go.sia.tech/core/types"
+	"go.sia.tech/mux"
 	"go.sia.tech/siad/v2/txpool"
 )
 

@@ -15,7 +15,7 @@ import (
 
 // A Seed generates ed25519 keys deterministically from some initial entropy.
 type Seed struct {
-	entropy [16]byte
+	entropy *[16]byte
 }
 
 // String implements fmt.Stringer.
@@ -42,7 +42,7 @@ func (s Seed) PrivateKey(index uint64) types.PrivateKey {
 }
 
 // SeedFromEntropy returns the Seed derived from the supplied entropy.
-func SeedFromEntropy(entropy [16]byte) Seed {
+func SeedFromEntropy(entropy *[16]byte) Seed {
 	return Seed{entropy: entropy}
 }
 
@@ -54,7 +54,7 @@ func SeedFromString(s string) (Seed, error) {
 	} else if n != 16 {
 		return Seed{}, errors.New("invalid seed string length")
 	}
-	return SeedFromEntropy(entropy), nil
+	return SeedFromEntropy(&entropy), nil
 }
 
 // NewSeed returns a random Seed.
@@ -63,7 +63,7 @@ func NewSeed() Seed {
 	if _, err := rand.Read(entropy[:]); err != nil {
 		panic("insufficient system entropy")
 	}
-	return SeedFromEntropy(entropy)
+	return SeedFromEntropy(&entropy)
 }
 
 // AddressInfo contains useful metadata about an address.

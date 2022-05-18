@@ -75,40 +75,40 @@ func (m *CPUMiner) txnsForBlock() (blockTxns []types.Transaction) {
 
 // MineBlock mines a valid block, using transactions drawn from the txpool.
 func (m *CPUMiner) MineBlock() types.Block {
-	for {
-		// TODO: if the miner and txpool don't have the same tip, we'll
-		// construct an invalid block
-		m.mu.Lock()
-		parent := m.cs.Index
-		target := types.HashRequiringWork(m.cs.Difficulty)
-		addr := m.addr
-		txns := m.txnsForBlock()
-		commitment := m.cs.Commitment(addr, txns)
-		m.mu.Unlock()
-		b := types.Block{
-			Header: types.BlockHeader{
-				Height:       parent.Height + 1,
-				ParentID:     parent.ID,
-				Nonce:        frand.Uint64n(math.MaxUint64),
-				Timestamp:    types.CurrentTimestamp(),
-				Commitment:   commitment,
-				MinerAddress: addr,
-			},
-			Transactions: txns,
-		}
+again:
+	// TODO: if the miner and txpool don't have the same tip, we'll
+	// construct an invalid block
+	m.mu.Lock()
+	cs := m.cs
+	addr := m.addr
+	txns := m.txnsForBlock()
+	m.mu.Unlock()
 
-		// grind
-		chainutil.FindBlockNonce(&b.Header, target)
-
-		// check whether the tip has changed since we started
-		// grinding; if it has, we need to start over
-		m.mu.Lock()
-		tipChanged := m.cs.Index != parent
-		m.mu.Unlock()
-		if !tipChanged {
-			return b
-		}
+	parent := cs.Index
+	b := types.Block{
+		Header: types.BlockHeader{
+			Height:       parent.Height + 1,
+			ParentID:     parent.ID,
+			Nonce:        frand.Uint64n(math.MaxUint64),
+			Timestamp:    types.CurrentTimestamp(),
+			Commitment:   cs.Commitment(addr, txns),
+			MinerAddress: addr,
+		},
+		Transactions: txns,
 	}
+
+	// grind
+	chainutil.FindBlockNonce(cs, &b.Header, types.HashRequiringWork(cs.Difficulty))
+
+	// check whether the tip has changed since we started
+	// grinding; if it has, we need to start over
+	m.mu.Lock()
+	tipChanged := m.cs.Index != parent
+	m.mu.Unlock()
+	if tipChanged {
+		goto again
+	}
+	return b
 }
 
 // ProcessChainApplyUpdate implements chain.Subscriber.

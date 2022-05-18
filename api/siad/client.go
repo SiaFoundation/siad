@@ -23,7 +23,8 @@ func (c *Client) ConsensusTip() (resp types.ChainIndex, err error) {
 
 // ConsensusState returns the consensus state at the provided index.
 func (c *Client) ConsensusState(index types.ChainIndex) (resp consensus.State, err error) {
-	err = c.c.Get("/api/consensus/state/"+index.String(), &resp)
+	i, _ := index.MarshalText() // index.String is lossy
+	err = c.c.Get("/api/consensus/state/"+string(i), &resp)
 	return
 }
 
