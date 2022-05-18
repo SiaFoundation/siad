@@ -30,17 +30,23 @@ func New(store Store) *DB {
 	return &DB{store}
 }
 
-const announcementAttestationKey = "Host Announcement"
+func findAnnouncements(b types.Block) (hosts []Host) {
+	const announcementAttestationKey = "Host Announcement"
+	for _, txn := range b.Transactions {
+		for _, a := range txn.Attestations {
+			if a.Key == announcementAttestationKey {
+				hosts = append(hosts, Host{a.PublicKey, string(a.Value), 0})
+			}
+		}
+	}
+	return
+}
 
 // ProcessChainApplyUpdate implements chain.Subscriber.
 func (db *DB) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit bool) error {
-	for _, txn := range cau.Block.Transactions {
-		for _, a := range txn.Attestations {
-			if a.Key == announcementAttestationKey {
-				if err := db.store.AddHost(Host{a.PublicKey, string(a.Value), 0}); err != nil {
-					return err
-				}
-			}
+	for _, h := range findAnnouncements(cau.Block) {
+		if err := db.store.AddHost(h); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -48,13 +54,9 @@ func (db *DB) ProcessChainApplyUpdate(cau *chain.ApplyUpdate, mayCommit bool) er
 
 // ProcessChainRevertUpdate implements chain.Subscriber.
 func (db *DB) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
-	for _, txn := range cru.Block.Transactions {
-		for _, a := range txn.Attestations {
-			if a.Key == announcementAttestationKey {
-				if err := db.store.RemoveHost(a.PublicKey); err != nil {
-					return err
-				}
-			}
+	for _, h := range findAnnouncements(cru.Block) {
+		if err := db.store.RemoveHost(h.PublicKey); err != nil {
+			return err
 		}
 	}
 	return nil
