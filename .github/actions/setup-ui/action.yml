@@ -24,7 +24,19 @@ runs:
       with:
         node-version: ${{ inputs.node_version }}
         registry-url: https://registry.npmjs.org
-    - name: Install
+    - name: Get npm cache directory
+      id: npm-cache-dir
       shell: bash
+      run: |
+        echo "::set-output name=dir::$(npm config get cache)"
+    - uses: actions/cache@v3
+      id: npm-cache # use this to check for `cache-hit` ==> if: steps.npm-cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ steps.npm-cache-dir.outputs.dir }}
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+    - name: Install project dependencies
       run: npm install
+      shell: bash
       working-directory: ./ui

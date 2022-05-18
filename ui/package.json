@@ -13,7 +13,7 @@
   },
   "private": true,
   "dependencies": {
-    "@siafoundation/design-system": "^0.22.1",
+    "@siafoundation/design-system": "^0.23.0",
     "@siafoundation/sia-js": "^0.2.0",
     "axios": "^0.24.0",
     "bignumber.js": "^9.0.2",
