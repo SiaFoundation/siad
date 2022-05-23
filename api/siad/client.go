@@ -37,6 +37,11 @@ func (c *Client) ConsensusTipState() (resp consensus.State, err error) {
 	return c.ConsensusState(tip)
 }
 
+// ConsensusBroadcast broadcasts the provided block, which must attach to the current tip.
+func (c *Client) ConsensusBroadcast(b types.Block) error {
+	return c.c.Post("/api/consensus/broadcast", b, nil)
+}
+
 // WalletBalance returns the current wallet balance.
 func (c *Client) WalletBalance() (resp WalletBalanceResponse, err error) {
 	err = c.c.Get("/api/wallet/balance", &resp)

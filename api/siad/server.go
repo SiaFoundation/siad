@@ -32,6 +32,7 @@ type (
 		Addr() string
 		Peers() []string
 		Connect(addr string) error
+		BroadcastBlock(b types.Block)
 		BroadcastTransaction(txn types.Transaction, dependsOn []types.Transaction)
 	}
 
@@ -45,6 +46,7 @@ type (
 	ChainManager interface {
 		TipState() consensus.State
 		State(index types.ChainIndex) (consensus.State, error)
+		AddTipBlock(b types.Block) error
 	}
 )
 
@@ -70,6 +72,19 @@ func (s *server) consensusStateHandler(w http.ResponseWriter, req *http.Request,
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	api.WriteJSON(w, cs)
+}
+
+func (s *server) consensusBroadcastHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var b types.Block
+	if err := json.NewDecoder(req.Body).Decode(&b); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	err := s.cm.AddTipBlock(b)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	s.s.BroadcastBlock(b)
 }
 
 func (s *server) walletBalanceHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -246,6 +261,7 @@ func NewServer(cm ChainManager, s Syncer, w WalletStore, tp TransactionPool) htt
 
 	mux.GET("/api/consensus/tip", srv.consensusTipHandler)
 	mux.GET("/api/consensus/state/:index", srv.consensusStateHandler)
+	mux.POST("/api/consensus/broadcast", srv.consensusBroadcastHandler)
 
 	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
 	mux.GET("/api/wallet/seedindex", srv.walletSeedIndexHandler)

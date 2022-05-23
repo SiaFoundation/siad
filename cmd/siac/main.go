@@ -14,12 +14,16 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"go.sia.tech/core/chain"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api/siad"
+	"go.sia.tech/siad/v2/internal/chainutil"
+	"go.sia.tech/siad/v2/internal/cpuminer"
 	"go.sia.tech/siad/v2/wallet"
 	"golang.org/x/term"
 
 	"lukechampine.com/flagg"
+	"lukechampine.com/frand"
 )
 
 var (
@@ -34,6 +38,8 @@ var (
 
 Actions:
     version         display version information
+    mine            mine one or more blocks
+    seed            generate a wallet seed
 
 Subcommands:
     wallet
@@ -98,13 +104,13 @@ which are provided as a comma-separated list of address:value pairs, e.g.
 
 Actions:
     transactions    display all transactions in the transaction pool
-    broadcast       broadcast a JSON encoded transaction
+    broadcast       broadcast a JSON-encoded transaction
 `
 
 	txpoolBroadcastUsage = `Usage:
     siac [flags] txpool [flags] broadcast [file]
 
-Broadcast a JSON encoded transaction.
+Broadcast a JSON-encoded transaction.
 `
 
 	txpoolTransactionsUsage = `Usage:
@@ -131,6 +137,18 @@ List current peers.
     siac [flags] syncer [flags] connect [addr]
 
 Add the provided address as a peer.
+`
+
+	seedUsage = `Usage:
+    siac [flags] seed [flags]
+
+Generate a new seed
+`
+
+	mineUsage = `Usage:
+    siac [flags] mine [flags]
+
+Mines blocks using the CPU until killed.
 `
 )
 
@@ -202,7 +220,8 @@ func getSeed() wallet.Seed {
 func main() {
 	log.SetFlags(0)
 	var verbose, exactCurrency, broadcast bool
-	var desc string
+	var minerLimit int
+	var desc, minerAddr string
 
 	rootCmd := flagg.Root
 	rootCmd.Usage = flagg.SimpleUsage(rootCmd, rootUsage)
@@ -229,6 +248,11 @@ func main() {
 	syncerCmd := flagg.New("syncer", syncerUsage)
 	syncerPeersCmd := flagg.New("peers", syncerPeersUsage)
 	syncerConnectCmd := flagg.New("connect", syncerConnectUsage)
+
+	seedCmd := flagg.New("seed", seedUsage)
+	mineCmd := flagg.New("mine", mineUsage)
+	mineCmd.StringVar(&minerAddr, "addr", "", "address that will receive block rewards")
+	mineCmd.IntVar(&minerLimit, "limit", 0, "number of blocks to mine")
 
 	cmd := flagg.Parse(flagg.Tree{
 		Cmd: rootCmd,
@@ -259,6 +283,8 @@ func main() {
 					{Cmd: syncerConnectCmd},
 				},
 			},
+			{Cmd: seedCmd},
+			{Cmd: mineCmd},
 		},
 	})
 	args := cmd.Args()
@@ -445,6 +471,32 @@ func main() {
 		err := getClient().SyncerConnect(addr)
 		check("Couldn't connect:", err)
 		fmt.Printf("Connected to %v.\n", addr)
+
+	case seedCmd:
+		if len(args) != 0 {
+			cmd.Usage()
+			return
+		}
+		fmt.Println(wallet.NewSeed())
+
+	case mineCmd:
+		addr, err := types.ParseAddress(minerAddr)
+		if minerAddr != "" {
+			check("Invalid address", err)
+		}
+		start := time.Now()
+		if minerLimit != 0 {
+			for i := 0; i < minerLimit; i++ {
+				fmt.Printf("\rMining...(%d/%d, %.2f/sec)", i, minerLimit, float64(i)/time.Since(start).Seconds())
+				mineBlock(addr)
+			}
+			fmt.Println("")
+		} else {
+			for i := 0; ; i++ {
+				fmt.Printf("\rMining...(%d/∞, %.2f/sec)", i, float64(i)/time.Since(start).Seconds())
+				mineBlock(addr)
+			}
+		}
 	}
 }
 
@@ -559,4 +611,35 @@ func signTxn(txn *types.Transaction, seed wallet.Seed) error {
 
 func broadcastTxn(txn types.Transaction) error {
 	return getClient().TxpoolBroadcast(txn, nil)
+}
+
+func mineBlock(addr types.Address) {
+again:
+	cs, err := getClient().ConsensusTipState()
+	check("Could not get tip state", err)
+	txns, err := getClient().TxpoolTransactions()
+	check("Could not get txpool", err)
+	txns = cpuminer.TransactionsForBlock(cs, txns)
+
+	parent := cs.Index
+	b := types.Block{
+		Header: types.BlockHeader{
+			Height:       parent.Height + 1,
+			ParentID:     parent.ID,
+			Nonce:        frand.Uint64n(math.MaxUint64),
+			Timestamp:    types.CurrentTimestamp(),
+			Commitment:   cs.Commitment(addr, txns),
+			MinerAddress: addr,
+		},
+		Transactions: txns,
+	}
+	chainutil.FindBlockNonce(cs, &b.Header, types.HashRequiringWork(cs.Difficulty))
+
+	err = getClient().ConsensusBroadcast(b)
+	if err != nil {
+		if !strings.Contains(err.Error(), chain.ErrUnknownIndex.Error()) {
+			check("Could not submit block", err)
+		}
+		goto again
+	}
 }
