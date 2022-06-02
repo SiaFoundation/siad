@@ -193,6 +193,7 @@ func TestMarkSectorsForRemoval(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	dir := t.TempDir()
 	cm, err := New(dir)
