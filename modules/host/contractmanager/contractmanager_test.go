@@ -6,8 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 
@@ -119,10 +122,7 @@ type dependencyErroredStartup struct {
 // soon as it is created.
 func (d *dependencyErroredStartup) Disrupt(s string) bool {
 	// Cause an error to be returned during startup.
-	if s == "erroredStartup" {
-		return true
-	}
-	return false
+	return s == "erroredStartup"
 }
 
 // TestNewContractManagerErroredStartup uses disruption to simulate an error
@@ -160,4 +160,80 @@ func TestNewContractManagerErroredStartup(t *testing.T) {
 	if !os.IsNotExist(err) {
 		t.Error("file should have been removed:", err)
 	}
+}
+
+// TestSectorMuDataRace tests that cm.sectorMu is properly locked and unlocked
+// during sector operations.
+func TestSectorMuDataRace(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	cm, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cm.Close()
+
+	exit := make(chan struct{})
+	defer func() {
+		close(exit)
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-exit:
+				return
+			case <-time.After(time.Millisecond * 10):
+				// note: was causing a data race with cm.setUsage and
+				// cm.clearUsage because cm.sectorMu was not being locked
+				// in certain cases.
+				cm.StorageFolders()
+			}
+		}
+	}()
+
+	// add a storage folder
+	if err := cm.AddStorageFolder(t.TempDir(), modules.SectorSize*1024); err != nil {
+		t.Fatal(err)
+	}
+
+	// add sectors to the contract manager
+	var added []crypto.Hash
+	for i := 0; i < 200; i++ {
+		data := make([]byte, modules.SectorSize)
+		fastrand.Read(data[:256])
+		root := crypto.MerkleRoot(data)
+		if err := cm.AddSector(root, data); err != nil {
+			t.Fatal(err)
+		}
+		added = append(added, root)
+	}
+
+	// split the added sectors between the three removal operations: remove,
+	// delete, and batch remove.
+	// remove sectors
+	n := len(added) / 3
+	for _, root := range added[:n] {
+		if err := cm.RemoveSector(root); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// delete sectors
+	m := n * 2
+	for _, root := range added[n:m] {
+		if err := cm.DeleteSector(root); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// batch remove sectors
+	if err := cm.MarkSectorsForRemoval(added[m:]); err != nil {
+		t.Fatal(err)
+	}
+	// wait for the sector removal batch to complete
+	time.Sleep(time.Second * 10)
 }

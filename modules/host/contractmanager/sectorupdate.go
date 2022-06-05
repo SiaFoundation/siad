@@ -16,8 +16,8 @@ import (
 // the usage info if the sector does not exist. The update is idempotent.
 func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 	sf, exists := wal.cm.storageFolders[su.Folder]
-	wal.cm.sectorMu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		wal.cm.log.Printf("ERROR: unable to locate storage folder for a committed sector update.")
 		return
@@ -65,11 +65,13 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 
 			// Grab a vacant storage folder.
 			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
 			var sf *storageFolder
 			sf, storageFolderIndex = vacancyStorageFolder(storageFolders)
 			if sf == nil {
 				// None of the storage folders have enough room to house the
 				// sector.
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
@@ -88,6 +90,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 			// Set the usage, but mark it as uncommitted.
 			sf.setUsage(sectorIndex)
 			sf.availableSectors[id] = sectorIndex
+			wal.cm.sectorMu.Unlock()
 			wal.mu.Unlock()
 
 			// NOTE: The usage has been set, in the event of failure the usage
@@ -99,8 +102,10 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 				wal.cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
 				wal.mu.Lock()
+				wal.cm.sectorMu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errDiskTrouble
 			}
@@ -118,8 +123,10 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 				wal.cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
 				wal.mu.Lock()
+				wal.cm.sectorMu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errDiskTrouble
 			}
@@ -275,8 +282,10 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 	// Only update the usage after the sector delete has been committed to disk
 	// fully.
 	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	delete(sf.availableSectors, id)
 	sf.clearUsage(location.index)
+	wal.cm.sectorMu.Unlock()
 	wal.mu.Unlock()
 	return nil
 }
@@ -364,8 +373,10 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	// the event of unclean shutdown.
 	if location.count == 0 {
 		wal.mu.Lock()
+		wal.cm.sectorMu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
+		wal.cm.sectorMu.Unlock()
 		wal.mu.Unlock()
 	}
 	return nil
@@ -419,8 +430,8 @@ func (wal *writeAheadLog) managedRemoveSectors(sectors map[sectorID]uint64) erro
 	}
 
 	if len(changes) == 0 {
-		wal.mu.Unlock()
 		wal.cm.sectorMu.Unlock()
+		wal.mu.Unlock()
 		return nil
 	}
 
@@ -429,8 +440,8 @@ func (wal *writeAheadLog) managedRemoveSectors(sectors map[sectorID]uint64) erro
 	})
 
 	ch := wal.syncChan
-	wal.mu.Unlock()
 	wal.cm.sectorMu.Unlock()
+	wal.mu.Unlock()
 
 	// synchronize before updating the metadata or clearing the usage.
 	<-ch
@@ -470,8 +481,10 @@ func (wal *writeAheadLog) managedRemoveSectors(sectors map[sectorID]uint64) erro
 		// the event of unclean shutdown.
 		if su.Count == 0 {
 			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
 			sf.clearUsage(su.Index)
 			delete(sf.availableSectors, su.ID)
+			wal.cm.sectorMu.Unlock()
 			wal.mu.Unlock()
 		}
 	}

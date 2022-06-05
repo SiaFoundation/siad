@@ -65,11 +65,13 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 
 			// Grab a vacant storage folder.
 			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
 			var sf *storageFolder
 			sf, storageFolderIndex = vacancyStorageFolder(storageFolders)
 			if sf == nil {
 				// None of the storage folders have enough room to house the
 				// sector.
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
@@ -88,6 +90,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			// Set the usage, but mark it as uncommitted.
 			sf.setUsage(sectorIndex)
 			sf.availableSectors[id] = sectorIndex
+			wal.cm.sectorMu.Unlock()
 			wal.mu.Unlock()
 
 			// NOTE: The usage has been set, in the event of failure the usage
