@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -683,5 +684,145 @@ func TestDistantWallets(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Fatal("wallet should not recognize coins sent to very high seed index")
+	}
+}
+
+func TestWalletFundTransaction(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		wt.closeWt()
+	})
+
+	// mine more blocks so the wallet has more than 1 UTXO
+	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
+		b, _ := wt.miner.FindBlock()
+		err := wt.cs.AcceptBlock(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Get the wallet's unspent outputs.
+	unspentOutputs, err := wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(unspentOutputs) == 0 {
+		t.Fatal("expected to have unspent outputs")
+	}
+
+	// sort the outputs by value, descending
+	sort.Slice(unspentOutputs, func(i, j int) bool {
+		return unspentOutputs[i].Value.Cmp(unspentOutputs[j].Value) > 0
+	})
+
+	// build a transaction that fully spends three UTXOs
+	var fundAmount types.Currency
+	for _, o := range unspentOutputs[:3] {
+		if o.FundType != types.SpecifierSiacoinOutput {
+			t.Fatal("expected all outputs to be siacoin outputs")
+		}
+
+		fundAmount = fundAmount.Add(o.Value)
+	}
+
+	txn := types.Transaction{
+		SiacoinOutputs: []types.SiacoinOutput{{Value: fundAmount, UnlockHash: types.UnlockHash{}}},
+	}
+
+	toSign, cleanup, err := wt.wallet.FundTransaction(&txn, fundAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	// verify that the transaction has the correct number of inputs, outputs,
+	// and signatures.
+	switch {
+	case len(txn.SiacoinInputs) != 3:
+		t.Fatal("transaction should have three siacoin inputs")
+	case len(txn.SiacoinOutputs) != 1:
+		t.Fatal("transaction should have one siacoin output")
+	case len(txn.TransactionSignatures) != 3:
+		t.Fatal("transaction should have three signatures")
+	case len(toSign) != 3:
+		t.Fatalf("expected 3 sigs, got %v", len(toSign))
+	case !txn.SiacoinOutputs[0].Value.Equals(fundAmount):
+		t.Fatalf("transaction output 0 has incorrect value: expected %v got %v", fundAmount, txn.SiacoinOutputs[0].Value)
+	}
+
+	// sign, broadcast, and mine the transaction
+	if err := wt.wallet.SignTransaction(&txn, toSign); err != nil {
+		t.Fatal(err)
+	} else if err = wt.tpool.AcceptTransactionSet([]types.Transaction{txn}); err != nil {
+		t.Fatal(err)
+	} else if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanup()
+
+	// get the wallet's unspent outputs.
+	unspentOutputs, err = wt.wallet.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(unspentOutputs) == 0 {
+		t.Fatal("expected to have unspent outputs")
+	}
+
+	// sort the outputs by value, descending
+	sort.Slice(unspentOutputs, func(i, j int) bool {
+		return unspentOutputs[i].Value.Cmp(unspentOutputs[j].Value) > 0
+	})
+
+	// build a transaction that partially spends a UTXO
+	var totalSpent types.Currency
+	for _, o := range unspentOutputs[:2] {
+		if o.FundType != types.SpecifierSiacoinOutput {
+			t.Fatal("expected all outputs to be siacoin outputs")
+		}
+		totalSpent = totalSpent.Add(o.Value)
+	}
+	fundAmount = totalSpent.Mul64(2).Div64(3)
+	changeAmount := totalSpent.Sub(fundAmount)
+	txn = types.Transaction{
+		SiacoinOutputs: []types.SiacoinOutput{{Value: fundAmount, UnlockHash: types.UnlockHash{}}},
+	}
+
+	toSign, cleanup, err = wt.wallet.FundTransaction(&txn, fundAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	// verify that the transaction has the correct number of inputs, outputs,
+	// and signatures.
+	switch {
+	case len(txn.SiacoinInputs) != 2:
+		t.Fatal("transaction should have 3 siacoin inputs")
+	case len(txn.SiacoinOutputs) != 2:
+		t.Fatal("transaction should have 2 siacoin outputs")
+	case len(txn.TransactionSignatures) != 2:
+		t.Fatal("transaction should have 2 signatures")
+	case len(toSign) != 2:
+		t.Fatalf("expected 2 sigs, got %v", len(toSign))
+	case !txn.SiacoinOutputs[0].Value.Equals(fundAmount):
+		t.Fatalf("transaction output 0 has incorrect value: expected %v got %v", fundAmount, txn.SiacoinOutputs[0].Value)
+	case !txn.SiacoinOutputs[1].Value.Equals(changeAmount):
+		t.Fatalf("transaction change output has incorrect value: expected %v got %v", changeAmount, txn.SiacoinOutputs[1].Value)
+	}
+
+	// sign, broadcast, and mine the transaction
+	if err := wt.wallet.SignTransaction(&txn, toSign); err != nil {
+		t.Fatal(err)
+	} else if err = wt.tpool.AcceptTransactionSet([]types.Transaction{txn}); err != nil {
+		t.Fatal(err)
+	} else if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
 	}
 }

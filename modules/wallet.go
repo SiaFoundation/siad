@@ -395,6 +395,10 @@ type (
 		// generated from the seed.
 		PrimarySeed() (Seed, uint64, error)
 
+		// FundTransaction funds the provided transaction with unspent siacoin outputs,
+		// adding a change output if necessary.
+		FundTransaction(txn *types.Transaction, amount types.Currency) ([]crypto.Hash, func(), error)
+
 		// SignTransaction signs txn using secret keys known to the wallet.
 		// The transaction should be complete with the exception of the
 		// Signature fields of each TransactionSignature referenced by toSign.

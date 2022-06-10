@@ -5,6 +5,7 @@ package wallet
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -142,6 +143,14 @@ func (w *Wallet) Height() (types.BlockHeight, error) {
 	return types.BlockHeight(height), nil
 }
 
+func (w *Wallet) Address() (types.UnlockHash, error) {
+	addresses, err := w.LastAddresses(1)
+	if err != nil {
+		return types.UnlockHash{}, err
+	}
+	return addresses[0], nil
+}
+
 // LastAddresses returns the last n addresses starting at the last seedProgress
 // for which an address was generated. If n is greater than the current
 // progress, fewer than n keys will be returned. That means all addresses can
@@ -176,6 +185,101 @@ func (w *Wallet) LastAddresses(n uint64) ([]types.UnlockHash, error) {
 		uhs = append(uhs, keys[i].UnlockConditions.UnlockHash())
 	}
 	return uhs, nil
+}
+
+// FundTransaction funds the provided transaction with unspent siacoin outputs,
+// adding transaction signatures and a change output if necessary.
+func (w *Wallet) FundTransaction(txn *types.Transaction, amount types.Currency) ([]crypto.Hash, func(), error) {
+	if amount.IsZero() {
+		return nil, nil, nil
+	}
+
+	// dustThreshold and change address should be obtained before the lock is
+	// taken.
+	dustThreshold, err := w.DustThreshold()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get dust threshold: %w", err)
+	}
+
+	changeAddr, err := w.Address()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get change address: %w", err)
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	blockHeight, err := dbGetConsensusHeight(w.dbTx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get consensus height: %w", err)
+	}
+
+	// collect a value-sorted set of siacoin outputs.
+	var so sortedOutputs
+	err = dbForEachSiacoinOutput(w.dbTx, func(scoid types.SiacoinOutputID, sco types.SiacoinOutput) {
+		so.ids = append(so.ids, scoid)
+		so.outputs = append(so.outputs, sco)
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get siacoin outputs: %w", err)
+	}
+
+	// sort the outputs by value descending
+	sort.Sort(sort.Reverse(so))
+
+	var funded types.Currency
+	var toSign []crypto.Hash
+	for i := range so.ids {
+		scoid := so.ids[i]
+		sco := so.outputs[i]
+
+		// Check that the output can be spent.
+		if err := w.checkOutput(w.dbTx, blockHeight, scoid, sco, dustThreshold); err != nil {
+			continue
+		}
+
+		uc, ok := w.keys[sco.UnlockHash]
+		if !ok || uc.UnlockConditions.SignaturesRequired > 1 {
+			continue
+		}
+
+		toSign = append(toSign, crypto.Hash(scoid))
+		txn.TransactionSignatures = append(txn.TransactionSignatures, types.TransactionSignature{
+			ParentID:       crypto.Hash(scoid),
+			PublicKeyIndex: 0,
+			CoveredFields:  types.CoveredFields{SiacoinInputs: []uint64{uint64(len(txn.SiacoinInputs))}},
+		})
+		txn.SiacoinInputs = append(txn.SiacoinInputs, types.SiacoinInput{
+			ParentID:         scoid,
+			UnlockConditions: uc.UnlockConditions,
+		})
+
+		if err := dbPutSpentOutput(w.dbTx, types.OutputID(scoid), blockHeight); err != nil {
+			return nil, nil, fmt.Errorf("failed to mark output as spent: %w", err)
+		}
+
+		funded = funded.Add(sco.Value)
+		if funded.Cmp(amount) >= 0 {
+			break
+		}
+	}
+	if funded.Cmp(amount) < 0 {
+		return nil, nil, modules.ErrLowBalance
+	} else if funded.Cmp(amount) > 0 {
+		// add a change output
+		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
+			Value:      funded.Sub(amount),
+			UnlockHash: changeAddr,
+		})
+	}
+
+	return toSign, func() {
+		for _, scoid := range toSign {
+			if err := dbDeleteSpentOutput(w.dbTx, types.OutputID(scoid)); err != nil {
+				w.log.Println("WARN: failed to delete spent output:", err)
+			}
+		}
+	}, nil
 }
 
 // New creates a new wallet, loading any known addresses from the input file
