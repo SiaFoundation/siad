@@ -106,13 +106,13 @@ func NewServer(cm ChainManager, s Syncer, tp TransactionPool) http.Handler {
 	}
 	mux := httprouter.New()
 
-	mux.GET("/api/txpool/transactions", srv.txpoolTransactionsHandler)
-	mux.POST("/api/txpool/broadcast", srv.txpoolBroadcastHandler)
+	mux.GET("/txpool/transactions", srv.txpoolTransactionsHandler)
+	mux.POST("/txpool/broadcast", srv.txpoolBroadcastHandler)
 
-	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
-	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
+	mux.GET("/syncer/peers", srv.syncerPeersHandler)
+	mux.POST("/syncer/connect", srv.syncerConnectHandler)
 
-	mux.GET("/api/consensus/tip", srv.consensusTipHandler)
+	mux.GET("/consensus/tip", srv.consensusTipHandler)
 
 	return mux
 }

@@ -289,18 +289,18 @@ func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp Transa
 	}
 	mux := httprouter.New()
 
-	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
-	mux.GET("/api/wallet/address", srv.walletAddressHandler)
-	mux.GET("/api/wallet/transactions", srv.walletTransactionsHandler)
+	mux.GET("/wallet/balance", srv.walletBalanceHandler)
+	mux.GET("/wallet/address", srv.walletAddressHandler)
+	mux.GET("/wallet/transactions", srv.walletTransactionsHandler)
 
-	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
-	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
+	mux.GET("/syncer/peers", srv.syncerPeersHandler)
+	mux.POST("/syncer/connect", srv.syncerConnectHandler)
 
-	mux.POST("/api/rhp/scan", srv.rhpScanHandler)
-	mux.POST("/api/rhp/form", srv.rhpFormHandler)
-	mux.POST("/api/rhp/renew", srv.rhpRenewHandler)
-	mux.POST("/api/rhp/read", srv.rhpReadHandler)
-	mux.POST("/api/rhp/append", srv.rhpAppendHandler)
+	mux.POST("/rhp/scan", srv.rhpScanHandler)
+	mux.POST("/rhp/form", srv.rhpFormHandler)
+	mux.POST("/rhp/renew", srv.rhpRenewHandler)
+	mux.POST("/rhp/read", srv.rhpReadHandler)
+	mux.POST("/rhp/append", srv.rhpAppendHandler)
 
 	return mux
 }
