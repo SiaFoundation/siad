@@ -14,7 +14,6 @@ import (
 	"go.sia.tech/siad/v2/internal/p2putil"
 	"go.sia.tech/siad/v2/internal/walletutil"
 	"go.sia.tech/siad/v2/p2p"
-	"go.sia.tech/siad/v2/renter/hostdb"
 	"go.sia.tech/siad/v2/txpool"
 )
 
@@ -24,7 +23,7 @@ type node struct {
 	s   *p2p.Syncer
 	w   *walletutil.TestingWallet
 	m   *cpuminer.CPUMiner
-	hdb *hostdb.DB
+	hdb *hostdbutil.JSONDB
 }
 
 func (n *node) run() error {
@@ -93,12 +92,13 @@ func newNode(addr, dir string, c consensus.Checkpoint) (*node, error) {
 	if err := os.MkdirAll(hdbDir, 0700); err != nil {
 		return nil, err
 	}
-	hdbStore, err := hostdbutil.NewJSONStore(hdbDir)
+	hdb, hdbTip, err := hostdbutil.NewJSONDB(hdbDir, c.State.Index)
 	if err != nil {
 		return nil, err
 	}
-	hdb := hostdb.New(hdbStore)
-	cm.AddSubscriber(hdb, cm.Tip())
+	if err := cm.AddSubscriber(hdb, hdbTip); err != nil {
+		return nil, err
+	}
 
 	s, err := p2p.NewSyncer(addr, genesisBlock.ID(), cm, tp, peerStore)
 	if err != nil {
