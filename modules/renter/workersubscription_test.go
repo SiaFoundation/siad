@@ -1298,3 +1298,122 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSubscribeUnsubsribeByRID tests the subscription helper methods against
+// the worker tester. They are already unit-tested against a host in
+// rpcsubscribe_test.go but better safe than sorry.
+func TestSubscribeUnsubsribeByRID(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Random subscriber.
+	var subscriber types.Specifier
+	fastrand.Read(subscriber[:])
+
+	// Random registry value.
+	srv1, spk1, _ := randomRegistryValue()
+	srv2, spk2, _ := randomRegistryValue()
+	srv3, spk3, _ := randomRegistryValue()
+
+	// Get price table.
+	pt := &wt.staticPriceTable().staticPriceTable
+
+	// Update the host with the first and third one.
+	err = wt.UpdateRegistry(context.Background(), spk1, srv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wt.UpdateRegistry(context.Background(), spk3, srv3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Begin subscription. Compute deadline.
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
+	stream, err := wt.managedBeginSubscription(initialSubscriptionBudget, wt.staticAccount.staticID, subscriber)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe to all three values.
+	initialValues, err := modules.RPCSubscribeToRVsByRID(stream, []modules.RPCRegistrySubscriptionByRIDRequest{
+		{
+			EntryID: modules.DeriveRegistryEntryID(spk1, srv1.Tweak),
+		},
+		{
+			EntryID: modules.DeriveRegistryEntryID(spk2, srv2.Tweak),
+		},
+		{
+			EntryID: modules.DeriveRegistryEntryID(spk3, srv3.Tweak),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Expect 2 initial values.
+	if len(initialValues) != 2 {
+		t.Fatal("wrong number of values", len(initialValues))
+	}
+	if !reflect.DeepEqual(initialValues[0].Entry, srv1) {
+		t.Fatal("wrong value")
+	}
+	if !reflect.DeepEqual(initialValues[1].Entry, srv3) {
+		t.Fatal("wrong value")
+	}
+	if !initialValues[0].PubKey.Equals(spk1) {
+		t.Fatal("wrong pubkey")
+	}
+	if !initialValues[1].PubKey.Equals(spk3) {
+		t.Fatal("wrong pubkey")
+	}
+
+	// Fund the budget a bit.
+	err = wt.managedFundSubscription(stream, pt, initialSubscriptionBudget.Div64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Extend the subscription.
+	err = modules.RPCExtendSubscription(stream, pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsubscribe from the values again.
+	err = modules.RPCUnsubscribeFromRVsByRID(stream, []modules.RPCRegistrySubscriptionByRIDRequest{
+		{
+			EntryID: modules.DeriveRegistryEntryID(spk1, srv1.Tweak),
+		},
+		{
+			EntryID: modules.DeriveRegistryEntryID(spk2, srv2.Tweak),
+		},
+		{
+			EntryID: modules.DeriveRegistryEntryID(spk3, srv3.Tweak),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sleep until the first deadline + half way through the second period.
+	time.Sleep(time.Until(deadline.Add(modules.SubscriptionPeriod / 2)))
+
+	// Graceful shutdown.
+	err = modules.RPCStopSubscription(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

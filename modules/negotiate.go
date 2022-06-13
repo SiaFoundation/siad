@@ -1171,10 +1171,75 @@ func RPCSubscribeToRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionR
 	return initialNotifications, nil
 }
 
+// RPCSubscribeToRVs subscribes to the given publickey/tweak pairs.
+func RPCSubscribeToRVsByRID(stream siamux.Stream, requests []RPCRegistrySubscriptionByRIDRequest) ([]RPCRegistrySubscriptionNotificationEntryUpdate, error) {
+	// Send the type of the request.
+	buf := bytes.NewBuffer(nil)
+	err := RPCWrite(buf, SubscriptionRequestSubscribeRID)
+	if err != nil {
+		return nil, err
+	}
+	// Send the request.
+	err = RPCWrite(buf, requests)
+	if err != nil {
+		return nil, err
+	}
+	// Write buffer to stream.
+	_, err = buf.WriteTo(stream)
+	if err != nil {
+		return nil, err
+	}
+	// Read response.
+	var rvs []RPCRegistrySubscriptionNotificationEntryUpdate
+	err = RPCRead(stream, &rvs)
+	if err != nil {
+		return nil, err
+	}
+	// Check the length of the response.
+	if len(rvs) > len(requests) {
+		return nil, fmt.Errorf("host returned more rvs than we subscribed to %v > %v", len(rvs), len(requests))
+	}
+	// Verify response. The rvs should be returned in the same order as
+	// requested so we start by verifying against the first request and work our
+	// way through to the last one. If not all rvs are verified successfully
+	// after running out of requests, something is wrong.
+	for _, rv := range rvs {
+		err = rv.Entry.Verify(rv.PubKey.ToPublicKey())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return rvs, nil
+}
+
 // RPCUnsubscribeFromRVs unsubscribes from the given publickey/tweak pairs.
 func RPCUnsubscribeFromRVs(stream siamux.Stream, requests []RPCRegistrySubscriptionRequest) error {
 	// Send the type of the request.
 	err := RPCWrite(stream, SubscriptionRequestUnsubscribe)
+	if err != nil {
+		return err
+	}
+	// Send the request.
+	err = RPCWrite(stream, requests)
+	if err != nil {
+		return err
+	}
+	// Read the "OK" response.
+	var resp RPCRegistrySubscriptionNotificationType
+	err = RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+	if resp.Type != SubscriptionResponseUnsubscribeSuccess {
+		return fmt.Errorf("wrong type was returned: %v", resp.Type)
+	}
+	return nil
+}
+
+// RPCUnsubscribeFromRVsByRID unsubscribes from the given publickey/tweak pairs.
+func RPCUnsubscribeFromRVsByRID(stream siamux.Stream, requests []RPCRegistrySubscriptionByRIDRequest) error {
+	// Send the type of the request.
+	err := RPCWrite(stream, SubscriptionRequestUnsubscribeRID)
 	if err != nil {
 		return err
 	}

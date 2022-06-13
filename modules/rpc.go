@@ -33,6 +33,8 @@ const (
 	SubscriptionRequestExtend
 	SubscriptionRequestPrepay
 	SubscriptionRequestStop
+	SubscriptionRequestSubscribeRID
+	SubscriptionRequestUnsubscribeRID
 )
 
 // Subcription response related enum.
@@ -280,6 +282,18 @@ type (
 	RPCRegistrySubscriptionRequest struct {
 		PubKey types.SiaPublicKey
 		Tweak  crypto.Hash
+
+		// Ratelimit in milliseconds. This is not used yet but carved out to
+		// avoid a breaking protocol change later on. The idea is that for every
+		// subscribed entry, a ratelimit can be specified to avoid spam and
+		// reduce cost.
+		Ratelimit uint32
+	}
+
+	// RPCRegistrySubscriptionByRIDRequest is a request to either add or
+	// remove a subscription.
+	RPCRegistrySubscriptionByRIDRequest struct {
+		EntryID RegistryEntryID
 
 		// Ratelimit in milliseconds. This is not used yet but carved out to
 		// avoid a breaking protocol change later on. The idea is that for every

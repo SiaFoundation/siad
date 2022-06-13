@@ -156,7 +156,12 @@ func TestRPCSubscribe(t *testing.T) {
 
 	// Test the standard flow.
 	t.Run("Basic", func(t *testing.T) {
-		testRPCSubscribeBasic(t, rhp)
+		t.Run("ByKey", func(t *testing.T) {
+			testRPCSubscribeBasic(t, rhp, false)
+		})
+		t.Run("ByRID", func(t *testing.T) {
+			testRPCSubscribeBasic(t, rhp, true)
+		})
 	})
 	t.Run("SubscribeBeforeAvailable", func(t *testing.T) {
 		testRPCSubscribeBeforeAvailable(t, rhp)
@@ -174,7 +179,7 @@ func TestRPCSubscribe(t *testing.T) {
 
 // testRPCSubscribeBasic tests subscribing to an entry and unsubscribing without
 // hitting any edge cases.
-func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
+func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair, useRID bool) {
 	// Prepare a listener for the worker.
 	notificationReader, notificationWriter := io.Pipe()
 	var sub types.Specifier
@@ -252,8 +257,24 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		return initialBudget.Sub(upCost).Sub(downCost).Sub(costs)
 	}
 
+	// Helper functions for subscribing and unsubscribing.
+	subscribe := func(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
+		if !useRID {
+			return rhp.SubcribeToRV(stream, pt, spk, tweak)
+		} else {
+			return rhp.SubcribeToRVByRID(stream, pt, modules.DeriveRegistryEntryID(spk, tweak))
+		}
+	}
+	unsubscribe := func(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
+		if !useRID {
+			return rhp.UnsubcribeFromRV(stream, pt, spk, tweak)
+		} else {
+			return rhp.UnsubcribeFromRVByRID(stream, pt, modules.DeriveRegistryEntryID(spk, tweak))
+		}
+	}
+
 	// subsribe to the previously created entry.
-	rvInitial, err := rhp.SubcribeToRV(stream, pt, spk, tweak)
+	rvInitial, err := subscribe(stream, pt, spk, tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +358,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Unsubscribe.
-	err = rhp.UnsubcribeFromRV(stream, pt, spk, tweak)
+	err = unsubscribe(stream, pt, spk, tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
