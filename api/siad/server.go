@@ -259,23 +259,23 @@ func NewServer(cm ChainManager, s Syncer, w WalletStore, tp TransactionPool) htt
 	}
 	mux := httprouter.New()
 
-	mux.GET("/api/consensus/tip", srv.consensusTipHandler)
-	mux.GET("/api/consensus/state/:index", srv.consensusStateHandler)
-	mux.POST("/api/consensus/broadcast", srv.consensusBroadcastHandler)
+	mux.GET("/consensus/tip", srv.consensusTipHandler)
+	mux.GET("/consensus/state/:index", srv.consensusStateHandler)
+	mux.POST("/consensus/broadcast", srv.consensusBroadcastHandler)
 
-	mux.GET("/api/wallet/balance", srv.walletBalanceHandler)
-	mux.GET("/api/wallet/seedindex", srv.walletSeedIndexHandler)
-	mux.POST("/api/wallet/address/:addr", srv.walletAddressHandlerPOST)
-	mux.GET("/api/wallet/address/:addr", srv.walletAddressHandlerGET)
-	mux.GET("/api/wallet/addresses", srv.walletAddressesHandler)
-	mux.GET("/api/wallet/transactions", srv.walletTransactionsHandler)
-	mux.GET("/api/wallet/utxos", srv.walletUTXOsHandler)
+	mux.GET("/wallet/balance", srv.walletBalanceHandler)
+	mux.GET("/wallet/seedindex", srv.walletSeedIndexHandler)
+	mux.POST("/wallet/address/:addr", srv.walletAddressHandlerPOST)
+	mux.GET("/wallet/address/:addr", srv.walletAddressHandlerGET)
+	mux.GET("/wallet/addresses", srv.walletAddressesHandler)
+	mux.GET("/wallet/transactions", srv.walletTransactionsHandler)
+	mux.GET("/wallet/utxos", srv.walletUTXOsHandler)
 
-	mux.GET("/api/txpool/transactions", srv.txpoolTransactionsHandler)
-	mux.POST("/api/txpool/broadcast", srv.txpoolBroadcastHandler)
+	mux.GET("/txpool/transactions", srv.txpoolTransactionsHandler)
+	mux.POST("/txpool/broadcast", srv.txpoolBroadcastHandler)
 
-	mux.GET("/api/syncer/peers", srv.syncerPeersHandler)
-	mux.POST("/api/syncer/connect", srv.syncerConnectHandler)
+	mux.GET("/syncer/peers", srv.syncerPeersHandler)
+	mux.POST("/syncer/connect", srv.syncerConnectHandler)
 
 	return mux
 }

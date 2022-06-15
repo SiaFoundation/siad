@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"go.sia.tech/core/consensus"
@@ -85,7 +86,14 @@ func main() {
 	log.Println("api: Listening on", l.Addr())
 	go func() {
 		api := explored.NewServer(n.c, n.s, n.tp)
-		if err := http.Serve(l, api); err != nil {
+		if err := http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api") {
+				r.URL.Path = strings.TrimPrefix(r.URL.Path, "/api")
+				api.ServeHTTP(w, r)
+				return
+			}
+			http.NotFound(w, r)
+		})); err != nil {
 			log.Println(err)
 		}
 	}()
