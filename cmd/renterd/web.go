@@ -36,7 +36,7 @@ func createUIHandler() http.Handler {
 }
 
 func startWeb(l net.Listener, node *node, password string) error {
-	renter := renterd.NewServer(node.c, node.s, node.w, node.tp)
+	renter := renterd.NewServer(node.c, node.s, node.w, node.tp, node.hdb)
 	api := api.AuthMiddleware(renter, password)
 	web := createUIHandler()
 	return http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

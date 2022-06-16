@@ -14,6 +14,7 @@ import (
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
+	"go.sia.tech/siad/v2/hostdb"
 	"go.sia.tech/siad/v2/wallet"
 )
 
@@ -119,6 +120,30 @@ func (c *Client) RHPAppend(rar RHPAppendRequest, sector *[rhp.SectorSize]byte) (
 		return RHPAppendResponse{}, errors.New(string(err))
 	}
 	err = json.NewDecoder(r.Body).Decode(&resp)
+	return
+}
+
+// HostDBHosts gets a list of hosts in the host DB.
+func (c *Client) HostDBHosts() (resp []hostdb.Host, err error) {
+	err = c.c.Get("/api/hostdb", &resp)
+	return
+}
+
+// HostDBHost gets information about a given host.
+func (c *Client) HostDBHost(hostKey types.PublicKey) (resp []hostdb.Host, err error) {
+	err = c.c.Get(fmt.Sprintf("/api/hostdb/%s", hostKey), &resp)
+	return
+}
+
+// HostDBScore assigns a score to a given host.
+func (c *Client) HostDBScore(hostKey types.PublicKey, score float64) (err error) {
+	err = c.c.Put(fmt.Sprintf("/api/hostdb/%s/score", hostKey), HostDBScoreRequest{score})
+	return
+}
+
+// HostDBInteraction records an interaction with a given host.
+func (c *Client) HostDBInteraction(hostKey types.PublicKey, interaction hostdb.Interaction) (err error) {
+	err = c.c.Put(fmt.Sprintf("/api/hostdb/%s/interaction", hostKey), HostDBInteractionRequest{interaction})
 	return
 }
 

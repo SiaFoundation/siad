@@ -3,6 +3,7 @@ package renterd
 import (
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/types"
+	"go.sia.tech/siad/v2/hostdb"
 )
 
 // WalletBalanceResponse is the response to /wallet/balance.
@@ -89,4 +90,14 @@ type RHPAppendRequest struct {
 // root of the appended sector.
 type RHPAppendResponse struct {
 	SectorRoot types.Hash256 `json:"sectorRoot"`
+}
+
+// A HostDBScoreRequest sets the score of a host.
+type HostDBScoreRequest struct {
+	Score float64 `json:"score"`
+}
+
+// A HostDBInteractionRequest records an interaction with a host.
+type HostDBInteractionRequest struct {
+	Interaction hostdb.Interaction `json:"interaction"`
 }

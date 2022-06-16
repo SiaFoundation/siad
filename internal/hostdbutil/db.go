@@ -65,6 +65,13 @@ func (db *EphemeralDB) ProcessChainRevertUpdate(cru *chain.RevertUpdate) error {
 	return nil
 }
 
+// Host returns information about a host.
+func (db *EphemeralDB) Host(hostKey types.PublicKey) hostdb.Host {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.hosts[hostKey]
+}
+
 // RecordInteraction records an interaction with a host. If the host is not in
 // the store, a new entry is created for it.
 func (db *EphemeralDB) RecordInteraction(hostKey types.PublicKey, hi hostdb.Interaction) error {
