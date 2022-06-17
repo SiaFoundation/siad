@@ -332,13 +332,13 @@ func (s *server) hostdbHostInteractionsHandler(w http.ResponseWriter, req *http.
 		return
 	}
 
-	var hsr HostDBInteractionRequest
-	if err := json.NewDecoder(req.Body).Decode(&hsr); err != nil {
+	var interactions []hostdb.Interaction
+	if err := json.NewDecoder(req.Body).Decode(&interactions); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	for _, interaction := range hsr.Interactions {
+	for _, interaction := range interactions {
 		if err := s.hdb.RecordInteraction(pk, interaction); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
