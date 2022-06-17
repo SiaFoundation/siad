@@ -141,9 +141,9 @@ func (c *Client) HostDBScore(hostKey types.PublicKey, score float64) (err error)
 	return
 }
 
-// HostDBInteraction records an interaction with a given host.
-func (c *Client) HostDBInteraction(hostKey types.PublicKey, interaction hostdb.Interaction) (err error) {
-	err = c.c.Put(fmt.Sprintf("/api/hostdb/%s/interaction", hostKey), HostDBInteractionRequest{interaction})
+// HostDBInteractions records interactions with a given host.
+func (c *Client) HostDBInteractions(hostKey types.PublicKey, interactions []hostdb.Interaction) (err error) {
+	err = c.c.Put(fmt.Sprintf("/api/hostdb/%s/interactions", hostKey), HostDBInteractionRequest{interactions})
 	return
 }
 

@@ -325,7 +325,7 @@ func (s *server) hostdbHostScoreHandler(w http.ResponseWriter, req *http.Request
 	}
 }
 
-func (s *server) hostdbHostInteractionHandler(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+func (s *server) hostdbHostInteractionsHandler(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
 	var pk types.PublicKey
 	if err := pk.UnmarshalText([]byte(p.ByName("pk"))); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -338,9 +338,11 @@ func (s *server) hostdbHostInteractionHandler(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if err := s.hdb.RecordInteraction(pk, hsr.Interaction); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	for _, interaction := range hsr.Interactions {
+		if err := s.hdb.RecordInteraction(pk, interaction); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -371,7 +373,7 @@ func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp Transa
 	mux.GET("/hostdb", srv.hostdbHandler)
 	mux.GET("/hostdb/:pk", srv.hostdbHostHandler)
 	mux.PUT("/hostdb/:pk/score", srv.hostdbHostScoreHandler)
-	mux.POST("/hostdb/:pk/interaction", srv.hostdbHostInteractionHandler)
+	mux.POST("/hostdb/:pk/interactions", srv.hostdbHostInteractionsHandler)
 
 	return mux
 }

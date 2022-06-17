@@ -97,7 +97,7 @@ type HostDBScoreRequest struct {
 	Score float64 `json:"score"`
 }
 
-// A HostDBInteractionRequest records an interaction with a host.
+// A HostDBInteractionRequest records interactions with a host.
 type HostDBInteractionRequest struct {
-	Interaction hostdb.Interaction `json:"interaction"`
+	Interactions []hostdb.Interaction `json:"interaction"`
 }
