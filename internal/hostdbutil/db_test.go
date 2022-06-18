@@ -20,7 +20,7 @@ type hostDB interface {
 	RecordInteraction(hostKey types.PublicKey, hi hostdb.Interaction) error
 	SetScore(hostKey types.PublicKey, score float64) error
 	SelectHosts(n int, filter func(hostdb.Host) bool) []hostdb.Host
-	Host(hostKey types.PublicKey) hostdb.Host
+	Host(hostKey types.PublicKey) (hostdb.Host, error)
 }
 
 func TestDBs(t *testing.T) {
@@ -72,16 +72,25 @@ func TestDBs(t *testing.T) {
 			}},
 			Interactions: nil,
 		}
-		if !reflect.DeepEqual(expected, db.Host(pk)) {
-			t.Fatalf("expected host %+v, got %+v", expected, db.Host(pk))
+		got, err := db.Host(pk)
+		if err != nil {
+			panic(err)
+		}
+		if !reflect.DeepEqual(expected, got) {
+			t.Fatalf("expected host %+v, got %+v", expected, got)
 		}
 
 		if err := db.SetScore(pk, 100); err != nil {
 			t.Fatal(err)
 		}
 		expected.Score = 100
-		if !reflect.DeepEqual(expected, db.Host(pk)) {
-			t.Fatalf("expected host %+v, got %+v", expected, db.Host(pk))
+
+		got, err = db.Host(pk)
+		if err != nil {
+			panic(err)
+		}
+		if !reflect.DeepEqual(expected, got) {
+			t.Fatalf("expected host %+v, got %+v", expected, got)
 		}
 
 		settings := rhp.HostSettings{AcceptingContracts: true}
@@ -100,16 +109,19 @@ func TestDBs(t *testing.T) {
 		}
 		expected.Interactions = append(expected.Interactions, interaction)
 
-		if !reflect.DeepEqual(expected, db.Host(pk)) {
-			t.Fatalf("expected host %+v, got %+v", expected, db.Host(pk))
+		got, err = db.Host(pk)
+		if err != nil {
+			panic(err)
+		}
+		if !reflect.DeepEqual(expected, got) {
+			t.Fatalf("expected host %+v, got %+v", expected, got)
 		}
 
-		host := db.Host(pk)
-		if host.NetAddress() != netAddress {
-			t.Fatalf("expected net address %s, got %s", netAddress, host.NetAddress())
+		if got.NetAddress() != netAddress {
+			t.Fatalf("expected net address %s, got %s", netAddress, got.NetAddress())
 		}
 
-		hostSettings, ok := host.LastKnownSettings()
+		hostSettings, ok := got.LastKnownSettings()
 		if !ok {
 			t.Fatal("host has no settings")
 		}

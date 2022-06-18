@@ -58,7 +58,7 @@ type (
 		RecordInteraction(hostKey types.PublicKey, hi hostdb.Interaction) error
 		SetScore(hostKey types.PublicKey, score float64) error
 		SelectHosts(n int, filter func(hostdb.Host) bool) []hostdb.Host
-		Host(hostKey types.PublicKey) hostdb.Host
+		Host(hostKey types.PublicKey) (hostdb.Host, error)
 	}
 )
 
@@ -303,7 +303,12 @@ func (s *server) hostdbHostHandler(w http.ResponseWriter, req *http.Request, p h
 		return
 	}
 
-	api.WriteJSON(w, s.hdb.Host(pk))
+	host, err := s.hdb.Host(pk)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	api.WriteJSON(w, host)
 }
 
 func (s *server) hostdbHostScoreHandler(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
