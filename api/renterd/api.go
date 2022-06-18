@@ -90,3 +90,8 @@ type RHPAppendRequest struct {
 type RHPAppendResponse struct {
 	SectorRoot types.Hash256 `json:"sectorRoot"`
 }
+
+// A HostDBScoreRequest sets the score of a host.
+type HostDBScoreRequest struct {
+	Score float64 `json:"score"`
+}

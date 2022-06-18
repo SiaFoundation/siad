@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"go.sia.tech/core/net/rhp"
 	"go.sia.tech/core/types"
 	"go.sia.tech/siad/v2/api"
+	"go.sia.tech/siad/v2/hostdb"
 	"go.sia.tech/siad/v2/internal/walletutil"
 	"go.sia.tech/siad/v2/renter"
 	"go.sia.tech/siad/v2/wallet"
@@ -50,13 +52,22 @@ type (
 	ChainManager interface {
 		TipState() consensus.State
 	}
+
+	// A HostDB stores host information.
+	HostDB interface {
+		RecordInteraction(hostKey types.PublicKey, hi hostdb.Interaction) error
+		SetScore(hostKey types.PublicKey, score float64) error
+		SelectHosts(n int, filter func(hostdb.Host) bool) []hostdb.Host
+		Host(hostKey types.PublicKey) (hostdb.Host, error)
+	}
 )
 
 type server struct {
-	w  Wallet
-	s  Syncer
-	cm ChainManager
-	tp TransactionPool
+	w   Wallet
+	s   Syncer
+	cm  ChainManager
+	tp  TransactionPool
+	hdb HostDB
 }
 
 func (s *server) walletBalanceHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -279,13 +290,75 @@ func (s *server) rhpAppendHandler(w http.ResponseWriter, req *http.Request, _ ht
 	api.WriteJSON(w, RHPAppendResponse{root})
 }
 
+func (s *server) hostdbHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	api.WriteJSON(w, s.hdb.SelectHosts(math.MaxInt64, func(hostdb.Host) bool {
+		return true
+	}))
+}
+
+func (s *server) hostdbHostHandler(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+	var pk types.PublicKey
+	if err := pk.UnmarshalText([]byte(p.ByName("pk"))); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	host, err := s.hdb.Host(pk)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	api.WriteJSON(w, host)
+}
+
+func (s *server) hostdbHostScoreHandler(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+	var pk types.PublicKey
+	if err := pk.UnmarshalText([]byte(p.ByName("pk"))); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var hsr HostDBScoreRequest
+	if err := json.NewDecoder(req.Body).Decode(&hsr); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.hdb.SetScore(pk, hsr.Score); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *server) hostdbHostInteractionsHandler(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+	var pk types.PublicKey
+	if err := pk.UnmarshalText([]byte(p.ByName("pk"))); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var interactions []hostdb.Interaction
+	if err := json.NewDecoder(req.Body).Decode(&interactions); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for _, interaction := range interactions {
+		if err := s.hdb.RecordInteraction(pk, interaction); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
 // NewServer returns an HTTP handler that serves the renterd API.
-func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp TransactionPool) http.Handler {
+func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp TransactionPool, hdb HostDB) http.Handler {
 	srv := server{
-		cm: cm,
-		s:  s,
-		w:  w,
-		tp: tp,
+		cm:  cm,
+		s:   s,
+		w:   w,
+		tp:  tp,
+		hdb: hdb,
 	}
 	mux := httprouter.New()
 
@@ -301,6 +374,11 @@ func NewServer(cm ChainManager, s Syncer, w *walletutil.TestingWallet, tp Transa
 	mux.POST("/rhp/renew", srv.rhpRenewHandler)
 	mux.POST("/rhp/read", srv.rhpReadHandler)
 	mux.POST("/rhp/append", srv.rhpAppendHandler)
+
+	mux.GET("/hostdb", srv.hostdbHandler)
+	mux.GET("/hostdb/:pk", srv.hostdbHostHandler)
+	mux.PUT("/hostdb/:pk/score", srv.hostdbHostScoreHandler)
+	mux.POST("/hostdb/:pk/interactions", srv.hostdbHostInteractionsHandler)
 
 	return mux
 }
