@@ -276,7 +276,7 @@ func updateToRelease(version string) (err error) {
 
 		// Check that the checksums match.
 		binChecksum := fmt.Sprintf("%x", sha256.Sum256(binaryBytes))
-		expectedChecksum, ok := checksums[releaseFilePrefix + "/" + binaryName]
+		expectedChecksum, ok := checksums[releaseFilePrefix+"/"+binaryName]
 		if !ok {
 			return errors.New("No checksum found for binary")
 		}
