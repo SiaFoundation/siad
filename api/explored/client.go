@@ -12,31 +12,31 @@ type Client struct {
 
 // TxpoolBroadcast broadcasts a transaction to the network.
 func (c *Client) TxpoolBroadcast(txn types.Transaction, dependsOn []types.Transaction) (err error) {
-	err = c.c.Post("/api/txpool/broadcast", TxpoolBroadcastRequest{dependsOn, txn}, nil)
+	err = c.c.Post("/txpool/broadcast", TxpoolBroadcastRequest{dependsOn, txn}, nil)
 	return
 }
 
 // TxpoolTransactions returns all transactions in the transaction pool.
 func (c *Client) TxpoolTransactions() (resp []types.Transaction, err error) {
-	err = c.c.Get("/api/txpool/transactions", &resp)
+	err = c.c.Get("/txpool/transactions", &resp)
 	return
 }
 
 // SyncerPeers returns the current peers of the syncer.
 func (c *Client) SyncerPeers() (resp []SyncerPeerResponse, err error) {
-	err = c.c.Get("/api/syncer/peers", &resp)
+	err = c.c.Get("/syncer/peers", &resp)
 	return
 }
 
 // SyncerConnect adds the address as a peer of the syncer.
 func (c *Client) SyncerConnect(addr string) (err error) {
-	err = c.c.Post("/api/syncer/connect", addr, nil)
+	err = c.c.Post("/syncer/connect", addr, nil)
 	return
 }
 
 // ConsensusTip reports information about the current consensus state.
 func (c *Client) ConsensusTip() (resp ConsensusTipResponse, err error) {
-	err = c.c.Get("/api/consensus/tip", &resp)
+	err = c.c.Get("/consensus/tip", &resp)
 	return
 }
 

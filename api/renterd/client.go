@@ -25,56 +25,56 @@ type Client struct {
 
 // WalletBalance returns the current wallet balance.
 func (c *Client) WalletBalance() (resp WalletBalanceResponse, err error) {
-	err = c.c.Get("/api/wallet/balance", &resp)
+	err = c.c.Get("/wallet/balance", &resp)
 	return
 }
 
 // WalletAddress returns an address controlled by the wallet.
 func (c *Client) WalletAddress() (resp types.Address, err error) {
-	err = c.c.Get("/api/wallet/address", &resp)
+	err = c.c.Get("/wallet/address", &resp)
 	return
 }
 
 // WalletTransactions returns all transactions relevant to the wallet.
 func (c *Client) WalletTransactions(since time.Time, max int) (resp []wallet.Transaction, err error) {
-	err = c.c.Get(fmt.Sprintf("/api/wallet/transactions?since=%s&max=%d", since.Format(time.RFC3339), max), &resp)
+	err = c.c.Get(fmt.Sprintf("/wallet/transactions?since=%s&max=%d", since.Format(time.RFC3339), max), &resp)
 	return
 }
 
 // SyncerPeers returns the current peers of the syncer.
 func (c *Client) SyncerPeers() (resp []SyncerPeerResponse, err error) {
-	err = c.c.Get("/api/syncer/peers", &resp)
+	err = c.c.Get("/syncer/peers", &resp)
 	return
 }
 
 // SyncerConnect adds the address as a peer of the syncer.
 func (c *Client) SyncerConnect(addr string) (err error) {
-	err = c.c.Post("/api/syncer/connect", addr, nil)
+	err = c.c.Post("/syncer/connect", addr, nil)
 	return
 }
 
 // RHPScan scans a host, returning its current settings.
 func (c *Client) RHPScan(netAddress string, hostKey types.PublicKey) (resp rhp.HostSettings, err error) {
-	err = c.c.Post("/api/rhp/scan", RHPScanRequest{netAddress, hostKey}, &resp)
+	err = c.c.Post("/rhp/scan", RHPScanRequest{netAddress, hostKey}, &resp)
 	return
 }
 
 // RHPForm forms a contract with a host.
 func (c *Client) RHPForm(req RHPFormRequest) (resp RHPFormResponse, err error) {
-	err = c.c.Post("/api/rhp/form", req, &resp)
+	err = c.c.Post("/rhp/form", req, &resp)
 	return
 }
 
 // RHPRenew renews an existing contract with a host.
 func (c *Client) RHPRenew(req RHPRenewRequest) (resp RHPRenewResponse, err error) {
-	err = c.c.Post("/api/rhp/renew", req, &resp)
+	err = c.c.Post("/rhp/renew", req, &resp)
 	return
 }
 
 // RHPRead invokes the Read RPC on a host, writing the response to w.
 func (c *Client) RHPRead(w io.Writer, rrr RHPReadRequest) (err error) {
 	js, _ := json.Marshal(rrr)
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%v%v", c.c.BaseURL, "/api/rhp/read"), bytes.NewReader(js))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%v%v", c.c.BaseURL, "/rhp/read"), bytes.NewReader(js))
 	if err != nil {
 		panic(err)
 	}
@@ -104,7 +104,7 @@ func (c *Client) RHPAppend(rar RHPAppendRequest, sector *[rhp.SectorSize]byte) (
 	f.Write(sector[:])
 	w.Close()
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%v%v", c.c.BaseURL, "/api/rhp/append"), &buf)
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%v%v", c.c.BaseURL, "/rhp/append"), &buf)
 	if err != nil {
 		panic(err)
 	}
@@ -125,25 +125,25 @@ func (c *Client) RHPAppend(rar RHPAppendRequest, sector *[rhp.SectorSize]byte) (
 
 // HostDBHosts gets a list of hosts in the host DB.
 func (c *Client) HostDBHosts() (resp []hostdb.Host, err error) {
-	err = c.c.Get("/api/hostdb", &resp)
+	err = c.c.Get("/hostdb", &resp)
 	return
 }
 
 // HostDBHost gets information about a given host.
 func (c *Client) HostDBHost(hostKey types.PublicKey) (resp []hostdb.Host, err error) {
-	err = c.c.Get(fmt.Sprintf("/api/hostdb/%s", hostKey), &resp)
+	err = c.c.Get(fmt.Sprintf("/hostdb/%s", hostKey), &resp)
 	return
 }
 
 // HostDBScore assigns a score to a given host.
 func (c *Client) HostDBScore(hostKey types.PublicKey, score float64) (err error) {
-	err = c.c.Put(fmt.Sprintf("/api/hostdb/%s/score", hostKey), HostDBScoreRequest{score})
+	err = c.c.Put(fmt.Sprintf("/hostdb/%s/score", hostKey), HostDBScoreRequest{score})
 	return
 }
 
 // HostDBInteractions records interactions with a given host.
 func (c *Client) HostDBInteractions(hostKey types.PublicKey, interactions []hostdb.Interaction) (err error) {
-	err = c.c.Put(fmt.Sprintf("/api/hostdb/%s/interactions", hostKey), interactions)
+	err = c.c.Put(fmt.Sprintf("/hostdb/%s/interactions", hostKey), interactions)
 	return
 }
 

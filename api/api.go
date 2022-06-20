@@ -22,7 +22,7 @@ func (c *Client) req(method string, route string, data, resp interface{}) error 
 		js, _ := json.Marshal(data)
 		body = bytes.NewReader(js)
 	}
-	req, err := http.NewRequest(method, fmt.Sprintf("%v%v", c.BaseURL, route), body)
+	req, err := http.NewRequest(method, fmt.Sprintf("%v/api%v", c.BaseURL, route), body)
 	if err != nil {
 		panic(err)
 	}
