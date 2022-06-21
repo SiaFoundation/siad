@@ -17,14 +17,14 @@ type Client struct {
 
 // ConsensusTip returns the current tip index.
 func (c *Client) ConsensusTip() (resp types.ChainIndex, err error) {
-	err = c.c.Get("/api/consensus/tip", &resp)
+	err = c.c.Get("/consensus/tip", &resp)
 	return
 }
 
 // ConsensusState returns the consensus state at the provided index.
 func (c *Client) ConsensusState(index types.ChainIndex) (resp consensus.State, err error) {
 	i, _ := index.MarshalText() // index.String is lossy
-	err = c.c.Get("/api/consensus/state/"+string(i), &resp)
+	err = c.c.Get("/consensus/state/"+string(i), &resp)
 	return
 }
 
@@ -39,72 +39,72 @@ func (c *Client) ConsensusTipState() (resp consensus.State, err error) {
 
 // ConsensusBroadcast broadcasts the provided block, which must attach to the current tip.
 func (c *Client) ConsensusBroadcast(b types.Block) error {
-	return c.c.Post("/api/consensus/broadcast", b, nil)
+	return c.c.Post("/consensus/broadcast", b, nil)
 }
 
 // WalletBalance returns the current wallet balance.
 func (c *Client) WalletBalance() (resp WalletBalanceResponse, err error) {
-	err = c.c.Get("/api/wallet/balance", &resp)
+	err = c.c.Get("/wallet/balance", &resp)
 	return
 }
 
 // WalletSeedIndex returns the current wallet seed index.
 func (c *Client) WalletSeedIndex() (index uint64, err error) {
-	err = c.c.Get("/api/wallet/seedindex", &index)
+	err = c.c.Get("/wallet/seedindex", &index)
 	return
 }
 
 // WalletAddAddress adds an address to the wallet.
 func (c *Client) WalletAddAddress(addr types.Address, info wallet.AddressInfo) (err error) {
-	err = c.c.Post("/api/wallet/address/"+addr.String(), info, nil)
+	err = c.c.Post("/wallet/address/"+addr.String(), info, nil)
 	return
 }
 
 // WalletAddressInfo returns information about an address controlled by the wallet.
 func (c *Client) WalletAddressInfo(addr types.Address) (resp wallet.AddressInfo, err error) {
-	err = c.c.Get("/api/wallet/address/"+addr.String(), &resp)
+	err = c.c.Get("/wallet/address/"+addr.String(), &resp)
 	return
 }
 
 // WalletAddresses returns all addresses controlled by the wallet.
 func (c *Client) WalletAddresses(start, end int) (resp WalletAddressesResponse, err error) {
-	err = c.c.Get(fmt.Sprintf("/api/wallet/addresses?start=%d&end=%d", start, end), &resp)
+	err = c.c.Get(fmt.Sprintf("/wallet/addresses?start=%d&end=%d", start, end), &resp)
 	return
 }
 
 // WalletTransactions returns all transactions relevant to the wallet.
 func (c *Client) WalletTransactions(since time.Time, max int) (resp []wallet.Transaction, err error) {
-	err = c.c.Get(fmt.Sprintf("/api/wallet/transactions?since=%s&max=%d", since.Format(time.RFC3339), max), &resp)
+	err = c.c.Get(fmt.Sprintf("/wallet/transactions?since=%s&max=%d", since.Format(time.RFC3339), max), &resp)
 	return
 }
 
 // WalletUTXOs returns all unspent outputs controlled by the wallet.
 func (c *Client) WalletUTXOs() (resp WalletUTXOsResponse, err error) {
-	err = c.c.Get("/api/wallet/utxos", &resp)
+	err = c.c.Get("/wallet/utxos", &resp)
 	return
 }
 
 // TxpoolBroadcast broadcasts a transaction to the network.
 func (c *Client) TxpoolBroadcast(txn types.Transaction, dependsOn []types.Transaction) (err error) {
-	err = c.c.Post("/api/txpool/broadcast", TxpoolBroadcastRequest{dependsOn, txn}, nil)
+	err = c.c.Post("/txpool/broadcast", TxpoolBroadcastRequest{dependsOn, txn}, nil)
 	return
 }
 
 // TxpoolTransactions returns all transactions in the transaction pool.
 func (c *Client) TxpoolTransactions() (resp []types.Transaction, err error) {
-	err = c.c.Get("/api/txpool/transactions", &resp)
+	err = c.c.Get("/txpool/transactions", &resp)
 	return
 }
 
 // SyncerPeers returns the current peers of the syncer.
 func (c *Client) SyncerPeers() (resp []SyncerPeerResponse, err error) {
-	err = c.c.Get("/api/syncer/peers", &resp)
+	err = c.c.Get("/syncer/peers", &resp)
 	return
 }
 
 // SyncerConnect adds the address as a peer of the syncer.
 func (c *Client) SyncerConnect(addr string) (err error) {
-	err = c.c.Post("/api/syncer/connect", addr, nil)
+	err = c.c.Post("/syncer/connect", addr, nil)
 	return
 }
 

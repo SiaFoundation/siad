@@ -169,7 +169,7 @@ func getClient() *siad.Client {
 	if !strings.HasPrefix(siadAddr, "https://") && !strings.HasPrefix(siadAddr, "http://") {
 		siadAddr = "http://" + siadAddr
 	}
-	c := siad.NewClient(siadAddr, password)
+	c := siad.NewClient(siadAddr+"/api", password)
 	_, err := c.ConsensusTip()
 	check("Couldn't connect to siad:", err)
 	siadClient = c
