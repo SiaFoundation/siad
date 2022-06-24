@@ -4,8 +4,7 @@ import (
 	"net"
 	"time"
 
-	"gitlab.com/NebulousLabs/monitor"
-
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/modules"
 )

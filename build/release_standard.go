@@ -1,3 +1,4 @@
+//go:build !testing && !dev
 // +build !testing,!dev
 
 package build

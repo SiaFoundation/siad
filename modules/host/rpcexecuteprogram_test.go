@@ -984,7 +984,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	// create the 'Append' program.
 	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt, duration)
-	err = pb.AddAppendInstruction(data, true)
+	err = pb.AddAppendInstruction(data, true, duration)
 	if err != nil {
 		t.Fatal(err)
 	}

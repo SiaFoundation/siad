@@ -1,15 +1,11 @@
 package contractmanager
 
 import (
-	"encoding/hex"
-	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -20,8 +16,8 @@ import (
 // the usage info if the sector does not exist. The update is idempotent.
 func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 	wal.cm.sectorMu.Lock()
+	defer wal.cm.sectorMu.Unlock()
 	sf, exists := wal.cm.storageFolders[su.Folder]
-	wal.cm.sectorMu.Unlock()
 	if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
 		wal.cm.log.Printf("ERROR: unable to locate storage folder for a committed sector update.")
 		return
@@ -69,11 +65,13 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 
 			// Grab a vacant storage folder.
 			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
 			var sf *storageFolder
 			sf, storageFolderIndex = vacancyStorageFolder(storageFolders)
 			if sf == nil {
 				// None of the storage folders have enough room to house the
 				// sector.
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
@@ -92,6 +90,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 			// Set the usage, but mark it as uncommitted.
 			sf.setUsage(sectorIndex)
 			sf.availableSectors[id] = sectorIndex
+			wal.cm.sectorMu.Unlock()
 			wal.mu.Unlock()
 
 			// NOTE: The usage has been set, in the event of failure the usage
@@ -103,8 +102,10 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 				wal.cm.log.Printf("ERROR: Unable to write sector for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
 				wal.mu.Lock()
+				wal.cm.sectorMu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errDiskTrouble
 			}
@@ -122,8 +123,10 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 				wal.cm.log.Printf("ERROR: Unable to write sector metadata for folder %v: %v\n", sf.path, err)
 				atomic.AddUint64(&sf.atomicFailedWrites, 1)
 				wal.mu.Lock()
+				wal.cm.sectorMu.Lock()
 				sf.clearUsage(sectorIndex)
 				delete(sf.availableSectors, id)
+				wal.cm.sectorMu.Unlock()
 				wal.mu.Unlock()
 				return errDiskTrouble
 			}
@@ -279,8 +282,10 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 	// Only update the usage after the sector delete has been committed to disk
 	// fully.
 	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
 	delete(sf.availableSectors, id)
 	sf.clearUsage(location.index)
+	wal.cm.sectorMu.Unlock()
 	wal.mu.Unlock()
 	return nil
 }
@@ -368,9 +373,120 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	// the event of unclean shutdown.
 	if location.count == 0 {
 		wal.mu.Lock()
+		wal.cm.sectorMu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
+		wal.cm.sectorMu.Unlock()
 		wal.mu.Unlock()
+	}
+	return nil
+}
+
+// managedRemoveSectors appends changes to the WAL to remove multiple sectors.
+// Individual sector and storage folder errors are ignored.
+func (wal *writeAheadLog) managedRemoveSectors(sectors map[sectorID]uint64) error {
+	wal.mu.Lock()
+	wal.cm.sectorMu.Lock()
+
+	changes := make([]sectorUpdate, 0, len(sectors))
+	for id, count := range sectors {
+		var exists bool
+		location, exists := wal.cm.sectorLocations[id]
+		if !exists {
+			wal.cm.log.Printf("cannot find location for sector %v", id)
+			continue
+		}
+
+		sf, exists := wal.cm.storageFolders[location.storageFolder]
+		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
+			wal.cm.log.Printf("storage folder index %v for sector %v not found", location.storageFolder, id)
+			continue
+		}
+
+		removed := count
+		if location.count < removed {
+			removed = location.count
+		}
+
+		// Inform the WAL of the sector update.
+		location.count -= removed
+		su := sectorUpdate{
+			ID:     id,
+			Count:  location.count,
+			Folder: location.storageFolder,
+			Index:  location.index,
+		}
+		changes = append(changes, su)
+
+		// Update the in-memory representation of the sector.
+		if location.count == 0 {
+			// Delete the sector and mark it as available.
+			delete(wal.cm.sectorLocations, id)
+			sf.availableSectors[id] = location.index
+		} else {
+			// Reduce the sector usage.
+			wal.cm.sectorLocations[id] = location
+		}
+	}
+
+	if len(changes) == 0 {
+		wal.cm.sectorMu.Unlock()
+		wal.mu.Unlock()
+		return nil
+	}
+
+	wal.appendChange(stateChange{
+		SectorUpdates: changes,
+	})
+
+	ch := wal.syncChan
+	wal.cm.sectorMu.Unlock()
+	wal.mu.Unlock()
+
+	// synchronize before updating the metadata or clearing the usage.
+	<-ch
+
+	for _, su := range changes {
+		sf, exists := wal.cm.storageFolders[su.Folder]
+		if !exists || atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
+			wal.cm.log.Printf("commit fail: storage folder index %v for sector %v not found", su.Folder, su.ID)
+			continue
+		}
+
+		// Update the metadata, and the usage.
+		if su.Count != 0 {
+			err := wal.writeSectorMetadata(sf, su)
+			if err != nil {
+				// Revert the previous change.
+				wal.mu.Lock()
+				wal.cm.sectorMu.Lock()
+				su.Count += sectors[su.ID]
+				wal.appendChange(stateChange{
+					SectorUpdates: []sectorUpdate{su},
+				})
+				wal.cm.sectorLocations[su.ID] = sectorLocation{
+					storageFolder: su.Folder,
+					index:         su.Index,
+					count:         su.Count,
+				}
+				wal.cm.sectorMu.Unlock()
+				wal.mu.Unlock()
+				return build.ExtendErr("failed to write sector metadata", err)
+			}
+		}
+
+		// Only update the usage after the sector removal has been committed to
+		// disk entirely. The usage is not updated until after the commit has
+		// completed to prevent the actual sector data from being overwritten in
+		// the event of unclean shutdown.
+		if su.Count == 0 {
+			wal.mu.Lock()
+			wal.cm.sectorMu.Lock()
+			sf.clearUsage(su.Index)
+			delete(sf.availableSectors, su.ID)
+			wal.cm.sectorMu.Unlock()
+			wal.mu.Unlock()
+		}
 	}
 	return nil
 }
@@ -553,43 +669,4 @@ func (cm *ContractManager) RemoveSector(root crypto.Hash) error {
 	defer cm.wal.managedUnlockSector(id)
 
 	return cm.wal.managedRemoveSector(id)
-}
-
-// RemoveSectorBatch is a non-ACID call to remove a bunch of sectors at once.
-// Necessary for compatibility with old renters.
-//
-// TODO: Make ACID, and definitely improve the performance as well.
-func (cm *ContractManager) RemoveSectorBatch(sectorRoots []crypto.Hash) error {
-	// Prevent shutdown until this function completes.
-	err := cm.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer cm.tg.Done()
-
-	// unique alert id for each call
-	alertID := modules.AlertID("cm-removing-sectors-" + hex.EncodeToString(fastrand.Bytes(12)))
-	start := time.Now()
-	// unregister the alert.
-	defer cm.staticAlerter.UnregisterAlert(alertID)
-
-	// Add each sector in a separate goroutine.
-	var wg sync.WaitGroup
-	// Ensure only 'maxSectorBatchThreads' goroutines are running at a time.
-	semaphore := make(chan struct{}, maxSectorBatchThreads)
-	for i := range sectorRoots {
-		wg.Add(1)
-		semaphore <- struct{}{}
-		go func(i int) {
-			id := cm.managedSectorID(sectorRoots[i])
-			cm.wal.managedLockSector(id)
-			_ = cm.wal.managedRemoveSector(id)
-			cm.wal.managedUnlockSector(id)
-			cm.staticAlerter.RegisterAlert(alertID, fmt.Sprintf("Removed %v/%v sectors in %v", i, len(sectorRoots), time.Since(start)), "", modules.SeverityInfo)
-			<-semaphore
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
-	return nil
 }

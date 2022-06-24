@@ -709,17 +709,17 @@ func TestFilterMode(t *testing.T) {
 	}
 	renter := nodes[0]
 
-	if err := testFilterMode(tg, renter, modules.HostDBActivateBlacklist); err != nil {
+	if err := testFilterModePublicKeys(tg, renter, modules.HostDBActivateBlacklist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
-		t.Fatal(err)
+		t.Fatal("pubkey blacklist:", err)
 	}
-	if err := testFilterMode(tg, renter, modules.HostDBActiveWhitelist); err != nil {
+	if err := testFilterModePublicKeys(tg, renter, modules.HostDBActiveWhitelist); err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
-		t.Fatal(err)
+		t.Fatal("pubkey whitelist:", err)
 	}
 }
 
-func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
+func testFilterModePublicKeys(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.FilterMode) error {
 	// Grab all host pks
 	var hosts []types.SiaPublicKey
 	for _, h := range tg.Hosts() {
@@ -761,6 +761,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		if err != nil {
 			return err
 		}
+
 		if len(hdbActive.Hosts) != len(tg.Hosts()) {
 			return fmt.Errorf("expected %v active hosts but got %v", len(tg.Hosts()), len(hdbActive.Hosts))
 		}
@@ -806,7 +807,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 
 	// enable list mode
-	if err = renter.HostDbFilterModePost(fm, filteredHosts); err != nil {
+	if err = renter.HostDbFilterModePost(fm, filteredHosts, nil); err != nil {
 		return err
 	}
 
@@ -918,7 +919,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 
 	// Disable FilterMode and confirm all hosts are active again
 	var nullList []types.SiaPublicKey
-	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nullList); err != nil {
+	if err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nullList, nil); err != nil {
 		return err
 	}
 	hdbActive, err = renter.HostDbActiveGet()
@@ -968,4 +969,280 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 
 	return nil
+}
+
+func TestNetAddressFilter(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := t.TempDir()
+	t.Log(testDir)
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// add a renter to the group to use the host db
+	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
+	// no need for contracts or an allowance
+	renterTemplate.SkipSetAllowance = true
+	_, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := tg.Renters()[0]
+
+	// add all hosts to the expected filter
+	filtered := make(map[string]bool)
+	for _, h := range tg.Hosts() {
+		pk, err := h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		filtered[pk.String()] = true
+	}
+
+	// helper to check that hosts in the host db match the expected filter
+	checkFilteredHosts := func() error {
+		hdb, err := renter.HostDbAllGet()
+		if err != nil {
+			return err
+		}
+		for _, h := range hdb.Hosts {
+			if h.Filtered != filtered[h.PublicKeyString] {
+				return fmt.Errorf("host %v has unexpected filter status: got %v expected %v", h.PublicKeyString, h.Filtered, filtered[h.PublicKeyString])
+			}
+		}
+		return nil
+	}
+
+	// filter localhost
+	if err := renter.HostDbFilterModePost(modules.HostDBActivateBlacklist, nil, []string{"localhost"}); err != nil {
+		t.Fatal(err)
+	} else if err := checkFilteredHosts(); err != nil {
+		t.Fatal(err)
+	}
+
+	// add a new host to the group
+	hostTemplate := node.Host(filepath.Join(testDir, "host"))
+	newNodes, err := tg.AddNodes(hostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newHost := newNodes[0]
+	pk, err := newHost.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("added new host", pk)
+
+	// the new host should be filtered
+	filtered[pk.String()] = true
+	if err := checkFilteredHosts(); err != nil {
+		t.Fatal(err)
+	}
+
+	// clear the filter
+	filtered = make(map[string]bool)
+	if err := renter.HostDbFilterModePost(modules.HostDBDisableFilter, nil, nil); err != nil {
+		t.Fatal(err)
+	} else if err := checkFilteredHosts(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNetAddressFilterContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  6,
+		Miners: 1,
+	}
+	testDir := t.TempDir()
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	m := tg.Miners()[0]
+
+	// get the host's addresses
+	hosts := tg.Hosts()
+	hostAddresses := make([]modules.NetAddress, len(hosts))
+	hostMap := make(map[string]modules.NetAddress)
+	for i := range hosts {
+		hg, err := hosts[i].HostGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		pub, err := hosts[i].HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		hostMap[pub.String()] = hg.ExternalSettings.NetAddress
+		hostAddresses[i] = hg.ExternalSettings.NetAddress
+	}
+
+	if err := m.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// add a renter to the group
+	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
+	renterTemplate.Allowance = siatest.DefaultAllowance
+	renterTemplate.Allowance.Hosts = 3
+
+	// Add Renter.
+	_, err = tg.AddNodes(renterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filtered := make(map[string]bool)
+
+	renter := tg.Renters()[0]
+	// helper to check that the renter's contracts match the expected counts
+	checkContracts := func(active, passive, refreshed, disabled, expired, expiredRefreshed int) error {
+		var tries int
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			tries++
+			if tries%10 == 0 {
+				// mine a block to trigger threadedContractMaintenance
+				err = m.MineBlock()
+				if err != nil {
+					return fmt.Errorf("failed to mine block: %w", err)
+				}
+			}
+			if err := siatest.CheckExpectedNumberOfContracts(renter, active, passive, refreshed, disabled, expired, expiredRefreshed); err != nil {
+				return fmt.Errorf("failed to check expected number of contracts: %w", err)
+			}
+
+			resp, err := renter.RenterContractsGet()
+			if err != nil {
+				return fmt.Errorf("failed to get renter contracts: %w", err)
+			}
+
+			// check that a filtered host does not have an active contract
+			for _, c := range resp.ActiveContracts {
+				if filtered[c.HostPublicKey.String()] {
+					return fmt.Errorf("active contract with filtered host %s", c.HostPublicKey)
+				}
+			}
+
+			// check that a filtered host does not have a passive contract
+			for _, c := range resp.PassiveContracts {
+				if filtered[c.HostPublicKey.String()] {
+					return fmt.Errorf("active contract with filtered host %s", c.HostPublicKey)
+				}
+			}
+
+			// check that an unfiltered host does not have a disabled contract
+			for _, c := range resp.DisabledContracts {
+				if !filtered[c.HostPublicKey.String()] {
+					return fmt.Errorf("disabled contract with unfiltered host %s", c.HostPublicKey)
+				}
+			}
+
+			return nil
+		})
+	}
+
+	if err := checkContracts(3, 0, 0, 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// block one of the host's that we have a contract with
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contract := rc.ActiveContracts[0]
+	hostPub := contract.HostPublicKey.String()
+	hostAddr := string(hostMap[hostPub])
+
+	filtered = map[string]bool{hostPub: true}
+	err = renter.HostDbFilterModePost(modules.HostDBActivateBlacklist, nil, []string{
+		hostAddr,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fm, err := renter.HostDbFilterModeGet()
+	if err != nil {
+		t.Fatal(err)
+	} else if fm.FilterMode != "blacklist" {
+		t.Fatal("expected filter mode to be blacklist")
+	} else if len(fm.Hosts) != 1 { // if the host is filtered by domain, the public key is added to the filter list
+		t.Fatal("expected one host in filter mode")
+	} else if len(fm.NetAddresses) != 1 {
+		t.Fatalf("expected two net addresses in filter mode got %v", len(fm.NetAddresses))
+	} else if fm.NetAddresses[0] != hostAddr {
+		t.Fatal("expected net address match first host")
+	}
+
+	// check that the contract with the blocked host was disabled
+	if err := checkContracts(3, 0, 0, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// block all of the hosts that we have contracts with
+	rc, err = renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filter := make([]string, 0, len(rc.ActiveContracts))
+	filtered = make(map[string]bool)
+	for _, c := range rc.ActiveContracts {
+		hostPub = c.HostPublicKey.String()
+		hostAddr = string(hostMap[hostPub])
+		filter = append(filter, hostAddr)
+		filtered[hostPub] = true
+	}
+
+	// clear the filter
+	filtered = make(map[string]bool)
+	err = renter.HostDbFilterModePost(modules.HostDBActivateBlacklist, nil, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check that the contracts with the blocked hosts were disabled;
+	// the existing disabled contract should have been reenabled.
+	if err := checkContracts(3, 0, 0, 3, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// disable the filter
+	err = renter.HostDbFilterModePost(modules.HostDBDisableFilter, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check that all contracts are reenabled
+	if err := checkContracts(3, 3, 0, 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
 }

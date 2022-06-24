@@ -114,6 +114,10 @@ type ContractManager struct {
 	sectorLocations map[sectorID]sectorLocation
 	storageFolders  map[uint16]*storageFolder
 
+	// sectors are removed from the store in a rate-limited queue to work around
+	// lock contention on extra large contracts.
+	sectorRemoval *sectorRemovalMap
+
 	// Utilities.
 	dependencies  modules.Dependencies
 	staticAlerter *modules.GenericAlerter
@@ -224,8 +228,8 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 		}
 	})
 
-	// The sector location data is loaded last. Any corruption that happened
-	// during unclean shutdown has already been fixed by the WAL.
+	// Load the sector location data; any corruption that happened during
+	// unclean shutdown has already been fixed by the WAL.
 	cm.sectorMu.Lock()
 	for _, sf := range cm.storageFolders {
 		if atomic.LoadUint64(&sf.atomicUnavailable) == 1 {
@@ -249,6 +253,17 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (_
 	// Spin up the thread that continuously looks for missing storage folders
 	// and adds them if they are discovered.
 	go cm.threadedFolderRecheck()
+
+	// the removal map is loaded last so that the WAL and metadata is loaded.
+	cm.sectorRemoval, err = newSectorRemovalMap(filepath.Join(persistDir, sectorRemovalQueueFile), cm)
+	if err != nil {
+		return nil, errors.AddContext(err, "error loading the sector removal queue for the contract manager")
+	}
+
+	// Set up the clean shutdown of the removal queue.
+	cm.tg.AfterStop(func() {
+		err = errors.Compose(cm.sectorRemoval.Close(), err)
+	})
 
 	// Simulate an error to make sure the cleanup code is triggered correctly.
 	if cm.dependencies.Disrupt("erroredStartup") {
