@@ -1,8 +1,7 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -148,15 +147,23 @@ func (api *API) buildHTTPRoutes() {
 	}
 
 	// Apply UserAgent middleware and return the Router
-	timeoutErr := Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}
-	jsonErr, err := json.Marshal(timeoutErr)
-	if err != nil {
-		build.Critical("marshalling error on object that should be safe to marshal:", err)
-	}
 	api.routerMu.Lock()
-	api.router = http.TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout, string(jsonErr))
+	api.router = timeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout)
 	api.routerMu.Unlock()
 	return
+}
+
+// timeoutHandler is a middleware that enforces a specific timeout on the route
+// by closing the context after the httpServerTimeout.
+func timeoutHandler(h http.Handler, timeout time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Create a new context with timeout.
+		ctx, cancel := context.WithTimeout(req.Context(), httpServerTimeout)
+		defer cancel()
+
+		// Add the new context to the request and call the handler.
+		h.ServeHTTP(w, req.WithContext(ctx))
+	})
 }
 
 // RequireUserAgent is middleware that requires all requests to set a
