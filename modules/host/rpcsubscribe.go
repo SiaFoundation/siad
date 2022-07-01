@@ -137,9 +137,53 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 		}
 		rvs = append(rvs, rv)
 	}
+	if err := h.managedHandleFinalizeSubscribeRequest(info, pt, ids, uint64(len(rvs))); err != nil {
+		return err
+	}
 
+	// Write initial values to the stream.
+	return errors.AddContext(modules.RPCWrite(stream, rvs), "failed to write initial values to stream")
+}
+
+// managedHandleSubscribeByRIDRequest handles a new subscription.
+func (h *Host) managedHandleSubscribeByRIDRequest(info *subscriptionInfo, pt *modules.RPCPriceTable) error {
+	stream := info.staticStream
+
+	// Read the requests.
+	var rsrs []modules.RPCRegistrySubscriptionByRIDRequest
+	err := modules.RPCRead(stream, &rsrs)
+	if err != nil {
+		return errors.AddContext(err, "failed to read subscription request")
+	}
+
+	// Send initial values.
+	ids := make([]modules.RegistryEntryID, 0, len(rsrs))
+	rvs := make([]modules.RPCRegistrySubscriptionNotificationEntryUpdate, 0, len(ids))
+	for _, rsr := range rsrs {
+		ids = append(ids, rsr.EntryID)
+		pk, rv, found := h.staticRegistry.Get(rsr.EntryID)
+		if !found {
+			continue
+		}
+		rvs = append(rvs, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+			Entry:  rv,
+			PubKey: pk,
+		})
+	}
+	if err := h.managedHandleFinalizeSubscribeRequest(info, pt, ids, uint64(len(rvs))); err != nil {
+		return err
+	}
+
+	// Write initial values to the stream.
+	return errors.AddContext(modules.RPCWrite(stream, rvs), "failed to write initial values to stream")
+}
+
+// managedHandleFinalizeSubscribeRequest finalizes a SubscribeRequest by
+// computing its cost, withdrawing it from the budget and adding the
+// subscriptions.
+func (h *Host) managedHandleFinalizeSubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable, ids []modules.RegistryEntryID, numResponses uint64) error {
 	// Compute the subscription cost.
-	cost := modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(ids)))
+	cost := modules.MDMSubscribeCost(pt, numResponses, uint64(len(ids)))
 
 	// Withdraw from the budget.
 	if !info.staticBudget.Withdraw(cost) {
@@ -149,11 +193,6 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	// Add the subscriptions.
 	h.staticRegistrySubscriptions.AddSubscriptions(info, ids...)
 
-	// Write initial values to the stream.
-	err = modules.RPCWrite(stream, rvs)
-	if err != nil {
-		return errors.AddContext(err, "failed to write initial values to stream")
-	}
 	return nil
 }
 
@@ -168,7 +207,7 @@ func (h *Host) managedHandleStopSubscription(info *subscriptionInfo) error {
 }
 
 // managedHandleUnsubscribeRequest handles a request to unsubscribe.
-func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable) error {
+func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo) error {
 	stream := info.staticStream
 
 	// Read the requests.
@@ -181,12 +220,37 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 	for _, rsr := range rsrs {
 		ids = append(ids, modules.DeriveRegistryEntryID(rsr.PubKey, rsr.Tweak))
 	}
+	return h.managedHandleFinalizeUnsubscribeRequest(info, ids)
+}
+
+// managedHandleUnsubscribeByRIDRequest handles a request to unsubscribe.
+func (h *Host) managedHandleUnsubscribeByRIDRequest(info *subscriptionInfo) error {
+	stream := info.staticStream
+
+	// Read the requests.
+	var rsrs []modules.RPCRegistrySubscriptionByRIDRequest
+	err := modules.RPCRead(stream, &rsrs)
+	if err != nil {
+		return errors.AddContext(err, "failed to read subscription requests")
+	}
+	ids := make([]modules.RegistryEntryID, 0, len(rsrs))
+	for _, rsr := range rsrs {
+		ids = append(ids, rsr.EntryID)
+	}
+	return h.managedHandleFinalizeUnsubscribeRequest(info, ids)
+}
+
+// managedHandleFinalizeUnsubscribeRequest finalizes unsubscribing from one or
+// more registry entries by removing them from the subscriptions and responding
+// with an 'OK'.
+func (h *Host) managedHandleFinalizeUnsubscribeRequest(info *subscriptionInfo, ids []modules.RegistryEntryID) error {
+	stream := info.staticStream
 
 	// Remove the subscription.
 	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids)
 
 	// Respond with "OK".
-	err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
+	err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
 		Type: modules.SubscriptionResponseUnsubscribeSuccess,
 	})
 	return errors.AddContext(err, "failed to signal successfully unsubscribing from entries")
@@ -431,7 +495,11 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 		case modules.SubscriptionRequestSubscribe:
 			err = h.managedHandleSubscribeRequest(info, pt)
 		case modules.SubscriptionRequestUnsubscribe:
-			err = h.managedHandleUnsubscribeRequest(info, pt)
+			err = h.managedHandleUnsubscribeRequest(info)
+		case modules.SubscriptionRequestSubscribeRID:
+			err = h.managedHandleSubscribeByRIDRequest(info, pt)
+		case modules.SubscriptionRequestUnsubscribeRID:
+			err = h.managedHandleUnsubscribeByRIDRequest(info)
 		case modules.SubscriptionRequestExtend:
 			pt, deadline, err = h.managedHandleExtendSubscriptionRequest(stream, deadline, info, bandwidthLimit)
 		case modules.SubscriptionRequestPrepay:

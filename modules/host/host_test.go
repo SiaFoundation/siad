@@ -976,11 +976,37 @@ func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPrice
 	return rv, nil
 }
 
+// SubscribeToRVByRID subscribes to the given publickey/tweak pair.
+func (p *renterHostPair) SubcribeToRVByRID(stream siamux.Stream, pt *modules.RPCPriceTable, rid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
+	rvs, err := modules.RPCSubscribeToRVsByRID(stream, []modules.RPCRegistrySubscriptionByRIDRequest{{
+		EntryID: rid,
+	}})
+	if err != nil {
+		return nil, err
+	}
+
+	// Check response.
+	var rv *modules.SignedRegistryValue
+	if len(rvs) > 1 {
+		build.Critical("more responses than subscribed to values")
+	} else if len(rvs) == 1 {
+		rv = &rvs[0].Entry
+	}
+	return rv, nil
+}
+
 // UnsubscribeFromRV unsubscribes from the given publickey/tweak pair.
 func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
 	return modules.RPCUnsubscribeFromRVs(stream, []modules.RPCRegistrySubscriptionRequest{{
 		PubKey: pubkey,
 		Tweak:  tweak,
+	}})
+}
+
+// UnsubscribeFromRVByRID unsubscribes from the given publickey/tweak pair.
+func (p *renterHostPair) UnsubcribeFromRVByRID(stream siamux.Stream, pt *modules.RPCPriceTable, rid modules.RegistryEntryID) error {
+	return modules.RPCUnsubscribeFromRVsByRID(stream, []modules.RPCRegistrySubscriptionByRIDRequest{{
+		EntryID: rid,
 	}})
 }
 
