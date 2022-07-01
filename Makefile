@@ -9,7 +9,7 @@ endif
 
 ldflags= \
 -X "go.sia.tech/siad/build.BinaryName=siad" \
--X "go.sia.tech/siad/build.NodeVersion=1.5.8" \
+-X "go.sia.tech/siad/build.NodeVersion=1.5.9" \
 -X "go.sia.tech/siad/build.GitRevision=${GIT_DIRTY}${GIT_REVISION}" \
 -X "go.sia.tech/siad/build.BuildTime=${BUILD_TIME}"
 
