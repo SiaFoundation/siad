@@ -1299,10 +1299,10 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	}
 }
 
-// TestSubscribeUnsubsribeByRID tests the subscription helper methods against
+// TestSubscribeUnsubscribeByRID tests the subscription helper methods against
 // the worker tester. They are already unit-tested against a host in
 // rpcsubscribe_test.go but better safe than sorry.
-func TestSubscribeUnsubsribeByRID(t *testing.T) {
+func TestSubscribeUnsubscribeByRID(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}

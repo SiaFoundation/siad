@@ -221,15 +221,7 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo) error {
 	for _, rsr := range rsrs {
 		ids = append(ids, modules.DeriveRegistryEntryID(rsr.PubKey, rsr.Tweak))
 	}
-
-	// Remove the subscription.
-	h.staticRegistrySubscriptions.RemoveSubscriptions(info, ids)
-
-	// Respond with "OK".
-	err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotificationType{
-		Type: modules.SubscriptionResponseUnsubscribeSuccess,
-	})
-	return errors.AddContext(err, "failed to signal successfully unsubscribing from entries")
+	return h.managedHandleFinalizeUnsubscribeRequest(info, ids)
 }
 
 // managedHandleUnsubscribeByRIDRequest handles a request to unsubscribe.
