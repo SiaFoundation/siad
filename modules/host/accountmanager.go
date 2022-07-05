@@ -63,8 +63,8 @@ var (
 	// blockedWithdrawalTimeout is the amount of time after which a blocked
 	// withdrawal times out.
 	blockedWithdrawalTimeout = build.Select(build.Var{
-		Standard: 15 * time.Minute,
-		Dev:      5 * time.Minute,
+		Standard: 3 * time.Minute,
+		Dev:      time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
