@@ -1614,12 +1614,12 @@ returns the total upload and download bandwidth usage for the host
 ```
 
 **download** | bytes  
-the total number of bytes that have been sent from the host to renters since the
-starttime.
+the total number of bytes that have been received by the host from renters
+(ingress) since starttime.
 
 **upload** | bytes  
-the total number of bytes that have been received by the host from renters since the
-starttime.
+the total number of bytes that have been sent by the host to renters (egress)
+since starttime.
 
 **starttime** | Unix timestamp  
 the time at which the host started monitoring the bandwidth, since the
