@@ -106,7 +106,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	duration := sos.ProofDeadline() - bh
 
 	// Get a context that can be used to interrupt the program.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(h.tg.StopCtx())
 	defer cancel()
 	go func() {
 		// TODO (followup): In the future we might want to wait for a signal
@@ -115,10 +115,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		case <-ctx.Done():
 		}
 	}()
-
-	// Cancel the context on shutdown. The host's tg doesn't have a `StopCtx` so
-	// we need to do it this way.
-	h.tg.OnStop(cancel)
 
 	// Execute the program.
 	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
