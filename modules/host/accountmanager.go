@@ -62,9 +62,12 @@ var (
 
 	// blockedWithdrawalTimeout is the amount of time after which a blocked
 	// withdrawal times out.
+	// NOTE: The standard case is set to 3 minutes since streams established
+	// by renters are commonly timing out after 5 minutes, thus hiding
+	// insufficient balance errors from the renter.
 	blockedWithdrawalTimeout = build.Select(build.Var{
-		Standard: 15 * time.Minute,
-		Dev:      5 * time.Minute,
+		Standard: 3 * time.Minute,
+		Dev:      time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
