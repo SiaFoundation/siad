@@ -648,11 +648,6 @@ func (h *Host) ConnectabilityStatus() modules.HostConnectabilityStatus {
 // FinancialMetrics returns information about the financial commitments,
 // rewards, and activities of the host.
 func (h *Host) FinancialMetrics() modules.HostFinancialMetrics {
-	err := h.tg.Add()
-	if err != nil {
-		build.Critical("Call to FinancialMetrics after close")
-	}
-	defer h.tg.Done()
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.financialMetrics
