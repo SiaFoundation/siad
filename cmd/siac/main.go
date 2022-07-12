@@ -576,6 +576,10 @@ func fundTxn(txn *types.Transaction, seed wallet.Seed) error {
 			Description: "change addr for " + txn.ID().String(),
 		}
 		addr := types.StandardAddress(seed.PublicKey(info.Index))
+		err = getClient().WalletAddAddress(addr, info)
+		if err != nil {
+			return err
+		}
 		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
 			Value:   outputSum.Sub(amount),
 			Address: addr,
