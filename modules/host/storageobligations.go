@@ -1316,6 +1316,20 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			return
 		}
 
+		// Queue another action item to check the status of the storage proof.
+		// Additional action items should not be queued on or after the proof
+		// deadline to prevent removeStorageObligation from being called
+		// multiple times.
+		recheckHeight := blockHeight + resubmissionTimeout
+		if so.proofDeadline() > recheckHeight {
+			h.mu.Lock()
+			err := h.queueActionItem(recheckHeight, so.id())
+			h.mu.Unlock()
+			if err != nil {
+				h.log.Printf("contract %s action: Error queuing action item: %s", soid, err)
+			}
+		}
+
 		// Get the index of the segment for which to build the proof.
 		segmentIndex, err := h.cs.StorageProofSegment(so.id())
 		if err != nil {
