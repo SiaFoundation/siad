@@ -182,19 +182,6 @@ func installKillSignalHandler() chan os.Signal {
 	return sigChan
 }
 
-// tryAutoUnlock will try to automatically unlock the server's wallet if the
-// environment variable is set.
-func tryAutoUnlock(srv *server.Server) {
-	if password := build.WalletPassword(); password != "" {
-		fmt.Println("Sia Wallet Password found, attempting to auto-unlock wallet")
-		if err := srv.Unlock(password); err != nil {
-			fmt.Println("Auto-unlock failed:", err)
-		} else {
-			fmt.Println("Auto-unlock successful.")
-		}
-	}
-}
-
 // startDaemon uses the config parameters to initialize Sia modules and start
 // siad.
 func startDaemon(config Config) (err error) {
@@ -218,15 +205,14 @@ func startDaemon(config Config) (err error) {
 
 	// Create the node params by parsing the modules specified in the config.
 	nodeParams := parseModules(config)
+	// set the wallet password from the environment variable
+	nodeParams.WalletPassword = build.WalletPassword()
 
 	// Start and run the server.
 	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams, loadStart)
 	if err != nil {
 		return err
 	}
-
-	// Attempt to auto-unlock the wallet using the SIA_WALLET_PASSWORD env variable
-	tryAutoUnlock(srv)
 
 	// listen for kill signals
 	sigChan := installKillSignalHandler()
