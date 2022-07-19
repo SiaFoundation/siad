@@ -11,11 +11,13 @@ import (
 	"path/filepath"
 	"time"
 
+	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
 	"go.sia.tech/siad/build"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/accounting"
 	"go.sia.tech/siad/modules/consensus"
@@ -101,12 +103,13 @@ type NodeParams struct {
 	SiaMuxWSAddress  string
 
 	// Custom settings for modules
-	Allowance   modules.Allowance
-	Bootstrap   bool
-	UseUPNP     bool
-	HostAddress string
-	HostStorage uint64
-	RPCAddress  string
+	Allowance      modules.Allowance
+	Bootstrap      bool
+	UseUPNP        bool
+	HostAddress    string
+	HostStorage    uint64
+	RPCAddress     string
+	WalletPassword string
 
 	// Initialize node from existing seed.
 	PrimarySeed string
@@ -234,6 +237,29 @@ func (n *Node) Close() (err error) {
 		err = errors.Compose(err, n.Mux.Close())
 	}
 	return err
+}
+
+// Unlock unlocks the server's wallet using the provided password.
+func tryUnlockWallet(w modules.Wallet, password string) error {
+	if w == nil {
+		return errors.New("server doesn't have a wallet")
+	}
+	var validKeys []crypto.CipherKey
+	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
+	for _, dict := range dicts {
+		seed, err := modules.StringToSeed(password, dict)
+		if err != nil {
+			continue
+		}
+		validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(seed)))
+	}
+	validKeys = append(validKeys, crypto.NewWalletKey(crypto.HashObject(password)))
+	for _, key := range validKeys {
+		if err := w.Unlock(key); err == nil {
+			return nil
+		}
+	}
+	return modules.ErrBadEncryptionKey
 }
 
 // New will create a new node. The inputs to the function are the respective
@@ -380,7 +406,21 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading wallet...\n", i, numModules)
-		return wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
+		wallet, err := wallet.NewCustomWallet(cs, tp, filepath.Join(dir, modules.WalletDir), walletDeps)
+		if err != nil {
+			return nil, err
+		}
+		// automatically unlock the wallet if the password is provided
+		if len(params.WalletPassword) != 0 {
+			printfRelease("  Wallet password found, attempting to unlock wallet...\n")
+			unlockErr := tryUnlockWallet(wallet, params.WalletPassword)
+			if unlockErr != nil {
+				fmt.Println("  Auto-unlock failed:", unlockErr)
+			} else {
+				fmt.Println("  Auto-unlock successful.")
+			}
+		}
+		return wallet, nil
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create wallet"))

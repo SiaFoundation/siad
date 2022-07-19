@@ -95,6 +95,8 @@ linters-settings:
       - equalFold
   gosec:
     excludes:
+      - G112 # http ReadHeaderTimeout
+      - G113 # Rat.SetString uncontrolled memory consumption
       - G307
 
 linters:
