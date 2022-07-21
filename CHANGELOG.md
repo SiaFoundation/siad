@@ -10,6 +10,23 @@ Version History
 
 Latest:
 
+## July 21, 2022
+
+### v1.5.9
+**Key Updates**
+- RHP: Added the ability to subscribe to registry entries by ID
+- Host: storage proofs will now be reattempted every 3 blocks to prevent hosts from failing contracts due to temporary issues
+
+**Bugs Fixed**
+- Host: fixed a memory leak in RPC execute program
+- Host: fixed a critical error being logged when calling the
+  `host.FinancialMetrics` during shutdown.
+
+**Other**
+- Host: reduced the timeout for account withdrawals from 15 minutes to 5 minutes
+- Startup: changed the startup order to attempt automatically unlock the wallet before loading other modules instead of waiting until all modules have loaded.
+- Updated SiaMux dependency
+
 ## May 17, 2022:
 ### v1.5.8
 **Key Updates**
