@@ -159,6 +159,9 @@ func (g *Gateway) managedForwardPort(port string) error {
 		// scenarios, return without complaint, and without running the
 		// port-forward logic.
 		return nil
+	} else if !g.staticUseUPNP {
+		// UPnP is disabled
+		return nil
 	}
 
 	// If the port is invalid, there is no need to perform any of the other
