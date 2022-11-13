@@ -7,7 +7,7 @@ COPY . .
 
 # need to run git status first to fix GIT_DIRTY detection in makefile
 RUN apk update \
-	&& apk add --no-cache build-base git make ca-certificates \
+	&& apk add --no-cache build-base git make ca-certificates tzdata \
 	&& update-ca-certificates \
 	&& git status > /dev/null \
 	&& make static
@@ -28,6 +28,9 @@ EXPOSE 9983/tcp
 ENV SIA_WALLET_PASSWORD=
 # SIA_API_PASSWORD sets the password used for API authentication
 ENV SIA_API_PASSWORD=
+
+# TZ used to set local timezone
+ENV TZ=
 
 VOLUME [ "/sia-data" ]
 
