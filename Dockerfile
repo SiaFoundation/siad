@@ -15,6 +15,7 @@ RUN apk update \
 FROM alpine:latest
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=build /app/release /
 
 # gateway port
