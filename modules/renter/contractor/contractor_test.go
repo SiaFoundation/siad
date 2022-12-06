@@ -57,7 +57,7 @@ func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.T
 		return nil, nil, nil, nil, nil, nil, err
 	}
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
@@ -157,7 +157,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestPayment(t *testing.T) {
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -828,7 +828,7 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -122,7 +122,7 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 		return nil, nil, err
 	}
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -154,7 +154,7 @@ func newTestingTrioWithContractorDeps(name string, deps modules.Dependencies) (m
 
 	// create mux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

@@ -1,10 +1,10 @@
 package modules
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 	"go.sia.tech/siad/build"
@@ -22,42 +22,50 @@ const (
 )
 
 // NewSiaMux returns a new SiaMux object
-func NewSiaMux(siaMuxDir, siaDir, tcpaddress, wsaddress string) (*siamux.SiaMux, error) {
+func NewSiaMux(siaMuxDir, siaDir, tcpaddress, wsaddress string) (*siamux.SiaMux, *os.File, error) {
 	// can't use relative path
 	if !filepath.IsAbs(siaMuxDir) || !filepath.IsAbs(siaDir) {
 		err := errors.New("paths need to be absolute")
 		build.Critical(err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// ensure the persist directory exists
 	err := os.MkdirAll(siaMuxDir, 0700)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// CompatV143 migrate existing mux in siaDir root to siaMuxDir.
 	if err := compatV143MigrateSiaMux(siaMuxDir, siaDir); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// create a logger
 	file, err := os.OpenFile(filepath.Join(siaMuxDir, logfile), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	logger, err := persist.NewLogger(file)
 	if err != nil {
-		return nil, err
+		return nil, nil, errors.Compose(err, file.Close())
 	}
 
 	// create a siamux, if the host's persistence file is at v120 we want to
 	// recycle the host's key pair to use in the siamux
 	pubKey, privKey, compat := compatLoadKeysFromHost(siaDir)
 	if compat {
-		return siamux.CompatV1421NewWithKeyPair(tcpaddress, wsaddress, logger.Logger, siaMuxDir, privKey, pubKey)
+		m, err := siamux.CompatV1421NewWithKeyPair(tcpaddress, wsaddress, logger.Logger, siaMuxDir, privKey, pubKey)
+		if err != nil {
+			return nil, nil, errors.Compose(err, file.Close())
+		}
+		return m, file, nil
 	}
-	return siamux.New(tcpaddress, wsaddress, logger.Logger, siaMuxDir)
+	m, err := siamux.New(tcpaddress, wsaddress, logger.Logger, siaMuxDir)
+	if err != nil {
+		return nil, nil, errors.Compose(err, file.Close())
+	}
+	return m, file, nil
 }
 
 // SiaPKToMuxPK turns a SiaPublicKey into a mux.ED25519PublicKey

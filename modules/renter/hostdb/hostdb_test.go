@@ -97,7 +97,7 @@ func newHDBTesterDeps(name string, deps modules.Dependencies) (*hdbTester, error
 	if err != nil {
 		return nil, err
 	}
-	mux, err := modules.NewSiaMux(filepath.Join(testDir, modules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(filepath.Join(testDir, modules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func TestNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux, err := modules.NewSiaMux(filepath.Join(testDir, modules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(filepath.Join(testDir, modules.SiaMuxDir), testDir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,7 @@ package node
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -42,13 +43,13 @@ import (
 // though not all methods are currently available for each module. You should
 // only use one method for creating a module, using multiple methods will cause
 // an error.
-//		+ Indicate with the 'CreateModule' bool that a module should be created
-//		  automatically. To create the module with custom dependencies, pass the
-//		  custom dependencies in using the 'ModuleDependencies' field.
-//		+ Pass an existing module in directly.
-//		+ Set 'CreateModule' to false and do not pass in an existing module.
-//		  This will result in a 'nil' module, meaning the node will not have
-//		  that module.
+//   - Indicate with the 'CreateModule' bool that a module should be created
+//     automatically. To create the module with custom dependencies, pass the
+//     custom dependencies in using the 'ModuleDependencies' field.
+//   - Pass an existing module in directly.
+//   - Set 'CreateModule' to false and do not pass in an existing module.
+//     This will result in a 'nil' module, meaning the node will not have
+//     that module.
 type NodeParams struct {
 	// Flags to indicate which modules should be created automatically by the
 	// server. If you are providing a pre-existing module, do not set the flag
@@ -128,7 +129,8 @@ type NodeParams struct {
 // Node is a collection of Sia modules operating together as a Sia node.
 type Node struct {
 	// The mux of the node.
-	Mux *siamux.SiaMux
+	Mux    *siamux.SiaMux
+	muxLog *os.File
 
 	// The modules of the node. Modules that are not initialized will be nil.
 	Accounting      modules.Accounting
@@ -234,7 +236,7 @@ func (n *Node) Close() (err error) {
 	}
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
-		err = errors.Compose(err, n.Mux.Close())
+		err = errors.Compose(err, n.Mux.Close(), n.muxLog.Close())
 	}
 	return err
 }
@@ -277,7 +279,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Create the siamux.
-	mux, err := modules.NewSiaMux(filepath.Join(dir, modules.SiaMuxDir), dir, params.SiaMuxTCPAddress, params.SiaMuxWSAddress)
+	mux, muxLog, err := modules.NewSiaMux(filepath.Join(dir, modules.SiaMuxDir), dir, params.SiaMuxTCPAddress, params.SiaMuxWSAddress)
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
 		return nil, errChan
@@ -605,7 +607,8 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}()
 
 	return &Node{
-		Mux: mux,
+		Mux:    mux,
+		muxLog: muxLog,
 
 		Accounting:      acc,
 		ConsensusSet:    cs,
