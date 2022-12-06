@@ -1,7 +1,6 @@
 package wallet
 
 import (
-	"fmt"
 	"math"
 
 	"gitlab.com/NebulousLabs/bolt"
@@ -113,12 +112,9 @@ func (w *Wallet) updateConfirmedSet(tx *bolt.Tx, cc modules.ConsensusChange) err
 
 		var err error
 		if diff.Direction == modules.DiffApply {
-			fmt.Println("incoming")
-			fmt.Println("huehue", diff.SiacoinOutput.Value)
 			w.log.Println("Wallet has gained a spendable siacoin output:", diff.ID, "::", diff.SiacoinOutput.Value.HumanString())
 			err = dbPutSiacoinOutput(tx, diff.ID, diff.SiacoinOutput)
 		} else {
-			fmt.Println("outgoing")
 			w.log.Println("Wallet has lost a spendable siacoin output:", diff.ID, "::", diff.SiacoinOutput.Value.HumanString())
 			err = dbDeleteSiacoinOutput(tx, diff.ID)
 		}
