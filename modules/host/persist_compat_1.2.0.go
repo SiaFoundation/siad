@@ -102,7 +102,7 @@ type (
 // compatibility with previous versions, enabling users to upgrade without
 // unexpected loss of data.
 //
-// COMPAT v1.0.0
+// # COMPAT v1.0.0
 //
 // A spelling error in pre-1.0 versions means that, if this is the first time
 // running after an upgrade, the misspelled field needs to be transferred over.

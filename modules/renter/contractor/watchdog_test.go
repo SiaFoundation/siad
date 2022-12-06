@@ -72,15 +72,15 @@ func createFakeRevisionTxn(fcID types.FileContractID, revNum uint64, windowStart
 // |      |        |    ...   |       |        |
 // |      |        |          |       |        |
 // ----------------------+----------------------
-//                       |
-//                       +
-//                       |
-//                       .
-//                       .
-//                       .
-//                       |
-//                       +
 //
+//	|
+//	+
+//	|
+//	.
+//	.
+//	.
+//	|
+//	+
 func createTestTransactionTree(numRoots int, chainLength int) (txnSet []types.Transaction, roots []types.Transaction, subRootTx types.Transaction, fcTxn types.Transaction, rootParentOutputs map[types.SiacoinOutputID]bool) {
 	roots = make([]types.Transaction, 0, numRoots)
 	rootParents := make(map[types.SiacoinOutputID]bool)

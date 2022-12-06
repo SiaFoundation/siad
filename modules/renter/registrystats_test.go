@@ -171,8 +171,9 @@ func TestReadRegistryStatsDecay(t *testing.T) {
 // BenchmarkAddDatum benchmarks AddDatum.
 //
 // maxTime | interval |   ops |                    cpu
-//   5 min |      1ms |  3222 | i9-9880H CPU @ 2.30GHz
-//   5 min |     10ms | 32263 | i9-9880H CPU @ 2.30GHz
+//
+//	5 min |      1ms |  3222 | i9-9880H CPU @ 2.30GHz
+//	5 min |     10ms | 32263 | i9-9880H CPU @ 2.30GHz
 func BenchmarkAddDatum(b *testing.B) {
 	// Create stats with at most 5 minute measurements.
 	// Add n datapoints to 5000 buckets.

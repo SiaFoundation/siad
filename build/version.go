@@ -63,9 +63,9 @@ func splitVersion(v string) (version []int, rc int) {
 // VersionCmp returns an int indicating the difference between a and b. It
 // follows the convention of bytes.Compare and big.Cmp:
 //
-//   -1 if a <  b
-//    0 if a == b
-//   +1 if a >  b
+//	-1 if a <  b
+//	 0 if a == b
+//	+1 if a >  b
 //
 // One important quirk is that "1.1.0" is considered newer than "1.1", despite
 // being numerically equal.

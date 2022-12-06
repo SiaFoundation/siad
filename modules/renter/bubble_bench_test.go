@@ -35,7 +35,6 @@ func newBenchmarkRenterWithDependency(name string, deps modules.Dependencies) (*
 // linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 34 |  34416443 ns/op                                 11/10/2020
 // linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 15 |  75880486 ns/op                                 02/26/2021
 // linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 19 |  59483353 ns/op                                 03/05/2021
-//
 func BenchmarkBubbleMetadata(b *testing.B) {
 	r, err := newBenchmarkRenterWithDependency(b.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
