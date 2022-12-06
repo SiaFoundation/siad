@@ -43,7 +43,8 @@ type processedBlock struct {
 // heavierThan returns true if the blockNode is sufficiently heavier than
 // 'cmp'. 'cmp' is expected to be the current block node. "Sufficient" means
 // that the weight of 'bn' exceeds the weight of 'cmp' by:
-//		(the target of 'cmp' * 'Surpass Threshold')
+//
+//	(the target of 'cmp' * 'Surpass Threshold')
 func (pb *processedBlock) heavierThan(cmp *processedBlock) bool {
 	requirement := cmp.Depth.AddDifficulties(cmp.ChildTarget.MulDifficulty(SurpassThreshold))
 	return requirement.Cmp(pb.Depth) > 0 // Inversed, because the smaller target is actually heavier.

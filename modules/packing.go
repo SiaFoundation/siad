@@ -66,32 +66,32 @@ type (
 // 2. Going from larger to smaller files, try to fit each file into an available
 // bucket in a sector.
 //
-//   a. The first of the largest available buckets should be chosen.
+//	a. The first of the largest available buckets should be chosen.
 //
-//   b. The first byte of the file must be aligned to a certain multiple of KiB,
-//   based on its size.
+//	b. The first byte of the file must be aligned to a certain multiple of KiB,
+//	based on its size.
 //
-//     i. For a file size up to 32*2^n KiB, the file must align to 4*2^n KiB,
-//     for 0 <= n <= 7.
+//	  i. For a file size up to 32*2^n KiB, the file must align to 4*2^n KiB,
+//	  for 0 <= n <= 7.
 //
-//     ii. Alignment is based on the start of the sector, not the bucket.
+//	  ii. Alignment is based on the start of the sector, not the bucket.
 //
-//     iii. Alignment may cause a file not to fit into an otherwise large-enough
-//     bucket.
+//	  iii. Alignment may cause a file not to fit into an otherwise large-enough
+//	  bucket.
 //
-//   c. If there are no suitable buckets, create a new sector and a new bucket
-//   in that sector that fills the whole sector.
+//	c. If there are no suitable buckets, create a new sector and a new bucket
+//	in that sector that fills the whole sector.
 //
 // 3. Pack the file into the bucket at the correct alignment.
 //
-//   a. Delete the bucket and make up to 2 new buckets. The new buckets, if any,
-//   should stay ordered with regards to their positions in the sectors:
+//	a. Delete the bucket and make up to 2 new buckets. The new buckets, if any,
+//	should stay ordered with regards to their positions in the sectors:
 //
-//     i. If the file could not align to the start of the bucket, make a new
-//     bucket from the start of the old bucket to the start of the file.
+//	  i. If the file could not align to the start of the bucket, make a new
+//	  bucket from the start of the old bucket to the start of the file.
 //
-//     ii. If the file does not go to the end of the bucket, make a new bucket
-//     that goes from the end of the file to the end of the old bucket.
+//	  ii. If the file does not go to the end of the bucket, make a new bucket
+//	  that goes from the end of the file to the end of the old bucket.
 //
 // 4. Return the slice of file placements in the order that they were packed
 // chronologically. Note that they may be out of order positionally, as smaller

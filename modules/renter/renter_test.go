@@ -57,7 +57,7 @@ func (rt *renterTester) Close() error {
 func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies) (modules.Host, error) {
 	// create a siamux for this particular host
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func newRenterTester(name string) (*renterTester, error) {
 func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	// Create the siamux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 
 	// Create the siamux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	mux, _, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}

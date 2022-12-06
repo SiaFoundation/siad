@@ -1,3 +1,4 @@
+//go:build profile
 // +build profile
 
 package profile

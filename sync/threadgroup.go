@@ -18,10 +18,11 @@ var ErrStopped = errors.New("ThreadGroup already stopped")
 // It is safe to call Add(), Done(), and Stop() concurrently, however it is not
 // safe to nest calls to Add(). A simple example of a nested call to add would
 // be:
-//		tg.Add()
-//		tg.Add()
-//		tg.Done()
-//		tg.Done()
+//
+//	tg.Add()
+//	tg.Add()
+//	tg.Done()
+//	tg.Done()
 type ThreadGroup struct {
 	onStopFns    []func()
 	afterStopFns []func()

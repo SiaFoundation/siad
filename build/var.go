@@ -19,8 +19,8 @@ type Var struct {
 // important to point out that type assertions are stricter than conversions.
 // Specifically, you cannot write:
 //
-//   type myint int
-//   Select(Var{0, 0, 0}).(myint)
+//	type myint int
+//	Select(Var{0, 0, 0}).(myint)
 //
 // Because 0 will be interpreted as an int, which is not assignable to myint.
 // Instead, you must explicitly cast each field in the Var, or cast the return

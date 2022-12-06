@@ -29,7 +29,8 @@ var (
 // AddDifficulties returns the resulting target with the difficulty of 'x' and
 // 'y' are added together. Note that the difficulty is the inverse of the
 // target. The sum is defined by:
-//		sum(x, y) = 1/(1/x + 1/y)
+//
+//	sum(x, y) = 1/(1/x + 1/y)
 func (x Target) AddDifficulties(y Target) (t Target) {
 	sumDifficulty := new(big.Rat).Add(x.Inverse(), y.Inverse())
 	return RatToTarget(new(big.Rat).Inv(sumDifficulty))
@@ -37,9 +38,10 @@ func (x Target) AddDifficulties(y Target) (t Target) {
 
 // Cmp compares the difficulties of two targets. Note that the difficulty is
 // the inverse of the target. The results are as follows:
-//		-1 if x <  y
-//		 0 if x == y
-//		+1 if x >  y
+//
+//	-1 if x <  y
+//	 0 if x == y
+//	+1 if x >  y
 func (x Target) Cmp(y Target) int {
 	return x.Int().Cmp(y.Int())
 }
@@ -110,7 +112,8 @@ func RatToTarget(r *big.Rat) (t Target) {
 // SubtractDifficulties returns the resulting target with the difficulty of 'x'
 // is subtracted from the target with difficulty 'y'. Note that the difficulty
 // is the inverse of the target. The difference is defined by:
-//		sum(x, y) = 1/(1/x - 1/y)
+//
+//	sum(x, y) = 1/(1/x - 1/y)
 func (x Target) SubtractDifficulties(y Target) (t Target) {
 	sumDifficulty := new(big.Rat).Sub(x.Inverse(), y.Inverse())
 	return RatToTarget(new(big.Rat).Inv(sumDifficulty))

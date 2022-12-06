@@ -102,7 +102,7 @@ func storageProofSegment(tx *bolt.Tx, fcid types.FileContractID) (uint64, error)
 // validStorageProofsPre100e3 runs the code that was running before height
 // 100e3, which contains a hardforking bug, fixed at block 100e3.
 //
-// HARDFORK 100,000
+// # HARDFORK 100,000
 //
 // Originally, it was impossible to provide a storage proof for data of length
 // zero. A hardfork was added triggering at block 100,000 to enable an

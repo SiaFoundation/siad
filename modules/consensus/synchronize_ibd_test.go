@@ -301,8 +301,8 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 // TestInitialBlockchainDownloadDoneRules tests that
 // managedInitialBlockchainDownload only terminates under the appropriate
 // conditions. Appropriate conditions are:
-//  - at least minNumOutbound synced outbound peers
-//  - or at least 1 synced outbound peer and minIBDWaitTime has passed since beginning IBD.
+//   - at least minNumOutbound synced outbound peers
+//   - or at least 1 synced outbound peer and minIBDWaitTime has passed since beginning IBD.
 func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
