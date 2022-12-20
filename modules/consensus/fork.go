@@ -85,7 +85,31 @@ func (cs *ConsensusSet) applyUntilBlock(tx *bolt.Tx, pb *processedBlock) (applie
 		if block.DiffsGenerated {
 			commitDiffSet(tx, block, modules.DiffApply)
 		} else {
+			// compute core state+diff first, since generateAndApplyDiff mutates the db
+			coreVC := coreValidationContext(tx)
+			coreBlock := coreConvertBlock(pb.Block)
+			coreErr := coreVC.ValidateBlock(coreBlock)
+			coreState, coreDiff := coreApplyBlock(coreVC, coreBlock)
+
 			err := generateAndApplyDiff(tx, block)
+
+			if (err == nil) != (coreErr == nil) {
+				if err == nil {
+					cs.log.Println("WARN: block passed in siad but failed in core:", coreErr)
+				} else {
+					cs.log.Println("WARN: block failed in siad but passed in core:", err)
+				}
+			} else {
+				siadState := coreValidationContext(tx).State
+				siadDiff := computeConsensusChangeDiffs(block, true)
+				if coreState != siadState {
+					cs.log.Println("WARN: state mismatch")
+				}
+				if !coreEqualDiff(coreConvertDiff(coreDiff, pb.Height), siadDiff) {
+					cs.log.Println("WARN: block diff mismatch in siad and core")
+				}
+			}
+
 			if err != nil {
 				// Mark the block as invalid.
 				cs.dosBlocks[block.Block.ID()] = struct{}{}

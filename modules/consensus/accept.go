@@ -260,6 +260,12 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 				go cs.threadedSleepOnFutureBlock(blocks[i])
 			}
 			if err != nil {
+				{ // compare to core
+					coreErr := coreValidationContext(tx).ValidateBlock(coreConvertBlock(blocks[i]))
+					if coreErr == nil {
+						cs.log.Println("WARN: block failed in siad but passed in core:", err)
+					}
+				}
 				return err
 			}
 
