@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"errors"
+	"fmt"
 
 	"gitlab.com/NebulousLabs/bolt"
 
@@ -93,20 +94,21 @@ func (cs *ConsensusSet) applyUntilBlock(tx *bolt.Tx, pb *processedBlock) (applie
 
 			err := generateAndApplyDiff(tx, block)
 
+			fmt.Printf("core block: %+v\nsiad block: %+v\n", coreBlock, pb.Block)
 			if (err == nil) != (coreErr == nil) {
 				if err == nil {
-					cs.log.Println("WARN: block passed in siad but failed in core:", coreErr)
+					panic(fmt.Sprintf("WARN: block passed in siad but failed in core: %s", coreErr))
 				} else {
-					cs.log.Println("WARN: block failed in siad but passed in core:", err)
+					panic(fmt.Sprintf("WARN: block failed in siad but passed in core: %s", err))
 				}
 			} else {
 				siadState := coreValidationContext(tx).State
 				siadDiff := computeConsensusChangeDiffs(block, true)
 				if coreState != siadState {
-					cs.log.Println("WARN: state mismatch")
+					panic("WARN: state mismatch")
 				}
 				if !coreEqualDiff(coreConvertDiff(coreDiff, pb.Height), siadDiff) {
-					cs.log.Println("WARN: block diff mismatch in siad and core")
+					panic("WARN: block diff mismatch in siad and core")
 				}
 			}
 

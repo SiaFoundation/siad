@@ -264,7 +264,12 @@ func (w coreElementStoreWrapper) FileContract(id ctypes.FileContractID) (fc ctyp
 
 func (w coreElementStoreWrapper) MaturedSiacoinOutputs(height uint64) (ids []ctypes.SiacoinOutputID) {
 	bucketID := append(prefixDSCO, encoding.Marshal(height)...)
-	_ = w.tx.Bucket(bucketID).ForEach(func(k, _ []byte) error {
+
+	bucket := w.tx.Bucket(bucketID)
+	if bucket == nil {
+		return nil
+	}
+	bucket.ForEach(func(k, _ []byte) error {
 		var id ctypes.SiacoinOutputID
 		copy(id[:], k)
 		ids = append(ids, id)
@@ -275,7 +280,12 @@ func (w coreElementStoreWrapper) MaturedSiacoinOutputs(height uint64) (ids []cty
 
 func (w coreElementStoreWrapper) MissedFileContracts(height uint64) (ids []ctypes.FileContractID) {
 	bucketID := append(prefixFCEX, encoding.Marshal(height)...)
-	_ = w.tx.Bucket(bucketID).ForEach(func(k, _ []byte) error {
+
+	bucket := w.tx.Bucket(bucketID)
+	if bucket == nil {
+		return nil
+	}
+	bucket.ForEach(func(k, _ []byte) error {
 		var id ctypes.FileContractID
 		copy(id[:], k)
 		ids = append(ids, id)
