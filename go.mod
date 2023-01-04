@@ -34,6 +34,4 @@ require (
 	golang.org/x/term v0.0.0-20210421210424-b80969c67360
 )
 
-replace (
-	go.sia.tech/core => ../core
-)
+replace go.sia.tech/core => ../core

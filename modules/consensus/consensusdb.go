@@ -75,6 +75,8 @@ var (
 	// "FoundationUnlockHashes") and the values at specific blocks (keyed by
 	// block height).
 	FoundationUnlockHashes = []byte("FoundationUnlockHashes")
+
+	CoreStates = []byte("CoreStates")
 )
 
 var (
@@ -101,6 +103,7 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 		FileContracts,
 		SiafundOutputs,
 		SiafundPool,
+		CoreStates,
 	}
 	for _, bucket := range buckets {
 		_, err := tx.CreateBucket(bucket)

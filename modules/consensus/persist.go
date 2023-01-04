@@ -60,6 +60,9 @@ func (cs *ConsensusSet) loadDB() error {
 			return err
 		}
 
+		// add the genesis state
+		coreStoreState(tx, coreComputeState(tx, types.GenesisID))
+
 		// Check that the genesis block is correct - typically only incorrect
 		// in the event of developer binaries vs. release binaires.
 		genesisID, err := getPath(tx, 0)

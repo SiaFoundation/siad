@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -259,14 +260,16 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 				// Queue the block to be tried again if it is a future block.
 				go cs.threadedSleepOnFutureBlock(blocks[i])
 			}
-			if err != nil {
-				{ // compare to core
-					coreErr := coreValidationContext(tx).ValidateBlock(coreConvertBlock(blocks[i]))
-					if coreErr == nil {
-						cs.log.Println("WARN: block failed in siad but passed in core:", err)
+			if false {
+				// compare to core
+				coreErr := coreCurrentValidationContext(tx).ValidateBlock(coreConvertBlock(blocks[i]))
+				if (err == nil) != (coreErr == nil) {
+					if err == nil {
+						log.Fatalln("block passed in siad but failed in core:", coreErr)
+					} else {
+						log.Fatalln("block failed in siad but passed in core:", err)
 					}
 				}
-				return err
 			}
 
 			// Try adding the block to consensus.

@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 
@@ -19,7 +20,7 @@ func coreConvertToCore(from interface{}, to ctypes.DecoderFrom) {
 	d := ctypes.NewBufDecoder(encoding.Marshal(from))
 	to.DecodeFrom(d)
 	if d.Err() != nil {
-		panic(fmt.Sprintf("type conversion failed (%T->%t): %v", from, to, d.Err()))
+		panic(fmt.Sprintf("type conversion failed (%T->%T): %v", from, to, d.Err()))
 	}
 }
 
@@ -32,17 +33,73 @@ func coreConvertToSiad(from ctypes.EncoderTo, to interface{}) {
 	var buf bytes.Buffer
 	e := ctypes.NewEncoder(&buf)
 	from.EncodeTo(e)
+	e.Flush()
 	if err := encoding.Unmarshal(buf.Bytes(), to); err != nil {
-		panic(fmt.Sprintf("type conversion failed (%T->%t): %v", from, to, err))
+		panic(fmt.Sprintf("type conversion failed (%T->%T): %v", from, to, err))
 	}
 }
 
-func coreValidationContext(tx *bolt.Tx) cconsensus.ValidationContext {
+func coreStoreState(tx *bolt.Tx, s cconsensus.State) {
+	var buf bytes.Buffer
+	e := ctypes.NewEncoder(&buf)
+	s.EncodeTo(e)
+	e.Flush()
+	tx.Bucket(CoreStates).Put(s.Index.ID[:], buf.Bytes())
+}
+
+func coreGetState(tx *bolt.Tx, id ctypes.BlockID) (s cconsensus.State) {
+	s.DecodeFrom(ctypes.NewBufDecoder(tx.Bucket(CoreStates).Get(id[:])))
+	return
+}
+
+func coreCurrentValidationContext(tx *bolt.Tx) cconsensus.ValidationContext {
 	id := currentBlockID(tx)
+	s := coreGetState(tx, ctypes.BlockID(id))
+	// check for divergence in work values
+	if true {
+		totalTime, totalTarget := (*ConsensusSet)(nil).getBlockTotals(tx, id)
+		if totalTime > 0 {
+			siadHashrate := ctypes.WorkRequiredForHash(ctypes.BlockID(totalTarget)).Div64(uint64(totalTime))
+			coreHashrate := s.OakWork.Div64(uint64(s.OakTime.Seconds()))
+			delta := siadHashrate.Sub(coreHashrate).String()
+			if siadHashrate.Cmp(coreHashrate) < 0 {
+				delta = "-" + coreHashrate.Sub(siadHashrate).String()
+			}
+			if delta != "0" {
+				log.Println("oak hashrate diverges: " + delta)
+			}
+		}
+		pb, _ := getBlockMap(tx, id)
+		siadWork := ctypes.WorkRequiredForHash(ctypes.BlockID(pb.Depth))
+		coreWork := s.TotalWork
+		delta := siadWork.Sub(coreWork).String()
+		if siadWork.Cmp(coreWork) < 0 {
+			delta = "-" + coreWork.Sub(siadWork).String()
+		}
+		if delta != "0" {
+			log.Println("total work diverges: " + delta)
+		}
+		siadDifficulty := ctypes.WorkRequiredForHash(ctypes.BlockID(pb.ChildTarget))
+		coreDifficulty := s.Difficulty
+		delta = siadDifficulty.Sub(coreDifficulty).String()
+		if siadDifficulty.Cmp(coreDifficulty) < 0 {
+			delta = "-" + coreDifficulty.Sub(siadDifficulty).String()
+		}
+		if delta != "0" {
+			log.Println("difficulty diverges: " + delta)
+		}
+	}
+
+	return cconsensus.ValidationContext{
+		State: s,
+		Store: coreStoreWrapper{tx},
+	}
+}
+
+func coreComputeState(tx *bolt.Tx, id types.BlockID) cconsensus.State {
 	pb, _ := getBlockMap(tx, id)
 	totalTime, totalTarget := (*ConsensusSet)(nil).getBlockTotals(tx, id)
 	primary, failsafe := getFoundationUnlockHashes(tx)
-
 	s := cconsensus.State{
 		Index:                     ctypes.ChainIndex{Height: uint64(pb.Height), ID: ctypes.BlockID(id)},
 		TotalWork:                 ctypes.WorkRequiredForHash(ctypes.BlockID(pb.Depth)),
@@ -54,27 +111,23 @@ func coreValidationContext(tx *bolt.Tx) cconsensus.ValidationContext {
 		FoundationFailsafeAddress: ctypes.Address(failsafe),
 	}
 	coreConvertToCore(getSiafundPool(tx), &s.SiafundPool)
-	s.PrevTimestamps[0] = time.Unix(int64(pb.Block.Timestamp), 0)
 	parent := pb.Block.ParentID
-	for i := 1; i < len(s.PrevTimestamps); i++ {
-		if parent == (types.BlockID{}) {
+	for i := range s.PrevTimestamps {
+		if i == 0 {
+			s.PrevTimestamps[i] = time.Unix(int64(pb.Block.Timestamp), 0)
+		} else if parent != (types.BlockID{}) {
+			parentBytes := tx.Bucket(BlockMap).Get(parent[:])
+			copy(parent[:], parentBytes[:32])
+			s.PrevTimestamps[i] = time.Unix(int64(encoding.DecUint64(parentBytes[40:48])), 0)
+		} else {
 			s.PrevTimestamps[i] = s.PrevTimestamps[i-1]
-			continue
 		}
-		parentBytes := tx.Bucket(BlockMap).Get(parent[:])
-		copy(parent[:], parentBytes[:32])
-		s.PrevTimestamps[i] = time.Unix(int64(encoding.DecUint64(parentBytes[40:48])), 0)
 	}
-
-	return cconsensus.ValidationContext{
-		State:    s,
-		Blocks:   coreBlockStoreWraper{tx},
-		Elements: coreElementStoreWrapper{tx},
-	}
+	return s
 }
 
 func coreApplyBlock(vc cconsensus.ValidationContext, b ctypes.Block) (cconsensus.State, cconsensus.BlockDiff) {
-	return cconsensus.ApplyBlock(vc.State, vc.Elements, b)
+	return cconsensus.ApplyBlock(vc.State, vc.Store, b)
 }
 
 func coreConvertDiff(diff cconsensus.BlockDiff, blockHeight types.BlockHeight) (cc modules.ConsensusChangeDiffs) {
@@ -163,12 +216,12 @@ func coreConvertDiff(diff cconsensus.BlockDiff, blockHeight types.BlockHeight) (
 		coreConvertToSiad(sco, &d.SiacoinOutput)
 		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, d)
 
-		sd := modules.SiacoinOutputDiff{
+		md := modules.SiacoinOutputDiff{
 			Direction: true,
 			ID:        types.SiacoinOutputID(id),
 		}
-		coreConvertToSiad(sco, &d.SiacoinOutput)
-		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, sd)
+		coreConvertToSiad(sco, &md.SiacoinOutput)
+		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, md)
 	}
 	for id, fc := range diff.MissedFileContracts {
 		d := modules.FileContractDiff{
@@ -210,42 +263,40 @@ func coreNormalizeDiff(diff *modules.ConsensusChangeDiffs) {
 		}
 		return c < 0
 	})
+
+	// TODO: we ignore siafund pool stuff for now
+	for i := range diff.SiafundOutputDiffs {
+		diff.SiafundOutputDiffs[i].SiafundOutput.ClaimStart = types.ZeroCurrency
+	}
 	diff.SiafundPoolDiffs = nil
 }
 
-func coreEqualDiff(core, siad modules.ConsensusChangeDiffs) bool {
-	siadCopy := modules.ConsensusChangeDiffs{
-		SiacoinOutputDiffs:        append([]modules.SiacoinOutputDiff(nil), siad.SiacoinOutputDiffs...),
-		FileContractDiffs:         append([]modules.FileContractDiff(nil), siad.FileContractDiffs...),
-		SiafundOutputDiffs:        append([]modules.SiafundOutputDiff(nil), siad.SiafundOutputDiffs...),
-		DelayedSiacoinOutputDiffs: append([]modules.DelayedSiacoinOutputDiff(nil), siad.DelayedSiacoinOutputDiffs...),
-	}
-	coreNormalizeDiff(&core)
-	coreNormalizeDiff(&siadCopy)
-	return bytes.Equal(encoding.Marshal(core), encoding.Marshal(siadCopy))
-}
-
-type coreBlockStoreWraper struct {
+type coreStoreWrapper struct {
 	tx *bolt.Tx
 }
 
-func (w coreBlockStoreWraper) BestIndex(height uint64) (ctypes.ChainIndex, bool) {
+func (w coreStoreWrapper) BestIndex(height uint64) (ctypes.ChainIndex, bool) {
 	id, err := getPath(w.tx, types.BlockHeight(height))
 	return ctypes.ChainIndex{Height: height, ID: ctypes.BlockID(id)}, err == nil
 }
 
-type coreElementStoreWrapper struct {
-	tx *bolt.Tx
+func (w coreStoreWrapper) AncestorTimestamp(id ctypes.BlockID, n uint64) time.Time {
+	blockMap := w.tx.Bucket(BlockMap)
+	current := id[:]
+	for ; n > 1; n-- {
+		current = blockMap.Get(current[:])[:32]
+	}
+	return time.Unix(int64(encoding.DecUint64(blockMap.Get(current)[40:48])), 0)
 }
 
-func (w coreElementStoreWrapper) SiacoinOutput(id ctypes.SiacoinOutputID) (sco ctypes.SiacoinOutput, ok bool) {
+func (w coreStoreWrapper) SiacoinOutput(id ctypes.SiacoinOutputID) (sco ctypes.SiacoinOutput, ok bool) {
 	o, err := getSiacoinOutput(w.tx, types.SiacoinOutputID(id))
 	coreConvertToCore(o, &sco)
 	ok = err == nil
 	return
 }
 
-func (w coreElementStoreWrapper) SiafundOutput(id ctypes.SiafundOutputID) (sfo ctypes.SiafundOutput, claimStart ctypes.Currency, ok bool) {
+func (w coreStoreWrapper) SiafundOutput(id ctypes.SiafundOutputID) (sfo ctypes.SiafundOutput, claimStart ctypes.Currency, ok bool) {
 	o, err := getSiafundOutput(w.tx, types.SiafundOutputID(id))
 	coreConvertToCore(o, &sfo)
 	coreConvertToCore(o.ClaimStart, &claimStart)
@@ -253,19 +304,19 @@ func (w coreElementStoreWrapper) SiafundOutput(id ctypes.SiafundOutputID) (sfo c
 	return
 }
 
-func (w coreElementStoreWrapper) FileContract(id ctypes.FileContractID) (fc ctypes.FileContract, ok bool) {
+func (w coreStoreWrapper) FileContract(id ctypes.FileContractID) (fc ctypes.FileContract, ok bool) {
 	c, err := getFileContract(w.tx, types.FileContractID(id))
 	coreConvertToCore(c, &fc)
 	ok = err == nil
 	return
 }
 
-func (w coreElementStoreWrapper) MaturedSiacoinOutputs(height uint64) (ids []ctypes.SiacoinOutputID) {
+func (w coreStoreWrapper) MaturedSiacoinOutputs(height uint64) (ids []ctypes.SiacoinOutputID) {
 	bucket := w.tx.Bucket(append(prefixDSCO, encoding.Marshal(height)...))
 	if bucket == nil {
 		return nil
 	}
-	_ = bucket.ForEach(func(k, _ []byte) error {
+	_ = bucket.ForEach(func(k, v []byte) error {
 		var id ctypes.SiacoinOutputID
 		copy(id[:], k)
 		ids = append(ids, id)
@@ -274,12 +325,21 @@ func (w coreElementStoreWrapper) MaturedSiacoinOutputs(height uint64) (ids []cty
 	return
 }
 
-func (w coreElementStoreWrapper) MissedFileContracts(height uint64) (ids []ctypes.FileContractID) {
+func (w coreStoreWrapper) MaturedSiacoinOutput(height uint64, id ctypes.SiacoinOutputID) (sco ctypes.SiacoinOutput, ok bool) {
+	if b := w.tx.Bucket(append(prefixDSCO, encoding.Marshal(height)...)); b != nil {
+		d := ctypes.NewBufDecoder(b.Get(id[:]))
+		sco.DecodeFrom(d)
+		ok = d.Err() == nil
+	}
+	return
+}
+
+func (w coreStoreWrapper) MissedFileContracts(height uint64) (ids []ctypes.FileContractID) {
 	bucket := w.tx.Bucket(append(prefixFCEX, encoding.Marshal(height)...))
 	if bucket == nil {
 		return nil
 	}
-	_ = bucket.ForEach(func(k, _ []byte) error {
+	_ = bucket.ForEach(func(k, v []byte) error {
 		var id ctypes.FileContractID
 		copy(id[:], k)
 		ids = append(ids, id)
