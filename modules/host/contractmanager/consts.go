@@ -105,6 +105,7 @@ var (
 	MaximumSectorsPerStorageFolder = build.Select(build.Var{
 		Dev:      uint64(1 << 20), // 256 GiB
 		Standard: uint64(1 << 32), // 16 PiB
+		Testnet:  uint64(1 << 32), // 16 PiB
 		Testing:  uint64(1 << 12), // 16 MiB
 	}).(uint64)
 
@@ -113,6 +114,7 @@ var (
 	maximumStorageFolders = build.Select(build.Var{
 		Dev:      uint64(1 << 5),
 		Standard: uint64(1 << 16),
+		Testnet:  uint64(1 << 16),
 		Testing:  uint64(1 << 3),
 	}).(uint64)
 
@@ -121,6 +123,7 @@ var (
 	MinimumSectorsPerStorageFolder = build.Select(build.Var{
 		Dev:      uint64(1 << 6), // 16 MiB
 		Standard: uint64(1 << 6), // 256 MiB
+		Testnet:  uint64(1 << 6), // 256 MiB
 		Testing:  uint64(1 << 6), // 256 KiB
 	}).(uint64)
 )
@@ -132,6 +135,7 @@ var (
 	folderRecheckInitialInterval = build.Select(build.Var{
 		Dev:      time.Second,
 		Standard: time.Second * 5,
+		Testnet:  time.Second * 5,
 		Testing:  time.Second,
 	}).(time.Duration)
 
@@ -141,6 +145,7 @@ var (
 	maxFolderRecheckInterval = build.Select(build.Var{
 		Dev:      time.Second * 30,
 		Standard: time.Second * 60 * 5,
+		Testnet:  time.Second * 60 * 5,
 		Testing:  time.Second * 8,
 	}).(time.Duration)
 )

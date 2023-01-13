@@ -183,14 +183,14 @@ func (np NodeParams) NumModules() (n int) {
 
 // printlnRelease is a wrapper that only prints to stdout in release builds.
 func printlnRelease(a ...interface{}) {
-	if build.Release == "standard" {
+	if build.Release == "standard" || build.Release == "testnet" {
 		fmt.Println(a...)
 	}
 }
 
 // printfRelease is a wrapper that only prints to stdout in release builds.
 func printfRelease(format string, a ...interface{}) {
-	if build.Release == "standard" {
+	if build.Release == "standard" || build.Release == "testnet" {
 		fmt.Printf(format, a...)
 	}
 }

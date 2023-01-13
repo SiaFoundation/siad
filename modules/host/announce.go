@@ -28,7 +28,7 @@ func (h *Host) staticVerifyAnnouncementAddress(addr modules.NetAddress) error {
 	if err := addr.IsStdValid(); err != nil {
 		return build.ExtendErr("announcement requested with bad net address", err)
 	}
-	if addr.IsLocal() && build.Release == "standard" {
+	if addr.IsLocal() && (build.Release == "standard" || build.Release == "testnet") {
 		return errors.New("announcement requested with local net address")
 	}
 	// Make sure that the host resolves to 1 or 2 IPs and if it resolves to 2

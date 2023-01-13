@@ -31,6 +31,7 @@ var (
 	persistErrorInterval = build.Select(build.Var{
 		Dev:      time.Second,
 		Standard: time.Minute,
+		Testnet:  time.Minute,
 		Testing:  time.Millisecond * 100,
 	}).(time.Duration)
 
@@ -39,6 +40,7 @@ var (
 	persistInterval = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: time.Hour * 24,
+		Testnet:  time.Hour * 24,
 		Testing:  time.Second,
 	}).(time.Duration)
 )

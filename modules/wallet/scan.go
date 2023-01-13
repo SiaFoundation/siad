@@ -21,6 +21,8 @@ var maxScanKeys = func() uint64 {
 		return 1e6
 	case "standard":
 		return 100e6
+	case "testnet":
+		return 100e6
 	case "testing":
 		return 100e3
 	default:
@@ -35,6 +37,8 @@ var numInitialKeys = func() uint64 {
 	case "dev":
 		return 10e3
 	case "standard":
+		return 1e6
+	case "testnet":
 		return 1e6
 	case "testing":
 		return 1e3

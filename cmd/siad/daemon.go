@@ -149,6 +149,9 @@ func loadAPIPassword(config Config) (_ Config, err error) {
 // printVersionAndRevision prints the daemon's version and revision numbers.
 func printVersionAndRevision() {
 	fmt.Println("siad v" + build.NodeVersion)
+	if build.Release == "testnet" {
+		fmt.Println("Testnet -- only for testing purposes")
+	}
 	if build.GitRevision == "" {
 		fmt.Println("WARN: compiled without build commit or version. To compile correctly, please use the makefile")
 	} else {

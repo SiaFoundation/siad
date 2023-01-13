@@ -44,6 +44,7 @@ var (
 	// expected to exceed a few megabytes even for very large renters.
 	maxSnapshotUploadTime = build.Select(build.Var{
 		Standard: time.Minute * 15,
+		Testnet:  time.Minute * 15,
 		Dev:      time.Minute * 3,
 		Testing:  time.Minute,
 	}).(time.Duration)

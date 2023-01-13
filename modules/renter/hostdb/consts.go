@@ -100,6 +100,7 @@ var (
 	// time there is a regular scanning operation.
 	hostCheckupQuantity = build.Select(build.Var{
 		Standard: int(2500),
+		Testnet:  int(2500),
 		Dev:      int(6),
 		Testing:  int(5),
 	}).(int)
@@ -108,6 +109,7 @@ var (
 	// their settings and checking for reliability.
 	maxScanningThreads = build.Select(build.Var{
 		Standard: int(80),
+		Testnet:  int(80),
 		Dev:      int(4),
 		Testing:  int(3),
 	}).(int)
@@ -118,6 +120,7 @@ var (
 	// between performing scans of the hosts.
 	maxScanSleep = build.Select(build.Var{
 		Standard: time.Hour * 8,
+		Testnet:  time.Hour * 8,
 		Dev:      time.Minute * 10,
 		Testing:  time.Second * 5,
 	}).(time.Duration)
@@ -126,6 +129,7 @@ var (
 	// empty itself and for waiting on the consensus set to be synced.
 	scanCheckInterval = build.Select(build.Var{
 		Standard: time.Second,
+		Testnet:  time.Second,
 		Dev:      time.Second,
 		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
@@ -134,6 +138,7 @@ var (
 	// between performing scans of the hosts.
 	minScanSleep = build.Select(build.Var{
 		Standard: time.Hour + time.Minute*20,
+		Testnet:  time.Hour + time.Minute*20,
 		Dev:      time.Minute * 3,
 		Testing:  time.Second * 1,
 	}).(time.Duration)

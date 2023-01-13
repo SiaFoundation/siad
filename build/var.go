@@ -9,6 +9,7 @@ type Var struct {
 	Standard interface{}
 	Dev      interface{}
 	Testing  interface{}
+	Testnet  interface{}
 	// prevent unkeyed literals
 	_ struct{}
 }
@@ -29,8 +30,8 @@ func Select(v Var) interface{} {
 	if v.Standard == nil || v.Dev == nil || v.Testing == nil {
 		panic("nil value in build variable")
 	}
-	st, dt, tt := reflect.TypeOf(v.Standard), reflect.TypeOf(v.Dev), reflect.TypeOf(v.Testing)
-	if !dt.AssignableTo(st) || !tt.AssignableTo(st) {
+	st, dt, tt, tnt := reflect.TypeOf(v.Standard), reflect.TypeOf(v.Dev), reflect.TypeOf(v.Testing), reflect.TypeOf(v.Testnet)
+	if !dt.AssignableTo(st) || !tt.AssignableTo(st) || !tnt.AssignableTo(st) {
 		// NOTE: we use AssignableTo instead of the more lenient ConvertibleTo
 		// because type assertions require the former.
 		panic("build variables must have a single type")
@@ -42,6 +43,8 @@ func Select(v Var) interface{} {
 		return v.Dev
 	case "testing":
 		return v.Testing
+	case "testnet":
+		return v.Testnet
 	default:
 		panic("unrecognized Release: " + Release)
 	}

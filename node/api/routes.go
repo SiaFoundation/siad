@@ -16,6 +16,7 @@ var (
 	// will timeout and an error will be returned.
 	httpServerTimeout = build.Select(build.Var{
 		Standard: 24 * time.Hour,
+		Testnet:  24 * time.Hour,
 		Dev:      1 * time.Hour,
 		Testing:  5 * time.Minute,
 	}).(time.Duration)

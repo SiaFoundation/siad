@@ -34,6 +34,7 @@ var (
 		Testing:  time.Second * 5,
 		Dev:      time.Minute,
 		Standard: time.Hour,
+		Testnet:  time.Hour,
 	}).(time.Duration)
 
 	// subscriptionExtensionWindow is the time before the subscription period
@@ -53,6 +54,7 @@ var (
 		Testing:  time.Second,
 		Dev:      3 * time.Second,
 		Standard: 3 * time.Second,
+		Testnet:  3 * time.Second,
 	}).(time.Duration)
 
 	// priceTableRetryInterval is the interval the subscription loop waits for

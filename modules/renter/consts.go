@@ -38,6 +38,7 @@ var (
 	syncCheckInterval = build.Select(build.Var{
 		Dev:      time.Second * 3,
 		Standard: time.Second * 5,
+		Testnet:  time.Second * 5,
 		Testing:  time.Second,
 	}).(time.Duration)
 
@@ -46,6 +47,7 @@ var (
 	cachedUtilitiesUpdateInterval = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: time.Minute * 10,
+		Testnet:  time.Minute * 10,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
 )
@@ -59,6 +61,7 @@ var (
 	registryMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
 		Standard: uint64(1 << 29), // 0.5 GiB
+		Testnet:  uint64(1 << 29), // 0.5 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
@@ -69,6 +72,7 @@ var (
 	userUploadMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
 		Standard: uint64(1 << 29), // 0.5 GiB
+		Testnet:  uint64(1 << 29), // 0.5 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
@@ -79,6 +83,7 @@ var (
 	userDownloadMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
 		Standard: uint64(1 << 29), // 0.5 GiB
+		Testnet:  uint64(1 << 29), // 0.5 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
@@ -89,6 +94,7 @@ var (
 	repairMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
 		Standard: uint64(1 << 31), // 2.0 GiB
+		Testnet:  uint64(1 << 31), // 2.0 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
@@ -122,6 +128,7 @@ var (
 	initialStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 13), // 8 KiB
 		Standard: int64(1 << 19), // 512 KiB
+		Testnet:  int64(1 << 19), // 512 KiB
 		Testing:  int64(1 << 10), // 1 KiB
 	}).(int64)
 
@@ -140,6 +147,7 @@ var (
 	maxStreamerCacheSize = build.Select(build.Var{
 		Dev:      int64(1 << 20), // 1 MiB
 		Standard: int64(1 << 25), // 32 MiB
+		Testnet:  int64(1 << 25), // 32 MiB
 		Testing:  int64(1 << 13), // 8 KiB
 	}).(int64)
 )
@@ -198,6 +206,7 @@ var (
 	healthCheckInterval = build.Select(build.Var{
 		Dev:      15 * time.Minute,
 		Standard: 1 * time.Hour,
+		Testnet:  1 * time.Hour,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -206,6 +215,7 @@ var (
 	healthLoopErrorSleepDuration = build.Select(build.Var{
 		Dev:      10 * time.Second,
 		Standard: 30 * time.Second,
+		Testnet:  30 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -214,6 +224,7 @@ var (
 	healthLoopNumBatchFiles = build.Select(build.Var{
 		Dev:      uint64(1e3),
 		Standard: uint64(10e3),
+		Testnet:  uint64(10e3),
 		Testing:  uint64(5),
 	}).(uint64)
 
@@ -222,6 +233,7 @@ var (
 	healthLoopNumBatchSubDirs = build.Select(build.Var{
 		Dev:      uint64(100),
 		Standard: uint64(1e3),
+		Testnet:  uint64(1e3),
 		Testing:  uint64(2),
 	}).(uint64)
 
@@ -230,6 +242,7 @@ var (
 	maxRepairLoopTime = build.Select(build.Var{
 		Dev:      1 * time.Minute,
 		Standard: 15 * time.Minute,
+		Testnet:  15 * time.Minute,
 		Testing:  15 * time.Second,
 	}).(time.Duration)
 
@@ -238,6 +251,7 @@ var (
 	maxSuccessfulStuckRepairFiles = build.Select(build.Var{
 		Dev:      3,
 		Standard: 20,
+		Testnet:  20,
 		Testing:  2,
 	}).(int)
 
@@ -248,6 +262,7 @@ var (
 	maxUploadHeapChunks = build.Select(build.Var{
 		Dev:      25,
 		Standard: 250,
+		Testnet:  250,
 		Testing:  5,
 	}).(int)
 
@@ -257,6 +272,7 @@ var (
 	minUploadHeapSize = build.Select(build.Var{
 		Dev:      5,
 		Standard: 20,
+		Testnet:  20,
 		Testing:  1,
 	}).(int)
 
@@ -265,6 +281,7 @@ var (
 	numBubbleWorkerThreads = build.Select(build.Var{
 		Dev:      10,
 		Standard: 20,
+		Testnet:  20,
 		Testing:  5,
 	}).(int)
 
@@ -273,6 +290,7 @@ var (
 	offlineCheckFrequency = build.Select(build.Var{
 		Dev:      3 * time.Second,
 		Standard: 10 * time.Second,
+		Testnet:  10 * time.Second,
 		Testing:  250 * time.Millisecond,
 	}).(time.Duration)
 
@@ -284,6 +302,7 @@ var (
 	repairLoopResetFrequency = build.Select(build.Var{
 		Dev:      15 * time.Minute,
 		Standard: 1 * time.Hour,
+		Testnet:  1 * time.Hour,
 		Testing:  40 * time.Second,
 	}).(time.Duration)
 
@@ -295,6 +314,7 @@ var (
 	repairStuckChunkInterval = build.Select(build.Var{
 		Dev:      90 * time.Second,
 		Standard: 10 * time.Minute,
+		Testnet:  10 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -303,6 +323,7 @@ var (
 	stuckLoopErrorSleepDuration = build.Select(build.Var{
 		Dev:      10 * time.Second,
 		Standard: 30 * time.Second,
+		Testnet:  30 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -312,6 +333,7 @@ var (
 	uploadAndRepairErrorSleepDuration = build.Select(build.Var{
 		Dev:      20 * time.Second,
 		Standard: 15 * time.Minute,
+		Testnet:  15 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -320,6 +342,7 @@ var (
 	snapshotSyncSleepDuration = build.Select(build.Var{
 		Dev:      10 * time.Second,
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
@@ -335,6 +358,7 @@ var (
 	maxConsecutivePenalty = build.Select(build.Var{
 		Dev:      4,
 		Standard: 10,
+		Testnet:  10,
 		Testing:  3,
 	}).(int)
 
@@ -344,6 +368,7 @@ var (
 	uploadFailureCooldown = build.Select(build.Var{
 		Dev:      time.Second * 7,
 		Standard: time.Second * 61,
+		Testnet:  time.Second * 61,
 		Testing:  time.Second,
 	}).(time.Duration)
 
@@ -352,6 +377,7 @@ var (
 	workerPoolUpdateTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 )

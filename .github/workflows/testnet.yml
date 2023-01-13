@@ -1,4 +1,4 @@
-name: Publish
+name: Publish Testnet
 
 # Controls when the action will run. 
 on:
@@ -25,17 +25,19 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/metadata-action@v4
-        name: generate tags
+        name: Generate Tags
         id: meta
         with:
-          images: ghcr.io/siafoundation/siad
+          images: ghcr.io/SiaFoundation/siad-testnet
           tags: |
             type=ref,event=branch
             type=sha,prefix=
             type=semver,pattern={{version}}
       - uses: docker/build-push-action@v3
+        name: Build Image
         with:
           context: .
+          file: ./Dockerfile.testnet
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -55,8 +57,8 @@ jobs:
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-        run: make static
+        run: make testnet
       - uses: actions/upload-artifact@v3
         with:
-          name: sia-${{ matrix.os }}-${{ matrix.arch }}
+          name: sia-testnet-${{ matrix.os }}-${{ matrix.arch }}
           path: release/*

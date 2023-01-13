@@ -322,7 +322,7 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 			}
 
 			i++
-			if build.Release == "standard" {
+			if build.Release == "standard" || build.Release == "testnet" {
 				time.Sleep(time.Second * 15)
 			}
 		}

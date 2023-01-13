@@ -75,6 +75,7 @@ var (
 	// used in the renter allowance.
 	PriceEstimationScope = build.Select(build.Var{
 		Standard: int(50),
+		Testnet:  int(50),
 		Dev:      int(12),
 		Testing:  int(4),
 	}).(int)
@@ -1280,6 +1281,7 @@ var (
 	RepairThreshold = build.Select(build.Var{
 		Dev:      0.25,
 		Standard: 0.25,
+		Testnet:  0.25,
 		Testing:  0.25,
 	}).(float64)
 )

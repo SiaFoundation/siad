@@ -60,6 +60,7 @@ var (
 	SubscriptionPeriod = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
