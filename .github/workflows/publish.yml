@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-qemu-action@v2
@@ -41,13 +42,12 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         os: [ darwin, linux, windows ]
         arch: [ arm64, amd64 ]
-        exclude:
-          - os: windows
-            arch: arm64
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
