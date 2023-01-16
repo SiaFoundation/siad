@@ -16,6 +16,7 @@ var (
 	workerCacheUpdateFrequency = build.Select(build.Var{
 		Dev:      time.Second * 5,
 		Standard: time.Minute,
+		Testnet:  time.Minute,
 		Testing:  time.Second,
 	}).(time.Duration)
 )

@@ -33,6 +33,7 @@ var (
 	// there to prevent users from shooting themselves in the foot.
 	requiredHosts = build.Select(build.Var{
 		Standard: uint64(20),
+		Testnet:  uint64(20),
 		Dev:      uint64(1),
 		Testing:  uint64(1),
 	}).(uint64)
@@ -42,6 +43,7 @@ var (
 	// from shooting themselves in the foot.
 	requiredParityPieces = build.Select(build.Var{
 		Standard: int(9),
+		Testnet:  int(9),
 		Dev:      int(0),
 		Testing:  int(0),
 	}).(int)
@@ -51,6 +53,7 @@ var (
 	// prevent users from shooting themselves in the foot.
 	requiredRedundancy = build.Select(build.Var{
 		Standard: float64(2),
+		Testnet:  float64(2),
 		Dev:      float64(1),
 		Testing:  float64(1),
 	}).(float64)
@@ -60,6 +63,7 @@ var (
 	// themselves in the foot.
 	requiredRenewWindow = build.Select(build.Var{
 		Standard: types.BlockHeight(288),
+		Testnet:  types.BlockHeight(288),
 		Dev:      types.BlockHeight(1),
 		Testing:  types.BlockHeight(1),
 	}).(types.BlockHeight)

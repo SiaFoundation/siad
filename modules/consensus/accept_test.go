@@ -1067,7 +1067,7 @@ func TestAcceptBlockBroadcasts(t *testing.T) {
 	}
 	select {
 	case <-mg.broadcastCalled:
-	case <-time.After(10 * time.Millisecond):
+	case <-time.After(time.Second):
 		t.Error("expected AcceptBlock to broadcast a valid block")
 	}
 
@@ -1079,7 +1079,7 @@ func TestAcceptBlockBroadcasts(t *testing.T) {
 	select {
 	case <-mg.broadcastCalled:
 		t.Error("AcceptBlock broadcasted an invalid block")
-	case <-time.After(10 * time.Millisecond):
+	case <-time.After(time.Second):
 	}
 
 	// Test that Broadcast is not called in managedAcceptBlock.

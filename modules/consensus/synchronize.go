@@ -31,6 +31,7 @@ var (
 	// failed.
 	ibdLoopDelay = build.Select(build.Var{
 		Standard: 10 * time.Second,
+		Testnet:  10 * time.Second,
 		Dev:      1 * time.Second,
 		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
@@ -40,6 +41,7 @@ var (
 	// download.
 	MaxCatchUpBlocks = build.Select(build.Var{
 		Standard: types.BlockHeight(10),
+		Testnet:  types.BlockHeight(10),
 		Dev:      types.BlockHeight(50),
 		Testing:  types.BlockHeight(3),
 	}).(types.BlockHeight)
@@ -51,6 +53,7 @@ var (
 	// before IBD is done.
 	minIBDWaitTime = build.Select(build.Var{
 		Standard: 90 * time.Minute,
+		Testnet:  90 * time.Minute,
 		Dev:      80 * time.Second,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
@@ -58,6 +61,7 @@ var (
 	// relayHeaderTimeout is the timeout for the RelayHeader RPC.
 	relayHeaderTimeout = build.Select(build.Var{
 		Standard: 60 * time.Second,
+		Testnet:  60 * time.Second,
 		Dev:      20 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
@@ -65,6 +69,7 @@ var (
 	// sendBlkTimeout is the timeout for the SendBlk RPC.
 	sendBlkTimeout = build.Select(build.Var{
 		Standard: 90 * time.Second,
+		Testnet:  90 * time.Second,
 		Dev:      30 * time.Second,
 		Testing:  4 * time.Second,
 	}).(time.Duration)
@@ -72,6 +77,7 @@ var (
 	// sendBlocksTimeout is the timeout for the SendBlocks RPC.
 	sendBlocksTimeout = build.Select(build.Var{
 		Standard: 180 * time.Second,
+		Testnet:  180 * time.Second,
 		Dev:      40 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)

@@ -94,6 +94,7 @@ var (
 	DefaultWindowSize = build.Select(build.Var{
 		Dev:      types.BlockHeight(36),  // 3.6 minutes.
 		Standard: types.BlockHeight(144), // 1 day.
+		Testnet:  types.BlockHeight(144), // 1 day.
 		Testing:  types.BlockHeight(5),   // 5 seconds.
 	}).(types.BlockHeight)
 

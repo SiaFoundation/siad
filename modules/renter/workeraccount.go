@@ -60,6 +60,7 @@ var (
 	accountIdleCheckFrequency = build.Select(build.Var{
 		Dev:      time.Second * 4,
 		Standard: time.Second * 5,
+		Testnet:  time.Second * 5,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
 
@@ -71,6 +72,7 @@ var (
 	accountSyncRandWaitMilliseconds = build.Select(build.Var{
 		Dev:      int(1e3 * 60),          // 1 minute
 		Standard: int(3 * 1e3 * 60 * 60), // 3 hours
+		Testnet:  int(3 * 1e3 * 60 * 60), // 3 hours
 		Testing:  int(1e3 * 15),          // 15 seconds - needs to be long even in testing
 	}).(int)
 
@@ -81,6 +83,7 @@ var (
 	accountSyncMinWaitTime = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: 60 * time.Minute, // 1 hour
+		Testnet:  60 * time.Minute, // 1 hour
 		Testing:  10 * time.Second, // needs to be long even in testing
 	}).(time.Duration)
 
@@ -91,6 +94,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
+		Testnet:  40 * time.Minute,
 		Testing:  5 * time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )

@@ -23,6 +23,7 @@ var (
 	alignmentScaling = build.Select(build.Var{
 		Dev:      uint64(1 << (alignmentScalingStandard - (SectorSizeScalingStandard - SectorSizeScalingDev))),
 		Standard: uint64(1 << alignmentScalingStandard), // 1 KiB
+		Testnet:  uint64(1 << alignmentScalingStandard), // 1 KiB
 		Testing:  uint64(1 << (alignmentScalingStandard - (SectorSizeScalingStandard - SectorSizeScalingTesting))),
 	}).(uint64)
 	alignmentScalingStandard = 10

@@ -56,6 +56,7 @@ var (
 	// long.
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 24 * time.Hour,
+		Testnet:  24 * time.Hour,
 		Dev:      15 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
@@ -67,6 +68,7 @@ var (
 	// insufficient balance errors from the renter.
 	blockedWithdrawalTimeout = build.Select(build.Var{
 		Standard: 3 * time.Minute,
+		Testnet:  3 * time.Minute,
 		Dev:      time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)

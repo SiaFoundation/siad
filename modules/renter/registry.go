@@ -18,6 +18,7 @@ var (
 	MaxRegistryReadTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
 
@@ -26,6 +27,7 @@ var (
 	DefaultRegistryUpdateTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
@@ -55,6 +57,7 @@ var (
 	MinUpdateRegistrySuccesses = build.Select(build.Var{
 		Dev:      3,
 		Standard: 3,
+		Testnet:  3,
 		Testing:  3,
 	}).(int)
 
@@ -63,6 +66,7 @@ var (
 	ReadRegistryBackgroundTimeout = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: 2 * time.Minute,
+		Testnet:  2 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -103,6 +107,7 @@ var (
 	readRegistryStatsSeed = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 2 * time.Second,
+		Testnet:  2 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 )

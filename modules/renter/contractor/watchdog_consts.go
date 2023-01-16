@@ -20,6 +20,7 @@ var (
 	waitTime = build.Select(build.Var{
 		Dev:      types.BlockHeight(100),
 		Standard: types.BlockHeight(288),
+		Testnet:  types.BlockHeight(288),
 		Testing:  types.BlockHeight(100),
 	}).(types.BlockHeight)
 )

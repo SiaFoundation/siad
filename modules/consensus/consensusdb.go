@@ -432,7 +432,7 @@ func getSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID) (types.SiafundOutpu
 		return types.SiafundOutput{}, err
 	}
 	gsa := types.GenesisSiafundAllocation
-	if sfo.UnlockHash == gsa[len(gsa)-1].UnlockHash && blockHeight(tx) > 10e3 {
+	if build.Release != "testnet" && sfo.UnlockHash == gsa[len(gsa)-1].UnlockHash && blockHeight(tx) > 10e3 {
 		sfo.UnlockHash = devAddr
 	}
 	return sfo, nil

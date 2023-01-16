@@ -26,7 +26,7 @@ var (
 func init() {
 	if build.Release == "dev" {
 		SafeMutexDelay = 60 * time.Second
-	} else if build.Release == "standard" {
+	} else if build.Release == "standard" || build.Release == "testnet" {
 		SafeMutexDelay = 90 * time.Second
 	} else if build.Release == "testing" {
 		SafeMutexDelay = 30 * time.Second

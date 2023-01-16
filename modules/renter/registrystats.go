@@ -13,6 +13,7 @@ import (
 var readRegistryStatsDecayInterval = build.Select(build.Var{
 	Dev:      time.Second,
 	Standard: time.Second * 5,
+	Testnet:  time.Second * 5,
 	Testing:  time.Second,
 }).(time.Duration)
 

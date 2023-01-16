@@ -36,6 +36,7 @@ var (
 	// the renter will accept.
 	minAcceptedPriceTableValidity = build.Select(build.Var{
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Dev:      1 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
@@ -44,6 +45,7 @@ var (
 	// between price table updates triggered by 'staticSchedulePriceTableUpdate'
 	minElapsedTimeSinceLastScheduledUpdate = build.Select(build.Var{
 		Standard: 6 * time.Hour,
+		Testnet:  6 * time.Hour,
 		Dev:      15 * time.Minute,
 		Testing:  1 * time.Minute,
 	}).(time.Duration)
@@ -59,6 +61,7 @@ var (
 	// the host's block height to be higher or equal.
 	priceTableHostBlockHeightLeeWay = build.Select(build.Var{
 		Standard: types.BlockHeight(3),
+		Testnet:  types.BlockHeight(3),
 		Dev:      types.BlockHeight(150),  // 50 times faster than Standard
 		Testing:  types.BlockHeight(3600), // 600 times faster than Standard
 	}).(types.BlockHeight)
