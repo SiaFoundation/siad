@@ -24,10 +24,10 @@ EXPOSE 9882/tcp
 # host RHP3 port
 EXPOSE 9883/tcp
 
-# SIA_WALLET_PASSWORD is used to automatically unlock the wallet
-ENV SIA_WALLET_PASSWORD=
-# SIA_API_PASSWORD sets the password used for API authentication
-ENV SIA_API_PASSWORD=
+# SIA_ZEN_WALLET_PASSWORD is used to automatically unlock the wallet
+ENV SIA_ZEN_WALLET_PASSWORD=
+# SIA_ZEN_API_PASSWORD sets the password used for API authentication
+ENV SIA_ZEN_API_PASSWORD=
 
 VOLUME [ "/sia-data" ]
 
