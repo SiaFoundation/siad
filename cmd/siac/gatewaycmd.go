@@ -144,8 +144,8 @@ func gatewayaddresscmd() {
 	fmt.Println("Address:", info.NetAddress)
 }
 
-//gatewaybandwidthcmd is the handler for the command `siac gateway bandwidth`.
-//returns the total upload and download bandwidth usage for the gateway
+// gatewaybandwidthcmd is the handler for the command `siac gateway bandwidth`.
+// returns the total upload and download bandwidth usage for the gateway
 func gatewaybandwidthcmd() {
 	bandwidth, err := httpClient.GatewayBandwidthGet()
 	if err != nil {

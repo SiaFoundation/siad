@@ -911,7 +911,6 @@ func TestRegistryRace(t *testing.T) {
 // CPU | DiskType | #CPUs | #Updates/s | Commit
 //
 // i9  | SSD      | 16    | 196        | 1a862b7bace95e968f04f0a2151e5a572c948f22
-//
 func BenchmarkRegistryUpdate(b *testing.B) {
 	b.StopTimer()
 	dir := testDir(b.Name())

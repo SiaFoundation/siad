@@ -35,6 +35,7 @@ var (
 	ephemeralSeedInterval = build.Select(build.Var{
 		Dev:      types.BlockHeight(100),
 		Standard: types.BlockHeight(1000),
+		Testnet:  types.BlockHeight(1000),
 		Testing:  types.BlockHeight(10),
 	}).(types.BlockHeight)
 )

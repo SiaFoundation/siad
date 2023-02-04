@@ -111,6 +111,7 @@ var (
 	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
+		Testnet:  10 * time.Minute,
 		Dev:      5 * time.Minute,
 		Testing:  1 * time.Minute,
 	}).(time.Duration)
@@ -119,6 +120,7 @@ var (
 	// checks if it can expire price tables that have an expiry in the past.
 	pruneExpiredRPCPriceTableFrequency = build.Select(build.Var{
 		Standard: 15 * time.Minute,
+		Testnet:  15 * time.Minute,
 		Dev:      10 * time.Minute,
 		Testing:  30 * time.Second,
 	}).(time.Duration)

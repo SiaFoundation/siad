@@ -54,6 +54,7 @@ var (
 	bytesBufferedPerStream = build.Select(build.Var{
 		Dev:      uint64(1 << 25), // 32 MiB
 		Standard: uint64(1 << 25), // 32 MiB
+		Testnet:  uint64(1 << 25), // 32 MiB
 		Testing:  uint64(1 << 8),  // 256 bytes
 	}).(uint64)
 
@@ -65,6 +66,7 @@ var (
 	keepOldBuffersDuration = build.Select(build.Var{
 		Dev:      time.Second * 15,
 		Standard: time.Second * 60,
+		Testnet:  time.Second * 60,
 		Testing:  time.Second * 2,
 	}).(time.Duration)
 
@@ -85,6 +87,7 @@ var (
 	minimumLookahead = build.Select(build.Var{
 		Dev:      uint64(1 << 21), // 2 MiB
 		Standard: uint64(1 << 23), // 8 MiB
+		Testnet:  uint64(1 << 23), // 8 MiB
 		Testing:  uint64(1 << 6),  // 64 bytes
 	}).(uint64)
 )

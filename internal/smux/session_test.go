@@ -16,6 +16,7 @@ import (
 
 func init() {
 	go func() {
+		// nolint:gosec
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 	log.SetFlags(log.LstdFlags | log.Lshortfile)

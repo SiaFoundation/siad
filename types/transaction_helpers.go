@@ -36,23 +36,23 @@ type TransactionGraphEdge struct {
 //
 // Resulting Graph:
 //
-//    o
-//   / \
-//  o   o
-//   \ /
-//    o
-//   /|\
-//   \| \
-//    o  o
-//    |
-//    o
+//	  o
+//	 / \
+//	o   o
+//	 \ /
+//	  o
+//	 /|\
+//	 \| \
+//	  o  o
+//	  |
+//	  o
 //
 // This graph will result in 4 transactions:
 //
-//    t1: [0->1],[0->2]
-//    t2: [1->3],[2->3]
-//    t3: [3->4],[3->4],[3->5]
-//    t4: [4->6]
+//	t1: [0->1],[0->2]
+//	t2: [1->3],[2->3]
+//	t3: [3->4],[3->4],[3->5]
+//	t4: [4->6]
 //
 // NOTE: the edges must be specified so that the inputs and outputs of the
 // resulting transaction add up correctly.

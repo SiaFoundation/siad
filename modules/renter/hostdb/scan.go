@@ -28,6 +28,7 @@ var (
 	// part of the scan history.
 	scanTimeElapsedRequirement = build.Select(build.Var{
 		Standard: 60 * time.Minute,
+		Testnet:  60 * time.Minute,
 		Dev:      2 * time.Minute,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)

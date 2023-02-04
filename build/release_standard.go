@@ -1,5 +1,5 @@
-//go:build !testing && !dev
-// +build !testing,!dev
+//go:build !testing && !dev && !testnet
+// +build !testing,!dev,!testnet
 
 package build
 

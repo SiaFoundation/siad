@@ -155,6 +155,9 @@ dev-race:
 static:
 	go build -trimpath -o release/ -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 
+testnet:
+	CGO_ENABLED=0 go build -trimpath -o release/ -tags='netgo testnet' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+
 # release builds and installs release binaries.
 release:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)

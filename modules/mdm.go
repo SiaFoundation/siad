@@ -175,6 +175,7 @@ var (
 	// completing the read.
 	MDMProgramWriteResponseTime = build.Select(build.Var{
 		Standard: time.Minute,
+		Testnet:  time.Minute,
 		Dev:      30 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)

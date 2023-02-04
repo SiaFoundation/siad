@@ -16,6 +16,8 @@ import (
 )
 
 var (
+	numGenesisSiacoins Currency
+
 	// ASICHardforkHeight is the height at which the hardfork targeting
 	// selected ASICs was activated.
 	ASICHardforkHeight BlockHeight
@@ -215,6 +217,7 @@ var (
 	// TaxHardforkHeight is the height at which the tax hardfork occurred.
 	TaxHardforkHeight = build.Select(build.Var{
 		Dev:      BlockHeight(10),
+		Testnet:  BlockHeight(2),
 		Standard: BlockHeight(21e3),
 		Testing:  BlockHeight(10),
 	}).(BlockHeight)
@@ -326,13 +329,7 @@ func init() {
 		OakMaxRise = big.NewRat(10001, 10e3)
 		OakMaxDrop = big.NewRat(10e3, 10001)
 
-		// Populate the void address with 1 billion siacoins in the genesis block.
-		GenesisSiacoinAllocation = []SiacoinOutput{
-			{
-				Value:      NewCurrency64(1000000000).Mul(SiacoinPrecision),
-				UnlockHash: UnlockHash{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			},
-		}
+		GenesisSiacoinAllocation = []SiacoinOutput{}
 
 		GenesisSiafundAllocation = []SiafundOutput{
 			{
@@ -661,15 +658,158 @@ func init() {
 				UnlockHash: UnlockHash{125, 12, 68, 247, 102, 78, 45, 52, 229, 62, 253, 224, 102, 26, 111, 98, 142, 201, 38, 71, 133, 174, 142, 60, 215, 201, 115, 232, 209, 144, 195, 201},
 			},
 		}
+	} else if build.Release == "testnet" {
+		// 'testnet' settings are for a full test network. Past hardfork
+		// heights are set to trigger upfront in order to mimic the current
+		// production network.
+
+		// The oak difficulty adjustment hardfork is set to trigger at block
+		// 135,000, which is just under 6 months after the hardfork was first
+		// released as beta software to the network. This hopefully gives
+		// everyone plenty of time to upgrade and adopt the hardfork, while also
+		// being earlier than the most optimistic shipping dates for the miners
+		// that would otherwise be very disruptive to the network.
+		//
+		// There was a bug in the original Oak hardfork that had to be quickly
+		// followed up with another fix. The height of that fix is the
+		// OakHardforkFixBlock.
+		OakHardforkBlock = 10
+		OakHardforkFixBlock = 12
+
+		// The decay is kept at 995/1000, or a decay of about 0.5% each block.
+		// This puts the halflife of a block's relevance at about 1 day. This
+		// allows the difficulty to adjust rapidly if the hashrate is adjusting
+		// rapidly, while still keeping a relatively strong insulation against
+		// random variance.
+		OakDecayNum = 995
+		OakDecayDenom = 1e3
+
+		// The block shift determines the most that the difficulty adjustment
+		// algorithm is allowed to shift the target block time. With a block
+		// frequency of 600 seconds, the min target block time is 200 seconds,
+		// and the max target block time is 1800 seconds.
+		OakMaxBlockShift = 3
+
+		// The max rise and max drop for the difficulty is kept at 0.4% per
+		// block, which means that in 1008 blocks the difficulty can move a
+		// maximum of about 55x. This is significant, and means that dramatic
+		// hashrate changes can be responded to quickly, while still forcing an
+		// attacker to do a significant amount of work in order to execute a
+		// difficulty raising attack, and minimizing the chance that an attacker
+		// can get lucky and fake a ton of work.
+		OakMaxRise = big.NewRat(1004, 1e3)
+		OakMaxDrop = big.NewRat(1e3, 1004)
+
+		// A total time of 120,000 is chosen because that represents the total
+		// time elapsed at a perfect equilibrium, indicating a visible average
+		// block time that perfectly aligns with what is expected. A total
+		// target of 67 leading zeroes is chosen because that aligns with the
+		// amount of hashrate that we expect to be on the network after the
+		// hardfork.
+		ASICHardforkHeight = 20
+		ASICHardforkTotalTarget = Target{0, 0, 0, 1}
+		ASICHardforkTotalTime = 10e3
+
+		// The Foundation subsidy hardfork activates at approximately 11pm EST
+		// on February 3, 2021.
+		FoundationHardforkHeight = 30
+		// Subsidies are paid out approximately once per month. Since actual
+		// months vary in length, we instead divide the total number of blocks
+		// per year by 12.
+		FoundationSubsidyFrequency = BlocksPerYear / 12
+
+		InitialFoundationUnlockHash = MustParseAddress("053b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807")
+		InitialFoundationFailsafeUnlockHash = UnlockHash{}
+
+		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
+		// example. The security lost by lowering the block time is not
+		// insignificant, and the convenience gained by lowering the blocktime
+		// even down to 90 seconds is not significant. I do feel that 10
+		// minutes could even be too short, but it has worked well for Bitcoin.
+		BlockFrequency = 600
+
+		// Payouts take 1 day to mature. This is to prevent a class of double
+		// spending attacks parties unintentionally spend coins that will stop
+		// existing after a blockchain reorganization. There are multiple
+		// classes of payouts in Sia that depend on a previous block - if that
+		// block changes, then the output changes and the previously existing
+		// output ceases to exist. This delay stops both unintentional double
+		// spending and stops a small set of long-range mining attacks.
+		MaturityDelay = 144
+
+		// The genesis timestamp is set to June 6th, because that is when the
+		// 100-block developer premine started. The trailing zeroes are a
+		// bonus, and make the timestamp easier to memorize.
+		GenesisTimestamp = Timestamp(1673600000) // January 13, 2023 @ 08:53 GMT
+
+		// The RootTarget was set such that the developers could reasonable
+		// premine 100 blocks in a day. It was known to the developers at launch
+		// this this was at least one and perhaps two orders of magnitude too
+		// small.
+		RootTarget = Target{0, 0, 0, 1}
+
+		// When the difficulty is adjusted, it is adjusted by looking at the
+		// timestamp of the 1000th previous block. This minimizes the abilities
+		// of miners to attack the network using rogue timestamps.
+		TargetWindow = 1e3
+
+		// The difficulty adjustment is clamped to 2.5x every 500 blocks. This
+		// corresponds to 6.25x every 2 weeks, which can be compared to
+		// Bitcoin's clamp of 4x every 2 weeks. The difficulty clamp is
+		// primarily to stop difficulty raising attacks. Sia's safety margin is
+		// similar to Bitcoin's despite the looser clamp because Sia's
+		// difficulty is adjusted four times as often. This does result in
+		// greater difficulty oscillation, a tradeoff that was chosen to be
+		// acceptable due to Sia's more vulnerable position as an altcoin.
+		MaxTargetAdjustmentUp = big.NewRat(25, 10)
+		MaxTargetAdjustmentDown = big.NewRat(10, 25)
+
+		// Blocks will not be accepted if their timestamp is more than 3 hours
+		// into the future, but will be accepted as soon as they are no longer
+		// 3 hours into the future. Blocks that are greater than 5 hours into
+		// the future are rejected outright, as it is assumed that by the time
+		// 2 hours have passed, those blocks will no longer be on the longest
+		// chain. Blocks cannot be kept forever because this opens a DoS
+		// vector.
+		FutureThreshold = 3 * 60 * 60        // 3 hours.
+		ExtremeFutureThreshold = 5 * 60 * 60 // 5 hours.
+
+		// no need to worry about inflation
+		MinimumCoinbase = InitialCoinbase
+
+		GenesisSiacoinAllocation = []SiacoinOutput{
+			{
+				Value:      SiacoinPrecision.Mul64(1e12),
+				UnlockHash: MustParseAddress("3d7f707d05f2e0ec7ccc9220ed7c8af3bc560fbee84d068c2cc28151d617899e1ee8bc069946"),
+			},
+		}
+
+		GenesisSiafundAllocation = []SiafundOutput{
+			{
+				Value:      NewCurrency64(10000),
+				UnlockHash: MustParseAddress("053b2def3cbdd078c19d62ce2b4f0b1a3c5e0ffbeeff01280efb1f8969b2f5bb4fdc680f0807"),
+			},
+		}
 	}
 
 	// Create the genesis block.
 	GenesisBlock = Block{
 		Timestamp: GenesisTimestamp,
 		Transactions: []Transaction{
-			{SiafundOutputs: GenesisSiafundAllocation},
+			{
+				SiacoinOutputs: GenesisSiacoinAllocation,
+				SiafundOutputs: GenesisSiafundAllocation,
+			},
 		},
 	}
+
+	// calculate the initial coinbase
+	for _, tx := range GenesisBlock.Transactions {
+		for _, sco := range tx.SiacoinOutputs {
+			numGenesisSiacoins = numGenesisSiacoins.Add(sco.Value)
+		}
+	}
+
 	// Calculate the genesis ID.
 	GenesisID = GenesisBlock.ID()
 }

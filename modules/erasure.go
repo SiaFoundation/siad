@@ -21,6 +21,7 @@ var (
 	RenterDefaultDataPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 10,
+		Testnet:  10,
 		Testing:  1,
 	}).(int)
 
@@ -29,6 +30,7 @@ var (
 	RenterDefaultParityPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 20,
+		Testnet:  20,
 		Testing:  4,
 	}).(int)
 

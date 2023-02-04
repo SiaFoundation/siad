@@ -41,7 +41,7 @@ func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 		return
 	}
 	// Ignore all local hosts announced through the blockchain.
-	if build.Release == "standard" && host.NetAddress.IsLocal() {
+	if (build.Release == "standard" || build.Release == "testnet") && host.NetAddress.IsLocal() {
 		return
 	}
 

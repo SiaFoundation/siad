@@ -48,6 +48,7 @@ var (
 	// needing to purge quickly.
 	fastNodePurgeDelay = build.Select(build.Var{
 		Standard: 1 * time.Minute,
+		Testnet:  1 * time.Minute,
 		Dev:      5 * time.Second,
 		Testing:  200 * time.Millisecond,
 	}).(time.Duration)
@@ -56,6 +57,7 @@ var (
 	// have in the node list before it will stop asking peers for more nodes.
 	healthyNodeListLen = build.Select(build.Var{
 		Standard: int(200),
+		Testnet:  int(50),
 		Dev:      int(30),
 		Testing:  int(15),
 	}).(int)
@@ -64,6 +66,7 @@ var (
 	// peers when they are expanding their node lists.
 	maxSharedNodes = build.Select(build.Var{
 		Standard: uint64(10),
+		Testnet:  uint64(10),
 		Dev:      uint64(5),
 		Testing:  uint64(3),
 	}).(uint64)
@@ -72,6 +75,7 @@ var (
 	// iteration of the node list loop.
 	nodeListDelay = build.Select(build.Var{
 		Standard: 5 * time.Second,
+		Testnet:  5 * time.Second,
 		Dev:      3 * time.Second,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
@@ -80,6 +84,7 @@ var (
 	// iteration of the node purge loop.
 	nodePurgeDelay = build.Select(build.Var{
 		Standard: 10 * time.Minute,
+		Testnet:  10 * time.Minute,
 		Dev:      20 * time.Second,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
@@ -88,6 +93,7 @@ var (
 	// threadedOnlineCheck.
 	onlineCheckFrequency = build.Select(build.Var{
 		Standard: 30 * time.Second,
+		Testnet:  30 * time.Second,
 		Dev:      10 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
@@ -97,6 +103,7 @@ var (
 	// of goroutines per second.
 	peerRPCDelay = build.Select(build.Var{
 		Standard: 3 * time.Second,
+		Testnet:  3 * time.Second,
 		Dev:      1 * time.Second,
 		Testing:  20 * time.Millisecond,
 	}).(time.Duration)
@@ -105,6 +112,7 @@ var (
 	// to be pruning nodes from the node list.
 	pruneNodeListLen = build.Select(build.Var{
 		Standard: int(50),
+		Testnet:  int(50),
 		Dev:      int(15),
 		Testing:  int(10),
 	}).(int)
@@ -113,6 +121,7 @@ var (
 	// to be pruning nodes quickly from the node list.
 	quickPruneListLen = build.Select(build.Var{
 		Standard: int(250),
+		Testnet:  int(250),
 		Dev:      int(40),
 		Testing:  int(20),
 	}).(int)
@@ -129,6 +138,7 @@ var (
 	// should be enough to fend from most attacks.
 	acceptInterval = build.Select(build.Var{
 		Standard: 6 * time.Second,
+		Testnet:  6 * time.Second,
 		Dev:      3 * time.Second,
 		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
@@ -138,6 +148,7 @@ var (
 	// forming new connections with peers.
 	acquiringPeersDelay = build.Select(build.Var{
 		Standard: 5 * time.Second,
+		Testnet:  5 * time.Second,
 		Dev:      3 * time.Second,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
@@ -146,6 +157,7 @@ var (
 	// have before it stops accepting inbound connections.
 	fullyConnectedThreshold = build.Select(build.Var{
 		Standard: 128,
+		Testnet:  128,
 		Dev:      20,
 		Testing:  10,
 	}).(int)
@@ -154,6 +166,7 @@ var (
 	// connections that the gateway will try to form concurrently.
 	maxConcurrentOutboundPeerRequests = build.Select(build.Var{
 		Standard: 3,
+		Testnet:  3,
 		Dev:      2,
 		Testing:  2,
 	}).(int)
@@ -163,6 +176,7 @@ var (
 	// nodes in the nodelist.
 	noNodesDelay = build.Select(build.Var{
 		Standard: 20 * time.Second,
+		Testnet:  20 * time.Second,
 		Dev:      10 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
@@ -175,6 +189,7 @@ var (
 	// peers.
 	unwantedLocalPeerDelay = build.Select(build.Var{
 		Standard: 2 * time.Second,
+		Testnet:  2 * time.Second,
 		Dev:      1 * time.Second,
 		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
@@ -184,6 +199,7 @@ var (
 	// connected.
 	wellConnectedDelay = build.Select(build.Var{
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Dev:      1 * time.Minute,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
@@ -192,6 +208,7 @@ var (
 	// the gateway will not attempt to make new outbound connections.
 	wellConnectedThreshold = build.Select(build.Var{
 		Standard: 8,
+		Testnet:  8,
 		Dev:      5,
 		Testing:  4,
 	}).(int)
@@ -202,6 +219,7 @@ var (
 	// all temporary connections to the gateway.
 	connStdDeadline = build.Select(build.Var{
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Dev:      2 * time.Minute,
 		Testing:  30 * time.Second,
 	}).(time.Duration)
@@ -209,6 +227,7 @@ var (
 	// the gateway will abort a connection attempt after this long
 	dialTimeout = build.Select(build.Var{
 		Standard: 3 * time.Minute,
+		Testnet:  3 * time.Minute,
 		Dev:      20 * time.Second,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
@@ -217,6 +236,7 @@ var (
 	// incoming RPC calls.
 	rpcStdDeadline = build.Select(build.Var{
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Dev:      3 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
@@ -229,6 +249,7 @@ var (
 	// accept a result.
 	minPeersForIPDiscovery = build.Select(build.Var{
 		Standard: 5,
+		Testnet:  5,
 		Dev:      3,
 		Testing:  2,
 	}).(int)
@@ -237,6 +258,7 @@ var (
 	// if the ip couldn't be discovered successfully.
 	timeoutIPDiscovery = build.Select(build.Var{
 		Standard: 5 * time.Minute,
+		Testnet:  5 * time.Minute,
 		Dev:      5 * time.Minute,
 		Testing:  time.Minute,
 	}).(time.Duration)
@@ -245,6 +267,7 @@ var (
 	// successful IP discovery before we rediscover the IP.
 	rediscoverIPIntervalSuccess = build.Select(build.Var{
 		Standard: 3 * time.Hour,
+		Testnet:  3 * time.Hour,
 		Dev:      10 * time.Minute,
 		Testing:  30 * time.Second,
 	}).(time.Duration)
@@ -253,6 +276,7 @@ var (
 	// IP discovery before we try again.
 	rediscoverIPIntervalFailure = build.Select(build.Var{
 		Standard: 15 * time.Minute,
+		Testnet:  15 * time.Minute,
 		Dev:      1 * time.Minute,
 		Testing:  10 * time.Second,
 	}).(time.Duration)
@@ -261,6 +285,7 @@ var (
 	// enough peers to determine our public ip address before trying again.
 	peerDiscoveryRetryInterval = build.Select(build.Var{
 		Standard: 10 * time.Second,
+		Testnet:  10 * time.Second,
 		Dev:      1 * time.Second,
 		Testing:  100 * time.Millisecond,
 	}).(time.Duration)

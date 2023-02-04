@@ -40,6 +40,7 @@ var (
 	connTimeout = build.Select(build.Var{
 		Dev:      10 * time.Second,
 		Standard: 2 * time.Minute,
+		Testnet:  2 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
@@ -48,6 +49,7 @@ var (
 	defaultContractLockTimeout = build.Select(build.Var{
 		Dev:      uint64(60 * 1000),     // 1 minute
 		Standard: uint64(5 * 60 * 1000), // 5 minutes
+		Testnet:  uint64(5 * 60 * 1000), // 5 minutes
 		Testing:  uint64(25 * 1000),     // 25 seconds
 	}).(uint64)
 
@@ -64,6 +66,7 @@ var (
 	hostPriceLeeway = build.Select(build.Var{
 		Dev:      0.05,
 		Standard: 0.01,
+		Testnet:  0.01,
 		Testing:  0.002,
 	}).(float64)
 

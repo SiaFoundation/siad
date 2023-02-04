@@ -29,6 +29,7 @@ var (
 	pcwsWorkerStateResetTime = build.Select(build.Var{
 		Dev:      time.Minute * 10,
 		Standard: time.Hour * 9,
+		Testnet:  time.Hour * 9,
 		Testing:  time.Second * 15,
 	}).(time.Duration)
 
@@ -39,6 +40,7 @@ var (
 	pcwsHasSectorTimeout = build.Select(build.Var{
 		Dev:      time.Minute * 1,
 		Standard: time.Minute * 3,
+		Testnet:  time.Minute * 3,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
 

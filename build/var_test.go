@@ -28,6 +28,7 @@ func TestSelect(t *testing.T) {
 		Standard: 0,
 		Dev:      0,
 		Testing:  0,
+		Testnet:  0,
 	}
 	if didPanic(func() { Select(v) }) {
 		t.Error("Select should not panic with valid fields")

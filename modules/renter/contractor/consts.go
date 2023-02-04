@@ -48,6 +48,7 @@ var (
 	consecutiveRenewalsBeforeReplacement = build.Select(build.Var{
 		Dev:      types.BlockHeight(12),
 		Standard: types.BlockHeight(12), // ~2h
+		Testnet:  types.BlockHeight(12), // ~2h
 		Testing:  types.BlockHeight(12),
 	}).(types.BlockHeight)
 
@@ -83,6 +84,7 @@ var (
 	randomHostsBufferForScore = build.Select(build.Var{
 		Dev:      2,
 		Standard: 50,
+		Testnet:  50,
 		Testing:  1,
 	}).(int)
 
@@ -91,6 +93,7 @@ var (
 	oosRetryInterval = build.Select(build.Var{
 		Dev:      types.BlockHeight(types.BlocksPerHour / 2), // 30 minutes
 		Standard: types.BlockHeight(types.BlocksPerWeek),     // 7 days
+		Testnet:  types.BlockHeight(types.BlocksPerWeek),     // 7 days
 		Testing:  types.BlockHeight(types.BlocksPerHour * 2),
 	}).(types.BlockHeight)
 )
@@ -103,11 +106,13 @@ var (
 	maxStoragePrice  = build.Select(build.Var{
 		Dev:      types.SiacoinPrecision.Mul64(300e3).Div(modules.BlockBytesPerMonthTerabyte), // 1 order of magnitude greater
 		Standard: types.SiacoinPrecision.Mul64(30e3).Div(modules.BlockBytesPerMonthTerabyte),  // 30k SC / TB / Month
+		Testnet:  types.SiacoinPrecision.Mul64(30e3).Div(modules.BlockBytesPerMonthTerabyte),  // 30k SC / TB / Month
 		Testing:  types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte),   // 2 orders of magnitude greater
 	}).(types.Currency)
 	maxUploadPrice = build.Select(build.Var{
 		Dev:      maxStoragePrice.Mul64(30 * uint64(types.BlocksPerMonth)),  // 1 order of magnitude greater
 		Standard: maxStoragePrice.Mul64(3 * uint64(types.BlocksPerMonth)),   // 3 months of storage
+		Testnet:  maxStoragePrice.Mul64(3 * uint64(types.BlocksPerMonth)),   // 3 months of storage
 		Testing:  maxStoragePrice.Mul64(300 * uint64(types.BlocksPerMonth)), // 2 orders of magnitude greater
 	}).(types.Currency)
 

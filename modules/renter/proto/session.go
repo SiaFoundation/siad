@@ -28,6 +28,7 @@ var sessionDialTimeout = build.Select(build.Var{
 	Testing:  5 * time.Second,
 	Dev:      20 * time.Second,
 	Standard: 45 * time.Second,
+	Testnet:  45 * time.Second,
 }).(time.Duration)
 
 // A Session is an ongoing exchange of RPCs via the renter-host protocol.

@@ -41,6 +41,7 @@ var (
 	// check is run.
 	connectabilityCheckFirstWait = build.Select(build.Var{
 		Standard: time.Minute * 2,
+		Testnet:  time.Minute * 2,
 		Dev:      time.Minute * 1,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
@@ -49,6 +50,7 @@ var (
 	// check is run.
 	connectabilityCheckFrequency = build.Select(build.Var{
 		Standard: time.Minute * 10,
+		Testnet:  time.Minute * 10,
 		Dev:      time.Minute * 5,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
@@ -57,6 +59,7 @@ var (
 	// will be allowed to block before it times out.
 	connectabilityCheckTimeout = build.Select(build.Var{
 		Standard: time.Minute * 2,
+		Testnet:  time.Minute * 2,
 		Dev:      time.Minute * 5,
 		Testing:  time.Second * 90,
 	}).(time.Duration)
@@ -81,6 +84,7 @@ var (
 	logAllLimit = build.Select(build.Var{
 		Dev:      uint64(50),
 		Standard: uint64(250),
+		Testnet:  uint64(250),
 		Testing:  uint64(100),
 	}).(uint64)
 
@@ -90,6 +94,7 @@ var (
 	logFewLimit = build.Select(build.Var{
 		Dev:      uint64(500),
 		Standard: uint64(2500),
+		Testnet:  uint64(2500),
 		Testing:  uint64(500),
 	}).(uint64)
 
@@ -99,6 +104,7 @@ var (
 	obligationLockTimeout = build.Select(build.Var{
 		Dev:      time.Second * 20,
 		Standard: time.Second * 60,
+		Testnet:  time.Second * 60,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
 
@@ -108,6 +114,7 @@ var (
 	revisionSubmissionBuffer = build.Select(build.Var{
 		Dev:      types.BlockHeight(20),  // About 4 minutes
 		Standard: types.BlockHeight(144), // 1 day.
+		Testnet:  types.BlockHeight(144), // 1 day.
 		Testing:  types.BlockHeight(4),
 	}).(types.BlockHeight)
 
@@ -116,6 +123,7 @@ var (
 	rpcRatelimit = build.Select(build.Var{
 		Dev:      time.Millisecond * 10,
 		Standard: time.Millisecond * 50,
+		Testnet:  time.Millisecond * 50,
 		Testing:  time.Millisecond,
 	}).(time.Duration)
 
@@ -123,6 +131,7 @@ var (
 	// check runs
 	workingStatusFirstCheck = build.Select(build.Var{
 		Standard: time.Minute * 3,
+		Testnet:  time.Minute * 3,
 		Dev:      time.Minute * 1,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
@@ -131,6 +140,7 @@ var (
 	// check runs
 	workingStatusFrequency = build.Select(build.Var{
 		Standard: time.Minute * 10,
+		Testnet:  time.Minute * 10,
 		Dev:      time.Minute * 5,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
@@ -139,6 +149,7 @@ var (
 	// workingStatusFrequency for the host to be considered working.
 	workingStatusThreshold = build.Select(build.Var{
 		Standard: uint64(3),
+		Testnet:  uint64(3),
 		Dev:      uint64(1),
 		Testing:  uint64(1),
 	}).(uint64)

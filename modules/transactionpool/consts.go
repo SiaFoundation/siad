@@ -82,6 +82,7 @@ var (
 	// transaction set call.
 	relayTransactionSetTimeout = build.Select(build.Var{
 		Standard: 3 * time.Minute,
+		Testnet:  3 * time.Minute,
 		Dev:      20 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
@@ -91,6 +92,7 @@ var (
 	// pool.
 	MaxTransactionAge = build.Select(build.Var{
 		Standard: types.BlockHeight(24),
+		Testnet:  types.BlockHeight(24),
 		Dev:      types.BlockHeight(12),
 		Testing:  types.BlockHeight(5),
 	}).(types.BlockHeight)

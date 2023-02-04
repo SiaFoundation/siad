@@ -55,7 +55,7 @@ type (
 // CalculateCoinbase calculates the coinbase for a given height. The coinbase
 // equation is:
 //
-//     coinbase := max(InitialCoinbase - height, MinimumCoinbase) * SiacoinPrecision
+//	coinbase := max(InitialCoinbase - height, MinimumCoinbase) * SiacoinPrecision
 func CalculateCoinbase(height BlockHeight) Currency {
 	base := InitialCoinbase - uint64(height)
 	if uint64(height) > InitialCoinbase || base < MinimumCoinbase {
@@ -84,17 +84,6 @@ func CalculateNumSiacoins(height BlockHeight) (total Currency) {
 	}
 	return
 }
-
-var numGenesisSiacoins = func() Currency {
-	// Sum all the values for the genesis siacoin outputs.
-	numGenesisSiacoins := NewCurrency64(0)
-	for _, transaction := range GenesisBlock.Transactions {
-		for _, siacoinOutput := range transaction.SiacoinOutputs {
-			numGenesisSiacoins = numGenesisSiacoins.Add(siacoinOutput.Value)
-		}
-	}
-	return numGenesisSiacoins
-}()
 
 // ID returns the ID of a Block, which is calculated by hashing the header.
 func (h BlockHeader) ID() BlockID {

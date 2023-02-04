@@ -143,6 +143,7 @@ var (
 	NegotiateSettingsTime = build.Select(build.Var{
 		Dev:      120 * time.Second,
 		Standard: 120 * time.Second,
+		Testnet:  120 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 )
@@ -218,6 +219,7 @@ var (
 	SectorSize = build.Select(build.Var{
 		Dev:      SectorSizeDev,
 		Standard: SectorSizeStandard,
+		Testnet:  SectorSizeStandard,
 		Testing:  SectorSizeTesting,
 	}).(uint64)
 

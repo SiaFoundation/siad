@@ -23,6 +23,7 @@ var (
 	lookaheadBuffer = build.Select(build.Var{
 		Dev:      uint64(400),
 		Standard: uint64(4000),
+		Testnet:  uint64(4000),
 		Testing:  uint64(40),
 	}).(uint64)
 
@@ -31,6 +32,7 @@ var (
 	lookaheadRescanThreshold = build.Select(build.Var{
 		Dev:      uint64(100),
 		Standard: uint64(1000),
+		Testnet:  uint64(1000),
 		Testing:  uint64(10),
 	}).(uint64)
 )

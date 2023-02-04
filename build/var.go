@@ -9,6 +9,7 @@ type Var struct {
 	Standard interface{}
 	Dev      interface{}
 	Testing  interface{}
+	Testnet  interface{}
 	// prevent unkeyed literals
 	_ struct{}
 }
@@ -19,8 +20,8 @@ type Var struct {
 // important to point out that type assertions are stricter than conversions.
 // Specifically, you cannot write:
 //
-//   type myint int
-//   Select(Var{0, 0, 0}).(myint)
+//	type myint int
+//	Select(Var{0, 0, 0}).(myint)
 //
 // Because 0 will be interpreted as an int, which is not assignable to myint.
 // Instead, you must explicitly cast each field in the Var, or cast the return
@@ -29,8 +30,8 @@ func Select(v Var) interface{} {
 	if v.Standard == nil || v.Dev == nil || v.Testing == nil {
 		panic("nil value in build variable")
 	}
-	st, dt, tt := reflect.TypeOf(v.Standard), reflect.TypeOf(v.Dev), reflect.TypeOf(v.Testing)
-	if !dt.AssignableTo(st) || !tt.AssignableTo(st) {
+	st, dt, tt, tnt := reflect.TypeOf(v.Standard), reflect.TypeOf(v.Dev), reflect.TypeOf(v.Testing), reflect.TypeOf(v.Testnet)
+	if !dt.AssignableTo(st) || !tt.AssignableTo(st) || !tnt.AssignableTo(st) {
 		// NOTE: we use AssignableTo instead of the more lenient ConvertibleTo
 		// because type assertions require the former.
 		panic("build variables must have a single type")
@@ -42,6 +43,8 @@ func Select(v Var) interface{} {
 		return v.Dev
 	case "testing":
 		return v.Testing
+	case "testnet":
+		return v.Testnet
 	default:
 		panic("unrecognized Release: " + Release)
 	}

@@ -102,7 +102,7 @@ func storageProofSegment(tx *bolt.Tx, fcid types.FileContractID) (uint64, error)
 // validStorageProofsPre100e3 runs the code that was running before height
 // 100e3, which contains a hardforking bug, fixed at block 100e3.
 //
-// HARDFORK 100,000
+// # HARDFORK 100,000
 //
 // Originally, it was impossible to provide a storage proof for data of length
 // zero. A hardfork was added triggering at block 100,000 to enable an
@@ -142,7 +142,8 @@ func validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
 		// crypto.SegmentSize bytes, because the segmentLen would be set to 0
 		// instead of crypto.SegmentSize, due to an error with the modulus
 		// math. This new error has been fixed with the block 100,000 hardfork.
-		if (build.Release == "standard" && blockHeight(tx) < 21e3) || (build.Release == "testing" && blockHeight(tx) < 10) {
+		height := blockHeight(tx)
+		if (build.Release == "standard" && height < 21e3) || (build.Release == "testnet" && height < 2) || (build.Release == "testing" && height < 10) {
 			segmentLen = uint64(crypto.SegmentSize)
 		}
 
@@ -164,7 +165,8 @@ func validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
 // validStorageProofs checks that the storage proofs are valid in the context
 // of the consensus set.
 func validStorageProofs(tx *bolt.Tx, t types.Transaction) error {
-	if (build.Release == "standard" && blockHeight(tx) < 100e3) || (build.Release == "testing" && blockHeight(tx) < 10) {
+	height := blockHeight(tx)
+	if (build.Release == "standard" && height < 100e3) || (build.Release == "testnet" && height < 5) || (build.Release == "testing" && height < 10) {
 		return validStorageProofs100e3(tx, t)
 	}
 

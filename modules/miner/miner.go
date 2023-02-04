@@ -21,6 +21,7 @@ var (
 	// limited.
 	BlockMemory = build.Select(build.Var{
 		Standard: 50,
+		Testnet:  50,
 		Dev:      10,
 		Testing:  5,
 	}).(int)
@@ -36,6 +37,7 @@ var (
 	// not always having the most recent transactions.
 	HeaderMemory = build.Select(build.Var{
 		Standard: 10000,
+		Testnet:  10000,
 		Dev:      500,
 		Testing:  50,
 	}).(int)
@@ -44,6 +46,7 @@ var (
 	// elapse between generating source blocks.
 	MaxSourceBlockAge = build.Select(build.Var{
 		Standard: 30 * time.Second,
+		Testnet:  30 * time.Second,
 		Dev:      5 * time.Second,
 		Testing:  1 * time.Second,
 	}).(time.Duration)

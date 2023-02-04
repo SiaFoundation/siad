@@ -59,6 +59,7 @@ var (
 	// will be paused
 	DefaultPauseDuration = build.Select(build.Var{
 		Standard: 10 * time.Minute,
+		Testnet:  10 * time.Minute,
 		Dev:      1 * time.Minute,
 		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
