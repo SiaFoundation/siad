@@ -415,9 +415,10 @@ func removeFileContract(tx *bolt.Tx, id types.FileContractID) {
 }
 
 // The address of the devs.
-var devAddr = types.UnlockHash{243, 113, 199, 11, 206, 158, 184,
-	151, 156, 213, 9, 159, 89, 158, 196, 228, 252, 177, 78, 10,
-	252, 243, 31, 151, 145, 224, 62, 100, 150, 164, 192, 179}
+var (
+	oldDevAddr = types.UnlockHash{125, 12, 68, 247, 102, 78, 45, 52, 229, 62, 253, 224, 102, 26, 111, 98, 142, 201, 38, 71, 133, 174, 142, 60, 215, 201, 115, 232, 209, 144, 195, 201}
+	newDevAddr = types.UnlockHash{243, 113, 199, 11, 206, 158, 184, 151, 156, 213, 9, 159, 89, 158, 196, 228, 252, 177, 78, 10, 252, 243, 31, 151, 145, 224, 62, 100, 150, 164, 192, 179}
+)
 
 // getSiafundOutput fetches a siafund output from the database. An error is
 // returned if the siafund output does not exist.
@@ -431,9 +432,8 @@ func getSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID) (types.SiafundOutpu
 	if err != nil {
 		return types.SiafundOutput{}, err
 	}
-	gsa := types.GenesisSiafundAllocation
-	if build.Release != "testnet" && sfo.UnlockHash == gsa[len(gsa)-1].UnlockHash && blockHeight(tx) > 10e3 {
-		sfo.UnlockHash = devAddr
+	if blockHeight(tx) > types.DevAddrHardforkHeight && sfo.UnlockHash == oldDevAddr {
+		sfo.UnlockHash = newDevAddr
 	}
 	return sfo, nil
 }

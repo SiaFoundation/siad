@@ -307,6 +307,7 @@ func TestValidDownloads(t *testing.T) {
 		{sectorSize * 5, 150, sectorSize * 5 / 4, true, "HttpRespOffsetAndLengthManyChunksSubsetOfChunks"},
 	}
 	for _, params := range testParams {
+		params := params
 		t.Run(params.testName, func(st *testing.T) {
 			st.Parallel()
 			err := runDownloadTest(st, params.filesize, params.offset, params.length, params.useHttpResp, params.testName)

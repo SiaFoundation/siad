@@ -166,7 +166,7 @@ func validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
 // of the consensus set.
 func validStorageProofs(tx *bolt.Tx, t types.Transaction) error {
 	height := blockHeight(tx)
-	if (build.Release == "standard" && height < 100e3) || (build.Release == "testnet" && height < 5) || (build.Release == "testing" && height < 10) {
+	if height < types.StorageProofHardforkHeight {
 		return validStorageProofs100e3(tx, t)
 	}
 
