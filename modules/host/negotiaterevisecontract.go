@@ -401,6 +401,9 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 	}
 	fromRenter := oldFCR.ValidRenterPayout().Sub(revision.ValidRenterPayout())
 	// Verify that enough money was transferred.
+	if expectedExchange.Cmp(oldFCR.ValidRenterPayout()) > 0 {
+		expectedExchange = oldFCR.ValidRenterPayout()
+	}
 	if fromRenter.Cmp(expectedExchange) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
 		return extendErr(s, ErrHighRenterValidOutput)
