@@ -18,10 +18,6 @@ import (
 var (
 	numGenesisSiacoins Currency
 
-	// ASICHardforkHeight is the height at which the hardfork targeting
-	// selected ASICs was activated.
-	ASICHardforkHeight BlockHeight
-
 	// ASICHardforkTotalTarget is the initial target after the ASIC hardfork.
 	// The actual target at ASICHardforkHeight is replaced with this value in
 	// order to prevent intolerably slow block times post-fork.
@@ -73,10 +69,6 @@ var (
 	// But if the Timestamp is further into the future than ExtremeFutureThreshold,
 	// the Block is immediately discarded.
 	ExtremeFutureThreshold Timestamp
-
-	// FoundationHardforkHeight is the height at which the Foundation subsidy
-	// hardfork was activated.
-	FoundationHardforkHeight BlockHeight
 
 	// FoundationSubsidyFrequency is the number of blocks between each
 	// Foundation subsidy payout. Although the subsidy is calculated on a
@@ -214,12 +206,48 @@ var (
 )
 
 var (
+	// DevAddrHardforkHeight is the height at which the DevAddr hardfork was
+	// activated.
+	DevAddrHardforkHeight = build.Select(build.Var{
+		Dev:      BlockHeight(3),
+		Testnet:  BlockHeight(1),
+		Standard: BlockHeight(10000),
+		Testing:  BlockHeight(3),
+	}).(BlockHeight)
+
 	// TaxHardforkHeight is the height at which the tax hardfork occurred.
 	TaxHardforkHeight = build.Select(build.Var{
 		Dev:      BlockHeight(10),
 		Testnet:  BlockHeight(2),
-		Standard: BlockHeight(21e3),
+		Standard: BlockHeight(21000),
 		Testing:  BlockHeight(10),
+	}).(BlockHeight)
+
+	// StorageProofHardforkHeight is the height at which the storage proof
+	// hardfork was activated.
+	StorageProofHardforkHeight = build.Select(build.Var{
+		Dev:      BlockHeight(10),
+		Testnet:  BlockHeight(5),
+		Standard: BlockHeight(100000),
+		Testing:  BlockHeight(10),
+	}).(BlockHeight)
+
+	// ASICHardforkHeight is the height at which the hardfork targeting
+	// selected ASICs was activated.
+	ASICHardforkHeight = build.Select(build.Var{
+		Dev:      BlockHeight(5),
+		Testnet:  BlockHeight(20),
+		Standard: BlockHeight(179000),
+		Testing:  BlockHeight(5),
+	}).(BlockHeight)
+
+	// FoundationHardforkHeight is the height at which the Foundation subsidy
+	// hardfork was activated.
+	FoundationHardforkHeight = build.Select(build.Var{
+		Dev:      BlockHeight(100),
+		Testnet:  BlockHeight(30),
+		Standard: BlockHeight(298000),
+		Testing:  BlockHeight(50),
 	}).(BlockHeight)
 )
 
@@ -232,11 +260,9 @@ func init() {
 		// can coordinate their actions over a the developer testnets, but fast
 		// enough that there isn't much time wasted on waiting for things to
 		// happen.
-		ASICHardforkHeight = 20
 		ASICHardforkTotalTarget = Target{0, 0, 0, 8}
 		ASICHardforkTotalTime = 800
 
-		FoundationHardforkHeight = 100
 		FoundationSubsidyFrequency = 10
 
 		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSalt)
@@ -290,11 +316,9 @@ func init() {
 	} else if build.Release == "testing" {
 		// 'testing' settings are for automatic testing, and create much faster
 		// environments than a human can interact with.
-		ASICHardforkHeight = 5
 		ASICHardforkTotalTarget = Target{255, 255}
 		ASICHardforkTotalTime = 10e3
 
-		FoundationHardforkHeight = 50
 		FoundationSubsidyFrequency = 5
 
 		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSalt)
@@ -355,13 +379,11 @@ func init() {
 		// target of 67 leading zeroes is chosen because that aligns with the
 		// amount of hashrate that we expect to be on the network after the
 		// hardfork.
-		ASICHardforkHeight = 179000
 		ASICHardforkTotalTarget = Target{0, 0, 0, 0, 0, 0, 0, 0, 32}
 		ASICHardforkTotalTime = 120e3
 
 		// The Foundation subsidy hardfork activates at approximately 11pm EST
 		// on February 3, 2021.
-		FoundationHardforkHeight = 298000
 		// Subsidies are paid out approximately once per month. Since actual
 		// months vary in length, we instead divide the total number of blocks
 		// per year by 12.
@@ -706,13 +728,11 @@ func init() {
 		// target of 67 leading zeroes is chosen because that aligns with the
 		// amount of hashrate that we expect to be on the network after the
 		// hardfork.
-		ASICHardforkHeight = 20
 		ASICHardforkTotalTarget = Target{0, 0, 0, 1}
 		ASICHardforkTotalTime = 10e3
 
 		// The Foundation subsidy hardfork activates at approximately 11pm EST
 		// on February 3, 2021.
-		FoundationHardforkHeight = 30
 		// Subsidies are paid out approximately once per month. Since actual
 		// months vary in length, we instead divide the total number of blocks
 		// per year by 12.

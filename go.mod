@@ -28,7 +28,8 @@ require (
 	gitlab.com/NebulousLabs/siamux v0.0.2-0.20220630142132-142a1443a259
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
-	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
-	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1
+	go.sia.tech/core v0.1.12-0.20230502175005-71bb29c5f388
+	golang.org/x/crypto v0.0.0-20220507011949-2cf3adece122
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 	golang.org/x/term v0.0.0-20210421210424-b80969c67360
 )
