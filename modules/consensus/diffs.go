@@ -24,7 +24,7 @@ var (
 
 // commitDiffSetSanity performs a series of sanity checks before committing a
 // diff set.
-func commitDiffSetSanity(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+func (cs *ConsensusSet) commitDiffSetSanity(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	// This function is purely sanity checks.
 	if !build.DEBUG {
 		return
@@ -38,35 +38,35 @@ func commitDiffSetSanity(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirect
 	// Current node must be the input node's parent if applying, and
 	// current node must be the input node if reverting.
 	if dir == modules.DiffApply {
-		parent, err := getBlockMap(tx, pb.Block.ParentID)
+		parent, err := cs.getBlockMap(tx, pb.Block.ParentID)
 		if build.DEBUG && err != nil {
 			panic(err)
 		}
-		if parent.Block.ID() != currentBlockID(tx) {
+		if cs.blockID(parent.Block) != currentBlockID(tx) {
 			panic(errWrongAppliedDiffSet)
 		}
 	} else {
-		if pb.Block.ID() != currentBlockID(tx) {
+		if cs.blockID(pb.Block) != currentBlockID(tx) {
 			panic(errWrongRevertDiffSet)
 		}
 	}
 }
 
 // commitSiacoinOutputDiff applies or reverts a SiacoinOutputDiff.
-func commitSiacoinOutputDiff(tx *bolt.Tx, scod modules.SiacoinOutputDiff, dir modules.DiffDirection) {
+func (cs *ConsensusSet) commitSiacoinOutputDiff(tx *bolt.Tx, scod modules.SiacoinOutputDiff, dir modules.DiffDirection) {
 	if scod.Direction == dir {
-		addSiacoinOutput(tx, scod.ID, scod.SiacoinOutput)
+		cs.addSiacoinOutput(tx, scod.ID, scod.SiacoinOutput)
 	} else {
-		removeSiacoinOutput(tx, scod.ID)
+		cs.removeSiacoinOutput(tx, scod.ID)
 	}
 }
 
 // commitFileContractDiff applies or reverts a FileContractDiff.
-func commitFileContractDiff(tx *bolt.Tx, fcd modules.FileContractDiff, dir modules.DiffDirection) {
+func (cs *ConsensusSet) commitFileContractDiff(tx *bolt.Tx, fcd modules.FileContractDiff, dir modules.DiffDirection) {
 	if fcd.Direction == dir {
-		addFileContract(tx, fcd.ID, fcd.FileContract)
+		cs.addFileContract(tx, fcd.ID, fcd.FileContract)
 	} else {
-		removeFileContract(tx, fcd.ID)
+		cs.removeFileContract(tx, fcd.ID)
 	}
 }
 
@@ -126,13 +126,13 @@ func createUpcomingDelayedOutputMaps(tx *bolt.Tx, pb *processedBlock, dir module
 }
 
 // commitNodeDiffs commits all of the diffs in a block node.
-func commitNodeDiffs(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+func (cs *ConsensusSet) commitNodeDiffs(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	if dir == modules.DiffApply {
 		for _, scod := range pb.SiacoinOutputDiffs {
-			commitSiacoinOutputDiff(tx, scod, dir)
+			cs.commitSiacoinOutputDiff(tx, scod, dir)
 		}
 		for _, fcd := range pb.FileContractDiffs {
-			commitFileContractDiff(tx, fcd, dir)
+			cs.commitFileContractDiff(tx, fcd, dir)
 		}
 		for _, sfod := range pb.SiafundOutputDiffs {
 			commitSiafundOutputDiff(tx, sfod, dir)
@@ -145,10 +145,10 @@ func commitNodeDiffs(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection)
 		}
 	} else {
 		for i := len(pb.SiacoinOutputDiffs) - 1; i >= 0; i-- {
-			commitSiacoinOutputDiff(tx, pb.SiacoinOutputDiffs[i], dir)
+			cs.commitSiacoinOutputDiff(tx, pb.SiacoinOutputDiffs[i], dir)
 		}
 		for i := len(pb.FileContractDiffs) - 1; i >= 0; i-- {
-			commitFileContractDiff(tx, pb.FileContractDiffs[i], dir)
+			cs.commitFileContractDiff(tx, pb.FileContractDiffs[i], dir)
 		}
 		for i := len(pb.SiafundOutputDiffs) - 1; i >= 0; i-- {
 			commitSiafundOutputDiff(tx, pb.SiafundOutputDiffs[i], dir)
@@ -174,10 +174,10 @@ func deleteObsoleteDelayedOutputMaps(tx *bolt.Tx, pb *processedBlock, dir module
 }
 
 // updateCurrentPath updates the current path after applying a diff set.
-func updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+func (cs *ConsensusSet) updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	// Update the current path.
 	if dir == modules.DiffApply {
-		pushPath(tx, pb.Block.ID())
+		pushPath(tx, cs.blockID(pb.Block))
 	} else {
 		popPath(tx)
 	}
@@ -188,10 +188,10 @@ func updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirectio
 //
 // Because these updates do not have associated diffs, we cannot apply multiple
 // updates per block. Instead, we apply the first update and ignore the rest.
-func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+func (cs *ConsensusSet) commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	if dir == modules.DiffApply {
 		for i := range pb.Block.Transactions {
-			applyArbitraryData(tx, pb, pb.Block.Transactions[i])
+			cs.applyArbitraryData(tx, pb, pb.Block.Transactions[i])
 		}
 	} else {
 		// Look for a set of prior unlock hashes for this height.
@@ -199,23 +199,23 @@ func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDir
 		if exists {
 			setFoundationUnlockHashes(tx, primary, failsafe)
 			deletePriorFoundationUnlockHashes(tx, pb.Height)
-			transferFoundationOutputs(tx, pb.Height, primary)
+			cs.transferFoundationOutputs(tx, pb.Height, primary)
 		}
 	}
 }
 
 // commitDiffSet applies or reverts the diffs in a blockNode.
-func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+func (cs *ConsensusSet) commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	// Sanity checks - there are a few so they were moved to another function.
 	if build.DEBUG {
-		commitDiffSetSanity(tx, pb, dir)
+		cs.commitDiffSetSanity(tx, pb, dir)
 	}
 
 	createUpcomingDelayedOutputMaps(tx, pb, dir)
-	commitNodeDiffs(tx, pb, dir)
+	cs.commitNodeDiffs(tx, pb, dir)
 	deleteObsoleteDelayedOutputMaps(tx, pb, dir)
-	commitFoundationUpdate(tx, pb, dir)
-	updateCurrentPath(tx, pb, dir)
+	cs.commitFoundationUpdate(tx, pb, dir)
+	cs.updateCurrentPath(tx, pb, dir)
 }
 
 // generateAndApplyDiff will verify the block and then integrate it into the
@@ -223,7 +223,7 @@ func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 // transactions are allowed to depend on each other. We can't be sure that a
 // transaction is valid unless we have applied all of the previous transactions
 // in the block, which means we need to apply while we verify.
-func generateAndApplyDiff(tx *bolt.Tx, pb *processedBlock) error {
+func (cs *ConsensusSet) generateAndApplyDiff(tx *bolt.Tx, pb *processedBlock) error {
 	// Sanity check - the block being applied should have the current block as
 	// a parent.
 	if build.DEBUG && pb.Block.ParentID != currentBlockID(tx) {
@@ -239,18 +239,18 @@ func generateAndApplyDiff(tx *bolt.Tx, pb *processedBlock) error {
 	// validated all at once because some transactions may not be valid until
 	// previous transactions have been applied.
 	for _, txn := range pb.Block.Transactions {
-		err := validTransaction(tx, txn)
+		err := cs.validTransaction(tx, txn)
 		if err != nil {
 			return err
 		}
-		applyTransaction(tx, pb, txn)
+		cs.applyTransaction(tx, pb, txn)
 	}
 
 	// After all of the transactions have been applied, 'maintenance' is
 	// applied on the block. This includes adding any outputs that have reached
 	// maturity, applying any contracts with missed storage proofs, and adding
 	// the miner payouts and Foundation subsidy to the list of delayed outputs.
-	applyMaintenance(tx, pb)
+	cs.applyMaintenance(tx, pb)
 
 	// DiffsGenerated are only set to true after the block has been fully
 	// validated and integrated. This is required to prevent later blocks from
@@ -262,9 +262,9 @@ func generateAndApplyDiff(tx *bolt.Tx, pb *processedBlock) error {
 	pb.DiffsGenerated = true
 
 	// Add the block to the current path and block map.
-	bid := pb.Block.ID()
+	bid := cs.blockID(pb.Block)
 	blockMap := tx.Bucket(BlockMap)
-	updateCurrentPath(tx, pb, modules.DiffApply)
+	cs.updateCurrentPath(tx, pb, modules.DiffApply)
 
 	// Sanity check preparation - set the consensus hash at this height so that
 	// during reverting a check can be performed to assure consistency when

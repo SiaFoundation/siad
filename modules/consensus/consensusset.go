@@ -81,6 +81,12 @@ type ConsensusSet struct {
 	// whether the consensus set is synced with the network.
 	synced bool
 
+	// Caches keeps the most recently accessed items.
+	scoCache *siacoinOutputCache
+	fcCache  *fileContractCache
+	pbCache  *blockCache
+	idCache  *blockIDCache
+
 	// Interfaces to abstract the dependencies of the ConsensusSet.
 	marshaler       marshaler
 	blockRuleHelper blockRuleHelper
@@ -114,6 +120,11 @@ func consensusSetBlockingStartup(gateway modules.Gateway, persistDir string, dep
 		},
 
 		dosBlocks: make(map[types.BlockID]struct{}),
+
+		scoCache: newSiacoinOutputCache(),
+		fcCache:  newFileContractCache(),
+		pbCache:  newBlockCache(),
+		idCache:  newBlockIDCache(),
 
 		marshaler:       stdMarshaler{},
 		blockRuleHelper: stdBlockRuleHelper{},
@@ -236,7 +247,7 @@ func (cs *ConsensusSet) BlockAtHeight(height types.BlockHeight) (block types.Blo
 		if err != nil {
 			return err
 		}
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			return err
 		}
@@ -250,7 +261,7 @@ func (cs *ConsensusSet) BlockAtHeight(height types.BlockHeight) (block types.Blo
 // BlockByID returns the block for a given BlockID.
 func (cs *ConsensusSet) BlockByID(id types.BlockID) (block types.Block, height types.BlockHeight, exists bool) {
 	_ = cs.db.View(func(tx *bolt.Tx) error {
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			return err
 		}
@@ -272,7 +283,7 @@ func (cs *ConsensusSet) ChildTarget(id types.BlockID) (target types.Target, exis
 	defer cs.tg.Done()
 
 	_ = cs.db.View(func(tx *bolt.Tx) error {
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			return err
 		}
@@ -294,7 +305,7 @@ func (cs *ConsensusSet) managedCurrentBlock() (block types.Block) {
 	defer cs.mu.RUnlock()
 
 	_ = cs.db.View(func(tx *bolt.Tx) error {
-		pb := currentProcessedBlock(tx)
+		pb := cs.currentProcessedBlock(tx)
 		block = pb.Block
 		return nil
 	})
@@ -317,7 +328,7 @@ func (cs *ConsensusSet) CurrentBlock() (block types.Block) {
 	defer cs.mu.Unlock()
 
 	_ = cs.db.View(func(tx *bolt.Tx) error {
-		pb := currentProcessedBlock(tx)
+		pb := cs.currentProcessedBlock(tx)
 		block = pb.Block
 		return nil
 	})
@@ -357,7 +368,7 @@ func (cs *ConsensusSet) InCurrentPath(id types.BlockID) (inPath bool) {
 	defer cs.tg.Done()
 
 	_ = cs.db.View(func(tx *bolt.Tx) error {
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			inPath = false
 			return nil
@@ -385,7 +396,7 @@ func (cs *ConsensusSet) MinimumValidChildTimestamp(id types.BlockID) (timestamp 
 
 	// Error is not checked because it does not matter.
 	_ = cs.db.View(func(tx *bolt.Tx) error {
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			return err
 		}
@@ -426,4 +437,36 @@ func (cs *ConsensusSet) FoundationUnlockHashes() (primary, failsafe types.Unlock
 		return nil
 	})
 	return
+}
+
+// blockID returns the ID of the given block. It tries to look up in the
+// cache first.
+func (cs *ConsensusSet) blockID(b types.Block) types.BlockID {
+	id, exists := cs.idCache.Lookup(b.Nonce)
+	if exists {
+		return id
+	}
+	id = b.ID()
+	cs.idCache.Push(b.Nonce, id)
+	return id
+}
+
+// blockHeaderID returns the ID of the block header. It tries to look up in the
+// cache first.
+func (cs *ConsensusSet) blockHeaderID(h types.BlockHeader) types.BlockID {
+	id, exists := cs.idCache.Lookup(h.Nonce)
+	if exists {
+		return id
+	}
+	id = h.ID()
+	cs.idCache.Push(h.Nonce, id)
+	return id
+}
+
+// resetCaches resets the consensus set caches.
+func (cs *ConsensusSet) resetCaches() {
+	cs.scoCache.Reset()
+	cs.fcCache.Reset()
+	cs.pbCache.Reset()
+	cs.idCache.Reset()
 }

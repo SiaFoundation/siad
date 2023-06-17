@@ -63,7 +63,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 		ID: ce.ID(),
 	}
 	for _, revertedBlockID := range ce.RevertedBlocks {
-		revertedBlock, err := getBlockMap(tx, revertedBlockID)
+		revertedBlock, err := cs.getBlockMap(tx, revertedBlockID)
 		if err != nil {
 			cs.log.Critical("getBlockMap failed in computeConsensusChange:", err)
 			return modules.ConsensusChange{}, err
@@ -74,7 +74,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 		cc.AppendDiffs(diffs)
 	}
 	for _, appliedBlockID := range ce.AppliedBlocks {
-		appliedBlock, err := getBlockMap(tx, appliedBlockID)
+		appliedBlock, err := cs.getBlockMap(tx, appliedBlockID)
 		if err != nil {
 			cs.log.Critical("getBlockMap failed in computeConsensusChange:", err)
 			return modules.ConsensusChange{}, err
@@ -87,7 +87,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 
 	// Grab the child target and the minimum valid child timestamp.
 	recentBlock := ce.AppliedBlocks[len(ce.AppliedBlocks)-1]
-	pb, err := getBlockMap(tx, recentBlock)
+	pb, err := cs.getBlockMap(tx, recentBlock)
 	if err != nil {
 		cs.log.Critical("could not find process block for known block")
 	}

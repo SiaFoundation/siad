@@ -73,7 +73,7 @@ func (cs *ConsensusSet) loadDB() error {
 		// Compute initial checksum.
 		if build.DEBUG {
 			cs.blockRoot.ConsensusChecksum = consensusChecksum(tx)
-			addBlockMap(tx, &cs.blockRoot)
+			cs.addBlockMap(tx, &cs.blockRoot)
 		}
 		return nil
 	})

@@ -121,7 +121,7 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 	// needs to happen between the database being opened/initialized and the
 	// consensus set hash being calculated
 	for _, scod := range cs.blockRoot.SiacoinOutputDiffs {
-		commitSiacoinOutputDiff(tx, scod, modules.DiffApply)
+		cs.commitSiacoinOutputDiff(tx, scod, modules.DiffApply)
 	}
 
 	// Set the siafund pool to 0.
@@ -144,7 +144,7 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 
 	// Add the genesis block to the block structures.
 	pushPath(tx, cs.blockRoot.Block.ID())
-	addBlockMap(tx, &cs.blockRoot)
+	cs.addBlockMap(tx, &cs.blockRoot)
 	return nil
 }
 
@@ -182,8 +182,12 @@ func (cs *ConsensusSet) dbCurrentBlockID() (id types.BlockID) {
 }
 
 // currentProcessedBlock returns the most recent block in the consensus set.
-func currentProcessedBlock(tx *bolt.Tx) *processedBlock {
-	pb, err := getBlockMap(tx, currentBlockID(tx))
+func (cs *ConsensusSet) currentProcessedBlock(tx *bolt.Tx) *processedBlock {
+	b, exists := cs.pbCache.Lookup(currentBlockID(tx))
+	if exists {
+		return &b
+	}
+	pb, err := cs.getBlockMap(tx, currentBlockID(tx))
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
@@ -191,7 +195,13 @@ func currentProcessedBlock(tx *bolt.Tx) *processedBlock {
 }
 
 // getBlockMap returns a processed block with the input id.
-func getBlockMap(tx *bolt.Tx, id types.BlockID) (*processedBlock, error) {
+func (cs *ConsensusSet) getBlockMap(tx *bolt.Tx, id types.BlockID) (*processedBlock, error) {
+	// Check the cache first.
+	pb, exists := cs.pbCache.Lookup(id)
+	if exists {
+		return &pb, nil
+	}
+
 	// Look up the encoded block.
 	pbBytes := tx.Bucket(BlockMap).Get(id[:])
 	if pbBytes == nil {
@@ -199,7 +209,6 @@ func getBlockMap(tx *bolt.Tx, id types.BlockID) (*processedBlock, error) {
 	}
 
 	// Decode the block - should never fail.
-	var pb processedBlock
 	err := encoding.Unmarshal(pbBytes, &pb)
 	if build.DEBUG && err != nil {
 		panic(err)
@@ -208,12 +217,13 @@ func getBlockMap(tx *bolt.Tx, id types.BlockID) (*processedBlock, error) {
 }
 
 // addBlockMap adds a processed block to the block map.
-func addBlockMap(tx *bolt.Tx, pb *processedBlock) {
+func (cs *ConsensusSet) addBlockMap(tx *bolt.Tx, pb *processedBlock) {
 	id := pb.Block.ID()
 	err := tx.Bucket(BlockMap).Put(id[:], encoding.Marshal(*pb))
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
+	cs.pbCache.Push(id, *pb)
 }
 
 // getPath returns the block id at 'height' in the block path.
@@ -290,12 +300,15 @@ func isSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) bool {
 
 // getSiacoinOutput fetches a siacoin output from the database. An error is
 // returned if the siacoin output does not exist.
-func getSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) (types.SiacoinOutput, error) {
+func (cs *ConsensusSet) getSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) (types.SiacoinOutput, error) {
+	sco, exists := cs.scoCache.Lookup(id)
+	if exists {
+		return sco, nil
+	}
 	scoBytes := tx.Bucket(SiacoinOutputs).Get(id[:])
 	if scoBytes == nil {
 		return types.SiacoinOutput{}, errNilItem
 	}
-	var sco types.SiacoinOutput
 	err := encoding.Unmarshal(scoBytes, &sco)
 	if err != nil {
 		return types.SiacoinOutput{}, err
@@ -305,7 +318,7 @@ func getSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) (types.SiacoinOutpu
 
 // addSiacoinOutput adds a siacoin output to the database. An error is returned
 // if the siacoin output is already in the database.
-func addSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID, sco types.SiacoinOutput) {
+func (cs *ConsensusSet) addSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID, sco types.SiacoinOutput) {
 	// While this is not supposed to be allowed, there's a bug in the consensus
 	// code which means that earlier versions have accetped 0-value outputs
 	// onto the blockchain. A hardfork to remove 0-value outputs will fix this,
@@ -324,11 +337,13 @@ func addSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID, sco types.SiacoinOu
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
+	cs.scoCache.Push(id, sco)
 }
 
 // removeSiacoinOutput removes a siacoin output from the database. An error is
 // returned if the siacoin output is not in the database prior to removal.
-func removeSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) {
+func (cs *ConsensusSet) removeSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) {
+	cs.scoCache.Delete(id)
 	scoBucket := tx.Bucket(SiacoinOutputs)
 	// Sanity check - should not be removing an item that is not in the db.
 	if build.DEBUG && scoBucket.Get(id[:]) == nil {
@@ -342,7 +357,11 @@ func removeSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) {
 
 // getFileContract fetches a file contract from the database, returning an
 // error if it is not there.
-func getFileContract(tx *bolt.Tx, id types.FileContractID) (fc types.FileContract, err error) {
+func (cs *ConsensusSet) getFileContract(tx *bolt.Tx, id types.FileContractID) (fc types.FileContract, err error) {
+	fc, exists := cs.fcCache.Lookup(id)
+	if exists {
+		return fc, nil
+	}
 	fcBytes := tx.Bucket(FileContracts).Get(id[:])
 	if fcBytes == nil {
 		return types.FileContract{}, errNilItem
@@ -356,7 +375,7 @@ func getFileContract(tx *bolt.Tx, id types.FileContractID) (fc types.FileContrac
 
 // addFileContract adds a file contract to the database. An error is returned
 // if the file contract is already in the database.
-func addFileContract(tx *bolt.Tx, id types.FileContractID, fc types.FileContract) {
+func (cs *ConsensusSet) addFileContract(tx *bolt.Tx, id types.FileContractID, fc types.FileContract) {
 	// Add the file contract to the database.
 	fcBucket := tx.Bucket(FileContracts)
 	// Sanity check - should not be adding a zero-payout file contract.
@@ -382,10 +401,16 @@ func addFileContract(tx *bolt.Tx, id types.FileContractID, fc types.FileContract
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
+	
+	// Update the cache.
+	cs.fcCache.Push(id, fc)
 }
 
 // removeFileContract removes a file contract from the database.
-func removeFileContract(tx *bolt.Tx, id types.FileContractID) {
+func (cs *ConsensusSet) removeFileContract(tx *bolt.Tx, id types.FileContractID) {
+	// Update the cache.
+	cs.fcCache.Delete(id)
+
 	// Delete the file contract entry.
 	fcBucket := tx.Bucket(FileContracts)
 	fcBytes := fcBucket.Get(id[:])

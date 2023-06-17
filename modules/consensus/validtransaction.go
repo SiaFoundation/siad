@@ -108,7 +108,7 @@ func storageProofSegment(tx *bolt.Tx, fcid types.FileContractID) (uint64, error)
 // zero. A hardfork was added triggering at block 100,000 to enable an
 // optimization where hosts could submit empty storage proofs for files of size
 // 0, saving space on the blockchain in conditions where the renter is content.
-func validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
+func (cs *ConsensusSet) validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
 	for _, sp := range t.StorageProofs {
 		// Check that the storage proof itself is valid.
 		segmentIndex, err := storageProofSegment(tx, sp.ParentID)
@@ -116,7 +116,7 @@ func validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
 			return err
 		}
 
-		fc, err := getFileContract(tx, sp.ParentID)
+		fc, err := cs.getFileContract(tx, sp.ParentID)
 		if err != nil {
 			return err
 		}
@@ -164,10 +164,10 @@ func validStorageProofs100e3(tx *bolt.Tx, t types.Transaction) error {
 
 // validStorageProofs checks that the storage proofs are valid in the context
 // of the consensus set.
-func validStorageProofs(tx *bolt.Tx, t types.Transaction) error {
+func (cs *ConsensusSet) validStorageProofs(tx *bolt.Tx, t types.Transaction) error {
 	height := blockHeight(tx)
 	if height < types.StorageProofHardforkHeight {
-		return validStorageProofs100e3(tx, t)
+		return cs.validStorageProofs100e3(tx, t)
 	}
 
 	for _, sp := range t.StorageProofs {
@@ -177,7 +177,7 @@ func validStorageProofs(tx *bolt.Tx, t types.Transaction) error {
 			return err
 		}
 
-		fc, err := getFileContract(tx, sp.ParentID)
+		fc, err := cs.getFileContract(tx, sp.ParentID)
 		if err != nil {
 			return err
 		}
@@ -210,9 +210,9 @@ func validStorageProofs(tx *bolt.Tx, t types.Transaction) error {
 
 // validFileContractRevision checks that each file contract revision is valid
 // in the context of the current consensus set.
-func validFileContractRevisions(tx *bolt.Tx, t types.Transaction) error {
+func (cs *ConsensusSet) validFileContractRevisions(tx *bolt.Tx, t types.Transaction) error {
 	for _, fcr := range t.FileContractRevisions {
-		fc, err := getFileContract(tx, fcr.ParentID)
+		fc, err := cs.getFileContract(tx, fcr.ParentID)
 		if err != nil {
 			return err
 		}
@@ -326,7 +326,7 @@ func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction) bool {
 
 // validTransaction checks that all fields are valid within the current
 // consensus state. If not an error is returned.
-func validTransaction(tx *bolt.Tx, t types.Transaction) error {
+func (cs *ConsensusSet) validTransaction(tx *bolt.Tx, t types.Transaction) error {
 	// StandaloneValid will check things like signatures and properties that
 	// should be inherent to the transaction. (storage proof rules, etc.)
 	currentHeight := blockHeight(tx)
@@ -341,11 +341,11 @@ func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 	if err != nil {
 		return err
 	}
-	err = validStorageProofs(tx, t)
+	err = cs.validStorageProofs(tx, t)
 	if err != nil {
 		return err
 	}
-	err = validFileContractRevisions(tx, t)
+	err = cs.validFileContractRevisions(tx, t)
 	if err != nil {
 		return err
 	}
@@ -381,11 +381,11 @@ func (cs *ConsensusSet) tryTransactionSet(txns []types.Transaction) (modules.Con
 	err := cs.db.Update(func(tx *bolt.Tx) error {
 		diffHolder.Height = blockHeight(tx)
 		for _, txn := range txns {
-			err := validTransaction(tx, txn)
+			err := cs.validTransaction(tx, txn)
 			if err != nil {
 				return err
 			}
-			applyTransaction(tx, diffHolder, txn)
+			cs.applyTransaction(tx, diffHolder, txn)
 		}
 		return errSuccess
 	})

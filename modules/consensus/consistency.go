@@ -282,13 +282,13 @@ func checkDSCOs(tx *bolt.Tx) {
 // applies the block again and checks that the consensus set hash matches the
 // original consensus set hash.
 func (cs *ConsensusSet) checkRevertApply(tx *bolt.Tx) {
-	current := currentProcessedBlock(tx)
+	current := cs.currentProcessedBlock(tx)
 	// Don't perform the check if this block is the genesis block.
-	if current.Block.ID() == cs.blockRoot.Block.ID() {
+	if cs.blockID(current.Block) == cs.blockRoot.Block.ID() {
 		return
 	}
 
-	parent, err := getBlockMap(tx, current.Block.ParentID)
+	parent, err := cs.getBlockMap(tx, current.Block.ParentID)
 	if err != nil {
 		manageErr(tx, err)
 	}

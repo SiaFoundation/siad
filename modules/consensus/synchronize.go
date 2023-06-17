@@ -204,7 +204,7 @@ func (cs *ConsensusSet) managedReceiveBlocks(conn modules.PeerConn) (returnErr e
 			if build.DEBUG && initialBlock == cs.dbCurrentBlockID() {
 				panic("blockchain extension reporting is incorrect")
 			}
-			fullBlock := cs.managedCurrentBlock() // TODO: Add cacheing, replace this line by looking at the cache.
+			fullBlock := cs.managedCurrentBlock()
 			go cs.gateway.Broadcast("RelayHeader", fullBlock.Header(), cs.gateway.Peers())
 		}
 	}()
@@ -306,7 +306,7 @@ func (cs *ConsensusSet) rpcSendBlocks(conn modules.PeerConn) error {
 	err = cs.db.View(func(tx *bolt.Tx) error {
 		csHeight = blockHeight(tx)
 		for _, id := range knownBlocks {
-			pb, err := getBlockMap(tx, id)
+			pb, err := cs.getBlockMap(tx, id)
 			if err != nil {
 				continue
 			}
@@ -314,7 +314,7 @@ func (cs *ConsensusSet) rpcSendBlocks(conn modules.PeerConn) error {
 			if err != nil {
 				continue
 			}
-			if pathID != pb.Block.ID() {
+			if pathID != cs.blockID(pb.Block) {
 				continue
 			}
 			if pb.Height == csHeight {
@@ -358,7 +358,7 @@ func (cs *ConsensusSet) rpcSendBlocks(conn modules.PeerConn) error {
 					cs.log.Critical("Unable to get path: height", height, ":: request", i)
 					return err
 				}
-				pb, err := getBlockMap(tx, id)
+				pb, err := cs.getBlockMap(tx, id)
 				if err != nil {
 					cs.log.Critical("Unable to get block from block map: height", height, ":: request", i, ":: id", id)
 					return err
@@ -462,7 +462,7 @@ func (cs *ConsensusSet) threadedRPCRelayHeader(conn modules.PeerConn) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = cs.gateway.RPC(conn.RPCAddr(), "SendBlk", cs.managedReceiveBlock(h.ID()))
+		err = cs.gateway.RPC(conn.RPCAddr(), "SendBlk", cs.managedReceiveBlock(cs.blockHeaderID(h)))
 		if err != nil {
 			cs.log.Debugln("WARN: failed to get header's corresponding block:", err)
 		}
@@ -501,7 +501,7 @@ func (cs *ConsensusSet) rpcSendBlk(conn modules.PeerConn) error {
 	var b types.Block
 	cs.mu.RLock()
 	err = cs.db.View(func(tx *bolt.Tx) error {
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			return err
 		}

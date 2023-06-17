@@ -69,8 +69,8 @@ func (cs *ConsensusSet) validateHeaderAndBlock(tx dbTx, b types.Block, id types.
 }
 
 // checkHeaderTarget returns true if the header's ID meets the given target.
-func checkHeaderTarget(h types.BlockHeader, target types.Target) bool {
-	blockHash := h.ID()
+func (cs *ConsensusSet) checkHeaderTarget(h types.BlockHeader, target types.Target) bool {
+	blockHash := cs.blockHeaderID(h)
 	return bytes.Compare(target[:], blockHash[:]) >= 0
 }
 
@@ -80,7 +80,7 @@ func checkHeaderTarget(h types.BlockHeader, target types.Target) bool {
 func (cs *ConsensusSet) validateHeader(tx dbTx, h types.BlockHeader) error {
 	// Check if the block is a DoS block - a known invalid block that is expensive
 	// to validate.
-	id := h.ID()
+	id := cs.blockHeaderID(h)
 	_, exists := cs.dosBlocks[id]
 	if exists {
 		return errDoSBlock
@@ -112,7 +112,7 @@ func (cs *ConsensusSet) validateHeader(tx dbTx, h types.BlockHeader) error {
 		return errors.New("block does not meet nonce requirements")
 	}
 	// Check that the target of the new block is sufficient.
-	if !checkHeaderTarget(h, parent.ChildTarget) {
+	if !cs.checkHeaderTarget(h, parent.ChildTarget) {
 		return modules.ErrBlockUnsolved
 	}
 
@@ -157,7 +157,7 @@ func (cs *ConsensusSet) addBlockToTree(tx *bolt.Tx, b types.Block, parent *proce
 	// Check whether the new node is part of a chain that is heavier than the
 	// current node. If not, return ErrNonExtending and don't fork the
 	// blockchain.
-	currentNode := currentProcessedBlock(tx)
+	currentNode := cs.currentProcessedBlock(tx)
 	if !newNode.heavierThan(currentNode) {
 		return changeEntry{}, modules.ErrNonExtendingBlock
 	}
@@ -170,10 +170,10 @@ func (cs *ConsensusSet) addBlockToTree(tx *bolt.Tx, b types.Block, parent *proce
 		return changeEntry{}, err
 	}
 	for _, rn := range revertedBlocks {
-		ce.RevertedBlocks = append(ce.RevertedBlocks, rn.Block.ID())
+		ce.RevertedBlocks = append(ce.RevertedBlocks, cs.blockID(rn.Block))
 	}
 	for _, an := range appliedBlocks {
-		ce.AppliedBlocks = append(ce.AppliedBlocks, an.Block.ID())
+		ce.AppliedBlocks = append(ce.AppliedBlocks, cs.blockID(an.Block))
 	}
 	err = appendChangeLog(tx, ce)
 	if err != nil {
@@ -234,7 +234,8 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 	// This is the first time that IDs on the blocks have been computed.
 	blockIDs := make([]types.BlockID, 0, len(blocks))
 	for i := 0; i < len(blocks); i++ {
-		blockIDs = append(blockIDs, blocks[i].ID())
+		blockID := cs.blockID(blocks[i])
+		blockIDs = append(blockIDs, blockID)
 		if i > 0 && blocks[i].ParentID != blockIDs[i-1] {
 			return false, errNonLinearChain
 		}
@@ -307,10 +308,12 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 			fmt.Println("Received a partially valid block set.")
 			cs.log.Println("Consensus received a chain of blocks, where one was valid, but others were not:", setErr)
 		}
+		cs.resetCaches()
 		return false, setErr
 	}
 	// Stop here if the blocks did not extend the longest blockchain.
 	if !chainExtended {
+		cs.resetCaches()
 		return false, modules.ErrNonExtendingBlock
 	}
 	// Send any changes to subscribers.

@@ -240,7 +240,7 @@ func (cs *ConsensusSet) initOak(tx *bolt.Tx) error {
 		if err != nil {
 			return errors.Extend(errors.New("unable to find block at height"), err)
 		}
-		pb, err := getBlockMap(tx, id)
+		pb, err := cs.getBlockMap(tx, id)
 		if err != nil {
 			return errors.Extend(errors.New("unable to find block from id"), err)
 		}

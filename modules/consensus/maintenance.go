@@ -20,7 +20,7 @@ var (
 // applyFoundationSubsidy adds a Foundation subsidy to the consensus set as a
 // delayed siacoin output. If no subsidy is due on the given block, no output is
 // added.
-func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
+func (cs *ConsensusSet) applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
 	// NOTE: this conditional is split up to better visualize test coverage
 	if pb.Height < types.FoundationHardforkHeight {
 		return
@@ -35,7 +35,7 @@ func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
 	addr, _ := getFoundationUnlockHashes(tx)
 	dscod := modules.DelayedSiacoinOutputDiff{
 		Direction: modules.DiffApply,
-		ID:        pb.Block.ID().FoundationSubsidyID(),
+		ID:        cs.blockID(pb.Block).FoundationSubsidyID(),
 		SiacoinOutput: types.SiacoinOutput{
 			Value:      value,
 			UnlockHash: addr,
@@ -65,7 +65,7 @@ func applyMinerPayouts(tx *bolt.Tx, pb *processedBlock) {
 // applyMaturedSiacoinOutputs goes through the list of siacoin outputs that
 // have matured and adds them to the consensus set. This also updates the block
 // node diff set.
-func applyMaturedSiacoinOutputs(tx *bolt.Tx, pb *processedBlock) {
+func (cs *ConsensusSet) applyMaturedSiacoinOutputs(tx *bolt.Tx, pb *processedBlock) {
 	// Skip this step if the blockchain is not old enough to have maturing
 	// outputs.
 	if pb.Height < types.MaturityDelay {
@@ -120,7 +120,7 @@ func applyMaturedSiacoinOutputs(tx *bolt.Tx, pb *processedBlock) {
 	}
 	for _, scod := range scods {
 		pb.SiacoinOutputDiffs = append(pb.SiacoinOutputDiffs, scod)
-		commitSiacoinOutputDiff(tx, scod, modules.DiffApply)
+		cs.commitSiacoinOutputDiff(tx, scod, modules.DiffApply)
 	}
 	for _, dscod := range dscods {
 		pb.DelayedSiacoinOutputDiffs = append(pb.DelayedSiacoinOutputDiffs, dscod)
@@ -131,9 +131,9 @@ func applyMaturedSiacoinOutputs(tx *bolt.Tx, pb *processedBlock) {
 
 // applyMissedStorageProof adds the outputs and diffs that result from a file
 // contract expiring.
-func applyMissedStorageProof(tx *bolt.Tx, pb *processedBlock, fcid types.FileContractID) (dscods []modules.DelayedSiacoinOutputDiff, fcd modules.FileContractDiff) {
+func (cs *ConsensusSet) applyMissedStorageProof(tx *bolt.Tx, pb *processedBlock, fcid types.FileContractID) (dscods []modules.DelayedSiacoinOutputDiff, fcd modules.FileContractDiff) {
 	// Sanity checks.
-	fc, err := getFileContract(tx, fcid)
+	fc, err := cs.getFileContract(tx, fcid)
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
@@ -175,7 +175,7 @@ func applyMissedStorageProof(tx *bolt.Tx, pb *processedBlock, fcid types.FileCon
 // applyFileContractMaintenance looks for all of the file contracts that have
 // expired without an appropriate storage proof, and calls 'applyMissedProof'
 // for the file contract.
-func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
+func (cs *ConsensusSet) applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 	// Get the bucket pointing to all of the expiring file contracts.
 	fceBucketID := append(prefixFCEX, encoding.Marshal(pb.Height)...)
 	fceBucket := tx.Bucket(fceBucketID)
@@ -189,7 +189,7 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 	err := fceBucket.ForEach(func(keyBytes, valBytes []byte) error {
 		var id types.FileContractID
 		copy(id[:], keyBytes)
-		amspDSCODS, fcd := applyMissedStorageProof(tx, pb, id)
+		amspDSCODS, fcd := cs.applyMissedStorageProof(tx, pb, id)
 		fcds = append(fcds, fcd)
 		dscods = append(dscods, amspDSCODS...)
 		return nil
@@ -203,7 +203,7 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 	}
 	for _, fcd := range fcds {
 		pb.FileContractDiffs = append(pb.FileContractDiffs, fcd)
-		commitFileContractDiff(tx, fcd, modules.DiffApply)
+		cs.commitFileContractDiff(tx, fcd, modules.DiffApply)
 	}
 	err = tx.DeleteBucket(fceBucketID)
 	if build.DEBUG && err != nil {
@@ -214,9 +214,9 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 // applyMaintenance applies block-level alterations to the consensus set.
 // Maintenance is applied after all of the transactions for the block have been
 // applied.
-func applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
+func (cs *ConsensusSet) applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
 	applyMinerPayouts(tx, pb)
-	applyFoundationSubsidy(tx, pb)
-	applyMaturedSiacoinOutputs(tx, pb)
-	applyFileContractMaintenance(tx, pb)
+	cs.applyFoundationSubsidy(tx, pb)
+	cs.applyMaturedSiacoinOutputs(tx, pb)
+	cs.applyFileContractMaintenance(tx, pb)
 }
