@@ -68,9 +68,20 @@ func (cs *ConsensusSet) targetAdjustmentBase(blockMap *bolt.Bucket, pb *processe
 	current := cs.blockID(pb.Block)
 	for windowSize = 0; windowSize < types.TargetWindow && parent != (types.BlockID{}); windowSize++ {
 		current = parent
-		copy(parent[:], blockMap.Get(parent[:])[:32])
+		b, exists := cs.pbCache.Lookup(parent)
+		if exists {
+			parent = b.Block.ParentID
+		} else {
+			copy(parent[:], blockMap.Get(parent[:])[:32])
+		}
 	}
-	timestamp := types.Timestamp(encoding.DecUint64(blockMap.Get(current[:])[40:48]))
+	var timestamp types.Timestamp
+	b, exists := cs.pbCache.Lookup(current)
+	if exists {
+		timestamp = b.Block.Timestamp
+	} else {
+		timestamp = types.Timestamp(encoding.DecUint64(blockMap.Get(current[:])[40:48]))
+	}
 
 	// The target of a child is determined by the amount of time that has
 	// passed between the generation of its immediate parent and its
@@ -104,11 +115,13 @@ func clampTargetAdjustment(base *big.Rat) *big.Rat {
 // have the same target.
 func (cs *ConsensusSet) setChildTarget(blockMap *bolt.Bucket, pb *processedBlock) {
 	// Fetch the parent block.
-	var parent processedBlock
-	parentBytes := blockMap.Get(pb.Block.ParentID[:])
-	err := encoding.Unmarshal(parentBytes, &parent)
-	if build.DEBUG && err != nil {
-		panic(err)
+	parent, exists := cs.pbCache.Lookup(pb.Block.ParentID)
+	if !exists {
+		parentBytes := blockMap.Get(pb.Block.ParentID[:])
+		err := encoding.Unmarshal(parentBytes, &parent)
+		if build.DEBUG && err != nil {
+			panic(err)
+		}
 	}
 
 	if pb.Height%(types.TargetWindow/2) != 0 {
