@@ -10,7 +10,7 @@ import (
 // blockRuleHelper assists with block validity checks by calculating values
 // on blocks that are relevant to validity rules.
 type blockRuleHelper interface {
-	minimumValidChildTimestamp(dbBucket, *processedBlock) types.Timestamp
+	minimumValidChildTimestamp(dbBucket, *processedBlock, *blockCache) types.Timestamp
 }
 
 // stdBlockRuleHelper is the standard implementation of blockRuleHelper.
@@ -22,7 +22,7 @@ type stdBlockRuleHelper struct{}
 //
 // To boost performance, minimumValidChildTimestamp is passed a bucket that it
 // can use from inside of a boltdb transaction.
-func (rh stdBlockRuleHelper) minimumValidChildTimestamp(blockMap dbBucket, pb *processedBlock) types.Timestamp {
+func (rh stdBlockRuleHelper) minimumValidChildTimestamp(blockMap dbBucket, pb *processedBlock, cache *blockCache) types.Timestamp {
 	// Get the previous MedianTimestampWindow timestamps.
 	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
 	windowTimes[0] = pb.Block.Timestamp
@@ -35,14 +35,21 @@ func (rh stdBlockRuleHelper) minimumValidChildTimestamp(blockMap dbBucket, pb *p
 			continue
 		}
 
-		// Get the next parent's bytes. Because the ordering is specific, the
-		// parent does not need to be decoded entirely to get the desired
-		// information. This provides a performance boost. The id of the next
-		// parent lies at the first 32 bytes, and the timestamp of the block
-		// lies at bytes 40-48.
-		parentBytes := blockMap.Get(parent[:])
-		copy(parent[:], parentBytes[:32])
-		windowTimes[i] = types.Timestamp(encoding.DecUint64(parentBytes[40:48]))
+		// Lookup the cache first.
+		b, exists := cache.Lookup(parent)
+		if exists {
+			parent = b.Block.ParentID
+			windowTimes[i] = b.Block.Timestamp
+		} else {
+			// Get the next parent's bytes. Because the ordering is specific, the
+			// parent does not need to be decoded entirely to get the desired
+			// information. This provides a performance boost. The id of the next
+			// parent lies at the first 32 bytes, and the timestamp of the block
+			// lies at bytes 40-48.
+			parentBytes := blockMap.Get(parent[:])
+			copy(parent[:], parentBytes[:32])
+			windowTimes[i] = types.Timestamp(encoding.DecUint64(parentBytes[40:48]))
+		}
 	}
 	sort.Sort(windowTimes)
 

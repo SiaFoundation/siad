@@ -59,7 +59,7 @@ func (cs *ConsensusSet) validateHeaderAndBlock(tx dbTx, b types.Block, id types.
 		return nil, err
 	}
 	// Check that the timestamp is not too far in the past to be acceptable.
-	minTimestamp := cs.blockRuleHelper.minimumValidChildTimestamp(blockMap, parent)
+	minTimestamp := cs.blockRuleHelper.minimumValidChildTimestamp(blockMap, parent, cs.pbCache)
 
 	err = cs.blockValidator.ValidateBlock(b, id, minTimestamp, parent.ChildTarget, parent.Height+1, cs.log)
 	if err != nil {
@@ -120,7 +120,7 @@ func (cs *ConsensusSet) validateHeader(tx dbTx, h types.BlockHeader) error {
 	// downloads are implemented.
 
 	// Check that the timestamp is not too far in the past to be acceptable.
-	minTimestamp := cs.blockRuleHelper.minimumValidChildTimestamp(blockMap, &parent)
+	minTimestamp := cs.blockRuleHelper.minimumValidChildTimestamp(blockMap, &parent, cs.pbCache)
 	if minTimestamp > h.Timestamp {
 		return ErrEarlyTimestamp
 	}
