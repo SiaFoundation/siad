@@ -1,4 +1,4 @@
-# [![Sia Logo](https://sia.tech/banners/sia-banner-siad.png)](http://sia.tech)
+# [![Sia Logo](https://sia.tech/assets/banners/sia-banner-siad.png)](http://sia.tech)
 
 [![GoDoc](https://godoc.org/go.sia.tech/siad?status.svg)](https://godoc.org/go.sia.tech/siad)
 [![Go Report Card](https://goreportcard.com/badge/go.sia.tech/siad)](https://goreportcard.com/report/go.sia.tech/siad)
