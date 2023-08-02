@@ -492,6 +492,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
+		numFailedRenews:      make(map[types.FileContractID]types.BlockHeight),
 		workerPool:           emptyWorkerPool{},
 	}
 	c.staticChurnLimiter = newChurnLimiter(c)
