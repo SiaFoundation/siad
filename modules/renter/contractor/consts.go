@@ -46,11 +46,11 @@ var (
 	// consecutiveRenewalsBeforeReplacement is the number of times a contract
 	// attempt to be renewed before it is marked as !goodForRenew.
 	consecutiveRenewalsBeforeReplacement = build.Select(build.Var{
-		Dev:      uint64(12),
-		Standard: uint64(12), // ~2h
-		Testnet:  uint64(12), // ~2h
-		Testing:  uint64(12),
-	}).(uint64)
+		Dev:      types.BlockHeight(12),
+		Standard: types.BlockHeight(12), // ~2h
+		Testnet:  types.BlockHeight(12), // ~2h
+		Testing:  types.BlockHeight(12),
+	}).(types.BlockHeight)
 
 	// fileContractMinimumFunding is the lowest percentage of an allowace (on a
 	// per-contract basis) that is allowed to go into funding a contract. If the

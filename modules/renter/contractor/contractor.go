@@ -86,7 +86,7 @@ type Contractor struct {
 	downloaders     map[types.FileContractID]*hostDownloader
 	editors         map[types.FileContractID]*hostEditor
 	sessions        map[types.FileContractID]*hostSession
-	numFailedRenews map[types.FileContractID]uint64
+	numFailedRenews map[types.FileContractID]types.BlockHeight
 	renewing        map[types.FileContractID]bool // prevent revising during renewal
 
 	// pubKeysToContractID is a map of host pubkeys to the latest contract ID
@@ -492,7 +492,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
-		numFailedRenews:      make(map[types.FileContractID]uint64),
+		numFailedRenews:      make(map[types.FileContractID]types.BlockHeight),
 		workerPool:           emptyWorkerPool{},
 	}
 	c.staticChurnLimiter = newChurnLimiter(c)

@@ -1188,7 +1188,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// that we use to track how many times consecutively we failed to renew a
 	// contract with a host, so that we know if we need to abandon that host.
 	c.mu.Lock()
-	newFirstFailedRenew := make(map[types.FileContractID]uint64)
+	newFirstFailedRenew := make(map[types.FileContractID]types.BlockHeight)
 	for _, r := range renewSet {
 		if _, exists := c.numFailedRenews[r.id]; exists {
 			newFirstFailedRenew[r.id] = c.numFailedRenews[r.id]
