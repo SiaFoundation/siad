@@ -220,7 +220,7 @@ var (
 		Dev:      SectorSizeDev,
 		Standard: SectorSizeStandard,
 		Testnet:  SectorSizeStandard,
-		Testing:  SectorSizeTesting,
+		Testing:  SectorSizeStandard,
 	}).(uint64)
 
 	// SectorSizeDev defines how large a sector should be in Dev builds.
