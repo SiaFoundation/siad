@@ -40,9 +40,9 @@ type (
 		Transactions []types.Transaction `json:"transactions"`
 	}
 
-	// TpoolRawPOST reply with tx data
+	// TpoolRawPOST reply with transaction ID
 	TpoolRawPOST struct {
-		Transaction types.Transaction `json:"transaction"`
+		ID          types.TransactionID `json:"id"`
 	}
 )
 
@@ -146,7 +146,7 @@ func tpoolRawHandlerPOST(tpool modules.TransactionPool, w http.ResponseWriter, r
 	}
 	
 	WriteJSON(w, TpoolRawPOST{
-		Transaction: txn,
+		ID: txn.ID(),
 	})
 }
 
