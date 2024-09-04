@@ -144,7 +144,7 @@ func tpoolRawHandlerPOST(tpool modules.TransactionPool, w http.ResponseWriter, r
 		WriteError(w, Error{"error accepting transaction set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	
+
 	WriteJSON(w, TpoolRawPOST{
 		ID: txn.ID(),
 	})
