@@ -39,6 +39,11 @@ type (
 	TpoolTxnsGET struct {
 		Transactions []types.Transaction `json:"transactions"`
 	}
+
+	// TpoolRawPOST reply with tx data
+	TpoolRawPOST struct {
+		Transaction types.Transaction `json:"transaction"`
+	}
 )
 
 // RegisterRoutesTransactionPool is a helper function to register all
@@ -139,7 +144,10 @@ func tpoolRawHandlerPOST(tpool modules.TransactionPool, w http.ResponseWriter, r
 		WriteError(w, Error{"error accepting transaction set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	WriteSuccess(w)
+	
+	WriteJSON(w, TpoolRawPOST{
+		Transaction: txn,
+	})
 }
 
 // tpoolConfirmedGET returns whether the specified transaction has
