@@ -8,7 +8,7 @@
 
 **⚠️ This project is no longer actively maintained and is considered deprecated.**
 
-Depending on the functionality you are looking for we recommend to switch to one of the following projects:
+For continued functionality, we recommend migrating to one of the following projects:  
 - [Renterd](https://github.com/SiaFoundation/renterd) for renting
 - [Hostd](https://github.com/SiaFoundation/hostd) for hosting
 - [Walletd](https://github.com/SiaFoundation/walletd) for advanced wallet functionality
