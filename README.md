@@ -17,7 +17,7 @@ The Sia network will hardfork on June 6th, 2025, so make sure to migrate to one
 of the above as soon as possible. You can find more information about the
 hardfork in our [docs](https://docs.sia.tech/navigating-the-v2-hardfork/v2).
 
-If you are an exchange, take a look at [guide to navigate the hardfork](https://docs.sia.tech/navigating-the-v2-hardfork/exchanges)
+If you are an exchange, take a look at our [guide to navigate the hardfork](https://docs.sia.tech/navigating-the-v2-hardfork/exchanges)
 
 
 Sia is a decentralized cloud storage platform that radically alters the
