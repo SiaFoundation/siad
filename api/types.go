@@ -78,6 +78,7 @@ type (
 		DustThreshold types.Currency `json:"dustthreshold"`
 	}
 
+	//WalletWatchPOST contains the set of addresses to add or remove from the watch set.
 	WalletWatchPOST struct {
 		Addresses []types.Address `json:"addresses"`
 		Remove    bool            `json:"remove"`
