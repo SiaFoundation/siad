@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -462,6 +464,287 @@ func (a *api) handleGETTPoolTransactions(jc jape.Context) {
 	})
 }
 
+const txnSize = 2000 // bytes
+
+func (a *api) constructV1Txn(walletID wallet.ID, recipients []types.SiacoinOutput, fee types.Currency) (types.Transaction, error) {
+	txn := types.Transaction{
+		MinerFees:      []types.Currency{fee},
+		SiacoinOutputs: recipients,
+	}
+
+	outgoing := fee
+	for _, output := range recipients {
+		outgoing = outgoing.Add(output.Value)
+	}
+
+	utxos, _, change, err := a.wallet.SelectSiacoinElements(walletID, outgoing, true)
+	if err != nil {
+		return types.Transaction{}, fmt.Errorf("failed to select siacoin elements: %w", err)
+	}
+
+	if !change.IsZero() {
+		walletAddresses, err := a.wallet.Addresses(walletID)
+		if err != nil {
+			return types.Transaction{}, fmt.Errorf("failed to get wallet addresses: %w", err)
+		} else if len(walletAddresses) == 0 {
+			return types.Transaction{}, fmt.Errorf("no wallet addresses found")
+		}
+		changeAddr := walletAddresses[0].Address
+		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
+			Address: changeAddr,
+			Value:   change,
+		})
+	}
+
+	unlockConditions := make(map[types.Address]types.UnlockConditions)
+	addressUnlockConditions := func(addr types.Address) (types.UnlockConditions, error) {
+		if uc, ok := unlockConditions[addr]; ok {
+			return uc, nil
+		}
+		meta, err := a.wallet.WalletAddress(walletID, addr)
+		if err != nil {
+			return types.UnlockConditions{}, fmt.Errorf("failed to get unlock conditions: %w", err)
+		} else if meta.SpendPolicy == nil {
+			return types.UnlockConditions{}, fmt.Errorf("no spend policy for address %s", addr)
+		}
+		uc, ok := meta.SpendPolicy.Type.(types.PolicyTypeUnlockConditions)
+		if !ok {
+			return types.UnlockConditions{}, fmt.Errorf("invalid spend policy type for address %s", addr)
+		} else if len(uc.PublicKeys) != 1 {
+			return types.UnlockConditions{}, fmt.Errorf("invalid number of public keys for address %s", addr)
+		}
+		unlockConditions[addr] = types.UnlockConditions(uc)
+		return unlockConditions[addr], nil
+	}
+	for _, sce := range utxos {
+		uc, err := addressUnlockConditions(sce.SiacoinOutput.Address)
+		if err != nil {
+			return types.Transaction{}, fmt.Errorf("failed to get unlock conditions for address %q: %w", sce.SiacoinOutput.Address, err)
+		}
+		txn.SiacoinInputs = append(txn.SiacoinInputs, types.SiacoinInput{
+			ParentID:         sce.ID,
+			UnlockConditions: uc,
+		})
+		txn.Signatures = append(txn.Signatures, types.TransactionSignature{
+			ParentID: types.Hash256(sce.ID),
+			CoveredFields: types.CoveredFields{
+				WholeTransaction: true,
+			},
+		})
+	}
+
+	cs := a.chain.TipState()
+
+	for i := range txn.SiacoinInputs {
+		sigHash := cs.WholeSigHash(txn, txn.Signatures[i].ParentID, 0, 0, nil)
+		sig, err := a.vault.Sign(types.PublicKey(txn.SiacoinInputs[i].UnlockConditions.PublicKeys[0].Key), sigHash)
+		if err != nil {
+			return types.Transaction{}, fmt.Errorf("failed to sign transaction: %w", err)
+		}
+		txn.Signatures[i].Signature = sig[:]
+	}
+
+	return txn, nil
+}
+
+func (a *api) constructV2Txn(walletID wallet.ID, recipients []types.SiacoinOutput, fee types.Currency) (types.V2Transaction, types.ChainIndex, error) {
+	txn := types.V2Transaction{
+		MinerFee:       fee,
+		SiacoinOutputs: recipients,
+	}
+
+	var outgoing types.Currency
+	for _, output := range recipients {
+		outgoing = outgoing.Add(output.Value)
+	}
+
+	if outgoing.IsZero() {
+		return types.V2Transaction{}, types.ChainIndex{}, errors.New("no outgoing value")
+	}
+	outgoing = outgoing.Add(fee)
+
+	utxos, basis, change, err := a.wallet.SelectSiacoinElements(walletID, outgoing, true)
+	if err != nil {
+		return types.V2Transaction{}, types.ChainIndex{}, fmt.Errorf("failed to select siacoin elements: %w", err)
+	}
+
+	if !change.IsZero() {
+		walletAddresses, err := a.wallet.Addresses(walletID)
+		if err != nil {
+			return types.V2Transaction{}, types.ChainIndex{}, fmt.Errorf("failed to get wallet addresses: %w", err)
+		} else if len(walletAddresses) == 0 {
+			return types.V2Transaction{}, types.ChainIndex{}, errors.New("no wallet addresses found")
+		}
+		changeAddr := walletAddresses[0].Address
+
+		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
+			Address: changeAddr,
+			Value:   change,
+		})
+	}
+
+	spendPolicies := make(map[types.Address]types.SpendPolicy)
+	addressPolicy := func(addr types.Address) (types.SpendPolicy, error) {
+		if sp, ok := spendPolicies[addr]; ok {
+			return sp, nil
+		}
+		meta, err := a.wallet.WalletAddress(walletID, addr)
+		if err != nil {
+			return types.SpendPolicy{}, fmt.Errorf("failed to get unlock conditions: %w", err)
+		} else if meta.SpendPolicy == nil {
+			return types.SpendPolicy{}, fmt.Errorf("no spend policy for address %s", addr)
+		}
+		uc, ok := meta.SpendPolicy.Type.(types.PolicyTypeUnlockConditions)
+		if !ok {
+			return types.SpendPolicy{}, fmt.Errorf("invalid spend policy type for address %s", addr)
+		} else if len(uc.PublicKeys) != 1 {
+			return types.SpendPolicy{}, fmt.Errorf("invalid number of public keys for address %s", addr)
+		}
+		spendPolicies[addr] = *meta.SpendPolicy
+		return spendPolicies[addr], nil
+	}
+	for _, sce := range utxos {
+		sp, err := addressPolicy(sce.SiacoinOutput.Address)
+		if err != nil {
+			return types.V2Transaction{}, types.ChainIndex{}, fmt.Errorf("failed to get unlock conditions for address %q: %w", sce.SiacoinOutput.Address, err)
+		}
+		txn.SiacoinInputs = append(txn.SiacoinInputs, types.V2SiacoinInput{
+			Parent: sce,
+			SatisfiedPolicy: types.SatisfiedPolicy{
+				Policy: sp,
+			},
+		})
+	}
+
+	cs := a.chain.TipState()
+	sigHash := cs.InputSigHash(txn)
+	for i := range txn.SiacoinInputs {
+		uc, ok := txn.SiacoinInputs[i].SatisfiedPolicy.Policy.Type.(types.PolicyTypeUnlockConditions)
+		if !ok {
+			return types.V2Transaction{}, types.ChainIndex{}, fmt.Errorf("invalid spend policy type for address %s", txn.SiacoinInputs[i].Parent.SiacoinOutput.Address)
+		} else if len(uc.PublicKeys) != 1 {
+			return types.V2Transaction{}, types.ChainIndex{}, fmt.Errorf("invalid number of public keys for address %s", txn.SiacoinInputs[i].Parent.SiacoinOutput.Address)
+		}
+		sig, err := a.vault.Sign(types.PublicKey(uc.PublicKeys[0].Key), sigHash)
+		if err != nil {
+			return types.V2Transaction{}, types.ChainIndex{}, fmt.Errorf("failed to sign transaction: %w", err)
+		}
+		txn.SiacoinInputs[i].SatisfiedPolicy.Signatures = []types.Signature{sig}
+	}
+
+	return txn, basis, nil
+}
+
+func (a *api) handlePOSTWalletSiacoins(jc jape.Context) {
+	var encodedOutputs string
+	if jc.DecodeForm("outputs", &encodedOutputs) != nil {
+		return
+	}
+
+	primaryWalletID, ok := a.getPrimaryWalletID(jc)
+	if !ok {
+		return
+	}
+
+	fee := a.chain.RecommendedFee().Mul64(txnSize)
+	var outputs []types.SiacoinOutput
+	if encodedOutputs != "" {
+		if err := json.Unmarshal([]byte(encodedOutputs), &outputs); err != nil {
+			jc.Error(err, http.StatusBadRequest)
+			return
+		} else if len(outputs) == 0 {
+			jc.Error(errors.New("no outputs provided"), http.StatusBadRequest)
+			return
+		}
+	} else {
+		var amount types.Currency
+		if jc.DecodeForm("amount", &amount) != nil {
+			return
+		}
+		var recipient types.Address
+		if jc.DecodeForm("recipient", &recipient) != nil {
+			return
+		}
+
+		var includeFee bool
+		if jc.DecodeForm("feeIncluded", &includeFee) != nil {
+			return
+		}
+
+		if includeFee {
+			var underflow bool
+			// subtract the fee from the amount
+			amount, underflow = amount.SubWithUnderflow(fee)
+			if underflow {
+				jc.Error(errors.New("amount too small to cover fee"), http.StatusBadRequest)
+				return
+			}
+		}
+
+		if amount.IsZero() {
+			jc.Error(errors.New("amount must be greater than 0"), http.StatusBadRequest)
+			return
+		}
+
+		outputs = []types.SiacoinOutput{
+			{
+				Address: recipient,
+				Value:   amount,
+			},
+		}
+	}
+
+	cs := a.chain.TipState()
+	if cs.Network.HardforkV2.AllowHeight > cs.Index.Height {
+		txn, basis, err := a.constructV2Txn(primaryWalletID, outputs, fee)
+		if err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		}
+		basis, txnset, err := a.chain.V2TransactionSet(basis, txn)
+		if err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		} else if _, err := a.chain.AddV2PoolTransactions(basis, txnset); err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		}
+
+		ids := make([]types.TransactionID, len(txnset))
+		for i, txn := range txnset {
+			ids[i] = txn.ID()
+		}
+
+		jc.Encode(WalletSiacoinsPOST{
+			V2Transactions:   txnset,
+			V2TransactionIDs: ids,
+		})
+	} else {
+		txn, err := a.constructV1Txn(primaryWalletID, outputs, fee)
+		if err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		}
+		txnset := append(a.chain.UnconfirmedParents(txn), txn)
+		if _, err := a.chain.AddPoolTransactions(txnset); err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		} else if err := a.syncer.BroadcastTransactionSet(txnset); err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		}
+		ids := make([]types.TransactionID, len(txnset))
+		for i, txn := range txnset {
+			ids[i] = txn.ID()
+		}
+
+		jc.Encode(WalletSiacoinsPOST{
+			Transactions:   txnset,
+			TransactionIDs: ids,
+		})
+	}
+}
+
 // NewHandler creates a new API handler
 func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.Manager, log *zap.Logger) http.Handler {
 	api := &api{
@@ -491,7 +774,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"GET /wallet/addresses": api.handleGETWalletAddresses,
 		"GET /wallet/seedaddrs": api.handleGETWalletSeedAddrs,
 
-		"POST /wallet/siacoins": func(jape.Context) { panic("todo") },
+		"POST /wallet/siacoins": api.handlePOSTWalletSiacoins,
 		"POST /wallet/siafunds": func(jape.Context) { panic("todo") },
 
 		"GET /wallet/transaction/:id":    func(jape.Context) { panic("todo") },

@@ -95,4 +95,12 @@ type (
 		Transactions   []types.Transaction   `json:"transactions"`
 		V2Transactions []types.V2Transaction `json:"v2transactions"`
 	}
+
+	WalletSiacoinsPOST struct {
+		Transactions   []types.Transaction   `json:"transactions"`
+		TransactionIDs []types.TransactionID `json:"transactionids"`
+
+		V2Transactions   []types.V2Transaction `json:"v2transactions"`
+		V2TransactionIDs []types.TransactionID `json:"v2transactionids"`
+	}
 )
