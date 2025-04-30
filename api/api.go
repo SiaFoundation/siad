@@ -503,6 +503,6 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"POST /wallet/sign":                  func(jape.Context) { panic("todo") },
 
 		"GET /wallet/watch":  api.handleGETWalletWatchAddrs,
-		"POST /wallet/watch": func(jape.Context) { panic("todo") },
+		"POST /wallet/watch": api.handlePOSTWalletWatchAddrs,
 	})
 }
