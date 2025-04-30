@@ -89,4 +89,10 @@ type (
 		Minimum types.Currency `json:"minimum"`
 		Maximum types.Currency `json:"maximum"`
 	}
+
+	// TpoolTxnsGET contains the information about the tpool's transactions
+	TpoolTxnsGET struct {
+		Transactions   []types.Transaction   `json:"transactions"`
+		V2Transactions []types.V2Transaction `json:"v2transactions"`
+	}
 )

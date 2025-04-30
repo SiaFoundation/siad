@@ -455,6 +455,13 @@ func (a *api) getPrimarySeedID(jc jape.Context) (vault.SeedID, bool) {
 	return seeds[0].ID, true
 }
 
+func (a *api) handleGETTPoolTransactions(jc jape.Context) {
+	jc.Encode(TpoolTxnsGET{
+		Transactions:   a.chain.PoolTransactions(),
+		V2Transactions: a.chain.V2PoolTransactions(),
+	})
+}
+
 // NewHandler creates a new API handler
 func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.Manager, log *zap.Logger) http.Handler {
 	api := &api{
@@ -470,7 +477,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"GET /consensus/validate/transactionset": func(jape.Context) { panic("todo") },
 
 		"GET /tpool/fee":          api.handleGETTPoolFee,
-		"GET /tpool/transactions": func(ctx jape.Context) { panic("todo") },
+		"GET /tpool/transactions": api.handleGETTPoolTransactions,
 		"POST /tpool/raw":         func(ctx jape.Context) { panic("todo") },
 
 		"GET /wallet": api.handleGETWallet,
