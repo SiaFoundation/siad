@@ -1,62 +1,28 @@
 name: Publish
 
-# Controls when the action will run. 
+# Controls when the action will run.
 on:
   # Triggers the workflow on new SemVer tags
   push:
     branches:
       - master
-    tags: 
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+'
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-**"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
-  docker:
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-      - uses: docker/setup-qemu-action@v2
-      - uses: docker/setup-buildx-action@v2
-      - uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v4
-        name: generate tags
-        id: meta
-        with:
-          images: ghcr.io/siafoundation/siad
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-            type=semver,pattern={{version}}
-      - uses: docker/build-push-action@v3
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      matrix:
-        os: [ darwin, linux, windows ]
-        arch: [ arm64, amd64 ]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-      - name: build ${{ matrix.os }}/${{ matrix.arch }}
-        env:
-          GOOS: ${{ matrix.os }}
-          GOARCH: ${{ matrix.arch }}
-        run: make static
-      - uses: actions/upload-artifact@v3
-        with:
-          name: sia-${{ matrix.os }}-${{ matrix.arch }}
-          path: release/*
+  publish:
+    uses: SiaFoundation/workflows/.github/workflows/go-publish.yml@master
+    secrets: inherit
+    with:
+      linux-build-args: -tags='timetzdata netgo' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+      windows-build-args: -tags='timetzdata netgo' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+      macos-build-args: -tags='timetzdata netgo' -trimpath -a -ldflags '-s -w'
+      cgo-enabled: 1
+      project: siad
+      project-desc: "siad: deprecated"
+      version-tag: ${{ github.ref_name }}

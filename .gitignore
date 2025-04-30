@@ -1,26 +1,3 @@
-# vim
-*.swp
-*.swo
-
-# build artifacts
-analyze
-artifacts
-cover
-fullcover
-release
-
-# pdflatex
-doc/whitepaper.aux
-doc/whitepaper.log
-doc/whitepaper.pdf
-
-# IntelliJ IDEA
-.idea
-sia.iml
-
-# VSCode debug files
-.vscode
-debug.test
-
-# OSX auto-generated file
-**/.DS_Store
+bin/
+.DS_Store
+.vscode/

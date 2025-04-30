@@ -1,0 +1,56 @@
+[package]
+changelog = "CHANGELOG.md"
+versioned_files = ["go.mod"]
+ignore_go_major_versioning = true
+
+[[workflows]]
+name = "document-change"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+[[workflows]]
+name = "prepare-release"
+
+[[workflows.steps]]
+type = "Command"
+command = "git switch -c release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+ignore_conventional_commits = true
+
+[[workflows.steps]]
+type = "Command"
+command = "git commit -m \"chore: prepare release $version\""
+variables = { "$version" = "Version" }
+
+[[workflows.steps]]
+type = "Command"
+command = "git push --force --set-upstream origin release"
+
+[workflows.steps.variables]
+"$version" = "Version"
+
+[[workflows.steps]]
+type = "CreatePullRequest"
+base = "master"
+
+[workflows.steps.title]
+template = "chore: prepare release $version"
+variables = { "$version" = "Version" }
+
+[workflows.steps.body]
+template = "This PR was created automatically. Merging it will finalize the changelog for $version\n\n$changelog"
+variables = { "$changelog" = "ChangelogEntry", "$version" = "Version" }
+
+# Do not enable releases, just changelogs for now.
+# [[workflows]]
+# name = "release"
+#
+# [[workflows.steps]]
+# type = "Release"
+
+[github]
+owner = "SiaFoundation"
+repo = "siad"
