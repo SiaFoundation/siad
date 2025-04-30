@@ -99,6 +99,73 @@ func (a *api) handleGETConsensusBlocks(jc jape.Context) {
 	jc.Encode(block) // TODO: this is technically not correct, need to process it
 }
 
+func (a *api) handleGETWallet(jc jape.Context) {
+	primaryWalletID, ok := a.getPrimaryWalletID(jc)
+	if !ok {
+		return
+	}
+
+	seeds, err := a.vault.Seeds(1, 0)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	scannedTip, err := a.wallet.Tip()
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+	cs := a.chain.TipState()
+
+	balance, err := a.wallet.WalletBalance(primaryWalletID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	events, err := a.wallet.WalletUnconfirmedEvents(primaryWalletID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+	var unconfirmedIncoming, unconfirmedOutgoing types.Currency
+	for _, event := range events {
+		unconfirmedIncoming = unconfirmedIncoming.Add(event.SiacoinInflow())
+		unconfirmedOutgoing = unconfirmedOutgoing.Add(event.SiacoinOutflow())
+	}
+
+	var siafundClaimBalance types.Currency
+	sfes, _, err := a.wallet.UnspentSiafundOutputs(primaryWalletID, 0, 10000)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	for _, sfe := range sfes {
+		taxPortion, underflow := cs.SiafundTaxRevenue.SubWithUnderflow(sfe.ClaimStart)
+		if underflow {
+			continue
+		}
+		siafundClaimBalance = siafundClaimBalance.Add(taxPortion.Mul64(sfe.SiafundOutput.Value).Div64(cs.SiafundCount()))
+	}
+
+	jc.Encode(WalletGET{
+		Encrypted: len(seeds) != 0,
+		Unlocked:  a.vault.Unlocked(),
+
+		Rescanning: cs.Index != scannedTip,
+		Height:     scannedTip.Height,
+
+		ConfirmedSiacoinBalance: balance.Siacoins,
+		SiafundBalance:          types.NewCurrency(balance.Siafunds, 0),
+		SiacoinClaimBalance:     siafundClaimBalance,
+
+		UnconfirmedOutgoingSiacoins: unconfirmedOutgoing,
+		UnconfirmedIncomingSiacoins: unconfirmedIncoming,
+	})
+}
+
 func (a *api) handlePOSTWalletInitSeed(jc jape.Context) {
 	var phrase string
 	if jc.DecodeForm("seed", &phrase) != nil {
@@ -354,7 +421,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"GET /tpool/transactions": func(ctx jape.Context) { panic("todo") },
 		"POST /tpool/raw":         func(ctx jape.Context) { panic("todo") },
 
-		"GET /wallet": func(jape.Context) { panic("todo") },
+		"GET /wallet": api.handleGETWallet,
 
 		"POST /wallet/lock":   api.handlePOSTWalletLock,
 		"POST /wallet/unlock": api.handlePOSTWalletUnlock,

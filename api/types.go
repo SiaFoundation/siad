@@ -61,6 +61,23 @@ type (
 		Addresses []types.Address `json:"addresses"`
 	}
 
+	// WalletGET contains general information about the wallet.
+	WalletGET struct {
+		Unlocked   bool   `json:"unlocked"`
+		Encrypted  bool   `json:"encrypted"`
+		Height     uint64 `json:"height"`
+		Rescanning bool   `json:"rescanning"`
+
+		ConfirmedSiacoinBalance     types.Currency `json:"confirmedsiacoinbalance"`
+		UnconfirmedOutgoingSiacoins types.Currency `json:"unconfirmedoutgoingsiacoins"`
+		UnconfirmedIncomingSiacoins types.Currency `json:"unconfirmedincomingsiacoins"`
+
+		SiacoinClaimBalance types.Currency `json:"siacoinclaimbalance"`
+		SiafundBalance      types.Currency `json:"siafundbalance"`
+
+		DustThreshold types.Currency `json:"dustthreshold"`
+	}
+
 	// TpoolFeeGET contains the current estimated fee
 	TpoolFeeGET struct {
 		Minimum types.Currency `json:"minimum"`

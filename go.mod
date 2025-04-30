@@ -7,7 +7,7 @@ require (
 	go.sia.tech/coreutils v0.13.2
 	go.sia.tech/jape v0.14.0
 	go.sia.tech/siad v1.5.9
-	go.sia.tech/vaultd v0.2.1-0.20250430165609-b7fe351ad26c
+	go.sia.tech/vaultd v0.2.1-0.20250430193951-8693a2e86467
 	go.sia.tech/walletd/v2 v2.2.2-0.20250430160545-7188aa7767b5
 	go.uber.org/zap v1.27.0
 	golang.org/x/text v0.24.0
