@@ -238,6 +238,58 @@ func (a *api) handleGETWalletAddresses(jc jape.Context) {
 	})
 }
 
+func (a *api) handleGETWalletSeedAddrs(jc jape.Context) {
+	primarySeedID, ok := a.getPrimarySeedID(jc)
+	if !ok {
+		return
+	}
+
+	primaryWalletID, ok := a.getPrimaryWalletID(jc)
+	if !ok {
+		return
+	}
+
+	var count uint64
+	if jc.DecodeForm("count", &count) != nil {
+		return
+	}
+
+	meta, err := a.vault.SeedMeta(primarySeedID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	start := meta.LastIndex + 1
+	end := start + count
+
+	for i := start; i < end; i++ {
+		pk, err := a.vault.NextKey(primarySeedID)
+		if err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		}
+		sp := types.SpendPolicy{
+			Type: types.PolicyTypeUnlockConditions(types.StandardUnlockConditions(pk)),
+		}
+		err = a.wallet.AddAddress(primaryWalletID, wallet.Address{
+			Address:     sp.Address(),
+			SpendPolicy: &sp,
+		})
+		if err != nil {
+			jc.Error(err, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func (a *api) handleGETTPoolFee(jc jape.Context) {
+	jc.Encode(TpoolFeeGET{
+		Minimum: a.chain.RecommendedFee(),
+		Maximum: a.chain.RecommendedFee(),
+	})
+}
+
 func (a *api) getPrimaryWalletID(jc jape.Context) (wallet.ID, bool) {
 	wallets, err := a.wallet.Wallets()
 	if err != nil {
@@ -298,7 +350,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"GET /consensus/blocks":                  api.handleGETConsensusBlocks,
 		"GET /consensus/validate/transactionset": func(jape.Context) { panic("todo") },
 
-		"GET /tpool/fee":          func(ctx jape.Context) { panic("todo") },
+		"GET /tpool/fee":          api.handleGETTPoolFee,
 		"GET /tpool/transactions": func(ctx jape.Context) { panic("todo") },
 		"POST /tpool/raw":         func(ctx jape.Context) { panic("todo") },
 
@@ -310,12 +362,12 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"POST /wallet/init/seed": api.handlePOSTWalletInitSeed,
 
 		"GET /wallet/address":   api.handleGETWalletAddress,
-		"GET /wallet/addresses": func(jape.Context) { panic("todo") },
-		"GET /wallet/seedaddrs": func(jape.Context) { panic("todo") },
+		"GET /wallet/addresses": api.handleGETWalletAddresses,
+		"GET /wallet/seedaddrs": api.handleGETWalletSeedAddrs,
 
-		"POST /wallet/seed":              func(jape.Context) { panic("todo") },
-		"POST /wallet/siacoins":          func(jape.Context) { panic("todo") },
-		"POST /wallet/siafunds":          func(jape.Context) { panic("todo") },
+		"POST /wallet/siacoins": func(jape.Context) { panic("todo") },
+		"POST /wallet/siafunds": func(jape.Context) { panic("todo") },
+
 		"GET /wallet/transaction/:id":    func(jape.Context) { panic("todo") },
 		"GET /wallet/transactions":       func(jape.Context) { panic("todo") },
 		"GET /wallet/transactions/:addr": func(jape.Context) { panic("todo") },

@@ -60,4 +60,10 @@ type (
 	WalletAddressesResponse struct {
 		Addresses []types.Address `json:"addresses"`
 	}
+
+	// TpoolFeeGET contains the current estimated fee
+	TpoolFeeGET struct {
+		Minimum types.Currency `json:"minimum"`
+		Maximum types.Currency `json:"maximum"`
+	}
 )
