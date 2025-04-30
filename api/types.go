@@ -96,6 +96,7 @@ type (
 		V2Transactions []types.V2Transaction `json:"v2transactions"`
 	}
 
+	// WalletSiacoinsPOST contains the transaction sent in the POST call to /wallet/siacoins.
 	WalletSiacoinsPOST struct {
 		Transactions   []types.Transaction   `json:"transactions"`
 		TransactionIDs []types.TransactionID `json:"transactionids"`
