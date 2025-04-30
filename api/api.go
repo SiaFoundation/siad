@@ -16,6 +16,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	primaryWalletName = "primary"
+	watchWalletName   = "watch"
+)
+
 type api struct {
 	chain  *chain.Manager
 	syncer *syncer.Syncer
@@ -162,6 +167,123 @@ func (a *api) handlePOSTWalletLock(jc jape.Context) {
 	jc.Encode(nil)
 }
 
+// why is this GET?
+func (a *api) handleGETWalletAddress(jc jape.Context) {
+	primarySeedID, ok := a.getPrimarySeedID(jc)
+	if !ok {
+		return
+	}
+
+	primaryWalletID, ok := a.getPrimaryWalletID(jc)
+	if !ok {
+		return
+	}
+
+	pk, err := a.vault.NextKey(primarySeedID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+	sp := types.SpendPolicy{
+		Type: types.PolicyTypeUnlockConditions(types.StandardUnlockConditions(pk)),
+	}
+	addr := sp.Address()
+
+	err = a.wallet.AddAddress(primaryWalletID, wallet.Address{
+		Address:     addr,
+		SpendPolicy: &sp,
+	})
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+	jc.Encode(WalletAddressResponse{
+		Address: addr,
+	})
+}
+
+func (a *api) handleGETWalletAddresses(jc jape.Context) {
+	primaryWalletID, ok := a.getPrimaryWalletID(jc)
+	if !ok {
+		return
+	}
+
+	watchWalletID, ok := a.getWatchWalletID(jc)
+	if !ok {
+		return
+	}
+
+	primaryAddresses, err := a.wallet.Addresses(primaryWalletID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	watchAddresses, err := a.wallet.Addresses(watchWalletID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	addresses := make([]types.Address, 0, len(primaryAddresses)+len(watchAddresses))
+	for _, addr := range primaryAddresses {
+		addresses = append(addresses, addr.Address)
+	}
+	for _, addr := range watchAddresses {
+		addresses = append(addresses, addr.Address)
+	}
+
+	jc.Encode(WalletAddressesResponse{
+		Addresses: addresses,
+	})
+}
+
+func (a *api) getPrimaryWalletID(jc jape.Context) (wallet.ID, bool) {
+	wallets, err := a.wallet.Wallets()
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return 0, false
+	}
+	for _, w := range wallets {
+		if w.Name == primaryWalletName {
+			return w.ID, true
+		}
+	}
+	w, err := a.wallet.AddWallet(wallet.Wallet{
+		Name: primaryWalletName,
+	})
+	return w.ID, true
+}
+
+func (a *api) getWatchWalletID(jc jape.Context) (wallet.ID, bool) {
+	wallets, err := a.wallet.Wallets()
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return 0, false
+	}
+	for _, w := range wallets {
+		if w.Name == watchWalletName {
+			return w.ID, true
+		}
+	}
+	w, err := a.wallet.AddWallet(wallet.Wallet{
+		Name: watchWalletName,
+	})
+	return w.ID, true
+}
+
+func (a *api) getPrimarySeedID(jc jape.Context) (vault.SeedID, bool) {
+	seeds, err := a.vault.Seeds(1, 0)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return 0, false
+	} else if len(seeds) == 0 {
+		jc.Error(errors.New("wallet not initialized"), http.StatusBadRequest)
+		return 0, false
+	}
+	return seeds[0].ID, true
+}
+
 // NewHandler creates a new API handler
 func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.Manager, log *zap.Logger) http.Handler {
 	api := &api{
@@ -173,7 +295,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 	}
 	return jape.Mux(map[string]jape.Handler{
 		"GET /consensus":                         api.handleGETConsensus,
-		"GET /consensus/blocks":                  func(jape.Context) { panic("todo") },
+		"GET /consensus/blocks":                  api.handleGETConsensusBlocks,
 		"GET /consensus/validate/transactionset": func(jape.Context) { panic("todo") },
 
 		"GET /tpool/fee":          func(ctx jape.Context) { panic("todo") },
@@ -187,7 +309,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 
 		"POST /wallet/init/seed": api.handlePOSTWalletInitSeed,
 
-		"GET /wallet/address":   func(jape.Context) { panic("todo") },
+		"GET /wallet/address":   api.handleGETWalletAddress,
 		"GET /wallet/addresses": func(jape.Context) { panic("todo") },
 		"GET /wallet/seedaddrs": func(jape.Context) { panic("todo") },
 
@@ -201,7 +323,8 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"GET /wallet/unlockconditions/:addr": func(jape.Context) { panic("todo") },
 		"GET /wallet/unspent":                func(jape.Context) { panic("todo") },
 		"POST /wallet/sign":                  func(jape.Context) { panic("todo") },
-		"GET /wallet/watch":                  func(jape.Context) { panic("todo") },
-		"POST /wallet/watch":                 func(jape.Context) { panic("todo") },
+
+		"GET /wallet/watch":  func(jape.Context) { panic("todo") },
+		"POST /wallet/watch": func(jape.Context) { panic("todo") },
 	})
 }

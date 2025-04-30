@@ -172,12 +172,16 @@ func runNode(ctx context.Context, log *zap.Logger) error {
 	}()
 
 	<-ctx.Done()
-
+	time.AfterFunc(30*time.Second, func() {
+		log.Panic("failed to shut down gracefully")
+	})
 	return nil
 }
 
 func main() {
 	var logLevel zap.AtomicLevel
+	flag.StringVar(&dir, "dir", ".", "directory to store data")
+	flag.StringVar(&network, "network", "mainnet", "network to use (mainnet, zen, anagami, or path to custom network file)")
 	flag.TextVar(&logLevel, "log.level", zap.NewAtomicLevelAt(zap.InfoLevel), "log level")
 	flag.Parse()
 
