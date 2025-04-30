@@ -695,7 +695,7 @@ func (a *api) handlePOSTWalletSiacoins(jc jape.Context) {
 	}
 
 	cs := a.chain.TipState()
-	if cs.Network.HardforkV2.AllowHeight > cs.Index.Height {
+	if cs.Index.Height >= cs.Network.HardforkV2.AllowHeight {
 		txn, basis, err := a.constructV2Txn(primaryWalletID, outputs, fee)
 		if err != nil {
 			jc.Error(err, http.StatusInternalServerError)
