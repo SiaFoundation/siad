@@ -350,6 +350,58 @@ func (a *api) handleGETWalletSeedAddrs(jc jape.Context) {
 	}
 }
 
+func (a *api) handleGETWalletWatchAddrs(jc jape.Context) {
+	watchWalletID, ok := a.getWatchWalletID(jc)
+	if !ok {
+		return
+	}
+
+	watchAddresses, err := a.wallet.Addresses(watchWalletID)
+	if err != nil {
+		jc.Error(err, http.StatusInternalServerError)
+		return
+	}
+
+	addresses := make([]types.Address, 0, len(watchAddresses))
+	for _, addr := range watchAddresses {
+		addresses = append(addresses, addr.Address)
+	}
+
+	jc.Encode(WalletAddressesResponse{
+		Addresses: addresses,
+	})
+}
+
+func (a *api) handlePOSTWalletWatchAddrs(jc jape.Context) {
+	var req WalletWatchPOST
+	if jc.Decode(&req) != nil {
+		return
+	}
+
+	watchWalletID, ok := a.getWatchWalletID(jc)
+	if !ok {
+		return
+	}
+
+	for _, addr := range req.Addresses {
+		if req.Remove {
+			if err := a.wallet.RemoveAddress(watchWalletID, addr); err != nil {
+				jc.Error(err, http.StatusInternalServerError)
+				return
+			}
+		} else {
+			err := a.wallet.AddAddress(watchWalletID, wallet.Address{
+				Address: addr,
+			})
+			if err != nil {
+				jc.Error(err, http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+	jc.Encode(nil)
+}
+
 func (a *api) handleGETTPoolFee(jc jape.Context) {
 	jc.Encode(TpoolFeeGET{
 		Minimum: a.chain.RecommendedFee(),
@@ -443,7 +495,7 @@ func NewHandler(cm *chain.Manager, s *syncer.Syncer, v *vault.Vault, w *wallet.M
 		"GET /wallet/unspent":                func(jape.Context) { panic("todo") },
 		"POST /wallet/sign":                  func(jape.Context) { panic("todo") },
 
-		"GET /wallet/watch":  func(jape.Context) { panic("todo") },
+		"GET /wallet/watch":  api.handleGETWalletWatchAddrs,
 		"POST /wallet/watch": func(jape.Context) { panic("todo") },
 	})
 }

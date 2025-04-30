@@ -78,6 +78,11 @@ type (
 		DustThreshold types.Currency `json:"dustthreshold"`
 	}
 
+	WalletWatchPOST struct {
+		Addresses []types.Address `json:"addresses"`
+		Remove    bool            `json:"remove"`
+	}
+
 	// TpoolFeeGET contains the current estimated fee
 	TpoolFeeGET struct {
 		Minimum types.Currency `json:"minimum"`
