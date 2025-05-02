@@ -124,17 +124,17 @@ type (
 	// ConsensusBlocksGetTxn contains all fields of a legacy.Transaction and an
 	// additional ID field.
 	ConsensusBlocksGetTxn struct {
-		ID                    types.TransactionID               `json:"id"`
-		SiacoinInputs         []legacy.SiacoinInput             `json:"siacoininputs"`
-		SiacoinOutputs        []ConsensusBlocksGetSiacoinOutput `json:"siacoinoutputs"`
-		FileContracts         []ConsensusBlocksGetFileContract  `json:"filecontracts"`
-		FileContractRevisions []legacy.FileContractRevision     `json:"filecontractrevisions"`
-		StorageProofs         []legacy.StorageProof             `json:"storageproofs"`
-		SiafundInputs         []legacy.SiafundInput             `json:"siafundinputs"`
-		SiafundOutputs        []ConsensusBlocksGetSiafundOutput `json:"siafundoutputs"`
-		MinerFees             []types.Currency                  `json:"minerfees"`
-		ArbitraryData         [][]byte                          `json:"arbitrarydata"`
-		TransactionSignatures []legacy.TransactionSignature     `json:"transactionsignatures"`
+		ID                    types.TransactionID                      `json:"id"`
+		SiacoinInputs         []legacy.SiacoinInput                    `json:"siacoininputs"`
+		SiacoinOutputs        []ConsensusBlocksGetSiacoinOutput        `json:"siacoinoutputs"`
+		FileContracts         []ConsensusBlocksGetFileContract         `json:"filecontracts"`
+		FileContractRevisions []ConsensusBlocksGetFileContractRevision `json:"filecontractrevisions"`
+		StorageProofs         []legacy.StorageProof                    `json:"storageproofs"`
+		SiafundInputs         []legacy.SiafundInput                    `json:"siafundinputs"`
+		SiafundOutputs        []ConsensusBlocksGetSiafundOutput        `json:"siafundoutputs"`
+		MinerFees             []types.Currency                         `json:"minerfees"`
+		ArbitraryData         [][]byte                                 `json:"arbitrarydata"`
+		TransactionSignatures []legacy.TransactionSignature            `json:"transactionsignatures"`
 	}
 
 	// ConsensusBlocksGetFileContract contains all fields of a legacy.FileContract
@@ -150,6 +150,20 @@ type (
 		MissedProofOutputs []ConsensusBlocksGetSiacoinOutput `json:"missedproofoutputs"`
 		UnlockHash         types.Address                     `json:"unlockhash"`
 		RevisionNumber     uint64                            `json:"revisionnumber"`
+	}
+
+	ConsensusBlocksGetFileContractRevision struct {
+		ParentID          types.FileContractID    `json:"parentid"`
+		UnlockConditions  legacy.UnlockConditions `json:"unlockconditions"`
+		NewRevisionNumber uint64                  `json:"newrevisionnumber"`
+
+		NewFileSize           uint64                 `json:"newfilesize"`
+		NewFileMerkleRoot     types.Hash256          `json:"newfilemerkleroot"`
+		NewWindowStart        uint64                 `json:"newwindowstart"`
+		NewWindowEnd          uint64                 `json:"newwindowend"`
+		NewValidProofOutputs  []legacy.SiacoinOutput `json:"newvalidproofoutputs"`
+		NewMissedProofOutputs []legacy.SiacoinOutput `json:"newmissedproofoutputs"`
+		NewUnlockHash         types.Address          `json:"newunlockhash"`
 	}
 
 	// ConsensusBlocksGetSiacoinOutput contains all fields of a legacy.SiacoinOutput
@@ -195,7 +209,7 @@ func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocks
 		// get the transaction's FileContracts
 		fcos := make([]ConsensusBlocksGetFileContract, 0, len(t.FileContracts))
 		for i, fc := range t.FileContracts {
-			// Get the FileContract's valid proof outputs.
+			// get the FileContract's valid proof outputs
 			fcid := t.FileContractID(i)
 			vpos := make([]ConsensusBlocksGetSiacoinOutput, 0, len(fc.ValidProofOutputs))
 			for j, vpo := range fc.ValidProofOutputs {
@@ -227,12 +241,34 @@ func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocks
 				RevisionNumber:     fc.RevisionNumber,
 			})
 		}
+		// get the transaction's FileContractRevisions
+		fcrs := make([]ConsensusBlocksGetFileContractRevision, 0, len(t.FileContractRevisions))
+		for _, fcr := range t.FileContractRevisions {
+			fcrs = append(fcrs, ConsensusBlocksGetFileContractRevision{
+				ParentID: fcr.ParentID,
+				UnlockConditions: legacy.UnlockConditions{
+					Timelock:           fcr.UnlockConditions.Timelock,
+					PublicKeys:         fcr.UnlockConditions.PublicKeys,
+					SignaturesRequired: fcr.UnlockConditions.SignaturesRequired,
+				},
+				NewRevisionNumber: fcr.RevisionNumber,
+
+				NewFileSize:           fcr.Filesize,
+				NewFileMerkleRoot:     fcr.FileMerkleRoot,
+				NewWindowStart:        fcr.WindowStart,
+				NewWindowEnd:          fcr.WindowEnd,
+				NewValidProofOutputs:  legacy.ConvertSiacoinOutputs(fcr.ValidProofOutputs),
+				NewMissedProofOutputs: legacy.ConvertSiacoinOutputs(fcr.MissedProofOutputs),
+				NewUnlockHash:         fcr.UnlockHash,
+			})
+		}
+
 		txns = append(txns, ConsensusBlocksGetTxn{
 			ID:                    t.ID(),
 			SiacoinInputs:         legacy.ConvertSiacoinInputs(t.SiacoinInputs),
 			SiacoinOutputs:        scos,
 			FileContracts:         fcos,
-			FileContractRevisions: legacy.ConvertFileContractRevisions(t.FileContractRevisions),
+			FileContractRevisions: fcrs,
 			StorageProofs:         legacy.ConvertStorageProofs(t.StorageProofs),
 			SiafundInputs:         legacy.ConvertSiafundInputs(t.SiafundInputs),
 			SiafundOutputs:        sfos,

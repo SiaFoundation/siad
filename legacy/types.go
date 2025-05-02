@@ -11,51 +11,72 @@ import (
 type Timestamp types.Timestamp
 
 type (
-	// FileContractRevision is a revision of a file contract.
-	FileContractRevision types.FileContractRevision
+	// CoveredFields is a list of fields in a transaction covered by a
+	// signature.
+	CoveredFields struct {
+		WholeTransaction      bool     `json:"wholetransaction"`
+		SiacoinInputs         []uint64 `json:"siacoininputs"`
+		SiacoinOutputs        []uint64 `json:"siacoinoutputs"`
+		FileContracts         []uint64 `json:"filecontracts"`
+		FileContractRevisions []uint64 `json:"filecontractrevisions"`
+		StorageProofs         []uint64 `json:"storageproofs"`
+		SiafundInputs         []uint64 `json:"siafundinputs"`
+		SiafundOutputs        []uint64 `json:"siafundoutputs"`
+		MinerFees             []uint64 `json:"minerfees"`
+		ArbitraryData         []uint64 `json:"arbitrarydata"`
+		TransactionSignatures []uint64 `json:"transactionsignatures"`
+	}
 
 	// SiacoinInput is an input to a transaction that spends siacoins.
-	SiacoinInput types.SiacoinInput
+	SiacoinInput struct {
+		ParentID         cTypes.SiacoinOutputID `json:"parentid"`
+		UnlockConditions UnlockConditions       `json:"unlockconditions"`
+	}
 
 	// SiacoinOutput is an output of a transaction that spends siacoins.
-	SiacoinOutput types.SiacoinOutput
+	SiacoinOutput struct {
+		Value      cTypes.Currency `json:"value"`
+		UnlockHash cTypes.Address  `json:"unlockhash"`
+	}
 
 	// SiafundInput is an input to a transaction that spends siafunds.
-	SiafundInput types.SiafundInput
+	SiafundInput struct {
+		ParentID         cTypes.SiafundOutputID `json:"parentid"`
+		UnlockConditions UnlockConditions       `json:"unlockconditions"`
+		ClaimUnlockHash  cTypes.Address         `json:"claimunlockhash"`
+	}
 
 	// StorageProof is a proof that a host has stored a sector for the duration of
 	// a contract.
-	StorageProof types.StorageProof
+	StorageProof struct {
+		ParentID cTypes.FileContractID `json:"parentid"`
+		Segment  [64]byte              `json:"segment"`
+		HashSet  []cTypes.Hash256      `json:"hashset"`
+	}
 
 	// TransactionSignature is a signature for a transaction.
-	TransactionSignature types.TransactionSignature
-)
-
-// ConvertFileContractRevisions converts a slice of core revisions to a slice of
-// legacy revisions.
-func ConvertFileContractRevisions(fcrs []cTypes.FileContractRevision) []FileContractRevision {
-	fcrsOut := make([]FileContractRevision, len(fcrs))
-	for i, fcr := range fcrs {
-		fcrsOut[i] = FileContractRevision{
-			ParentID: types.FileContractID(fcr.ParentID),
-			UnlockConditions: types.UnlockConditions{
-				Timelock:           types.BlockHeight(fcr.UnlockConditions.Timelock),
-				PublicKeys:         convertPublicKeys(fcr.UnlockConditions.PublicKeys),
-				SignaturesRequired: fcr.UnlockConditions.SignaturesRequired,
-			},
-			NewRevisionNumber: fcr.RevisionNumber,
-
-			NewFileSize:           fcr.Filesize,
-			NewFileMerkleRoot:     crypto.Hash(fcr.FileMerkleRoot),
-			NewWindowStart:        types.BlockHeight(fcr.WindowStart),
-			NewWindowEnd:          types.BlockHeight(fcr.WindowEnd),
-			NewValidProofOutputs:  convertSiacoinOutputs(fcr.ValidProofOutputs),
-			NewMissedProofOutputs: convertSiacoinOutputs(fcr.MissedProofOutputs),
-			NewUnlockHash:         types.UnlockHash(fcr.UnlockHash),
-		}
+	TransactionSignature struct {
+		ParentID       crypto.Hash   `json:"parentid"`
+		PublicKeyIndex uint64        `json:"publickeyindex"`
+		Timelock       uint64        `json:"timelock"`
+		CoveredFields  CoveredFields `json:"coveredfields"`
+		Signature      []byte        `json:"signature"`
 	}
-	return fcrsOut
-}
+
+	// UnlockConditions is a set of conditions that must be met to spend funds
+	// from an address.
+	UnlockConditions struct {
+		Timelock           uint64             `json:"timelock"`
+		PublicKeys         []cTypes.UnlockKey `json:"publickeys"`
+		SignaturesRequired uint64             `json:"signaturesrequired"`
+	}
+
+	// UnlockKey is a key that can be used to unlock a siacoin output.
+	UnlockKey struct {
+		Algorithm cTypes.Specifier `json:"algorithm"`
+		Key       []byte           `json:"key"`
+	}
+)
 
 // ConvertSiacoinInputs converts a slice of core siacoin inputs to a slice of
 // legacy inputs.
@@ -63,28 +84,15 @@ func ConvertSiacoinInputs(scis []cTypes.SiacoinInput) []SiacoinInput {
 	scisOut := make([]SiacoinInput, len(scis))
 	for i, sci := range scis {
 		scisOut[i] = SiacoinInput{
-			ParentID: types.SiacoinOutputID(sci.ParentID),
-			UnlockConditions: types.UnlockConditions{
-				Timelock:           types.BlockHeight(sci.UnlockConditions.Timelock),
-				PublicKeys:         convertPublicKeys(sci.UnlockConditions.PublicKeys),
+			ParentID: sci.ParentID,
+			UnlockConditions: UnlockConditions{
+				Timelock:           sci.UnlockConditions.Timelock,
+				PublicKeys:         sci.UnlockConditions.PublicKeys,
 				SignaturesRequired: sci.UnlockConditions.SignaturesRequired,
 			},
 		}
 	}
 	return scisOut
-}
-
-// ConvertSiacoinOutputs converts a slice of core siacoin outputs to a slice of
-// legacy outputs.
-func ConvertSiacoinOutputs(scos []cTypes.SiacoinOutput) []SiacoinOutput {
-	scosOut := make([]SiacoinOutput, len(scos))
-	for i, sco := range scos {
-		scosOut[i] = SiacoinOutput{
-			Value:      types.NewCurrency(sco.Value.Big()),
-			UnlockHash: types.UnlockHash(sco.Address),
-		}
-	}
-	return scosOut
 }
 
 // ConvertSiafundInputs converts a slice of core siafund inputs to a slice of
@@ -93,10 +101,10 @@ func ConvertSiafundInputs(sfis []cTypes.SiafundInput) []SiafundInput {
 	sfisOut := make([]SiafundInput, len(sfis))
 	for i, sfi := range sfis {
 		sfisOut[i] = SiafundInput{
-			ParentID: types.SiafundOutputID(sfi.ParentID),
-			UnlockConditions: types.UnlockConditions{
-				Timelock:           types.BlockHeight(sfi.UnlockConditions.Timelock),
-				PublicKeys:         convertPublicKeys(sfi.UnlockConditions.PublicKeys),
+			ParentID: sfi.ParentID,
+			UnlockConditions: UnlockConditions{
+				Timelock:           sfi.UnlockConditions.Timelock,
+				PublicKeys:         sfi.UnlockConditions.PublicKeys,
 				SignaturesRequired: sfi.UnlockConditions.SignaturesRequired,
 			},
 		}
@@ -110,12 +118,23 @@ func ConvertStorageProofs(sps []cTypes.StorageProof) []StorageProof {
 	spsOut := make([]StorageProof, len(sps))
 	for i, sp := range sps {
 		spsOut[i] = StorageProof{
-			ParentID: types.FileContractID(sp.ParentID),
+			ParentID: sp.ParentID,
 			Segment:  sp.Leaf,
-			HashSet:  convertHashes(sp.Proof),
+			HashSet:  sp.Proof,
 		}
 	}
 	return spsOut
+}
+
+func ConvertSiacoinOutputs(scos []cTypes.SiacoinOutput) []SiacoinOutput {
+	scosOut := make([]SiacoinOutput, len(scos))
+	for i, sco := range scos {
+		scosOut[i] = SiacoinOutput{
+			Value:      sco.Value,
+			UnlockHash: sco.Address,
+		}
+	}
+	return scosOut
 }
 
 // ConvertTransactionSignatures converts a slice of core transaction signatures
@@ -126,7 +145,7 @@ func ConvertTransactionSignatures(sigs []cTypes.TransactionSignature) []Transact
 		sigsOut[i] = TransactionSignature{
 			ParentID:       crypto.Hash(sig.ParentID),
 			PublicKeyIndex: sig.PublicKeyIndex,
-			Timelock:       types.BlockHeight(sig.Timelock),
+			Timelock:       sig.Timelock,
 			CoveredFields:  convertCoveredFields(sig.CoveredFields),
 			Signature:      sig.Signature,
 		}
@@ -134,8 +153,8 @@ func ConvertTransactionSignatures(sigs []cTypes.TransactionSignature) []Transact
 	return sigsOut
 }
 
-func convertCoveredFields(cFields cTypes.CoveredFields) types.CoveredFields {
-	return types.CoveredFields{
+func convertCoveredFields(cFields cTypes.CoveredFields) CoveredFields {
+	return CoveredFields{
 		WholeTransaction:      cFields.WholeTransaction,
 		SiacoinInputs:         cFields.SiacoinInputs,
 		SiacoinOutputs:        cFields.SiacoinOutputs,
@@ -148,39 +167,4 @@ func convertCoveredFields(cFields cTypes.CoveredFields) types.CoveredFields {
 		ArbitraryData:         cFields.ArbitraryData,
 		TransactionSignatures: cFields.Signatures,
 	}
-}
-
-func convertHashes(hashes []cTypes.Hash256) []crypto.Hash {
-	hashesOut := make([]crypto.Hash, len(hashes))
-	for i, hash := range hashes {
-		hashesOut[i] = crypto.Hash(hash)
-	}
-	return hashesOut
-}
-
-func convertPublicKeys(sks []cTypes.UnlockKey) []types.SiaPublicKey {
-	sksOut := make([]types.SiaPublicKey, len(sks))
-	for i, uk := range sks {
-		switch uk.Algorithm {
-		case cTypes.SpecifierEd25519:
-			sksOut[i] = types.SiaPublicKey{
-				Algorithm: types.SignatureEd25519,
-				Key:       uk.Key,
-			}
-		default:
-			panic("unknown key type")
-		}
-	}
-	return sksOut
-}
-
-func convertSiacoinOutputs(scos []cTypes.SiacoinOutput) []types.SiacoinOutput {
-	scosOut := make([]types.SiacoinOutput, len(scos))
-	for i, sco := range scos {
-		scosOut[i] = types.SiacoinOutput{
-			Value:      types.NewCurrency(sco.Value.Big()),
-			UnlockHash: types.UnlockHash(sco.Address),
-		}
-	}
-	return scosOut
 }
