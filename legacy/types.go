@@ -11,14 +11,28 @@ import (
 type Timestamp types.Timestamp
 
 type (
+	// FileContractRevision is a revision of a file contract.
 	FileContractRevision types.FileContractRevision
-	SiacoinInput         types.SiacoinInput
-	SiacoinOutput        types.SiacoinOutput
-	SiafundInput         types.SiafundInput
-	StorageProof         types.StorageProof
+
+	// SiacoinInput is an input to a transaction that spends siacoins.
+	SiacoinInput types.SiacoinInput
+
+	// SiacoinOutput is an output of a transaction that spends siacoins.
+	SiacoinOutput types.SiacoinOutput
+
+	// SiafundInput is an input to a transaction that spends siafunds.
+	SiafundInput types.SiafundInput
+
+	// StorageProof is a proof that a host has stored a sector for the duration of
+	// a contract.
+	StorageProof types.StorageProof
+
+	// TransactionSignature is a signature for a transaction.
 	TransactionSignature types.TransactionSignature
 )
 
+// ConvertFileContractRevisions converts a slice of core revisions to a slice of
+// legacy revisions.
 func ConvertFileContractRevisions(fcrs []cTypes.FileContractRevision) []FileContractRevision {
 	fcrsOut := make([]FileContractRevision, len(fcrs))
 	for i, fcr := range fcrs {
@@ -43,6 +57,8 @@ func ConvertFileContractRevisions(fcrs []cTypes.FileContractRevision) []FileCont
 	return fcrsOut
 }
 
+// ConvertSiacoinInputs converts a slice of core siacoin inputs to a slice of
+// legacy inputs.
 func ConvertSiacoinInputs(scis []cTypes.SiacoinInput) []SiacoinInput {
 	scisOut := make([]SiacoinInput, len(scis))
 	for i, sci := range scis {
@@ -58,6 +74,8 @@ func ConvertSiacoinInputs(scis []cTypes.SiacoinInput) []SiacoinInput {
 	return scisOut
 }
 
+// ConvertSiafundInputs converts a slice of core siafund inputs to a slice of
+// legacy inputs.
 func ConvertSiafundInputs(sfis []cTypes.SiafundInput) []SiafundInput {
 	sfisOut := make([]SiafundInput, len(sfis))
 	for i, sfi := range sfis {
@@ -73,6 +91,8 @@ func ConvertSiafundInputs(sfis []cTypes.SiafundInput) []SiafundInput {
 	return sfisOut
 }
 
+// ConvertStorageProofs converts a slice of core storage proofs to a slice of
+// legacy proofs.
 func ConvertStorageProofs(sps []cTypes.StorageProof) []StorageProof {
 	spsOut := make([]StorageProof, len(sps))
 	for i, sp := range sps {
@@ -85,6 +105,8 @@ func ConvertStorageProofs(sps []cTypes.StorageProof) []StorageProof {
 	return spsOut
 }
 
+// ConvertTransactionSignatures converts a slice of core transaction signatures
+// to a slice of legacy signatures.
 func ConvertTransactionSignatures(sigs []cTypes.TransactionSignature) []TransactionSignature {
 	sigsOut := make([]TransactionSignature, len(sigs))
 	for i, sig := range sigs {

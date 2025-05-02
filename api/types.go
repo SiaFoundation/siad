@@ -168,6 +168,8 @@ type (
 	}
 )
 
+// NewConsensusBlocksGet creates a new ConsensusBlocksGet from a types.Block and
+// its state.
 func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocksGet {
 	txns := make([]ConsensusBlocksGetTxn, 0, len(b.Transactions))
 	for _, t := range b.Transactions {
