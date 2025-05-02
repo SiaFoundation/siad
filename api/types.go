@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/binary"
 	"math/big"
 
 	"go.sia.tech/core/consensus"
@@ -110,11 +111,11 @@ type (
 	// ConsensusBlocksGet contains all fields of a types.Block and additional
 	// fields for ID and Height.
 	ConsensusBlocksGet struct {
-		ID           types.Hash256           `json:"id"`
+		ID           types.BlockID           `json:"id"`
 		Height       uint64                  `json:"height"`
-		ParentID     types.Hash256           `json:"parentid"`
+		ParentID     types.BlockID           `json:"parentid"`
 		Nonce        [8]byte                 `json:"nonce"`
-		Difficulty   types.Currency          `json:"difficulty"`
+		Difficulty   consensus.Work          `json:"difficulty"`
 		Timestamp    legacy.Timestamp        `json:"timestamp"`
 		MinerPayouts []legacy.SiacoinOutput  `json:"minerpayouts"`
 		Transactions []ConsensusBlocksGetTxn `json:"transactions"`
@@ -173,7 +174,7 @@ type (
 func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocksGet {
 	txns := make([]ConsensusBlocksGetTxn, 0, len(b.Transactions))
 	for _, t := range b.Transactions {
-		// Get the transaction's SiacoinOutputs.
+		// get the transaction's SiacoinOutputs
 		scos := make([]ConsensusBlocksGetSiacoinOutput, 0, len(t.SiacoinOutputs))
 		for i, sco := range t.SiacoinOutputs {
 			scos = append(scos, ConsensusBlocksGetSiacoinOutput{
@@ -182,7 +183,7 @@ func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocks
 				UnlockHash: sco.Address,
 			})
 		}
-		// Get the transaction's SiafundOutputs.
+		// get the transaction's SiafundOutputs
 		sfos := make([]ConsensusBlocksGetSiafundOutput, 0, len(t.SiafundOutputs))
 		for i, sfo := range t.SiafundOutputs {
 			sfos = append(sfos, ConsensusBlocksGetSiafundOutput{
@@ -191,7 +192,7 @@ func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocks
 				UnlockHash: sfo.Address,
 			})
 		}
-		// Get the transaction's FileContracts.
+		// get the transaction's FileContracts
 		fcos := make([]ConsensusBlocksGetFileContract, 0, len(t.FileContracts))
 		for i, fc := range t.FileContracts {
 			// Get the FileContract's valid proof outputs.
@@ -204,7 +205,7 @@ func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocks
 					UnlockHash: vpo.Address,
 				})
 			}
-			// Get the FileContract's missed proof outputs.
+			// get the FileContract's missed proof outputs
 			mpos := make([]ConsensusBlocksGetSiacoinOutput, 0, len(fc.MissedProofOutputs))
 			for j, mpo := range fc.MissedProofOutputs {
 				mpos = append(mpos, ConsensusBlocksGetSiacoinOutput{
@@ -241,7 +242,16 @@ func NewConsensusBlocksGet(b types.Block, state consensus.State) ConsensusBlocks
 		})
 	}
 
+	var nonce [8]byte
+	binary.LittleEndian.PutUint64(nonce[:], b.Nonce)
 	return ConsensusBlocksGet{
-		// TODO: populate
+		ID:           b.ID(),
+		Height:       state.Index.Height,
+		ParentID:     b.ParentID,
+		Nonce:        nonce,
+		Difficulty:   state.Difficulty,
+		Timestamp:    legacy.Timestamp(b.Timestamp.Unix()),
+		MinerPayouts: legacy.ConvertSiacoinOutputs(b.MinerPayouts),
+		Transactions: txns,
 	}
 }

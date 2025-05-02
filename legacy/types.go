@@ -74,6 +74,19 @@ func ConvertSiacoinInputs(scis []cTypes.SiacoinInput) []SiacoinInput {
 	return scisOut
 }
 
+// ConvertSiacoinOutputs converts a slice of core siacoin outputs to a slice of
+// legacy outputs.
+func ConvertSiacoinOutputs(scos []cTypes.SiacoinOutput) []SiacoinOutput {
+	scosOut := make([]SiacoinOutput, len(scos))
+	for i, sco := range scos {
+		scosOut[i] = SiacoinOutput{
+			Value:      types.NewCurrency(sco.Value.Big()),
+			UnlockHash: types.UnlockHash(sco.Address),
+		}
+	}
+	return scosOut
+}
+
 // ConvertSiafundInputs converts a slice of core siafund inputs to a slice of
 // legacy inputs.
 func ConvertSiafundInputs(sfis []cTypes.SiafundInput) []SiafundInput {
