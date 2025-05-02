@@ -104,7 +104,6 @@ func (a *api) handleGETConsensusBlocks(jc jape.Context) {
 		jc.Error(errors.New("couldn't get block state"), http.StatusInternalServerError)
 		return
 	}
-	_ = state
 
 	jc.Encode(NewConsensusBlocksGet(block, state))
 }

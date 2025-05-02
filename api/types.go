@@ -108,7 +108,7 @@ type (
 )
 
 type (
-	// ConsensusBlocksGet contains all fields of a types.Block and additional
+	// ConsensusBlocksGet contains all fields of a legacy block and additional
 	// fields for ID and Height.
 	ConsensusBlocksGet struct {
 		ID           types.BlockID           `json:"id"`
@@ -121,7 +121,7 @@ type (
 		Transactions []ConsensusBlocksGetTxn `json:"transactions"`
 	}
 
-	// ConsensusBlocksGetTxn contains all fields of a legacy.Transaction and an
+	// ConsensusBlocksGetTxn contains all fields of a legacy transaction and an
 	// additional ID field.
 	ConsensusBlocksGetTxn struct {
 		ID                    types.TransactionID                      `json:"id"`
@@ -137,7 +137,7 @@ type (
 		TransactionSignatures []legacy.TransactionSignature            `json:"transactionsignatures"`
 	}
 
-	// ConsensusBlocksGetFileContract contains all fields of a legacy.FileContract
+	// ConsensusBlocksGetFileContract contains all fields of a legacy contract
 	// and an additional ID field.
 	ConsensusBlocksGetFileContract struct {
 		ID                 types.FileContractID              `json:"id"`
@@ -152,6 +152,8 @@ type (
 		RevisionNumber     uint64                            `json:"revisionnumber"`
 	}
 
+	// ConsensusBlocksGetFileContractRevision contains all fields of a legacy
+	// revision.
 	ConsensusBlocksGetFileContractRevision struct {
 		ParentID          types.FileContractID    `json:"parentid"`
 		UnlockConditions  legacy.UnlockConditions `json:"unlockconditions"`
@@ -166,7 +168,7 @@ type (
 		NewUnlockHash         types.Address          `json:"newunlockhash"`
 	}
 
-	// ConsensusBlocksGetSiacoinOutput contains all fields of a legacy.SiacoinOutput
+	// ConsensusBlocksGetSiacoinOutput contains all fields of a legacy siacoin output
 	// and an additional ID field.
 	ConsensusBlocksGetSiacoinOutput struct {
 		ID         types.SiacoinOutputID `json:"id"`
@@ -174,7 +176,7 @@ type (
 		UnlockHash types.Address         `json:"unlockhash"`
 	}
 
-	// ConsensusBlocksGetSiafundOutput contains all fields of a legacy.SiafundOutput
+	// ConsensusBlocksGetSiafundOutput contains all fields of a legacy siafund output
 	// and an additional ID field.
 	ConsensusBlocksGetSiafundOutput struct {
 		ID         types.SiafundOutputID `json:"id"`

@@ -126,6 +126,8 @@ func ConvertStorageProofs(sps []cTypes.StorageProof) []StorageProof {
 	return spsOut
 }
 
+// ConvertSiacoinOutputs converts a slice of core siacoin outputs to a slice of
+// legacy types.
 func ConvertSiacoinOutputs(scos []cTypes.SiacoinOutput) []SiacoinOutput {
 	scosOut := make([]SiacoinOutput, len(scos))
 	for i, sco := range scos {
