@@ -98,7 +98,15 @@ func (a *api) handleGETConsensusBlocks(jc jape.Context) {
 		jc.Error(errors.New("block doesn't exist"), http.StatusNotFound)
 		return
 	}
-	jc.Encode(block) // TODO: this is technically not correct, need to process it
+
+	state, ok := a.chain.State(block.ID())
+	if !ok {
+		jc.Error(errors.New("couldn't get block state"), http.StatusInternalServerError)
+		return
+	}
+	_ = state
+
+	jc.Encode(NewConsensusBlocksGet(block, state))
 }
 
 func (a *api) handleGETWallet(jc jape.Context) {
