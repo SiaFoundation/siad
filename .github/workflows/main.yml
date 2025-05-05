@@ -1,0 +1,13 @@
+name: Lint & Test
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+env:
+  CGO_ENABLED: 1
+
+jobs:
+  test:
+    uses: SiaFoundation/workflows/.github/workflows/go-test.yml@master

@@ -1,0 +1,14 @@
+name: Add issues and PRs to Sia project
+
+on:
+  issues:
+    types:
+      - opened
+  pull_request:
+    types:
+      - opened
+
+jobs:
+  add-to-project:
+    uses: SiaFoundation/workflows/.github/workflows/project-add.yml@master
+    secrets: inherit
